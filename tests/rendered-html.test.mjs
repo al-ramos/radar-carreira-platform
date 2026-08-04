@@ -6,7 +6,7 @@ const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
 test("dashboard oferece radar, perfil e pipeline persistente", async () => {
   const dashboard = await read("../app/Dashboard.tsx");
-  assert.match(dashboard, /const nav=\["Radar","Pipeline","Gmail RadarVagas","Fontes","Importações","Configurações"\]/);
+  assert.match(dashboard, /const nav=\["Radar","Pipeline","Alertas","Gmail RadarVagas","Fontes","Importações","Configurações"\]/);
   assert.match(dashboard, /fetch\(`\/api\/jobs\?limit=250&period=\$\{period\}`\)/);
   assert.match(dashboard, /Últimas 24h/);
   assert.match(dashboard, /Últimos 7 dias/);
@@ -41,3 +41,4 @@ test("identidade visual usa Geist", async () => {
   assert.match(globalCss, /--font-geist/);
   assert.doesNotMatch(platformCss, /Georgia/);
 });
+

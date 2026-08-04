@@ -56,3 +56,17 @@ export const platformSettings = sqliteTable("platform_settings", {
   updatedBy: text("updated_by"),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
 });
+
+export const alertPreferences = sqliteTable("alert_preferences", {
+  userId: text("user_id").primaryKey(),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  minScore: integer("min_score").notNull().default(80),
+  frequency: text("frequency", { enum: ["instant", "daily"] }).notNull().default("daily"),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+});
+
+export const alertReads = sqliteTable("alert_reads", {
+  userId: text("user_id").notNull(),
+  jobId: text("job_id").notNull().references(() => jobs.id),
+  readAt: integer("read_at", { mode: "timestamp_ms" }).notNull(),
+}, t => [primaryKey({ columns: [t.userId, t.jobId] })]);
