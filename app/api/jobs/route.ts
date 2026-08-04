@@ -1,0 +1,3 @@
+import { desc,eq } from "drizzle-orm";import { NextResponse } from "next/server";import { getDb } from "../../../db/index";import { jobs } from "../../../db/schema";
+export const dynamic="force-dynamic";
+export async function GET(request:Request){try{const url=new URL(request.url);const limit=Math.min(Number(url.searchParams.get("limit")??100),250);const rows=await getDb().select().from(jobs).where(eq(jobs.status,"active")).orderBy(desc(jobs.publishedAt)).limit(limit);return NextResponse.json({jobs:rows.map(j=>({...j,stack:JSON.parse(j.stack||"[]")})),mode:"database"})}catch(error){return NextResponse.json({jobs:[],mode:"unavailable",error:error instanceof Error?error.message:"Banco indisponível"},{status:503})}}
