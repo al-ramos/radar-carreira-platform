@@ -30,3 +30,7 @@ jobs:
         run: npm ci
       - name: Validar build
         run: npm run build
+      - name: Validar código
+        run: npm run lint
+      - name: Executar testes
+        run: node --test tests/rendered-html.test.mjs
