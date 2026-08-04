@@ -43,3 +43,16 @@ export const importRuns = sqliteTable("import_runs", {
   duplicates: integer("duplicates").notNull().default(0), errors: integer("errors").notNull().default(0), actorUserId: text("actor_user_id"),
   startedAt: integer("started_at", { mode: "timestamp_ms" }).notNull(), finishedAt: integer("finished_at", { mode: "timestamp_ms" }),
 });
+
+export const platformSettings = sqliteTable("platform_settings", {
+  id: text("id").primaryKey().default("global"),
+  collectionEnabled: integer("collection_enabled", { mode: "boolean" }).notNull().default(true),
+  emailImportEnabled: integer("email_import_enabled", { mode: "boolean" }).notNull().default(true),
+  enrichmentEnabled: integer("enrichment_enabled", { mode: "boolean" }).notNull().default(true),
+  defaultPeriod: text("default_period").notNull().default("24"),
+  defaultMinScore: integer("default_min_score").notNull().default(70),
+  staleAfterDays: integer("stale_after_days").notNull().default(7),
+  retentionDays: integer("retention_days").notNull().default(180),
+  updatedBy: text("updated_by"),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+});
