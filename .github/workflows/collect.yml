@@ -16,3 +16,7 @@ jobs:
             -X POST \
             -H "Authorization: Bearer ${COLLECTOR_SECRET}" \
             https://radar-carreira-platform.jazzy-siren-4604.chatgpt.site/api/cron/collect
+          curl --fail-with-body --retry 2 --max-time 300 \
+            -X POST \
+            -H "Authorization: Bearer ${COLLECTOR_SECRET}" \
+            https://radar-carreira-platform.jazzy-siren-4604.chatgpt.site/api/cron/enrich

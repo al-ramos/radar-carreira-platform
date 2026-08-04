@@ -3,6 +3,7 @@ import { getDb } from "../../../../db/index";
 import { importRuns,jobEvents,jobSources,jobs,userJobStatus } from "../../../../db/schema";
 import { applicationFromEmail,jobsFromEmail,type RadarEmail } from "../../../../lib/email-jobs";
 import { fingerprint } from "../../../../lib/jobs";
+import { enrichLinkedInJobs } from "../../../../lib/enrichment";
 
 export const dynamic="force-dynamic";
 const digest=async(value:string)=>Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(value)))).map(byte=>byte.toString(16).padStart(2,"0")).join("");
@@ -18,5 +19,6 @@ export async function POST(request:Request){
   for(const job of imported){const fp=fingerprint(job),existing=(await db.select({id:jobs.id}).from(jobs).where(eq(jobs.fingerprint,fp)).limit(1))[0],values={id:existing?.id??crypto.randomUUID(),fingerprint:fp,sourceId:null,externalId:job.externalId??null,company:job.company,title:job.title,seniority:null,workMode:job.workMode??null,location:job.location??null,stack:"[]",publishedAt:job.publishedAt?new Date(job.publishedAt):now,url:job.url,description:job.description??"",firstSeenAt:now,lastSeenAt:now,status:"active" as const,createdAt:now,updatedAt:now};await db.insert(jobs).values(values).onConflictDoUpdate({target:jobs.fingerprint,set:{lastSeenAt:now,publishedAt:values.publishedAt,url:values.url,status:"active",updatedAt:now}});if(existing)updated++;else inserted++}
   for(const email of payload.messages){const signal=applicationFromEmail(email);if(!signal)continue;const condition=signal.title&&signal.company?and(like(jobs.title,`%${signal.title}%`),like(jobs.company,`%${signal.company}%`)):signal.title?like(jobs.title,`%${signal.title}%`):signal.company?like(jobs.company,`%${signal.company}%`):null;if(!condition)continue;const matches=await db.select({id:jobs.id}).from(jobs).where(condition).orderBy(desc(jobs.updatedAt)).limit(2);if(matches.length!==1)continue;const jobId=matches[0].id;await db.insert(userJobStatus).values({userId:config.userId,jobId,stage:signal.stage,note:signal.detail,updatedAt:new Date(email.date)}).onConflictDoUpdate({target:[userJobStatus.userId,userJobStatus.jobId],set:{stage:signal.stage,note:signal.detail,updatedAt:new Date(email.date)}});await db.insert(jobEvents).values({jobId,type:signal.type,detail:signal.detail,occurredAt:new Date(email.date)});events++}
   await db.update(importRuns).set({status:"completed",inserted,updated,finishedAt:new Date()}).where(eq(importRuns.id,runId));
-  return Response.json({ok:true,emails:payload.messages.length,jobs:imported.length,inserted,updated,pipelineEvents:events});
+  const enriched=await enrichLinkedInJobs();
+  return Response.json({ok:true,emails:payload.messages.length,jobs:imported.length,inserted,updated,pipelineEvents:events,enriched});
 }
