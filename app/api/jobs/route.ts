@@ -25,7 +25,7 @@ export async function GET(request: Request) {
       const stack = parse(job.stack);
       const match = profile ? scoreJob({title:job.title,description:job.description,stack,seniority:job.seniority,workMode:job.workMode,location:job.location,publishedAt:job.publishedAt},{masteredSkills:parse(profile.masteredSkills),desiredAreas:parse(profile.desiredAreas),avoidTerms:parse(profile.avoidTerms),seniority:profile.seniority,preferredMode:profile.preferredMode,cities:parse(profile.cities)}) : {score:70,reasons:["Complete seu perfil para personalizar"]};
       return {...job,stack,score:match.score,reasons:match.reasons};
-    }).filter(job => !profile || job.score >= profile.minScore);
+    });
     return NextResponse.json({jobs:result,mode:"database",personalized:Boolean(profile),period:period === "all" ? "all" : hours});
   } catch (error) {
     return NextResponse.json({jobs:[],mode:"unavailable",error:error instanceof Error?error.message:"Banco indisponível"},{status:503});
