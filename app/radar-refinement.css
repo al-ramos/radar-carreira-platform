@@ -22,3 +22,55 @@
 @media (max-width: 850px) {
   .workspace { grid-template-columns: 1fr; }
 }
+
+.radar-job-actions {
+  align-items: center;
+  padding: 14px 0 18px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 0;
+}
+.radar-job-actions .expand-description {
+  border-color: var(--green);
+  background: var(--green);
+  color: #fff;
+  font-weight: 700;
+}
+.radar-job-actions .linkedin-action { margin-left: 0; }
+.selected-description { border-top: 0; padding-top: 22px; }
+.selected-description > div > span {
+  color: #7b877f;
+  font-size: 8px;
+}
+.description-content {
+  max-width: 78ch;
+  color: #34423b;
+  font-size: 13px;
+  line-height: 1.78;
+}
+.selected-description .description-content {
+  max-height: calc(100vh - 400px);
+  min-height: 260px;
+  overflow: auto;
+  padding: 2px 18px 12px 0;
+}
+.description-content h5 {
+  margin: 24px 0 8px;
+  color: var(--green);
+  font-size: 10px;
+  letter-spacing: .9px;
+  text-transform: uppercase;
+}
+.description-content h5:first-child { margin-top: 4px; }
+.description-content p { margin: 0 0 14px; }
+.description-scroll .description-content {
+  max-width: 72ch;
+  margin: 0 auto;
+  font-size: 14px;
+  line-height: 1.82;
+}
+
+@media (max-width: 650px) {
+  .radar-job-actions { flex-wrap: wrap; }
+  .radar-job-actions .expand-description { order: -1; width: 100%; }
+  .selected-description .description-content { max-height: none; min-height: 0; }
+}
