@@ -4,6 +4,7 @@ import { env } from "cloudflare:workers";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db/index";
 import { jobEvents,jobs,profiles } from "../../../../db/schema";
+import { inferTechnologyStack } from "../../../../lib/technology-stack";
 
 export const dynamic="force-dynamic";
 
@@ -136,9 +137,11 @@ export async function POST(request:Request){
     const official=await descriptionFromLinkedIn(job.url);
     if(official){description=official;source="linkedin";await db.update(jobs).set({description,updatedAt:new Date()}).where(eq(jobs.id,job.id));await db.insert(jobEvents).values({jobId:job.id,type:"linkedin_description",detail:"Descrição oficial obtida na página pública da vaga.",occurredAt:new Date()})}
   }
-  const skills=profile?parse(profile.masteredSkills):parse(job.stack),desiredAreas=profile?parse(profile.desiredAreas):[],name=profile?.name||user.fullName||user.displayName||"Candidato";
+  const inferredStack=inferTechnologyStack(`${job.title} ${description}`,parse(job.stack));
+  if(JSON.stringify(inferredStack)!==JSON.stringify(parse(job.stack)))await db.update(jobs).set({stack:JSON.stringify(inferredStack),updatedAt:new Date()}).where(eq(jobs.id,job.id));
+  const skills=profile?parse(profile.masteredSkills):inferredStack,desiredAreas=profile?parse(profile.desiredAreas):[],name=profile?.name||user.fullName||user.displayName||"Candidato";
   const fallback={subject:`Candidatura — ${job.title} | ${name}`,message:draft(name,job.title,job.company,profile?.seniority??null,profile?.preferredMode??job.workMode,skills,description)};
   let generated:ApplicationDraft|null=null;
   try{generated=await generateApplicationDraft({name,title:job.title,company:job.company,location:job.location??"Não informado",workMode:profile?.preferredMode??job.workMode,seniority:profile?.seniority??null,skills,desiredAreas,description})}catch(error){console.warn("OpenAI draft generation unavailable",error instanceof Error?error.name:"unknown")}
-  return NextResponse.json({description,descriptionSource:source,...(generated??fallback),messageSource:generated?"openai":"template"});
+  return NextResponse.json({description,descriptionSource:source,stack:inferredStack,...(generated??fallback),messageSource:generated?"openai":"template"});
 }
