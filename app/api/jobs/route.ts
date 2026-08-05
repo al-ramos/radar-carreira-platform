@@ -4,6 +4,7 @@ import { getChatGPTUser } from "../../chatgpt-auth";
 import { getDb } from "../../../db/index";
 import { jobs, profiles } from "../../../db/schema";
 import { scoreJob } from "../../../lib/scoring";
+import { inferTechnologyStack } from "../../../lib/technology-stack";
 
 export const dynamic = "force-dynamic";
 const parse = (value: string) => { try { return JSON.parse(value) as string[]; } catch { return []; } };
@@ -22,7 +23,7 @@ export async function GET(request: Request) {
     const condition = cutoff ? and(eq(jobs.status, "active"), gte(jobs.publishedAt, cutoff)) : eq(jobs.status, "active");
     const rows = await getDb().select().from(jobs).where(condition).orderBy(desc(jobs.publishedAt)).limit(limit);
     const result = rows.map(job => {
-      const stack = parse(job.stack);
+      const stack = inferTechnologyStack(`${job.title} ${job.description}`,parse(job.stack));
       const match = profile ? scoreJob({title:job.title,description:job.description,stack,seniority:job.seniority,workMode:job.workMode,location:job.location,publishedAt:job.publishedAt},{masteredSkills:parse(profile.masteredSkills),desiredAreas:parse(profile.desiredAreas),avoidTerms:parse(profile.avoidTerms),seniority:profile.seniority,preferredMode:profile.preferredMode,cities:parse(profile.cities)}) : {score:70,reasons:["Complete seu perfil para personalizar"]};
       return {...job,stack,score:match.score,reasons:match.reasons};
     });
