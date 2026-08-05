@@ -164,6 +164,50 @@ Configuração do repositório:
 
 Uma execução HTTP bem-sucedida pode retornar `sources: 0` quando nenhuma fonte foi cadastrada. O resultado real deve ser conferido pelos campos `sources`, `received`, `inserted`, `updated` e `errors`.
 
+## Integração com a extensão LinkedIn Job Collector
+
+A extensão `al-ramos/linkedin-job-collector` pode enviar diretamente ao Radar as vagas filtradas por stack.
+
+Endpoint:
+
+```text
+POST /api/collector/import
+Authorization: Bearer <LINKEDIN_COLLECTOR_SECRET>
+Content-Type: application/json
+```
+
+Exemplo de payload:
+
+```json
+{
+  "source": "linkedin-extension",
+  "stacks": ["java", "aws"],
+  "jobs": [
+    {
+      "empresa": "Empresa Exemplo",
+      "titulo": "Engenheiro de Software Java",
+      "local": "Brasil · Remoto",
+      "descricao": "Java, Spring Boot e AWS",
+      "stack": ["Java", "Spring", "AWS"],
+      "link": "https://www.linkedin.com/jobs/view/1234567890/",
+      "coletado_em": "2026-08-05T18:00:00.000Z"
+    }
+  ]
+}
+```
+
+Configure no ambiente publicado uma chave exclusiva chamada `LINKEDIN_COLLECTOR_SECRET`. Enquanto ela não existir, o endpoint aceita `COLLECTOR_SECRET` como compatibilidade. A chave deve ter pelo menos 24 caracteres, permanecer somente no ambiente do portal e no armazenamento local da extensão e nunca ser versionada.
+
+O endpoint:
+
+- aceita até 2 MB e 2.000 vagas por requisição;
+- normaliza os campos em português ou inglês;
+- grava na tabela `jobs` do Cloudflare D1;
+- preserva stacks identificadas pela extensão;
+- deduplica pelo `fingerprint` existente;
+- registra a execução em `import_runs`;
+- permite CORS sem cookies porque a autenticação ocorre pelo token Bearer.
+
 ## Autenticação e autorização
 
 - o Sites fornece a identidade autenticada por cabeçalhos protegidos;
