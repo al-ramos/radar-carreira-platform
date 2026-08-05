@@ -196,7 +196,7 @@ Exemplo de payload:
 }
 ```
 
-Configure no ambiente publicado uma chave exclusiva chamada `LINKEDIN_COLLECTOR_SECRET`. Enquanto ela não existir, o endpoint aceita `COLLECTOR_SECRET` como compatibilidade. A chave deve ter pelo menos 24 caracteres, permanecer somente no ambiente do portal e no armazenamento local da extensão e nunca ser versionada.
+Entre como administrador no portal e abra **Extensão LinkedIn**. O assistente permite gerar, salvar e copiar uma chave exclusiva com pelo menos 24 caracteres. O portal guarda somente o hash da chave no banco; o texto deve ser colado no painel da extensão e não deve ser versionado. Depois, use **Testar conexão** na extensão. As variáveis `LINKEDIN_COLLECTOR_SECRET` e `COLLECTOR_SECRET` continuam aceitas apenas como compatibilidade operacional.
 
 O endpoint:
 

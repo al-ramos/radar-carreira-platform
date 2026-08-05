@@ -1,6 +1,6 @@
-import { env } from "cloudflare:workers";
 import { NextResponse } from "next/server";
 import { normalizeImportedJobs } from "../../../../lib/import-jobs";
+import { validLinkedInCollectorSecret } from "../../../../lib/linkedin-collector-auth";
 import { persistImportedJobs } from "../../../../lib/persist-imported-jobs";
 
 export const dynamic="force-dynamic";
@@ -10,14 +10,13 @@ const json=(body:unknown,status=200)=>NextResponse.json(body,{status,headers:COR
 export async function OPTIONS(){return new Response(null,{status:204,headers:CORS})}
 
 export async function POST(request:Request){
- const secrets=env as unknown as {LINKEDIN_COLLECTOR_SECRET?:string;COLLECTOR_SECRET?:string};
- const expected=secrets.LINKEDIN_COLLECTOR_SECRET||secrets.COLLECTOR_SECRET;
- const provided=request.headers.get("authorization")?.replace(/^Bearer\s+/i,"");
- if(!expected||!provided||provided!==expected)return json({error:"Chave do coletor inválida"},401);
+ const provided=request.headers.get("authorization")?.replace(/^Bearer\s+/i,"")??"";
+ if(!await validLinkedInCollectorSecret(provided))return json({error:"Chave do coletor inválida"},401);
  const text=await request.text();
  if(text.length>2_000_000)return json({error:"A importação excede 2 MB"},413);
  let value:unknown;
  try{value=JSON.parse(text)}catch{return json({error:"JSON inválido"},400)}
+ if(value&&typeof value==="object"&&(value as {action?:unknown}).action==="test")return json({ok:true,message:"Conexão com o Radar confirmada"});
  const rows=Array.isArray(value)?value:value&&typeof value==="object"&&(value as {jobs?:unknown}).jobs;
  const items=normalizeImportedJobs(Array.isArray(rows)?rows:[]);
  if(!items.length)return json({error:"Nenhuma vaga válida foi recebida"},400);
