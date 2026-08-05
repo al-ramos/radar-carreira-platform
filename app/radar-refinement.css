@@ -1,0 +1,102 @@
+.workspace {
+  grid-template-columns: clamp(300px, 27vw, 390px) minmax(520px, 1fr);
+}
+
+.job-main small { font-size: 7.5px; }
+.job-main h3 {
+  margin: 4px 0 6px;
+  font-size: 15px;
+  line-height: 1.3;
+}
+.job-main p {
+  margin-bottom: 7px;
+  font-size: 9.5px;
+}
+
+@media (max-width: 1100px) and (min-width: 851px) {
+  .workspace {
+    grid-template-columns: clamp(290px, 34vw, 350px) minmax(430px, 1fr);
+  }
+}
+
+@media (max-width: 850px) {
+  .workspace { grid-template-columns: 1fr; }
+}
+
+.radar-job-actions {
+  align-items: center;
+  padding: 14px 0 18px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 0;
+}
+.radar-job-actions .expand-description {
+  border-color: var(--green);
+  background: var(--green);
+  color: #fff;
+  font-weight: 700;
+}
+.radar-job-actions .linkedin-action { margin-left: 0; }
+.selected-description { border-top: 0; padding-top: 22px; }
+.selected-description > div > span {
+  color: #7b877f;
+  font-size: 8px;
+}
+.radar-description-content {
+  display: block !important;
+  width: 100%;
+  max-width: 78ch;
+  color: #34423b;
+  font-size: 13px;
+  line-height: 1.78;
+}
+.selected-description > .radar-description-content {
+  max-height: calc(100vh - 400px);
+  min-height: 260px;
+  overflow: auto;
+  padding: 2px 18px 12px 0;
+}
+.radar-description-content h5 {
+  margin: 24px 0 8px;
+  color: var(--green);
+  font-size: 10px;
+  letter-spacing: .9px;
+  text-transform: uppercase;
+}
+.radar-description-content h5:first-child { margin-top: 4px; }
+.radar-description-content p { display: block; width: 100%; margin: 0 0 14px; }
+.description-scroll .radar-description-content {
+  max-width: 72ch;
+  margin: 0 auto;
+  font-size: 14px;
+  line-height: 1.82;
+}
+
+@media (max-width: 650px) {
+  .radar-job-actions { flex-wrap: wrap; }
+  .radar-job-actions .expand-description { order: -1; width: 100%; }
+  .selected-description > .radar-description-content { max-height: none; min-height: 0; }
+}
+
+.detail-section-title > div > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 8px 12px;
+  border: 1px solid #b9c8bf;
+  border-radius: 7px;
+  background: #fff;
+  color: var(--green);
+  font-size: 10px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: background .15s, border-color .15s;
+}
+.detail-section-title > div > button:hover {
+  border-color: var(--green);
+  background: #eef6e7;
+}
+.detail-section-title > div > button:disabled {
+  cursor: not-allowed;
+  opacity: .5;
+}
