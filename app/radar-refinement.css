@@ -76,3 +76,27 @@
   .radar-job-actions .expand-description { order: -1; width: 100%; }
   .selected-description > .radar-description-content { max-height: none; min-height: 0; }
 }
+
+.detail-section-title > div > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 8px 12px;
+  border: 1px solid #b9c8bf;
+  border-radius: 7px;
+  background: #fff;
+  color: var(--green);
+  font-size: 10px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: background .15s, border-color .15s;
+}
+.detail-section-title > div > button:hover {
+  border-color: var(--green);
+  background: #eef6e7;
+}
+.detail-section-title > div > button:disabled {
+  cursor: not-allowed;
+  opacity: .5;
+}
