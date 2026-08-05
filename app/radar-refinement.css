@@ -1,0 +1,24 @@
+.workspace {
+  grid-template-columns: clamp(300px, 27vw, 390px) minmax(520px, 1fr);
+}
+
+.job-main small { font-size: 7.5px; }
+.job-main h3 {
+  margin: 4px 0 6px;
+  font-size: 15px;
+  line-height: 1.3;
+}
+.job-main p {
+  margin-bottom: 7px;
+  font-size: 9.5px;
+}
+
+@media (max-width: 1100px) and (min-width: 851px) {
+  .workspace {
+    grid-template-columns: clamp(290px, 34vw, 350px) minmax(430px, 1fr);
+  }
+}
+
+@media (max-width: 850px) {
+  .workspace { grid-template-columns: 1fr; }
+}
