@@ -1,4 +1,8 @@
-const RADAR_URL = 'https://radar-carreira-platform.jazzy-siren-4604.chatgpt.site';
+function radarUrl() {
+  const value = PropertiesService.getScriptProperties().getProperty('RADAR_URL');
+  if (!value) throw new Error('Configure RADAR_URL com o endereço publicado do Radar Carreira.');
+  return value.replace(/\/+$/, '');
+}
 
 function importarRadarVagas() {
   const secret = PropertiesService.getScriptProperties().getProperty('RADAR_SECRET');
@@ -9,7 +13,7 @@ function importarRadarVagas() {
   const messages = label.getThreads(0, 100).flatMap(thread => thread.getMessages())
     .filter(message => message.getDate().getTime() >= since)
     .map(message => ({id:message.getId(),from:message.getFrom(),subject:message.getSubject(),date:message.getDate().toISOString(),body:message.getPlainBody()}));
-  const response = UrlFetchApp.fetch(`${RADAR_URL}/api/cron/email-import`, {
+  const response = UrlFetchApp.fetch(`${radarUrl()}/api/cron/email-import`, {
     method:'post',contentType:'application/json',headers:{Authorization:`Bearer ${secret}`},
     payload:JSON.stringify({label:'RadarVagas',messages}),muteHttpExceptions:true
   });
@@ -21,7 +25,7 @@ function importarRadarVagas() {
 function enviarResumoDiario() {
   const secret = PropertiesService.getScriptProperties().getProperty('RADAR_SECRET');
   if (!secret) throw new Error('Configure RADAR_SECRET nas propriedades do script.');
-  const prepare = UrlFetchApp.fetch(`${RADAR_URL}/api/cron/digest`, {
+  const prepare = UrlFetchApp.fetch(`${radarUrl()}/api/cron/digest`, {
     method:'post',contentType:'application/json',headers:{Authorization:`Bearer ${secret}`},
     payload:JSON.stringify({action:'prepare'}),muteHttpExceptions:true
   });
@@ -29,7 +33,7 @@ function enviarResumoDiario() {
   const digest = JSON.parse(prepare.getContentText());
   if (!digest.send) { console.log(digest.reason); return; }
   GmailApp.sendEmail(digest.to, digest.subject, digest.text, {htmlBody:digest.html,name:'Radar Carreira'});
-  const confirm = UrlFetchApp.fetch(`${RADAR_URL}/api/cron/digest`, {
+  const confirm = UrlFetchApp.fetch(`${radarUrl()}/api/cron/digest`, {
     method:'post',contentType:'application/json',headers:{Authorization:`Bearer ${secret}`},
     payload:JSON.stringify({action:'confirm',deliveryId:digest.deliveryId}),muteHttpExceptions:true
   });

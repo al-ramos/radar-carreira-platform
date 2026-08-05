@@ -11,13 +11,18 @@ jobs:
       - name: Coletar fontes ativas
         env:
           COLLECTOR_SECRET: ${{ secrets.COLLECTOR_SECRET }}
+          RADAR_BASE_URL: ${{ vars.RADAR_BASE_URL }}
         run: |
+          test -n "${RADAR_BASE_URL}"
           curl --fail-with-body --retry 2 --max-time 300 \
             -X POST \
             -H "Authorization: Bearer ${COLLECTOR_SECRET}" \
-            https://radar-carreira-platform.jazzy-siren-4604.chatgpt.site/api/cron/collect
+            "${RADAR_BASE_URL}/api/cron/collect"
           curl --fail-with-body --retry 2 --max-time 300 \
             -X POST \
             -H "Authorization: Bearer ${COLLECTOR_SECRET}" \
-            https://radar-carreira-platform.jazzy-siren-4604.chatgpt.site/api/cron/enrich
-          curl --fail-with-body --retry 2 --max-time 300             -X POST             -H "Authorization: Bearer ${COLLECTOR_SECRET}"             https://radar-carreira-platform.jazzy-siren-4604.chatgpt.site/api/cron/lifecycle
+            "${RADAR_BASE_URL}/api/cron/enrich"
+          curl --fail-with-body --retry 2 --max-time 300 \
+            -X POST \
+            -H "Authorization: Bearer ${COLLECTOR_SECRET}" \
+            "${RADAR_BASE_URL}/api/cron/lifecycle"
