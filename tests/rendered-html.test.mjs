@@ -24,7 +24,7 @@ test("dashboard oferece radar, perfil e pipeline persistente", async () => {
   assert.match(dashboard, /\[minScore,setMinScore\]=useState\(0\)/);
   assert.match(dashboard, /Mostrar todas as vagas/);
   assert.match(dashboard, /selectedJob=filtered\.find/);
-  assert.match(dashboard, /Ver vaga no Radar/);
+  assert.match(dashboard, /Abrir em tela ampliada/);
   assert.match(dashboard, /Abrir no LinkedIn/);
   assert.match(dashboard, /role="dialog"/);
   assert.match(dashboard, /setDetailJob\(job\)/);
