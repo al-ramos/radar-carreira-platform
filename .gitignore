@@ -40,3 +40,10 @@ next-env.d.ts
 /.wrangler/
 /outputs/
 /work/
+
+# local Codex sessions and disposable project artifacts
+/.codex/
+/dev-server*.log
+/site-upload.tar.gz
+/apply_onboarding.ps1
+/fix_platform_css.ps1

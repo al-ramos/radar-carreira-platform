@@ -1,8 +1,8 @@
 import { and,desc,eq,gte } from "drizzle-orm";
 import { NextResponse } from "next/server";
-import { getDb } from "../../../../../db/index";
-import { alertDeliveries,alertPreferences,jobSources,jobs,profiles } from "../../../../../db/schema";
-import { scoreJob } from "../../../../../lib/scoring";
+import { getDb } from "../../../../db/index";
+import { alertDeliveries,alertPreferences,jobSources,jobs,profiles } from "../../../../db/schema";
+import { scoreJob } from "../../../../lib/scoring";
 
 export const dynamic="force-dynamic";
 const parse=(value:string)=>{try{return JSON.parse(value) as string[]}catch{return[]}};
@@ -26,10 +26,11 @@ export async function POST(request:Request){
   await db.update(alertDeliveries).set({status:"sent",sentAt:new Date()}).where(eq(alertDeliveries.id,delivery.id));
   return NextResponse.json({ok:true});
  }
- const preference=(await db.select().from(alertPreferences).where(eq(alertPreferences.userId,owner.userId)).limit(1))[0];
- if(!preference?.enabled||preference.frequency!=="daily")return NextResponse.json({send:false,reason:"Resumo diário desativado"});
  const profile=(await db.select().from(profiles).where(eq(profiles.userId,owner.userId)).limit(1))[0];
  if(!profile)return NextResponse.json({send:false,reason:"Perfil não encontrado"});
+ let preference=(await db.select().from(alertPreferences).where(eq(alertPreferences.userId,owner.userId)).limit(1))[0];
+ if(!preference){preference={userId:owner.userId,enabled:true,minScore:Math.max(80,profile.minScore),frequency:"daily",updatedAt:new Date()};await db.insert(alertPreferences).values(preference)}
+ if(!preference.enabled||preference.frequency!=="daily")return NextResponse.json({send:false,reason:"Resumo diário desativado"});
  const periodKey=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date()),deliveryId=`daily-email:${owner.userId}:${periodKey}`;
  const existing=(await db.select().from(alertDeliveries).where(eq(alertDeliveries.id,deliveryId)).limit(1))[0];
  if(existing)return NextResponse.json({send:false,reason:existing.status==="sent"?"Resumo já enviado hoje":"Resumo já preparado hoje"});
