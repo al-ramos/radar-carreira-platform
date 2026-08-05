@@ -22,6 +22,16 @@ test("dashboard oferece radar, perfil e pipeline persistente", async () => {
   assert.match(dashboard, /\[minScore,setMinScore\]=useState\(0\)/);
   assert.match(dashboard, /Mostrar todas as vagas/);
   assert.match(dashboard, /selectedJob=filtered\.find/);
+  assert.match(dashboard, /Ver vaga no Radar/);
+  assert.match(dashboard, /Abrir no LinkedIn/);
+  assert.match(dashboard, /role="dialog"/);
+  assert.match(dashboard, /setDetailJob\(job\)/);
+  assert.match(dashboard, /Tecnologias da vaga/);
+  assert.match(dashboard, /Stack não informada/);
+  const stackInference = await read("../lib/technology-stack.ts");
+  assert.match(stackInference, /inferTechnologyStack/);
+  assert.match(stackInference, /SQL Server/);
+  assert.match(stackInference, /AWS/);
 });
 
 test("fontes, coleta agendada e qualidade permanecem configuradas", async () => {
