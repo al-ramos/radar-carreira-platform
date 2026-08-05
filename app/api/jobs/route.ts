@@ -14,6 +14,9 @@ export async function GET(request: Request) {
     const limit = Math.min(Number(url.searchParams.get("limit") ?? 100), 250);
     const period = url.searchParams.get("period") ?? "24";
     const hours = period === "all" ? null : Math.max(1, Math.min(Number(period) || 24, 24 * 30));
+    // usado só pela prévia do onboarding: pontua o perfil em construção contra TODAS as vagas ativas,
+    // sem descartar as que ficam abaixo do minScore ainda salvo no perfil do usuário.
+    const bypassScoreFilter = url.searchParams.get("all") === "1";
     const user = await getChatGPTUser();
     let profile: null | typeof profiles.$inferSelect = null;
     if (user) profile = (await getDb().select().from(profiles).where(eq(profiles.userId, user.userId)).limit(1))[0] ?? null;
@@ -25,7 +28,7 @@ export async function GET(request: Request) {
       const stack = parse(job.stack);
       const match = profile ? scoreJob({title:job.title,description:job.description,stack,seniority:job.seniority,workMode:job.workMode,location:job.location,publishedAt:job.publishedAt},{masteredSkills:parse(profile.masteredSkills),desiredAreas:parse(profile.desiredAreas),avoidTerms:parse(profile.avoidTerms),seniority:profile.seniority,preferredMode:profile.preferredMode,cities:parse(profile.cities)}) : {score:70,reasons:["Complete seu perfil para personalizar"]};
       return {...job,stack,score:match.score,reasons:match.reasons};
-    });
+    }).filter(job => bypassScoreFilter || !profile || job.score >= profile.minScore);
     return NextResponse.json({jobs:result,mode:"database",personalized:Boolean(profile),period:period === "all" ? "all" : hours});
   } catch (error) {
     return NextResponse.json({jobs:[],mode:"unavailable",error:error instanceof Error?error.message:"Banco indisponível"},{status:503});
