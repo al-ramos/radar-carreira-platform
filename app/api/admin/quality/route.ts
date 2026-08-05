@@ -5,7 +5,7 @@ import { getDb } from "../../../../db/index";
 import { jobs,profiles } from "../../../../db/schema";
 import { enrichLinkedInJobs } from "../../../../lib/enrichment";
 export const dynamic="force-dynamic";
-const ADMINS=new Set(["contato@amrsolution.com.br","alexsandro.ramos@gmail.com"]);
+const ADMINS=new Set(["contato@amrsolution.com.br","alexsandro.ramos@gmail.com","prof.andreiamr@gmail.com"]);
 async function admin(){const u=await getChatGPTUser();if(!u)return null;if(ADMINS.has(u.email.toLowerCase()))return u;const p=(await getDb().select({role:profiles.role}).from(profiles).where(eq(profiles.userId,u.userId)).limit(1))[0];return p?.role==="admin"?u:null}
 const parse=(v:string)=>{try{return JSON.parse(v) as string[]}catch{return[]}};
 function quality(j:typeof jobs.$inferSelect){const issues:string[]=[];if(j.description.trim().length<80)issues.push("Descrição incompleta");if(!j.location)issues.push("Local ausente");if(!j.workMode)issues.push("Modalidade ausente");if(!j.publishedAt)issues.push("Data ausente");if(!parse(j.stack).length)issues.push("Tecnologias ausentes");return{score:Math.max(0,100-issues.length*20),issues}}

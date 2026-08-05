@@ -4,7 +4,7 @@ import { getChatGPTUser } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db/index";
 import { profiles,userJobStatus } from "../../../../db/schema";
 export const dynamic="force-dynamic";
-const PROTECTED=new Set(["contato@amrsolution.com.br","alexsandro.ramos@gmail.com"]);
+const PROTECTED=new Set(["contato@amrsolution.com.br","alexsandro.ramos@gmail.com","prof.andreiamr@gmail.com"]);
 async function admin(){const u=await getChatGPTUser();if(!u)return null;if(PROTECTED.has(u.email.toLowerCase()))return u;const p=(await getDb().select({role:profiles.role}).from(profiles).where(eq(profiles.userId,u.userId)).limit(1))[0];return p?.role==="admin"?u:null}
 const parse=(v:string)=>{try{return JSON.parse(v) as string[]}catch{return[]}};
 export async function GET(){if(!await admin())return NextResponse.json({error:"Acesso de administrador necessário"},{status:403});const db=getDb(),rows=await db.select().from(profiles).orderBy(desc(profiles.updatedAt)),pipeline=await db.select().from(userJobStatus);return NextResponse.json({users:rows.map(p=>({userId:p.userId,email:p.email,name:p.name,role:p.role,seniority:p.seniority,preferredMode:p.preferredMode,skills:parse(p.masteredSkills).length,areas:parse(p.desiredAreas).length,pipeline:pipeline.filter(x=>x.userId===p.userId).length,profileComplete:Boolean(p.seniority&&p.preferredMode&&parse(p.masteredSkills).length&&parse(p.desiredAreas).length),protected:PROTECTED.has(p.email.toLowerCase()),updatedAt:p.updatedAt}))})}

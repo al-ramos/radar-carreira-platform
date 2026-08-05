@@ -4,7 +4,7 @@ import { getDb } from "../../../../db/index";
 import { jobs, jobSources, profiles, userJobStatus } from "../../../../db/schema";
 
 export const dynamic = "force-dynamic";
-const ADMIN_EMAILS = new Set(["contato@amrsolution.com.br", "alexsandro.ramos@gmail.com"]);
+const ADMIN_EMAILS = new Set(["contato@amrsolution.com.br", "alexsandro.ramos@gmail.com", "prof.andreiamr@gmail.com"]);
 const csv = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""').replace(/[\r\n]+/g, " ")}"`;
 
 export async function GET(request: Request) {

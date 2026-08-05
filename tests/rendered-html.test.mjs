@@ -17,7 +17,9 @@ test("dashboard oferece radar, perfil e pipeline persistente", async () => {
   assert.match(dashboard, /Ofertas/);
   assert.match(dashboard, /gmail-radarvagas\.gs/);
   assert.match(dashboard, /DESCRIÇÃO DA VAGA/);
-  assert.match(dashboard, /MENSAGEM SUGERIDA/);
+  assert.match(dashboard, /Copiar descrição/);
+  assert.match(dashboard, /outra ferramenta externa/);
+  assert.doesNotMatch(dashboard, /MENSAGEM SUGERIDA/);
   assert.match(dashboard, /\/api\/jobs\/detail/);
   assert.match(dashboard, /\[minScore,setMinScore\]=useState\(0\)/);
   assert.match(dashboard, /Mostrar todas as vagas/);
@@ -32,6 +34,8 @@ test("dashboard oferece radar, perfil e pipeline persistente", async () => {
   assert.match(stackInference, /inferTechnologyStack/);
   assert.match(stackInference, /SQL Server/);
   assert.match(stackInference, /AWS/);
+  const detailRoute = await read("../app/api/jobs/detail/route.ts");
+  assert.doesNotMatch(detailRoute, /api\.openai\.com/);
 });
 
 test("fontes, coleta agendada e qualidade permanecem configuradas", async () => {
