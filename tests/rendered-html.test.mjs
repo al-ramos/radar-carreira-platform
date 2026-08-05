@@ -19,6 +19,9 @@ test("dashboard oferece radar, perfil e pipeline persistente", async () => {
   assert.match(dashboard, /DESCRIÇÃO DA VAGA/);
   assert.match(dashboard, /MENSAGEM SUGERIDA/);
   assert.match(dashboard, /\/api\/jobs\/detail/);
+  assert.match(dashboard, /\[minScore,setMinScore\]=useState\(0\)/);
+  assert.match(dashboard, /Mostrar todas as vagas/);
+  assert.match(dashboard, /selectedJob=filtered\.find/);
 });
 
 test("fontes, coleta agendada e qualidade permanecem configuradas", async () => {
