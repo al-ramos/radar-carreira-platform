@@ -70,3 +70,14 @@ export const alertReads = sqliteTable("alert_reads", {
   jobId: text("job_id").notNull().references(() => jobs.id),
   readAt: integer("read_at", { mode: "timestamp_ms" }).notNull(),
 }, t => [primaryKey({ columns: [t.userId, t.jobId] })]);
+
+export const alertDeliveries = sqliteTable("alert_deliveries", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  channel: text("channel", { enum: ["email"] }).notNull().default("email"),
+  periodKey: text("period_key").notNull(),
+  status: text("status", { enum: ["prepared", "sent", "failed"] }).notNull().default("prepared"),
+  jobCount: integer("job_count").notNull().default(0),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  sentAt: integer("sent_at", { mode: "timestamp_ms" }),
+});

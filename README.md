@@ -42,7 +42,7 @@ npm run db:generate
 3. conectores ATS e importação JSON/CSV;
 4. coleta agendada e detecção de vagas encerradas;
 5. pipeline Kanban e notas;
-6. alertas por e-mail/WhatsApp;
+6. resumo diário de vagas compatíveis por e-mail e futura opção de WhatsApp;
 7. métricas de conversão, empresas e tecnologias;
 8. testes e observabilidade.
 

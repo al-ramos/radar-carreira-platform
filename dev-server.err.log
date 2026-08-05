@@ -1,0 +1,11 @@
+[2m17:54:02[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[vinext] RSC HMR error: Error: Connection closed.
+    at close (http://localhost:3000/node_modules/.vite/deps/react-server-dom-webpack_client__browser.js?v=86891e6b:2364:36)
+    at progress (http://localhost:3000/node_modules/.vite/deps/react-server-dom-webpack_client__browser.js?v=86891e6b:2437:28)
+[2m17:54:13[22m [31m[1m[vite][22m[39m [31mInternal server error: Failed to load url ./Dashboard (resolved id: ./Dashboard) in C:/Users/al-ra/Documents/Codex/github/radar-carreira-platform/app/page.tsx. Does the file exist?[39m
+      at runInRunnerObject (workers/runner-worker/index.js:107:3)
+      at getWorkerEntryExport (workers/runner-worker/index.js:235:17)
+      at null.<anonymous> (workers/runner-worker/index.js:354:24)
+      at maybeCaptureError (workers/runner-worker/index.js:51:10)
+[2m17:54:13[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[vinext] RSC HMR error: Error: Connection closed.
+    at close (http://localhost:3000/node_modules/.vite/deps/react-server-dom-webpack_client__browser.js?v=86891e6b:2364:36)
+    at progress (http://localhost:3000/node_modules/.vite/deps/react-server-dom-webpack_client__browser.js?v=86891e6b:2437:28)

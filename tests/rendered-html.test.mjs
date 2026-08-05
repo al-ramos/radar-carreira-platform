@@ -41,3 +41,14 @@ test("identidade visual usa Geist", async () => {
   assert.match(globalCss, /--font-geist/);
   assert.doesNotMatch(platformCss, /Georgia/);
 });
+
+test("resumo diário envia vagas pelo Gmail sem duplicação", async () => {
+  const route = await read("../app/api/cron/digest/route.ts");
+  const connector = await read("../public/gmail-radarvagas.gs");
+  assert.match(route, /daily-email:/);
+  assert.match(route, /Resumo já enviado hoje/);
+  assert.match(route, /alertDeliveries/);
+  assert.match(connector, /function enviarResumoDiario/);
+  assert.match(connector, /GmailApp\.sendEmail/);
+  assert.match(connector, /action:'confirm'/);
+});

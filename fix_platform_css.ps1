@@ -1,3 +1,18 @@
+<#
+  Corrige app/platform.css: remove os marcadores de conflito deixados no commit anterior
+  e escreve o arquivo ja mesclado (regras do main + regras do onboarding).
+  Uso:
+    cd "C:\Users\al-ra\Documents\Codex\github\radar-carreira-platform"
+    powershell -ExecutionPolicy Bypass -File fix_platform_css.ps1
+#>
+param([string]$RepoPath = (Get-Location).Path)
+$ErrorActionPreference = "Continue"
+
+$target = Join-Path $RepoPath "app\platform.css"
+if (-not (Test-Path $target)) { throw "Nao encontrei $target. Rode este script dentro do repo ou passe -RepoPath." }
+
+$enc = New-Object System.Text.UTF8Encoding($false)
+[System.IO.File]::WriteAllText($target, @'
 .notice{background:#eef6df;border:1px solid #d2e4ad;color:#37502c;padding:10px 14px;border-radius:8px;margin:12px 0;font-size:12px}.header-actions a{text-decoration:none;display:inline-flex;align-items:center;color:#173f32}.modal-backdrop{position:fixed;inset:0;background:#07140ed9;z-index:50;display:grid;place-items:center;padding:20px}.modal{width:min(680px,100%);background:#f8f9f4;border-radius:14px;padding:28px;box-shadow:0 30px 90px #0008;position:relative}.modal h2{font-size:30px;font-weight:650;margin:5px 0}.modal>p{color:#68746c;font-size:13px}.modal textarea{width:100%;height:270px;border:1px solid #ced5ca;border-radius:8px;background:white;padding:14px;font:12px Consolas,monospace;margin:14px 0;resize:vertical}.modal-close{position:absolute;right:17px;top:14px;border:0;background:transparent;font-size:26px}.modal .primary{float:right}@media(max-width:650px){.header-actions a{display:none}.modal{padding:20px}.modal textarea{height:230px}}
 .source-modal{width:min(520px,100%)}.source-modal label{display:grid;gap:6px;margin:14px 0;color:#526159;font-size:11px;font-weight:bold;letter-spacing:.4px}.source-modal input,.source-modal select{width:100%;border:1px solid #ced5ca;background:#fff;border-radius:8px;padding:11px;color:#17231d}.source-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:20px}.source-actions button{border:1px solid #ced5ca;background:#fff;border-radius:8px;padding:11px 15px}.source-actions .primary{background:#173f32;color:#fff}
 .profile-modal{width:min(720px,100%)}.profile-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.profile-grid label{display:grid;gap:6px;color:#526159;font-size:11px;font-weight:bold}.profile-grid .wide{grid-column:1/-1}.profile-grid input,.profile-grid select{width:100%;border:1px solid #ced5ca;background:#fff;border-radius:8px;padding:11px;color:#17231d}@media(max-width:650px){.profile-grid{grid-template-columns:1fr}.profile-grid .wide{grid-column:auto}}
@@ -53,8 +68,11 @@
 .onboarding-score{flex:none;background:#eef6df;color:#365c31;border-radius:99px;padding:4px 12px;font:14px var(--font-geist),Geist,sans-serif}
 .onboarding-reasons{font-size:11px;color:#526159;margin-top:8px}
 .onboarding-skip{background:none;border:0;color:#68746c;font-size:12px;cursor:pointer;text-decoration:underline;padding:0}
-.quality-modal{width:min(900px,96vw);max-height:92vh;overflow:auto}.quality-title{display:flex;justify-content:space-between;align-items:center}.quality-title p{font-size:12px;color:#68746c}.quality-title button{border:0;border-radius:8px;background:#173f32;color:white;padding:10px 14px}.quality-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:17px 0}.quality-summary article{display:grid;gap:5px;background:white;border:1px solid #d7ddd2;border-radius:10px;padding:14px}.quality-summary small{text-transform:uppercase;font-size:9px;color:#68746c}.quality-summary strong{font-size:27px}.quality-summary .good{background:#edf7df}.quality-summary .warn{background:#fff2d8}.quality-issues{display:grid;grid-template-columns:repeat(5,1fr);gap:7px}.quality-issues article{background:white;border:1px solid #d7ddd2;border-radius:8px;padding:10px;display:grid;gap:5px}.quality-issues span{font-size:9px;color:#68746c;min-height:23px}.quality-issues strong{font-size:18px}.quality-issues i{height:5px;background:#e6ebe4;border-radius:4px;overflow:hidden}.quality-issues i b{display:block;height:100%;background:#d59b37}.quality-subtitle{font-size:13px;margin:18px 0 8px}.quality-table{display:grid;gap:6px}.quality-table article{display:flex;justify-content:space-between;align-items:center;background:white;border:1px solid #d7ddd2;border-radius:8px;padding:10px}.quality-table article div{display:grid;gap:3px}.quality-table small{font-size:9px;color:#68746c;text-transform:uppercase}.quality-table b{font-size:12px}.quality-table span{font-size:9px;color:#9a6730}.quality-table>article>strong{font-size:16px}@media(max-width:720px){.quality-issues{grid-template-columns:1fr 1fr}.quality-summary{grid-template-columns:1fr}}
-.monitor-title .backup-link{margin-left:auto;margin-right:10px;border:1px solid #173f32;color:#173f32;text-decoration:none;border-radius:7px;padding:8px 10px;font-size:10px;font-weight:700}
-.csv-template{display:inline-flex;margin-top:10px;color:#173f32;font-size:11px;font-weight:700;text-decoration:none}.csv-template:hover{text-decoration:underline}
-.users-modal{width:min(940px,96vw);max-height:92vh;overflow:auto}.users-title{display:flex;align-items:center;justify-content:space-between;gap:15px}.users-title p{font-size:12px;color:#68746c}.users-title input{border:1px solid #ced5ca;border-radius:8px;padding:10px;width:230px}.users-list{display:grid;gap:7px;margin-top:16px}.users-list article{display:grid;grid-template-columns:38px 1fr auto 130px;gap:11px;align-items:center;background:white;border:1px solid #d7ddd2;border-radius:9px;padding:11px}.user-initial{display:grid;place-items:center;width:36px;height:36px;border-radius:50%;background:#e8f1df;color:#173f32;font-weight:800}.users-list small{color:#68746c;font-size:9px}.users-list h3{font-size:13px;margin:2px 0}.users-list p{font-size:9px;color:#68746c}.users-list>article>span{border-radius:20px;padding:5px 8px;font-size:8px;text-transform:uppercase;font-weight:700}.users-list .complete{background:#e8f5dc;color:#3f6b2a}.users-list .pending{background:#fff1cf;color:#805d0b}.users-list select{border:1px solid #ced5ca;border-radius:7px;padding:8px;background:white;font-size:10px}@media(max-width:720px){.users-title{align-items:flex-start;flex-direction:column}.users-list article{grid-template-columns:38px 1fr}.users-list>article>span,.users-list select{grid-column:2}}
-.alert-email-hint{margin:9px 0 14px;padding:9px 11px;border-radius:8px;background:#edf5e6;color:#3d5c4f;font-size:10px}
+
+'@, $enc)
+
+Write-Host "app/platform.css corrigido (sem marcadores de conflito)."
+Write-Host "Proximo passo:"
+Write-Host "  git add app/platform.css"
+Write-Host '  git commit -m "fix: resolve conflict markers in platform.css"'
+Write-Host "  git push"

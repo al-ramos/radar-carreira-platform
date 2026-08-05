@@ -15,6 +15,25 @@ function importarRadarVagas() {
   });
   if (response.getResponseCode() >= 300) throw new Error(response.getContentText());
   console.log(response.getContentText());
+  enviarResumoDiario();
+}
+
+function enviarResumoDiario() {
+  const secret = PropertiesService.getScriptProperties().getProperty('RADAR_SECRET');
+  if (!secret) throw new Error('Configure RADAR_SECRET nas propriedades do script.');
+  const prepare = UrlFetchApp.fetch(`${RADAR_URL}/api/cron/digest`, {
+    method:'post',contentType:'application/json',headers:{Authorization:`Bearer ${secret}`},
+    payload:JSON.stringify({action:'prepare'}),muteHttpExceptions:true
+  });
+  if (prepare.getResponseCode() >= 300) throw new Error(prepare.getContentText());
+  const digest = JSON.parse(prepare.getContentText());
+  if (!digest.send) { console.log(digest.reason); return; }
+  GmailApp.sendEmail(digest.to, digest.subject, digest.text, {htmlBody:digest.html,name:'Radar Carreira'});
+  const confirm = UrlFetchApp.fetch(`${RADAR_URL}/api/cron/digest`, {
+    method:'post',contentType:'application/json',headers:{Authorization:`Bearer ${secret}`},
+    payload:JSON.stringify({action:'confirm',deliveryId:digest.deliveryId}),muteHttpExceptions:true
+  });
+  if (confirm.getResponseCode() >= 300) console.warn(confirm.getContentText());
 }
 
 function instalarColetaDiaria() {
