@@ -16,6 +16,9 @@ test("dashboard oferece radar, perfil e pipeline persistente", async () => {
   assert.match(dashboard, /Entrevistas/);
   assert.match(dashboard, /Ofertas/);
   assert.match(dashboard, /gmail-radarvagas\.gs/);
+  assert.match(dashboard, /DESCRIÇÃO DA VAGA/);
+  assert.match(dashboard, /MENSAGEM SUGERIDA/);
+  assert.match(dashboard, /\/api\/jobs\/detail/);
 });
 
 test("fontes, coleta agendada e qualidade permanecem configuradas", async () => {
