@@ -1,0 +1,7 @@
+"use client";
+import { useEffect,useState } from "react";
+type Source={id:string;name:string;provider:string;externalRef:string;enabled:boolean;lastRunAt:string|null};
+export default function SourceList(){const[sources,setSources]=useState<Source[]>([]),[status,setStatus]=useState("Carregando fontes…");useEffect(()=>{fetch("/api/admin/sources").then(async r=>({ok:r.ok,data:await r.json()})).then(({ok,data})=>{if(ok){setSources(data.sources);setStatus("")}else setStatus("Não foi possível carregar as fontes.")})},[]);
+ async function toggle(source:Source){const r=await fetch("/api/admin/sources",{method:"PATCH",headers:{"content-type":"application/json"},body:JSON.stringify({id:source.id,enabled:!source.enabled})});if(r.ok){setSources(list=>list.map(item=>item.id===source.id?{...item,enabled:!item.enabled}:item));setStatus(!source.enabled?"Fonte reativada.":"Fonte pausada.")}}
+ const date=(v:string|null)=>v?new Intl.DateTimeFormat("pt-BR",{dateStyle:"short",timeStyle:"short"}).format(new Date(v)):"Ainda não coletada";
+ return <section className="source-manager"><h3>Fontes cadastradas <span>{sources.filter(s=>s.enabled).length} ativas</span></h3>{status&&<div className="notice">{status}</div>}<div>{sources.map(s=><article key={s.id}><i className={s.enabled?"on":"off"}/><span><b>{s.name}</b><small>{s.provider} · {s.externalRef}<br/>Última coleta: {date(s.lastRunAt)}</small></span><button onClick={()=>toggle(s)}>{s.enabled?"Pausar":"Reativar"}</button></article>)}{!status&&sources.length===0&&<p>Nenhuma fonte cadastrada.</p>}</div></section>}
