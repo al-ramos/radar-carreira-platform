@@ -4,7 +4,7 @@ import { getDb } from "../../../../db/index";
 import { platformSettings, profiles } from "../../../../db/schema";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 export const dynamic="force-dynamic";
-const ADMINS=new Set(["contato@amrsolution.com.br","alexsandro.ramos@gmail.com","prof.andreiamr@gmail.com"]);
+const ADMINS=new Set(["contato@amrsolution.com.br","alexsandro.ramos@gmail.com","prof.andreiamr@gmail.com","augustomoreiraramos7@gmail.com"]);
 const defaults={id:"global",collectionEnabled:true,emailImportEnabled:true,enrichmentEnabled:true,defaultPeriod:"24",defaultMinScore:70,staleAfterDays:7,retentionDays:180,updatedBy:null,updatedAt:new Date()};
 async function admin(){const u=await getChatGPTUser();if(!u)return null;if(ADMINS.has(u.email.toLowerCase()))return u;const p=(await getDb().select({role:profiles.role}).from(profiles).where(eq(profiles.userId,u.userId)).limit(1))[0];return p?.role==="admin"?u:null}
 export async function GET(){if(!await admin())return NextResponse.json({error:"Acesso de administrador necessário"},{status:403});const db=getDb();let settings=(await db.select().from(platformSettings).where(eq(platformSettings.id,"global")).limit(1))[0];if(!settings){await db.insert(platformSettings).values(defaults);settings=defaults}return NextResponse.json({settings})}

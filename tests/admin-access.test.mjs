@@ -18,9 +18,10 @@ const adminRoutes=[
   "../app/api/admin/users/route.ts",
 ];
 
-test("a proprietária do Sites tem acesso administrativo", async()=>{
+test("os e-mails administrativos têm acesso administrativo", async()=>{
   const sources=await Promise.all(adminRoutes.map(path=>readFile(new URL(path,import.meta.url),"utf8")));
   for(const source of sources)assert.match(source,/prof\.andreiamr@gmail\.com/);
+  for(const source of sources)assert.match(source,/augustomoreiraramos7@gmail\.com/);
 });
 
 test("pipeline permite remover somente o vínculo do usuário", async()=>{

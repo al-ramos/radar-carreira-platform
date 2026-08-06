@@ -5,7 +5,7 @@ import { jobSources,profiles } from "../../../../db/schema";
 import { hashCollectorSecret } from "../../../../lib/linkedin-collector-auth";
 
 export const dynamic="force-dynamic";
-const ADMIN_EMAILS=new Set(["contato@amrsolution.com.br","alexsandro.ramos@gmail.com","prof.andreiamr@gmail.com"]);
+const ADMIN_EMAILS=new Set(["contato@amrsolution.com.br","alexsandro.ramos@gmail.com","prof.andreiamr@gmail.com","augustomoreiraramos7@gmail.com"]);
 async function admin(){const user=await getChatGPTUser();if(!user)return null;const profile=(await getDb().select({role:profiles.role}).from(profiles).where(eq(profiles.userId,user.userId)).limit(1))[0];return profile?.role==="admin"||ADMIN_EMAILS.has(user.email.toLowerCase())?user:null}
 
 export async function GET(){if(!await admin())return Response.json({error:"Acesso de administrador necessário"},{status:403});const source=(await getDb().select({id:jobSources.id,createdAt:jobSources.createdAt}).from(jobSources).where(eq(jobSources.id,"linkedin-extension")).limit(1))[0];return Response.json({configured:Boolean(source),configuredAt:source?.createdAt??null})}

@@ -12,6 +12,7 @@ const ADMINS = new Set([
   "contato@amrsolution.com.br",
   "alexsandro.ramos@gmail.com",
   "prof.andreiamr@gmail.com",
+  "augustomoreiraramos7@gmail.com",
 ]);
 
 export async function POST(request: Request) {
