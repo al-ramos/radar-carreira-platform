@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { allowedWorkModes, listFromStored } from "../lib/profile-options.ts";
-import { scoreJob } from "../lib/scoring.ts";
+import { matchesSelectedSeniority, scoreJob } from "../lib/scoring.ts";
 
 test("preserva preferências novas e legadas como listas", () => {
   assert.deepEqual(listFromStored('["C#", "SQL"]'), ["C#", "SQL"]);
@@ -17,6 +17,13 @@ test("calcula aderência para mais de uma senioridade e modalidade", () => {
   );
   assert.equal(result.score, 20);
   assert.deepEqual(result.reasons, ["Senioridade ideal (+10)", "Modalidade preferida (+10)"]);
+});
+
+test("senioridades aceitas excluem vagas de outro nível e vagas sem nível", () => {
+  assert.equal(matchesSelectedSeniority("Estágio", ["Estágio"]), true);
+  assert.equal(matchesSelectedSeniority("Júnior", ["Estágio"]), false);
+  assert.equal(matchesSelectedSeniority(null, ["Estágio"]), false);
+  assert.equal(matchesSelectedSeniority(null, []), true);
 });
 
 test("pontua stacks de forma proporcional e não confunde nomes parciais", () => {

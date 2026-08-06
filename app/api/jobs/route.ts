@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../chatgpt-auth";
 import { getDb } from "../../../db/index";
 import { jobs, profiles } from "../../../db/schema";
-import { scoreJob } from "../../../lib/scoring";
+import { matchesSelectedSeniority, scoreJob } from "../../../lib/scoring";
 import { inferTechnologyStack } from "../../../lib/technology-stack";
 import { allowedWorkModes, listFromStored } from "../../../lib/profile-options";
 
@@ -23,9 +23,10 @@ export async function GET(request: Request) {
     const cutoff = hours ? new Date(Date.now() - hours * 36e5) : null;
     const condition = cutoff ? and(eq(jobs.status, "active"), gte(jobs.publishedAt, cutoff)) : eq(jobs.status, "active");
     const rows = await getDb().select().from(jobs).where(condition).orderBy(desc(jobs.publishedAt)).limit(limit);
-    const result = rows.map(job => {
+    const selectedSeniority = profile ? listFromStored(profile.seniority) : [];
+    const result = rows.filter(job => matchesSelectedSeniority(job.seniority, selectedSeniority)).map(job => {
       const stack = inferTechnologyStack(`${job.title} ${job.description}`,parse(job.stack));
-      const match = profile ? scoreJob({title:job.title,description:job.description,stack,seniority:job.seniority,workMode:job.workMode,location:job.location,publishedAt:job.publishedAt},{masteredSkills:listFromStored(profile.masteredSkills),desiredAreas:listFromStored(profile.desiredAreas),avoidTerms:listFromStored(profile.avoidTerms),seniority:listFromStored(profile.seniority),preferredMode:allowedWorkModes(profile.preferredMode)}) : {score:70,reasons:["Complete seu perfil para personalizar"]};
+      const match = profile ? scoreJob({title:job.title,description:job.description,stack,seniority:job.seniority,workMode:job.workMode,location:job.location,publishedAt:job.publishedAt},{masteredSkills:listFromStored(profile.masteredSkills),desiredAreas:listFromStored(profile.desiredAreas),avoidTerms:listFromStored(profile.avoidTerms),seniority:selectedSeniority,preferredMode:allowedWorkModes(profile.preferredMode)}) : {score:70,reasons:["Complete seu perfil para personalizar"]};
       return {...job,stack,score:match.score,reasons:match.reasons};
     });
     return NextResponse.json({jobs:result,mode:"database",personalized:Boolean(profile),period:period === "all" ? "all" : hours});

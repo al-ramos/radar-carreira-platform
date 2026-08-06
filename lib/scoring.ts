@@ -6,6 +6,14 @@ const escapeRegex=(value:string)=>value.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
 // ou que "Go" seja encontrada dentro de outra palavra.
 const containsTerm=(text:string,term:string)=>new RegExp(`(^|[^a-z0-9+#.])${escapeRegex(term)}(?=$|[^a-z0-9+#.])`,"i").test(text);
 const has=(text:string,terms:string[])=>terms.some(term=>containsTerm(text,term));
+/**
+ * "Senioridades aceitas" is an eligibility rule, unlike the score boost used
+ * to explain affinity. A vacancy without a declared seniority cannot be
+ * verified against a selected level and must not bypass this rule.
+ */
+export function matchesSelectedSeniority(jobSeniority:string|null|undefined,selectedSeniority:string[]){
+ return !selectedSeniority.length||Boolean(jobSeniority&&selectedSeniority.some(level=>normalize(jobSeniority).includes(normalize(level))));
+}
 export function scoreJob(job:ScoreInput,profile:ScoreProfile){
  const text=`${job.title} ${job.description} ${job.stack.join(" ")}`;
  if(has(text,profile.avoidTerms))return{score:0,reasons:["Contém termo bloqueado"]};
@@ -18,7 +26,7 @@ export function scoreJob(job:ScoreInput,profile:ScoreProfile){
    reasons.push(matchedSkills.length?`${matchedSkills.length} de ${selectedSkills.length} stacks atendidas (+${points})`:`Nenhuma das ${selectedSkills.length} stacks selecionadas foi encontrada`);
  }
  if(has(text,profile.desiredAreas)){score+=15;reasons.push("Área desejada (+15)")}
- if(job.seniority&&profile.seniority.some(level=>normalize(job.seniority!).includes(normalize(level)))){score+=10;reasons.push("Senioridade ideal (+10)")}
+ if(matchesSelectedSeniority(job.seniority,profile.seniority)&&profile.seniority.length){score+=10;reasons.push("Senioridade ideal (+10)")}
  if(job.workMode&&profile.preferredMode.some(mode=>normalize(job.workMode!)===normalize(mode))){score+=10;reasons.push("Modalidade preferida (+10)")}
  const age=job.publishedAt?(Date.now()-job.publishedAt.getTime())/36e5:999;if(age<=24){score+=5;reasons.push("Publicada nas últimas 24h (+5)")}
  return{score:Math.min(100,score),reasons};
