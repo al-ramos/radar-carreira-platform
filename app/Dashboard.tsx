@@ -59,6 +59,15 @@ type JobDetail = {
   descriptionSource: string;
   stack?: string[];
 };
+type CollectionOutcome = {
+  id: string;
+  name: string;
+  status: "completed" | "failed";
+  received: number;
+  inserted: number;
+  updated: number;
+  error?: string;
+};
 const descriptionHeadings = new Set([
   "sobre a vaga",
   "about the job",
@@ -217,6 +226,9 @@ export default function Dashboard() {
     [importCount, setImportCount] = useState(0),
     [message, setMessage] = useState(""),
     [sourceVersion, setSourceVersion] = useState(0);
+  const [collectionResults, setCollectionResults] = useState<
+    CollectionOutcome[]
+  >([]);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [gmailOpen, setGmailOpen] = useState(false);
   const [alertsOpen, setAlertsOpen] = useState(false);
@@ -412,6 +424,7 @@ export default function Dashboard() {
   }
   async function collectNow() {
     setMessage("Coletando vagas nas fontes automáticas…");
+    setCollectionResults([]);
     const r = await fetch("/api/admin/collect", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -432,7 +445,8 @@ export default function Dashboard() {
         ? `${result} ${data.errors} fonte(s) falharam — consulte Monitoramento.`
         : result,
     );
-    setTimeout(() => location.reload(), 1100);
+    setCollectionResults(data.outcomes ?? []);
+    setSourceVersion((version) => version + 1);
   }
   async function openProfile() {
     setPreferencesOpen(true);
@@ -1161,6 +1175,18 @@ export default function Dashboard() {
             </p>
             <SourceList refreshKey={sourceVersion} />
             {message && <div className="notice">{message}</div>}
+            {collectionResults.length > 0 && (
+              <div className="collection-results" aria-live="polite">
+                {collectionResults.map((outcome) => (
+                  <p key={outcome.id} className={outcome.status}>
+                    <b>{outcome.name}</b>
+                    {outcome.status === "completed"
+                      ? `: ${outcome.received} encontradas · ${outcome.inserted} novas · ${outcome.updated} atualizadas`
+                      : `: ${outcome.error ?? "Falha na coleta"}`}
+                  </p>
+                ))}
+              </div>
+            )}
             <div className="source-actions">
               <button className="primary" onClick={collectNow}>
                 Coletar todas
