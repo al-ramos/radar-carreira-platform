@@ -41,6 +41,15 @@ Portal multiusuário para reunir vagas, calcular a aderência ao perfil profissi
 - monitoramento de coletas;
 - auditoria e qualidade dos dados;
 - gestão de usuários e funções;
+
+### Perfil de stacks obrigatórias
+
+Em **Configurações**, cada usuário pode selecionar stacks no bloco **Stacks obrigatórias** e escolher:
+
+- **Todas as stacks selecionadas**: a vaga precisa conter todas as tecnologias marcadas;
+- **Qualquer stack selecionada**: basta conter uma das tecnologias marcadas.
+
+O filtro é salvo no perfil do usuário e aplicado no endpoint do Radar antes da lista ser exibida. Sem stacks selecionadas, o comportamento permanece inalterado. As vagas continuam armazenadas no banco; o filtro controla apenas o que aparece para aquele usuário.
 - backup administrativo;
 - relatório compatível com Excel.
 

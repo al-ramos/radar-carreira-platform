@@ -29,6 +29,13 @@
       "when": 1733000000000,
       "tag": "0003_alert_deliveries",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1754480000000,
+      "tag": "0004_profile_stack_filters",
+      "breakpoints": true
     }
   ]
 }

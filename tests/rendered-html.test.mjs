@@ -15,6 +15,9 @@ test("dashboard oferece radar, perfil e pipeline persistente", async () => {
   assert.match(dashboard, /removeFromPipeline/);
   assert.match(dashboard, /Excluir do pipeline/);
   assert.match(dashboard, /fetch\("\/api\/profile"\)/);
+  assert.match(dashboard, /Stacks obrigatórias/);
+  assert.match(dashboard, /stackMatchMode/);
+  assert.match(dashboard, /requiredStackOptions/);
   assert.match(dashboard, /Salvas/);
   assert.match(dashboard, /Entrevistas/);
   assert.match(dashboard, /Ofertas/);
@@ -39,6 +42,10 @@ test("dashboard oferece radar, perfil e pipeline persistente", async () => {
   assert.match(stackInference, /AWS/);
   const detailRoute = await read("../app/api/jobs/detail/route.ts");
   assert.doesNotMatch(detailRoute, /api\.openai\.com/);
+  const jobsRoute = await read("../app/api/jobs/route.ts");
+  assert.match(jobsRoute, /requiredStacks/);
+  assert.match(jobsRoute, /stackMatchMode/);
+  assert.match(jobsRoute, /normalizedRequired\.every/);
 });
 
 test("fontes, coleta agendada e qualidade permanecem configuradas", async () => {

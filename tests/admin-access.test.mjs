@@ -29,3 +29,16 @@ test("pipeline permite remover somente o vínculo do usuário", async()=>{
  assert.match(route,/delete\(userJobStatus\)/);
  assert.match(route,/userJobStatus\.userId/);
 });
+
+test("perfil persiste o modo e as stacks obrigatórias", async()=>{
+ const [schema,route,migration]=await Promise.all([
+  readFile(new URL("../db/schema.ts",import.meta.url),"utf8"),
+  readFile(new URL("../app/api/profile/route.ts",import.meta.url),"utf8"),
+  readFile(new URL("../drizzle/0004_profile_stack_filters.sql",import.meta.url),"utf8"),
+ ]);
+ assert.match(schema,/requiredStacks/);
+ assert.match(schema,/stackMatchMode/);
+ assert.match(route,/requiredStacks/);
+ assert.match(route,/stackMatchMode/);
+ assert.match(migration,/ALTER TABLE profiles ADD COLUMN required_stacks/);
+});

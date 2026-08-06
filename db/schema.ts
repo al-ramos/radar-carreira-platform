@@ -5,7 +5,8 @@ export const profiles = sqliteTable("profiles", {
   role: text("role", { enum: ["user", "admin"] }).notNull().default("user"), seniority: text("seniority"),
   preferredMode: text("preferred_mode"), cities: text("cities").notNull().default("[]"),
   masteredSkills: text("mastered_skills").notNull().default("[]"), desiredAreas: text("desired_areas").notNull().default("[]"),
-  avoidTerms: text("avoid_terms").notNull().default("[]"), minScore: integer("min_score").notNull().default(60),
+  avoidTerms: text("avoid_terms").notNull().default("[]"), requiredStacks: text("required_stacks").notNull().default("[]"),
+  stackMatchMode: text("stack_match_mode").notNull().default("all"), minScore: integer("min_score").notNull().default(60),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
 });
 

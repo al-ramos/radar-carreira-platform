@@ -22,12 +22,18 @@ export async function GET(request: Request) {
     const cutoff = hours ? new Date(Date.now() - hours * 36e5) : null;
     const condition = cutoff ? and(eq(jobs.status, "active"), gte(jobs.publishedAt, cutoff)) : eq(jobs.status, "active");
     const rows = await getDb().select().from(jobs).where(condition).orderBy(desc(jobs.publishedAt)).limit(limit);
-    const result = rows.map(job => {
+    const requiredStacks = profile ? parse(profile.requiredStacks) : [];
+    const stackMatchMode = profile?.stackMatchMode === "any" ? "any" : "all";
+    const result = rows.flatMap(job => {
       const stack = inferTechnologyStack(`${job.title} ${job.description}`,parse(job.stack));
+      const normalizedStack = stack.map(value => value.toLocaleLowerCase("pt-BR"));
+      const normalizedRequired = requiredStacks.map(value => value.toLocaleLowerCase("pt-BR")).filter(Boolean);
+      const stackMatches = !normalizedRequired.length || (stackMatchMode === "all" ? normalizedRequired.every(value => normalizedStack.includes(value)) : normalizedRequired.some(value => normalizedStack.includes(value)));
+      if(!stackMatches) return [];
       const match = profile ? scoreJob({title:job.title,description:job.description,stack,seniority:job.seniority,workMode:job.workMode,location:job.location,publishedAt:job.publishedAt},{masteredSkills:parse(profile.masteredSkills),desiredAreas:parse(profile.desiredAreas),avoidTerms:parse(profile.avoidTerms),seniority:profile.seniority,preferredMode:profile.preferredMode,cities:parse(profile.cities)}) : {score:70,reasons:["Complete seu perfil para personalizar"]};
-      return {...job,stack,score:match.score,reasons:match.reasons};
+      return [{...job,stack,score:match.score,reasons:match.reasons}];
     });
-    return NextResponse.json({jobs:result,mode:"database",personalized:Boolean(profile),period:period === "all" ? "all" : hours});
+    return NextResponse.json({jobs:result,mode:"database",personalized:Boolean(profile),requiredStacks,stackMatchMode,period:period === "all" ? "all" : hours});
   } catch (error) {
     return NextResponse.json({jobs:[],mode:"unavailable",error:error instanceof Error?error.message:"Banco indisponível"},{status:503});
   }
