@@ -14,6 +14,7 @@ test("dashboard oferece radar, perfil e pipeline persistente", async () => {
   assert.match(dashboard, /Últimas 24h/);
   assert.match(dashboard, /Últimos 7 dias/);
   assert.match(dashboard, /Todas as vagas/);
+  assert.match(dashboard, /Usar meu perfil/);
   assert.match(dashboard, /Boa aderência \(70%\+\)/);
   assert.match(dashboard, /Alta aderência \(80%\+\)/);
   assert.match(dashboard, /fetch\("\/api\/pipeline"\)/);
@@ -27,7 +28,7 @@ test("dashboard oferece radar, perfil e pipeline persistente", async () => {
   assert.match(dashboard, /outra ferramenta\s+externa/);
   assert.doesNotMatch(dashboard, /MENSAGEM SUGERIDA/);
   assert.match(dashboard, /\/api\/jobs\/detail/);
-  assert.match(dashboard, /\[minScore,\s*setMinScore\]\s*=\s*useState\(0\)/);
+  assert.match(dashboard, /\[fitFilter,\s*setFitFilter\]/);
   assert.match(dashboard, /Mostrar todas as vagas/);
   assert.match(dashboard, /selectedJob\s*=\s*filtered\.find/);
   assert.match(dashboard, /Abrir em tela ampliada/);

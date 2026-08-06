@@ -210,7 +210,9 @@ export default function Dashboard() {
     [query, setQuery] = useState(""),
     [items, setItems] = useState<Job[]>(demo),
     [selected, setSelected] = useState<Job>(demo[0]),
-    [minScore, setMinScore] = useState(0),
+    [fitFilter, setFitFilter] = useState<"profile" | "all" | "70" | "80">(
+      "profile",
+    ),
     [period, setPeriod] = useState<string | null>(null),
     [mode, setMode] = useState("preview"),
     [importing, setImporting] = useState(false),
@@ -231,6 +233,7 @@ export default function Dashboard() {
   >([]);
   const [totalJobs, setTotalJobs] = useState<number | null>(null);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+  const [profileMinScore, setProfileMinScore] = useState(60);
   const [gmailOpen, setGmailOpen] = useState(false);
   const [alertsOpen, setAlertsOpen] = useState(false);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
@@ -290,7 +293,10 @@ export default function Dashboard() {
   useEffect(() => {
     fetch("/api/profile")
       .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((data) => setCurrentUser(data.user))
+      .then((data) => {
+        setCurrentUser(data.user);
+        setProfileMinScore(Number(data.profile?.minScore ?? 60));
+      })
       .catch(() => setCurrentUser(null));
   }, []);
   const stackFilterOptions = useMemo(
@@ -311,13 +317,19 @@ export default function Dashboard() {
       ].sort((a, b) => a.localeCompare(b, "pt-BR")),
     [items],
   );
+  const effectiveMinScore =
+    fitFilter === "profile"
+      ? profileMinScore
+      : fitFilter === "all"
+        ? 0
+        : Number(fitFilter);
   const filtered = useMemo(
     () =>
       items.filter((j) => {
         const text =
           `${j.title} ${j.company} ${j.location} ${j.seniority ?? ""} ${j.stack.join(" ")} ${j.description ?? ""}`.toLowerCase();
         return (
-          j.score >= minScore &&
+          j.score >= effectiveMinScore &&
           text.includes(query.toLowerCase()) &&
           (!stackFilter ||
             j.stack.some(
@@ -331,13 +343,20 @@ export default function Dashboard() {
           (!workModeFilter || j.mode === workModeFilter)
         );
       }),
-    [items, query, minScore, stackFilter, seniorityFilter, workModeFilter],
+    [
+      items,
+      query,
+      effectiveMinScore,
+      stackFilter,
+      seniorityFilter,
+      workModeFilter,
+    ],
   );
   const selectedJob =
     filtered.find((job) => job.id === selected.id) ?? filtered[0] ?? null;
   function clearRadarFilters() {
     setQuery("");
-    setMinScore(0);
+    setFitFilter("all");
     setPeriod("all");
     setStackFilter("");
     setSeniorityFilter("");
@@ -482,7 +501,11 @@ export default function Dashboard() {
         ? "Preferências salvas. Recalculando seu radar…"
         : "Entre com sua conta para salvar o perfil.",
     );
-    if (r.ok) setTimeout(() => location.reload(), 900);
+    if (r.ok) {
+      setProfileMinScore(profileChoices.minScore);
+      setFitFilter("profile");
+      setTimeout(() => location.reload(), 900);
+    }
   }
   async function save(job: Job) {
     if (job.id.startsWith("demo")) {
@@ -781,12 +804,19 @@ export default function Dashboard() {
               Aderência
               <select
                 aria-label="Aderência ao seu perfil"
-                value={minScore}
-                onChange={(event) => setMinScore(Number(event.target.value))}
+                value={fitFilter}
+                onChange={(event) =>
+                  setFitFilter(
+                    event.target.value as "profile" | "all" | "70" | "80",
+                  )
+                }
               >
-                <option value={0}>Todas as vagas</option>
-                <option value={70}>Boa aderência (70%+)</option>
-                <option value={80}>Alta aderência (80%+)</option>
+                <option value="profile">
+                  Usar meu perfil (mínimo {profileMinScore}%+)
+                </option>
+                <option value="all">Todas as vagas</option>
+                <option value="70">Boa aderência (70%+)</option>
+                <option value="80">Alta aderência (80%+)</option>
               </select>
             </label>
           </div>
