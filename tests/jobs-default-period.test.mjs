@@ -7,4 +7,6 @@ test("a API de vagas usa a janela inicial configurada quando o período não foi
   assert.match(route, /platformSettings/);
   assert.match(route, /configuredPeriod/);
   assert.match(route, /requestedPeriod/);
+  assert.match(route, /count/);
+  assert.match(route, /total/);
 });

@@ -229,6 +229,7 @@ export default function Dashboard() {
   const [collectionResults, setCollectionResults] = useState<
     CollectionOutcome[]
   >([]);
+  const [totalJobs, setTotalJobs] = useState<number | null>(null);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [gmailOpen, setGmailOpen] = useState(false);
   const [alertsOpen, setAlertsOpen] = useState(false);
@@ -280,6 +281,7 @@ export default function Dashboard() {
           .sort((a: Job, b: Job) => b.score - a.score);
         setItems(next);
         if (next.length) setSelected(next[0]);
+        setTotalJobs(typeof data.total === "number" ? data.total : next.length);
         setPeriod((current) => current ?? data.period ?? "24");
         setMode("database");
       })
@@ -751,7 +753,10 @@ export default function Dashboard() {
         {message && <div className="notice">{message}</div>}
         <div className="radar-controls">
           <span>
-            <strong>{items.length}</strong> vagas disponíveis
+            <strong>{totalJobs ?? items.length}</strong> vagas no período
+            {totalJobs !== null && totalJobs > items.length && (
+              <small> Exibindo as {items.length} mais recentes.</small>
+            )}
           </span>
           <div className="toolbar">
             <div className="search">
