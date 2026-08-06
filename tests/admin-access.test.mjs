@@ -22,3 +22,10 @@ test("a proprietária do Sites tem acesso administrativo", async()=>{
   const sources=await Promise.all(adminRoutes.map(path=>readFile(new URL(path,import.meta.url),"utf8")));
   for(const source of sources)assert.match(source,/prof\.andreiamr@gmail\.com/);
 });
+
+test("pipeline permite remover somente o vínculo do usuário", async()=>{
+ const route=await readFile(new URL("../app/api/pipeline/route.ts",import.meta.url),"utf8");
+ assert.match(route,/export async function DELETE/);
+ assert.match(route,/delete\(userJobStatus\)/);
+ assert.match(route,/userJobStatus\.userId/);
+});

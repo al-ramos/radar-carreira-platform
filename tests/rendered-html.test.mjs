@@ -12,6 +12,8 @@ test("dashboard oferece radar, perfil e pipeline persistente", async () => {
   assert.match(dashboard, /Últimas 24h/);
   assert.match(dashboard, /Últimos 7 dias/);
   assert.match(dashboard, /fetch\("\/api\/pipeline"\)/);
+  assert.match(dashboard, /removeFromPipeline/);
+  assert.match(dashboard, /Excluir do pipeline/);
   assert.match(dashboard, /fetch\("\/api\/profile"\)/);
   assert.match(dashboard, /Salvas/);
   assert.match(dashboard, /Entrevistas/);
