@@ -30,7 +30,7 @@ export async function POST(request: Request) {
   const key = body?.key?.trim() ?? "";
   if (key.length < 32) return Response.json({ error: "Gere uma chave segura antes de salvá-la" }, { status: 400 });
   const now = new Date();
-  const values = { id: SOURCE_ID, name: "Extensão LinkedIn", provider: "manual" as const, externalRef: JSON.stringify({ hash: await digest(key), userId: user.userId, createdAt: now.toISOString() }), enabled: true, lastRunAt: null, createdAt: now };
-  await getDb().insert(jobSources).values(values).onConflictDoUpdate({ target: jobSources.id, set: { externalRef: values.externalRef, enabled: true } });
+  const values = { id: SOURCE_ID, name: "Extensão LinkedIn", provider: "manual" as const, collectionMode: "push" as const, externalRef: JSON.stringify({ hash: await digest(key), userId: user.userId, createdAt: now.toISOString() }), enabled: true, lastRunAt: null, createdAt: now };
+  await getDb().insert(jobSources).values(values).onConflictDoUpdate({ target: jobSources.id, set: { externalRef: values.externalRef, collectionMode: "push", enabled: true } });
   return Response.json({ ok: true });
 }

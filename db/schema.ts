@@ -19,6 +19,7 @@ export const localAccounts = sqliteTable("local_accounts", {
 export const jobSources = sqliteTable("job_sources", {
   id: text("id").primaryKey(), name: text("name").notNull(),
   provider: text("provider", { enum: ["greenhouse", "lever", "ashby", "jsonld", "jsonfeed", "manual"] }).notNull(),
+  collectionMode: text("collection_mode", { enum: ["pull", "push"] }).notNull().default("push"),
   externalRef: text("external_ref").notNull(), enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
   lastRunAt: integer("last_run_at", { mode: "timestamp_ms" }), createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 });

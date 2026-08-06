@@ -29,7 +29,7 @@ export async function POST(request: Request) {
     ? await db.select().from(jobSources).where(eq(jobSources.id, body.sourceId))
     : await db.select().from(jobSources).where(eq(jobSources.enabled, true));
   if (!candidates.length) return NextResponse.json({ error: "Fonte não encontrada ou desativada" }, { status: 404 });
-  const sources = candidates.filter(source => source.enabled && isPullProvider(source.provider));
+  const sources = candidates.filter(source => source.enabled && source.collectionMode === "pull" && isPullProvider(source.provider));
   if (body.sourceId && !sources.length) return NextResponse.json({ error: "Esta integração recebe vagas enviadas por outro serviço e não suporta coleta automática" }, { status: 400 });
   if (!sources.length) return NextResponse.json({ ok: true, sources: 0, received: 0, inserted: 0, updated: 0, errors: 0, message: "Nenhuma fonte de coleta automática está ativa. Cadastre uma fonte Greenhouse, Lever ou Ashby." });
 

@@ -36,6 +36,13 @@
       "when": 1786032000000,
       "tag": "0004_local_accounts",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1786118400000,
+      "tag": "0005_source_ingestion_mode",
+      "breakpoints": true
     }
   ]
 }
