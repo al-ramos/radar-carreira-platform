@@ -9,8 +9,8 @@ test("normaliza o JSON gerado pelo LinkedIn Job Collector",()=>{
 });
 
 test("endpoint da extensão LinkedIn responde ao preflight CORS", async()=>{
- const source=await readFile(new URL("../app/api/collector/import/route.ts",import.meta.url),"utf8");
+ const source=await readFile(new URL("../proxy.ts",import.meta.url),"utf8");
  assert.match(source,/access-control-allow-origin/);
  assert.match(source,/access-control-allow-headers/);
- assert.match(source,/export async function OPTIONS/);
+ assert.match(source,/request\.method === "OPTIONS"/);
 });
