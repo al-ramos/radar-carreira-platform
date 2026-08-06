@@ -13,6 +13,7 @@ const ADMINS = new Set([
   "alexsandro.ramos@gmail.com",
   "prof.andreiamr@gmail.com",
 ]);
+const errorMessage=(error:unknown)=>error instanceof Error?error.message.slice(0,300):"Falha desconhecida na coleta";
 
 export async function POST(request: Request) {
   const user = await getChatGPTUser();
@@ -37,11 +38,13 @@ export async function POST(request: Request) {
   let inserted = 0;
   let updated = 0;
   let errors = 0;
+  const outcomes:Array<{id:string;name:string;status:"completed"|"failed";received:number;inserted:number;updated:number;error?:string}>=[];
 
   for (const source of sources) {
     const runId = crypto.randomUUID();
     const startedAt = new Date();
     await db.insert(importRuns).values({ id: runId, source: source.name, status: "running", received: 0, actorUserId: user.userId, startedAt });
+    await db.update(jobSources).set({ lastAttemptAt: startedAt }).where(eq(jobSources.id, source.id));
     try {
       const found = await collect(source.provider, source.externalRef, source.name);
       received += found.length;
@@ -69,11 +72,16 @@ export async function POST(request: Request) {
       inserted += sourceInserted;
       updated += sourceUpdated;
       await db.update(importRuns).set({ status: "completed", received: found.length, inserted: sourceInserted, updated: sourceUpdated, finishedAt: new Date() }).where(eq(importRuns.id, runId));
-      await db.update(jobSources).set({ lastRunAt: new Date() }).where(eq(jobSources.id, source.id));
-    } catch {
+      const finishedAt=new Date();
+      await db.update(jobSources).set({ lastRunAt: finishedAt, lastSuccessAt: finishedAt, lastError: null, consecutiveFailures: 0 }).where(eq(jobSources.id, source.id));
+      outcomes.push({id:source.id,name:source.name,status:"completed",received:found.length,inserted:sourceInserted,updated:sourceUpdated});
+    } catch (error) {
       errors++;
-      await db.update(importRuns).set({ status: "failed", errors: 1, finishedAt: new Date() }).where(eq(importRuns.id, runId));
+      const message=errorMessage(error),finishedAt=new Date();
+      await db.update(importRuns).set({ status: "failed", errors: 1, finishedAt }).where(eq(importRuns.id, runId));
+      await db.update(jobSources).set({ lastError: message, consecutiveFailures: source.consecutiveFailures+1 }).where(eq(jobSources.id, source.id));
+      outcomes.push({id:source.id,name:source.name,status:"failed",received:0,inserted:0,updated:0,error:message});
     }
   }
-  return NextResponse.json({ ok: errors === 0, sources: sources.length, received, inserted, updated, errors });
+  return NextResponse.json({ ok: errors === 0, sources: sources.length, received, inserted, updated, errors, outcomes });
 }

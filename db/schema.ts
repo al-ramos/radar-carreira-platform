@@ -21,7 +21,9 @@ export const jobSources = sqliteTable("job_sources", {
   provider: text("provider", { enum: ["greenhouse", "lever", "ashby", "jsonld", "jsonfeed", "manual"] }).notNull(),
   collectionMode: text("collection_mode", { enum: ["pull", "push"] }).notNull().default("push"),
   externalRef: text("external_ref").notNull(), enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
-  lastRunAt: integer("last_run_at", { mode: "timestamp_ms" }), createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  lastRunAt: integer("last_run_at", { mode: "timestamp_ms" }), lastAttemptAt: integer("last_attempt_at", { mode: "timestamp_ms" }),
+  lastSuccessAt: integer("last_success_at", { mode: "timestamp_ms" }), lastError: text("last_error"), consecutiveFailures: integer("consecutive_failures").notNull().default(0),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 });
 
 export const jobs = sqliteTable("jobs", {
