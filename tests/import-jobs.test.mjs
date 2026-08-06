@@ -23,3 +23,12 @@ test("importação da extensão processa vagas em lotes e registra o progresso",
  assert.match(source,/status: "failed"/);
  assert.match(source,/duplicates: duplicateRows/);
 });
+
+test("importação manual usa lotes e pode reenviar o mesmo arquivo", async()=>{
+ const source=await readFile(new URL("../app/api/admin/import/route.ts",import.meta.url),"utf8");
+ assert.match(source,/WRITE_BATCH_SIZE = 50/);
+ assert.match(source,/LOOKUP_BATCH_SIZE = 100/);
+ assert.match(source,/await db\.batch\(/);
+ assert.match(source,/duplicates: duplicateRows/);
+ assert.match(source,/status: "failed"/);
+});
