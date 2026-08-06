@@ -1,0 +1,25 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "radar-carreira-platform",
+  "compatibility_date": "2026-08-06",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "main": "./worker/index.ts",
+  "assets": {
+    "directory": "dist/client",
+    "not_found_handling": "none",
+    "binding": "ASSETS"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "radar-carreira-db",
+      "database_id": "374e1f99-dc37-40ce-a9a7-dbdb73e5c55d",
+      "migrations_dir": "./drizzle"
+    }
+  ],
+  "images": {
+    "binding": "IMAGES"
+  }
+}

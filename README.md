@@ -107,6 +107,17 @@ Principais tabelas:
 
 Cada projeto publicado no Sites possui seu próprio banco D1. Publicar o mesmo código em um novo endereço não transfere automaticamente vagas, perfis, fontes ou configurações do banco anterior.
 
+## Publicação contínua no Cloudflare
+
+O GitHub Actions valida cada pull request e cada push na `main`. Depois de uma validação bem-sucedida na `main`, a esteira aplica migrations pendentes no D1 e publica o Worker no Cloudflare.
+
+Antes do primeiro push com deploy, crie estes **Repository secrets** em `Settings` → `Secrets and variables` → `Actions` no GitHub:
+
+- `CLOUDFLARE_API_TOKEN`: token da Cloudflare com permissão de edição para Workers e D1 na conta do projeto;
+- `CLOUDFLARE_ACCOUNT_ID`: identificador da conta Cloudflare onde estão o Worker e o banco `radar-carreira-db`.
+
+As credenciais não devem ser adicionadas a arquivos do repositório ou ao código-fonte. O binding `DB`, o ID do D1 e as migrations ficam em `wrangler.jsonc` e `drizzle/`.
+
 ## Integração Gmail RadarVagas
 
 ### 1. Preparar o Gmail
