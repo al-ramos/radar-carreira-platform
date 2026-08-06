@@ -777,26 +777,38 @@ export default function Dashboard() {
               <option value="168">Últimos 7 dias</option>
               <option value="all">Todas</option>
             </select>
-            <div
-              className="score-filter"
-              role="group"
-              aria-label="Score mínimo"
-            >
-              {[
-                { value: 0, label: "Todas" },
-                { value: 70, label: "70+" },
-                { value: 80, label: "80+" },
-              ].map((option) => (
-                <button
-                  type="button"
-                  key={option.value}
-                  aria-pressed={minScore === option.value}
-                  className={minScore === option.value ? "active" : ""}
-                  onClick={() => setMinScore(option.value)}
-                >
-                  {option.label}
-                </button>
-              ))}
+            <div className="score-filter-wrap">
+              <span>Aderência ao seu perfil</span>
+              <div
+                className="score-filter"
+                role="group"
+                aria-label="Aderência mínima ao perfil"
+              >
+                {[
+                  { value: 0, label: "Todas", title: "Mostrar todas as vagas" },
+                  {
+                    value: 70,
+                    label: "70%+",
+                    title: "Mostrar vagas com 70% ou mais de aderência",
+                  },
+                  {
+                    value: 80,
+                    label: "80%+",
+                    title: "Mostrar vagas com 80% ou mais de aderência",
+                  },
+                ].map((option) => (
+                  <button
+                    type="button"
+                    key={option.value}
+                    title={option.title}
+                    aria-pressed={minScore === option.value}
+                    className={minScore === option.value ? "active" : ""}
+                    onClick={() => setMinScore(option.value)}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </div>
