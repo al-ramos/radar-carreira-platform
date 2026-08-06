@@ -12,14 +12,18 @@ export const CITY_OPTIONS = [
   "Vitória, ES", "Manaus, AM", "Belém, PA",
 ];
 
-export const SKILL_OPTIONS = [
-  "JavaScript", "TypeScript", "React", "Angular", "Vue.js", "Next.js", "Node.js",
-  "Java", "Spring", "Python", "Django", "FastAPI", "C#", ".NET", "PHP", "Laravel",
-  "Go", "Ruby", "Rails", "Kotlin", "Swift", "SQL Server", "PostgreSQL", "MySQL",
-  "Oracle", "MongoDB", "Redis", "Kafka", "Power BI", "SAP", "Salesforce", "AWS",
-  "Azure", "GCP", "Docker", "Kubernetes", "Terraform", "Linux", "Git", "REST",
-  "GraphQL", "SIEM", "SOC", "IAM",
+export const SKILL_GROUPS = [
+  { label: "Front-end e mobile", options: ["HTML", "CSS", "JavaScript", "TypeScript", "React", "Next.js", "Angular", "Vue.js", "Svelte", "React Native", "Flutter", "Dart", "Android", "iOS", "Swift", "Kotlin"] },
+  { label: "Back-end e linguagens", options: ["Node.js", "Deno", "Bun", "Java", "Spring", "Quarkus", "C#", ".NET", "ASP.NET", "Python", "Django", "FastAPI", "Flask", "PHP", "Laravel", "Symfony", "Ruby", "Rails", "Go", "Rust", "C++", "Scala", "Elixir"] },
+  { label: "Dados, bancos e mensageria", options: ["SQL", "SQL Server", "PostgreSQL", "MySQL", "MariaDB", "Oracle", "SQLite", "MongoDB", "DynamoDB", "Cassandra", "Redis", "Elasticsearch", "OpenSearch", "Neo4j", "Kafka", "RabbitMQ", "ActiveMQ", "Spark", "Airflow", "dbt", "Databricks", "Snowflake", "BigQuery", "Redshift"] },
+  { label: "Cloud e DevOps", options: ["AWS", "Azure", "GCP", "OCI", "Cloudflare", "Vercel", "Firebase", "Supabase", "Docker", "Kubernetes", "Helm", "Terraform", "Pulumi", "Ansible", "Linux", "Nginx", "Apache", "Jenkins", "GitHub Actions", "GitLab CI", "Azure DevOps", "Argo CD", "Git"] },
+  { label: "APIs, qualidade e arquitetura", options: ["REST", "GraphQL", "gRPC", "SOAP", "OpenAPI", "Microservices", "Event-driven", "Jest", "Vitest", "Cypress", "Playwright", "Selenium", "JUnit", "Pytest", "TDD", "DDD"] },
+  { label: "IA, analytics e BI", options: ["R", "Pandas", "NumPy", "scikit-learn", "TensorFlow", "PyTorch", "LLM", "OpenAI", "LangChain", "MLOps", "Power BI", "Tableau", "Looker", "Qlik", "ETL", "Data Lake"] },
+  { label: "Segurança", options: ["Cybersecurity", "AppSec", "DevSecOps", "IAM", "SIEM", "SOC", "SAST", "DAST", "OWASP", "Zero Trust", "Splunk", "CrowdStrike", "Palo Alto"] },
+  { label: "Sistemas corporativos", options: ["SAP", "Salesforce", "ServiceNow", "Dynamics 365", "TOTVS", "ERP", "CRM"] },
 ];
+
+export const SKILL_OPTIONS = SKILL_GROUPS.flatMap(group => group.options);
 
 export const AREA_OPTIONS = [
   "Desenvolvimento Front-end", "Desenvolvimento Back-end", "Full Stack", "Mobile",

@@ -19,13 +19,19 @@ test("calcula aderência para mais de uma senioridade e modalidade", () => {
 });
 
 test("perfil usa checkboxes e o radar expõe filtros de visualização", async () => {
-  const [profile, dashboard] = await Promise.all([
+  const [profile, dashboard, options] = await Promise.all([
     readFile(new URL("../app/ProfilePreferences.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/Dashboard.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/profile-options.ts", import.meta.url), "utf8"),
   ]);
   assert.match(profile, /type="checkbox"/);
   assert.match(profile, /Competências dominadas/);
+  assert.match(profile, /SKILL_GROUPS/);
   assert.match(dashboard, /Tecnologia<select/);
   assert.match(dashboard, /Senioridade<select/);
   assert.match(dashboard, /Modalidade<select/);
+  assert.match(options, /Front-end e mobile/);
+  assert.match(options, /Cloud e DevOps/);
+  assert.match(options, /IA, analytics e BI/);
+  assert.match(options, /Segurança/);
 });
