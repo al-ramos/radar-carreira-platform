@@ -2,7 +2,7 @@ import { and, desc, eq, gte } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../chatgpt-auth";
 import { getDb } from "../../../db/index";
-import { jobs, profiles } from "../../../db/schema";
+import { jobs, platformSettings, profiles } from "../../../db/schema";
 import { matchesSelectedSeniority, scoreJob } from "../../../lib/scoring";
 import { inferTechnologyStack } from "../../../lib/technology-stack";
 import { allowedWorkModes, listFromStored } from "../../../lib/profile-options";
@@ -14,7 +14,9 @@ export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
     const limit = Math.min(Number(url.searchParams.get("limit") ?? 100), 250);
-    const period = url.searchParams.get("period") ?? "24";
+    const requestedPeriod = url.searchParams.get("period");
+    const configuredPeriod = (await getDb().select({ defaultPeriod: platformSettings.defaultPeriod }).from(platformSettings).where(eq(platformSettings.id, "global")).limit(1))[0]?.defaultPeriod ?? "24";
+    const period = new Set(["24", "72", "168", "all"]).has(requestedPeriod ?? "") ? requestedPeriod! : configuredPeriod;
     const hours = period === "all" ? null : Math.max(1, Math.min(Number(period) || 24, 24 * 30));
     const user = await getChatGPTUser();
     let profile: null | typeof profiles.$inferSelect = null;

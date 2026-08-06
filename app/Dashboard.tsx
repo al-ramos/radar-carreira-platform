@@ -211,7 +211,7 @@ export default function Dashboard() {
     [items, setItems] = useState<Job[]>(demo),
     [selected, setSelected] = useState<Job>(demo[0]),
     [minScore, setMinScore] = useState(0),
-    [period, setPeriod] = useState("24"),
+    [period, setPeriod] = useState<string | null>(null),
     [mode, setMode] = useState("preview"),
     [importing, setImporting] = useState(false),
     [sourcesOpen, setSourcesOpen] = useState(false),
@@ -272,7 +272,7 @@ export default function Dashboard() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
   useEffect(() => {
-    fetch(`/api/jobs?limit=250&period=${period}`)
+    fetch(`/api/jobs?limit=250${period ? `&period=${period}` : ""}`)
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((data) => {
         const next = (data.jobs ?? [])
@@ -280,6 +280,7 @@ export default function Dashboard() {
           .sort((a: Job, b: Job) => b.score - a.score);
         setItems(next);
         if (next.length) setSelected(next[0]);
+        setPeriod((current) => current ?? data.period ?? "24");
         setMode("database");
       })
       .catch(() => setMode("preview"));
@@ -764,7 +765,7 @@ export default function Dashboard() {
             <select
               aria-label="Período das vagas"
               onChange={(e) => setPeriod(e.target.value)}
-              value={period}
+              value={period ?? "24"}
             >
               <option value="24">Últimas 24h</option>
               <option value="72">Últimos 3 dias</option>
