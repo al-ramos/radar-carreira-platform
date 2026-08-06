@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db/index";
 import { importRuns, jobSources, jobs, profiles } from "../../../../db/schema";
-import { collect } from "../../../../lib/connectors";
+import { collect, isPullProvider } from "../../../../lib/connectors";
 import { fingerprint } from "../../../../lib/jobs";
 
 export const dynamic = "force-dynamic";
@@ -25,10 +25,13 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json().catch(() => ({})) as { sourceId?: string };
-  const sources = body.sourceId
+  const candidates = body.sourceId
     ? await db.select().from(jobSources).where(eq(jobSources.id, body.sourceId))
     : await db.select().from(jobSources).where(eq(jobSources.enabled, true));
-  if (!sources.length) return NextResponse.json({ error: "Cadastre ao menos uma fonte ativa" }, { status: 400 });
+  if (!candidates.length) return NextResponse.json({ error: "Fonte não encontrada ou desativada" }, { status: 404 });
+  const sources = candidates.filter(source => source.enabled && isPullProvider(source.provider));
+  if (body.sourceId && !sources.length) return NextResponse.json({ error: "Esta integração recebe vagas enviadas por outro serviço e não suporta coleta automática" }, { status: 400 });
+  if (!sources.length) return NextResponse.json({ ok: true, sources: 0, received: 0, inserted: 0, updated: 0, errors: 0, message: "Nenhuma fonte de coleta automática está ativa. Cadastre uma fonte Greenhouse, Lever ou Ashby." });
 
   let received = 0;
   let inserted = 0;
@@ -40,7 +43,7 @@ export async function POST(request: Request) {
     const startedAt = new Date();
     await db.insert(importRuns).values({ id: runId, source: source.name, status: "running", received: 0, actorUserId: user.userId, startedAt });
     try {
-      const found = await collect(source.provider as "greenhouse" | "lever" | "ashby", source.externalRef, source.name);
+      const found = await collect(source.provider, source.externalRef, source.name);
       received += found.length;
       let sourceInserted = 0;
       let sourceUpdated = 0;
