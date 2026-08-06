@@ -199,8 +199,17 @@ export function localSessionCookieOptions() {
   };
 }
 
+async function currentRequestHeaders(): Promise<Headers | null> {
+  try {
+    return await headers();
+  } catch {
+    return null;
+  }
+}
+
 export async function getHostedChatGPTUser(): Promise<ChatGPTUser | null> {
-  const requestHeaders = await headers();
+  const requestHeaders = await currentRequestHeaders();
+  if (!requestHeaders) return null;
   const host = (requestHeaders.get("host") || "").toLowerCase();
   if (!host.endsWith(".chatgpt.site")) return null;
   const userId = requestHeaders.get(USER_ID_HEADER);
@@ -226,7 +235,8 @@ export async function getChatGPTUser(): Promise<ChatGPTUser | null> {
   const sessionUser = await readLocalSession();
   if (sessionUser) return sessionUser;
 
-  const requestHeaders = await headers();
+  const requestHeaders = await currentRequestHeaders();
+  if (!requestHeaders) return null;
   const host = requestHeaders.get("host") || "";
   if (host.includes("localhost") || host.includes("127.0.0.1")) {
     return {

@@ -26,5 +26,5 @@ test("convites criam contas locais com senha derivada e perfis separados", async
   assert.match(management, /Criar convite/);
   assert.match(management, /senha inicial/);
   assert.match(chatgpt, /getHostedChatGPTUser/);
-  assert.match(auth, /const requestHeaders = await headers\(\);/);
+  assert.match(auth, /currentRequestHeaders/);
 });
