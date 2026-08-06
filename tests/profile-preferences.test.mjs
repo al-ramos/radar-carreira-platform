@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { listFromStored } from "../lib/profile-options.ts";
+import { allowedWorkModes, listFromStored } from "../lib/profile-options.ts";
 import { scoreJob } from "../lib/scoring.ts";
 
 test("preserva preferências novas e legadas como listas", () => {
   assert.deepEqual(listFromStored('["C#", "SQL"]'), ["C#", "SQL"]);
   assert.deepEqual(listFromStored("Sênior, Pleno"), ["Sênior", "Pleno"]);
+  assert.deepEqual(allowedWorkModes(["Remoto", "Híbrido", "Presencial"]), ["Remoto", "Presencial"]);
 });
 
 test("calcula aderência para mais de uma senioridade e modalidade", () => {

@@ -52,3 +52,7 @@ export function listFromStored(value: unknown): string[] {
   } catch { /* legacy comma-separated preference */ }
   return value.split(",").map(item => item.trim()).filter(Boolean);
 }
+
+export function allowedWorkModes(value: unknown): string[] {
+  return listFromStored(value).filter(mode => WORK_MODE_OPTIONS.includes(mode));
+}
