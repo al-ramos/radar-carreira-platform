@@ -181,6 +181,12 @@ Endpoint:
 
 ```text
 POST /api/collector/import
+
+Quando a chave foi criada pelo portal, a importação identifica o usuário dono da
+chave e aplica o perfil de stacks obrigatórias antes de gravar no banco. No modo
+“todas”, a vaga precisa conter todas as stacks selecionadas; no modo “qualquer”,
+basta uma. O retorno inclui `accepted`, `rejected`, `requiredStacks` e
+`stackMatchMode`. Sem stacks configuradas, o comportamento permanece inalterado.
 Authorization: Bearer <LINKEDIN_COLLECTOR_SECRET>
 Content-Type: application/json
 ```
