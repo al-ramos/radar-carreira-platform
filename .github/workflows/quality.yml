@@ -1,4 +1,4 @@
-name: Qualidade do projeto
+name: Validar e publicar o Radar
 
 on:
   push:
