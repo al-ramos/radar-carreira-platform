@@ -44,7 +44,13 @@ function ChoiceField({ label, hint, options, groups, value, onChange, customPlac
 
   return <fieldset className="profile-choice-field">
     <legend>{label}</legend><p>{hint}</p>
-    {groups ? <div className="profile-choice-categories">{groups.map(group => <section key={group.label}><h3>{group.label}</h3><div className="profile-choice-grid">{group.options.map(option => <label key={option} className="profile-choice"><input type="checkbox" checked={selected.has(normalize(option))} onChange={() => toggle(option)} />{option}</label>)}</div></section>)}</div> : <div className="profile-choice-grid">{options.map(option => <label key={option} className="profile-choice"><input type="checkbox" checked={selected.has(normalize(option))} onChange={() => toggle(option)} />{option}</label>)}</div>}
+    {groups ? <div className="profile-choice-categories">{groups.map(group => {
+      const selectedCount = group.options.filter(option => selected.has(normalize(option))).length;
+      return <details className="profile-choice-category" key={group.label}>
+        <summary><span>{group.label}</span><small>{selectedCount ? `${selectedCount} selecionada${selectedCount === 1 ? "" : "s"}` : "Expandir"}</small></summary>
+        <div className="profile-choice-grid">{group.options.map(option => <label key={option} className="profile-choice"><input type="checkbox" checked={selected.has(normalize(option))} onChange={() => toggle(option)} />{option}</label>)}</div>
+      </details>;
+    })}</div> : <div className="profile-choice-grid">{options.map(option => <label key={option} className="profile-choice"><input type="checkbox" checked={selected.has(normalize(option))} onChange={() => toggle(option)} />{option}</label>)}</div>}
     {allowCustom && <><div className="profile-custom-choice"><input value={custom} onChange={event => setCustom(event.target.value)} onKeyDown={onKeyDown} placeholder={customPlaceholder} /><button type="button" onClick={addCustom}>Adicionar</button></div>{customValues.length > 0 && <div className="profile-custom-tags">{customValues.map(option => <button type="button" key={option} onClick={() => onChange(value.filter(item => normalize(item) !== normalize(option)))}>{option} ×</button>)}</div>}</>}
   </fieldset>;
 }
