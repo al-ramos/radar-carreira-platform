@@ -1,21 +1,33 @@
 import { NextResponse } from "next/server";
 import {
   createLocalAdminSession,
+  createLocalUserSession,
   LOCAL_SESSION_COOKIE,
   localSessionCookieOptions,
 } from "../../../chatgpt-auth";
+import { eq } from "drizzle-orm";
+import { getDb } from "../../../../db";
+import { localAccounts } from "../../../../db/schema";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const body = await request.json().catch(() => null) as { password?: unknown } | null;
+  const body = await request.json().catch(() => null) as { email?: unknown; password?: unknown } | null;
   if (typeof body?.password !== "string" || !body.password) {
-    return NextResponse.json({ error: "Informe a senha de administrador." }, { status: 400 });
+    return NextResponse.json({ error: "Informe sua senha." }, { status: 400 });
   }
 
-  const session = await createLocalAdminSession(body.password);
+  const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+  const account = email
+    ? (await getDb().select().from(localAccounts).where(eq(localAccounts.email, email)).limit(1))[0]
+    : null;
+  const session = email && account
+    ? await createLocalUserSession(account, body.password)
+    : email
+      ? null
+      : await createLocalAdminSession(body.password);
   if (!session) {
-    return NextResponse.json({ error: "Senha inválida ou autenticação ainda não configurada." }, { status: 401 });
+    return NextResponse.json({ error: email ? "E-mail ou senha inválidos." : "Senha inválida ou autenticação ainda não configurada." }, { status: 401 });
   }
 
   const response = NextResponse.json({ ok: true });

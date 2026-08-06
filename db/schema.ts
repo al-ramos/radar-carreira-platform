@@ -9,6 +9,13 @@ export const profiles = sqliteTable("profiles", {
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
 });
 
+export const localAccounts = sqliteTable("local_accounts", {
+  userId: text("user_id").primaryKey(), email: text("email").notNull(), name: text("name"),
+  passwordHash: text("password_hash").notNull(), passwordSalt: text("password_salt").notNull(),
+  createdBy: text("created_by"), createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+}, table => [uniqueIndex("local_accounts_email_unique").on(table.email)]);
+
 export const jobSources = sqliteTable("job_sources", {
   id: text("id").primaryKey(), name: text("name").notNull(),
   provider: text("provider", { enum: ["greenhouse", "lever", "ashby", "jsonld", "jsonfeed", "manual"] }).notNull(),
