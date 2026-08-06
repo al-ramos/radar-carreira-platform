@@ -1,0 +1,24 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+
+const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
+
+test("login local cria uma sessão protegida no Worker", async () => {
+  const [auth, login, logout, page, dashboard] = await Promise.all([
+    read("../app/chatgpt-auth.ts"),
+    read("../app/api/auth/login/route.ts"),
+    read("../app/api/auth/logout/route.ts"),
+    read("../app/login/page.tsx"),
+    read("../app/Dashboard.tsx"),
+  ]);
+  assert.match(auth, /RADAR_ADMIN_PASSWORD/);
+  assert.match(auth, /RADAR_SESSION_SECRET/);
+  assert.match(auth, /HMAC/);
+  assert.match(auth, /httpOnly: true/);
+  assert.match(login, /LOCAL_SESSION_COOKIE/);
+  assert.match(logout, /maxAge: 0/);
+  assert.match(page, /Senha de administrador/);
+  assert.match(dashboard, /\/login\?return_to=\//);
+  assert.match(dashboard, /\/api\/auth\/logout/);
+});
