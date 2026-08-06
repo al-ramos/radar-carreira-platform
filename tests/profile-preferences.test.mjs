@@ -15,8 +15,15 @@ test("calcula aderência para mais de uma senioridade e modalidade", () => {
     { title: "Engenheira", description: "", stack: [], seniority: "Sênior", workMode: "Remoto" },
     { masteredSkills: [], desiredAreas: [], avoidTerms: [], seniority: ["Pleno", "Sênior"], preferredMode: ["Remoto"] },
   );
-  assert.equal(result.score, 30);
-  assert.deepEqual(result.reasons, ["Senioridade ideal", "Modalidade preferida"]);
+  assert.equal(result.score, 20);
+  assert.deepEqual(result.reasons, ["Senioridade ideal (+10)", "Modalidade preferida (+10)"]);
+});
+
+test("pontua stacks de forma proporcional e não confunde nomes parciais", () => {
+  const profile = { masteredSkills: ["React", "Node.js", "R"], desiredAreas: [], avoidTerms: [], seniority: [], preferredMode: [] };
+  const result = scoreJob({ title: "Pessoa desenvolvedora React", description: "Experiência com React.", stack: ["React"] }, profile);
+  assert.equal(result.score, 20);
+  assert.deepEqual(result.reasons, ["1 de 3 stacks atendidas (+20)"]);
 });
 
 test("perfil usa checkboxes e o radar expõe filtros de visualização", async () => {
@@ -26,6 +33,8 @@ test("perfil usa checkboxes e o radar expõe filtros de visualização", async (
     readFile(new URL("../lib/profile-options.ts", import.meta.url), "utf8"),
   ]);
   assert.match(profile, /type="checkbox"/);
+  assert.match(profile, /Marcar todas/);
+  assert.match(profile, /Desmarcar/);
   assert.match(profile, /Competências dominadas/);
   assert.match(profile, /Formato de trabalho/);
   assert.match(profile, /allowCustom=\{false\}/);
@@ -34,6 +43,7 @@ test("perfil usa checkboxes e o radar expõe filtros de visualização", async (
   assert.match(dashboard, /Tecnologia<select/);
   assert.match(dashboard, /Senioridade<select/);
   assert.match(dashboard, /Modalidade<select/);
+  assert.match(dashboard, /event\.key==="Escape"/);
   assert.match(options, /Front-end e mobile/);
   assert.doesNotMatch(options, /Remoto - Brasil/);
   assert.doesNotMatch(options, /"Híbrido"/);

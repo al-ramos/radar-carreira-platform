@@ -33,6 +33,8 @@ function ChoiceField({ label, hint, options, groups, value, onChange, customPlac
   const selected = new Set(value.map(normalize));
   const customValues = value.filter(item => !options.some(option => normalize(option) === normalize(item)));
   const toggle = (option: string) => onChange(selected.has(normalize(option)) ? value.filter(item => normalize(item) !== normalize(option)) : [...value, option]);
+  const selectAll = () => onChange([...customValues, ...options]);
+  const clearOptions = () => onChange(customValues);
   const addCustom = () => {
     const additions = custom.split(",").map(item => item.trim()).filter(item => item && !selected.has(normalize(item)));
     if (additions.length) onChange([...value, ...additions]);
@@ -44,6 +46,7 @@ function ChoiceField({ label, hint, options, groups, value, onChange, customPlac
 
   return <fieldset className="profile-choice-field">
     <legend>{label}</legend><p>{hint}</p>
+    <div className="profile-choice-actions"><button type="button" onClick={selectAll}>Marcar todas</button><button type="button" onClick={clearOptions} disabled={!value.length}>Desmarcar</button></div>
     {groups ? <div className="profile-choice-categories">{groups.map(group => {
       const selectedCount = group.options.filter(option => selected.has(normalize(option))).length;
       return <details className="profile-choice-category" key={group.label}>
@@ -65,7 +68,7 @@ export default function ProfilePreferences({ value, onChange, onSave, onClose, m
       <div className="profile-score-row"><label>Score mínimo<input type="number" min="0" max="100" value={value.minScore} onChange={event => update("minScore", Math.max(0, Math.min(100, Number(event.target.value) || 0)))} /></label><small>O Radar mostra e ordena as oportunidades de acordo com estas preferências.</small></div>
       <ChoiceField label="Senioridades aceitas" hint="Pode marcar mais de uma." options={SENIORITY_OPTIONS} value={value.seniority} onChange={next => update("seniority", next)} customPlaceholder="Outra senioridade" />
       <ChoiceField label="Formato de trabalho" hint="Escolha remoto, presencial ou os dois. Sem seleção, todas as vagas continuam visíveis." options={WORK_MODE_OPTIONS} value={value.preferredMode} onChange={next => update("preferredMode", next)} customPlaceholder="" allowCustom={false} />
-      <ChoiceField label="Competências dominadas" hint="Catálogo amplo do mercado de TI, organizado por área. Usadas para calcular a aderência das vagas." options={SKILL_OPTIONS} groups={SKILL_GROUPS} value={value.masteredSkills} onChange={next => update("masteredSkills", next)} customPlaceholder="Adicionar tecnologia" />
+      <ChoiceField label="Competências dominadas" hint="Elas valem até 60 pontos: o score cresce proporcionalmente ao número de stacks selecionadas que a vaga atende." options={SKILL_OPTIONS} groups={SKILL_GROUPS} value={value.masteredSkills} onChange={next => update("masteredSkills", next)} customPlaceholder="Adicionar tecnologia" />
       <ChoiceField label="Áreas desejadas" hint="Usadas para destacar oportunidades do seu foco." options={AREA_OPTIONS} value={value.desiredAreas} onChange={next => update("desiredAreas", next)} customPlaceholder="Adicionar área" />
       <ChoiceField label="Termos a evitar" hint="Vagas que contêm estes termos ficam com score zero." options={AVOID_TERM_OPTIONS} value={value.avoidTerms} onChange={next => update("avoidTerms", next)} customPlaceholder="Adicionar termo" />
       {message && <div className="notice">{message}</div>}<div className="source-actions"><button className="primary" onClick={onSave}>Salvar preferências</button></div>
