@@ -3,8 +3,9 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 test("somente fontes ATS participam da coleta automática",async()=>{
- const [connectors,schema,migration,manual,scheduled,sourceList,dashboard]=await Promise.all([
+ const [connectors,parser,schema,migration,manual,scheduled,sourceList,dashboard]=await Promise.all([
   readFile(new URL("../lib/connectors.ts",import.meta.url),"utf8"),
+  readFile(new URL("../lib/career-source.ts",import.meta.url),"utf8"),
   readFile(new URL("../db/schema.ts",import.meta.url),"utf8"),
   readFile(new URL("../drizzle/0005_source_ingestion_mode.sql",import.meta.url),"utf8"),
   readFile(new URL("../app/api/admin/collect/route.ts",import.meta.url),"utf8"),
@@ -13,6 +14,9 @@ test("somente fontes ATS participam da coleta automática",async()=>{
   readFile(new URL("../app/Dashboard.tsx",import.meta.url),"utf8"),
  ]);
  assert.match(connectors,/PULL_PROVIDERS=\["greenhouse","lever","ashby"\]/);
+ assert.match(parser,/boards\.greenhouse\.io/);
+ assert.match(parser,/jobs\.lever\.co/);
+ assert.match(parser,/jobs\.ashbyhq\.com/);
  assert.match(connectors,/if\(!isPullProvider\(provider\)\)throw new Error/);
  assert.match(schema,/collectionMode: text\("collection_mode", \{ enum: \["pull", "push"\] \}\)\.notNull\(\)\.default\("push"\)/);
  assert.match(migration,/UPDATE `job_sources` SET `collection_mode` = 'pull' WHERE `provider` IN \('greenhouse', 'lever', 'ashby'\)/);
@@ -21,4 +25,6 @@ test("somente fontes ATS participam da coleta automática",async()=>{
  assert.match(sourceList,/Coleta automática/);
  assert.match(sourceList,/Integrações de entrada/);
  assert.match(dashboard,/Coletar fontes automáticas/);
+ assert.match(dashboard,/Adicionar página de carreiras/);
+ assert.match(dashboard,/Salvar e testar/);
 });
