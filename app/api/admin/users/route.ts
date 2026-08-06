@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getChatGPTUser, hashLocalPassword, LOCAL_PASSWORD_MIN_LENGTH } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db/index";
 import { localAccounts, profiles, userJobStatus } from "../../../../db/schema";
+import { listFromStored } from "../../../../lib/profile-options";
 
 export const dynamic = "force-dynamic";
 
@@ -16,22 +17,22 @@ async function admin() {
   return profile?.role === "admin" ? user : null;
 }
 
-function parse(value: string) {
-  try { return JSON.parse(value) as string[]; } catch { return []; }
-}
-
 function userSummary(profile: typeof profiles.$inferSelect, pipeline: typeof userJobStatus.$inferSelect[], access: "convite" | "chatgpt" | "administrador") {
+  const seniority = listFromStored(profile.seniority);
+  const preferredMode = listFromStored(profile.preferredMode);
+  const skills = listFromStored(profile.masteredSkills);
+  const areas = listFromStored(profile.desiredAreas);
   return {
     userId: profile.userId,
     email: profile.email,
     name: profile.name,
     role: profile.role,
-    seniority: profile.seniority,
-    preferredMode: profile.preferredMode,
-    skills: parse(profile.masteredSkills).length,
-    areas: parse(profile.desiredAreas).length,
+    seniority: seniority.join(" · ") || null,
+    preferredMode: preferredMode.join(" · ") || null,
+    skills: skills.length,
+    areas: areas.length,
     pipeline: pipeline.filter(item => item.userId === profile.userId).length,
-    profileComplete: Boolean(profile.seniority && profile.preferredMode && parse(profile.masteredSkills).length && parse(profile.desiredAreas).length),
+    profileComplete: Boolean(seniority.length && preferredMode.length && skills.length && areas.length),
     protected: PROTECTED.has(profile.email.toLowerCase()),
     access,
     updatedAt: profile.updatedAt,
