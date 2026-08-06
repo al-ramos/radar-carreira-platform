@@ -645,9 +645,10 @@ export default function Dashboard() {
       .join("")
       .toUpperCase();
   const isAdmin = currentUser?.role === "admin",
+    isOwner = currentUser?.email.toLowerCase() === "alexsandro.ramos@gmail.com",
     visibleNav = nav.filter(
       (item) =>
-        isAdmin ||
+        (isAdmin && (item !== "Usuários" || isOwner)) ||
         !new Set([
           "Monitoramento",
           "Auditoria",
@@ -775,12 +776,13 @@ export default function Dashboard() {
         </header>
         {message && <div className="notice">{message}</div>}
         <div className="radar-controls">
-          <span>
-            <strong>{totalJobs ?? items.length}</strong> vagas no período
+          <div className="radar-result-summary">
+            <span><strong>{totalJobs ?? items.length}</strong> vagas encontradas</span>
+            <small>no período selecionado</small>
             {totalJobs !== null && totalJobs > items.length && (
-              <small> Exibindo as {items.length} mais recentes.</small>
+              <em>Mostrando as {items.length} mais recentes</em>
             )}
-          </span>
+          </div>
           <div className="toolbar">
             <div className="search">
               ⌕
@@ -822,48 +824,30 @@ export default function Dashboard() {
           </div>
         </div>
         <div className="radar-advanced-filters" aria-label="Filtros de vagas">
-          <label>
-            Tecnologia
-            <select
-              value={stackFilter}
-              onChange={(event) => setStackFilter(event.target.value)}
-            >
-              <option value="">Todas</option>
-              {stackFilterOptions.map((option) => (
-                <option value={option} key={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Senioridade
-            <select
-              value={seniorityFilter}
-              onChange={(event) => setSeniorityFilter(event.target.value)}
-            >
-              <option value="">Todas</option>
-              {seniorityFilterOptions.map((option) => (
-                <option value={option} key={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Modalidade
-            <select
-              value={workModeFilter}
-              onChange={(event) => setWorkModeFilter(event.target.value)}
-            >
-              <option value="">Todas</option>
-              {["Remoto", "Híbrido", "Presencial"].map((option) => (
-                <option value={option} key={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="radar-filter-copy"><span>Filtros avançados</span><small>Combine tecnologia, nível e modalidade</small></div>
+          <div className="radar-filter-fields">
+            <label className="radar-filter-field">
+              <span>Tecnologia</span>
+              <select aria-label="Filtrar por tecnologia" value={stackFilter} onChange={(event) => setStackFilter(event.target.value)}>
+                <option value="">Todas</option>
+                {stackFilterOptions.map((option) => <option value={option} key={option}>{option}</option>)}
+              </select>
+            </label>
+            <label className="radar-filter-field">
+              <span>Senioridade</span>
+              <select aria-label="Filtrar por senioridade" value={seniorityFilter} onChange={(event) => setSeniorityFilter(event.target.value)}>
+                <option value="">Todas</option>
+                {seniorityFilterOptions.map((option) => <option value={option} key={option}>{option}</option>)}
+              </select>
+            </label>
+            <label className="radar-filter-field">
+              <span>Modalidade</span>
+              <select aria-label="Filtrar por modalidade" value={workModeFilter} onChange={(event) => setWorkModeFilter(event.target.value)}>
+                <option value="">Todas</option>
+                {["Remoto", "Híbrido", "Presencial"].map((option) => <option value={option} key={option}>{option}</option>)}
+              </select>
+            </label>
+          </div>
           {(stackFilter || seniorityFilter || workModeFilter) && (
             <button
               type="button"
@@ -880,8 +864,8 @@ export default function Dashboard() {
         <div className="workspace">
           <div className="job-list">
             <div className="list-head">
-              <span>{filtered.length} oportunidades</span>
-              <span>maior aderência</span>
+              <span>{filtered.length} oportunidades exibidas</span>
+              <span>ordenadas por aderência</span>
             </div>
             {filtered.map((j) => (
               <button
@@ -1102,7 +1086,7 @@ export default function Dashboard() {
           </section>
         </div>
       )}
-      {usersOpen && <UserManagement close={() => setUsersOpen(false)} />}
+      {usersOpen && isOwner && <UserManagement close={() => setUsersOpen(false)} />}
       {qualityOpen && <DataQuality close={() => setQualityOpen(false)} />}
       {auditOpen && <AuditTrail close={() => setAuditOpen(false)} />}
       {monitorOpen && <Monitoring close={() => setMonitorOpen(false)} />}
@@ -1387,6 +1371,7 @@ export default function Dashboard() {
           onClose={() => setPreferencesOpen(false)}
           message={message}
           isAdmin={isAdmin}
+          isOwner={isOwner}
         />
       )}
       {gmailOpen && (
