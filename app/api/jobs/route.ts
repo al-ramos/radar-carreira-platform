@@ -25,7 +25,7 @@ export async function GET(request: Request) {
     const rows = await getDb().select().from(jobs).where(condition).orderBy(desc(jobs.publishedAt)).limit(limit);
     const result = rows.map(job => {
       const stack = inferTechnologyStack(`${job.title} ${job.description}`,parse(job.stack));
-      const match = profile ? scoreJob({title:job.title,description:job.description,stack,seniority:job.seniority,workMode:job.workMode,location:job.location,publishedAt:job.publishedAt},{masteredSkills:listFromStored(profile.masteredSkills),desiredAreas:listFromStored(profile.desiredAreas),avoidTerms:listFromStored(profile.avoidTerms),seniority:listFromStored(profile.seniority),preferredMode:listFromStored(profile.preferredMode),cities:listFromStored(profile.cities)}) : {score:70,reasons:["Complete seu perfil para personalizar"]};
+      const match = profile ? scoreJob({title:job.title,description:job.description,stack,seniority:job.seniority,workMode:job.workMode,location:job.location,publishedAt:job.publishedAt},{masteredSkills:listFromStored(profile.masteredSkills),desiredAreas:listFromStored(profile.desiredAreas),avoidTerms:listFromStored(profile.avoidTerms),seniority:listFromStored(profile.seniority),preferredMode:listFromStored(profile.preferredMode)}) : {score:70,reasons:["Complete seu perfil para personalizar"]};
       return {...job,stack,score:match.score,reasons:match.reasons};
     });
     return NextResponse.json({jobs:result,mode:"database",personalized:Boolean(profile),period:period === "all" ? "all" : hours});

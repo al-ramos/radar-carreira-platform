@@ -12,10 +12,10 @@ test("preserva preferências novas e legadas como listas", () => {
 test("calcula aderência para mais de uma senioridade e modalidade", () => {
   const result = scoreJob(
     { title: "Engenheira", description: "", stack: [], seniority: "Sênior", workMode: "Remoto" },
-    { masteredSkills: [], desiredAreas: [], avoidTerms: [], seniority: ["Pleno", "Sênior"], preferredMode: ["Remoto", "Híbrido"], cities: [] },
+    { masteredSkills: [], desiredAreas: [], avoidTerms: [], seniority: ["Pleno", "Sênior"], preferredMode: ["Remoto"] },
   );
   assert.equal(result.score, 30);
-  assert.deepEqual(result.reasons, ["Senioridade ideal", "Local/modalidade preferida"]);
+  assert.deepEqual(result.reasons, ["Senioridade ideal", "Modalidade preferida"]);
 });
 
 test("perfil usa checkboxes e o radar expõe filtros de visualização", async () => {
@@ -26,11 +26,16 @@ test("perfil usa checkboxes e o radar expõe filtros de visualização", async (
   ]);
   assert.match(profile, /type="checkbox"/);
   assert.match(profile, /Competências dominadas/);
+  assert.match(profile, /Formato de trabalho/);
+  assert.match(profile, /allowCustom=\{false\}/);
+  assert.doesNotMatch(profile, /Cidades e regiões/);
   assert.match(profile, /SKILL_GROUPS/);
   assert.match(dashboard, /Tecnologia<select/);
   assert.match(dashboard, /Senioridade<select/);
   assert.match(dashboard, /Modalidade<select/);
   assert.match(options, /Front-end e mobile/);
+  assert.doesNotMatch(options, /Remoto - Brasil/);
+  assert.doesNotMatch(options, /"Híbrido"/);
   assert.match(options, /Cloud e DevOps/);
   assert.match(options, /IA, analytics e BI/);
   assert.match(options, /Segurança/);

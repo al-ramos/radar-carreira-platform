@@ -2,7 +2,7 @@
 
 import { KeyboardEvent, useState } from "react";
 import {
-  AREA_OPTIONS, AVOID_TERM_OPTIONS, CITY_OPTIONS, ProfileChoices, SENIORITY_OPTIONS, SKILL_GROUPS, SKILL_OPTIONS, WORK_MODE_OPTIONS,
+  AREA_OPTIONS, AVOID_TERM_OPTIONS, ProfileChoices, SENIORITY_OPTIONS, SKILL_GROUPS, SKILL_OPTIONS, WORK_MODE_OPTIONS,
 } from "../lib/profile-options";
 import AdminSettings from "./AdminSettings";
 
@@ -23,11 +23,12 @@ type ChoiceFieldProps = {
   value: string[];
   onChange: (value: string[]) => void;
   customPlaceholder: string;
+  allowCustom?: boolean;
 };
 
 const normalize = (value: string) => value.trim().toLocaleLowerCase("pt-BR");
 
-function ChoiceField({ label, hint, options, groups, value, onChange, customPlaceholder }: ChoiceFieldProps) {
+function ChoiceField({ label, hint, options, groups, value, onChange, customPlaceholder, allowCustom = true }: ChoiceFieldProps) {
   const [custom, setCustom] = useState("");
   const selected = new Set(value.map(normalize));
   const customValues = value.filter(item => !options.some(option => normalize(option) === normalize(item)));
@@ -44,8 +45,7 @@ function ChoiceField({ label, hint, options, groups, value, onChange, customPlac
   return <fieldset className="profile-choice-field">
     <legend>{label}</legend><p>{hint}</p>
     {groups ? <div className="profile-choice-categories">{groups.map(group => <section key={group.label}><h3>{group.label}</h3><div className="profile-choice-grid">{group.options.map(option => <label key={option} className="profile-choice"><input type="checkbox" checked={selected.has(normalize(option))} onChange={() => toggle(option)} />{option}</label>)}</div></section>)}</div> : <div className="profile-choice-grid">{options.map(option => <label key={option} className="profile-choice"><input type="checkbox" checked={selected.has(normalize(option))} onChange={() => toggle(option)} />{option}</label>)}</div>}
-    <div className="profile-custom-choice"><input value={custom} onChange={event => setCustom(event.target.value)} onKeyDown={onKeyDown} placeholder={customPlaceholder} /><button type="button" onClick={addCustom}>Adicionar</button></div>
-    {customValues.length > 0 && <div className="profile-custom-tags">{customValues.map(option => <button type="button" key={option} onClick={() => onChange(value.filter(item => normalize(item) !== normalize(option)))}>{option} ×</button>)}</div>}
+    {allowCustom && <><div className="profile-custom-choice"><input value={custom} onChange={event => setCustom(event.target.value)} onKeyDown={onKeyDown} placeholder={customPlaceholder} /><button type="button" onClick={addCustom}>Adicionar</button></div>{customValues.length > 0 && <div className="profile-custom-tags">{customValues.map(option => <button type="button" key={option} onClick={() => onChange(value.filter(item => normalize(item) !== normalize(option)))}>{option} ×</button>)}</div>}</>}
   </fieldset>;
 }
 
@@ -58,8 +58,7 @@ export default function ProfilePreferences({ value, onChange, onSave, onClose, m
       <p>Selecione o que procura. Você também pode incluir qualquer opção personalizada.</p>
       <div className="profile-score-row"><label>Score mínimo<input type="number" min="0" max="100" value={value.minScore} onChange={event => update("minScore", Math.max(0, Math.min(100, Number(event.target.value) || 0)))} /></label><small>O Radar mostra e ordena as oportunidades de acordo com estas preferências.</small></div>
       <ChoiceField label="Senioridades aceitas" hint="Pode marcar mais de uma." options={SENIORITY_OPTIONS} value={value.seniority} onChange={next => update("seniority", next)} customPlaceholder="Outra senioridade" />
-      <ChoiceField label="Modalidades aceitas" hint="Sem seleção, todas as modalidades continuam visíveis." options={WORK_MODE_OPTIONS} value={value.preferredMode} onChange={next => update("preferredMode", next)} customPlaceholder="Outra modalidade" />
-      <ChoiceField label="Cidades e regiões" hint="Marque locais ou inclua cidades adicionais." options={CITY_OPTIONS} value={value.cities} onChange={next => update("cities", next)} customPlaceholder="Adicionar cidade ou região" />
+      <ChoiceField label="Formato de trabalho" hint="Escolha remoto, presencial ou os dois. Sem seleção, todas as vagas continuam visíveis." options={WORK_MODE_OPTIONS} value={value.preferredMode} onChange={next => update("preferredMode", next)} customPlaceholder="" allowCustom={false} />
       <ChoiceField label="Competências dominadas" hint="Catálogo amplo do mercado de TI, organizado por área. Usadas para calcular a aderência das vagas." options={SKILL_OPTIONS} groups={SKILL_GROUPS} value={value.masteredSkills} onChange={next => update("masteredSkills", next)} customPlaceholder="Adicionar tecnologia" />
       <ChoiceField label="Áreas desejadas" hint="Usadas para destacar oportunidades do seu foco." options={AREA_OPTIONS} value={value.desiredAreas} onChange={next => update("desiredAreas", next)} customPlaceholder="Adicionar área" />
       <ChoiceField label="Termos a evitar" hint="Vagas que contêm estes termos ficam com score zero." options={AVOID_TERM_OPTIONS} value={value.avoidTerms} onChange={next => update("avoidTerms", next)} customPlaceholder="Adicionar termo" />

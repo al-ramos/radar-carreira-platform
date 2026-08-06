@@ -3,14 +3,7 @@ export const SENIORITY_OPTIONS = [
   "Tech Lead", "Coordenador", "Gerente", "Diretor",
 ];
 
-export const WORK_MODE_OPTIONS = ["Remoto", "Híbrido", "Presencial"];
-
-export const CITY_OPTIONS = [
-  "Remoto - Brasil", "São Paulo, SP", "Rio de Janeiro, RJ", "Belo Horizonte, MG",
-  "Brasília, DF", "Curitiba, PR", "Porto Alegre, RS", "Florianópolis, SC",
-  "Campinas, SP", "Recife, PE", "Salvador, BA", "Fortaleza, CE", "Goiânia, GO",
-  "Vitória, ES", "Manaus, AM", "Belém, PA",
-];
+export const WORK_MODE_OPTIONS = ["Remoto", "Presencial"];
 
 export const SKILL_GROUPS = [
   { label: "Front-end e mobile", options: ["HTML", "CSS", "JavaScript", "TypeScript", "React", "Next.js", "Angular", "Vue.js", "Svelte", "React Native", "Flutter", "Dart", "Android", "iOS", "Swift", "Kotlin"] },
@@ -40,7 +33,6 @@ export const AVOID_TERM_OPTIONS = [
 export type ProfileChoices = {
   seniority: string[];
   preferredMode: string[];
-  cities: string[];
   masteredSkills: string[];
   desiredAreas: string[];
   avoidTerms: string[];
@@ -48,7 +40,7 @@ export type ProfileChoices = {
 };
 
 export const emptyProfileChoices = (): ProfileChoices => ({
-  seniority: [], preferredMode: [], cities: [], masteredSkills: [], desiredAreas: [], avoidTerms: [], minScore: 60,
+  seniority: [], preferredMode: [], masteredSkills: [], desiredAreas: [], avoidTerms: [], minScore: 60,
 });
 
 export function listFromStored(value: unknown): string[] {
