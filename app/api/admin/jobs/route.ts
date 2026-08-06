@@ -10,6 +10,12 @@ const ALL_CONFIRMATION="EXCLUIR TODAS AS VAGAS";
 
 async function admin(){const user=await getChatGPTUser();if(!user)return null;if(ADMINS.has(user.email.toLowerCase()))return user;const profile=(await getDb().select({role:profiles.role}).from(profiles).where(eq(profiles.userId,user.userId)).limit(1))[0];return profile?.role==="admin"?user:null}
 
+export async function GET(){
+ if(!await admin())return NextResponse.json({error:"Acesso de administrador necessário"},{status:403});
+ const rows=await getDb().select({status:jobs.status}).from(jobs);
+ return NextResponse.json({total:rows.length,active:rows.filter(job=>job.status==="active").length,closed:rows.filter(job=>job.status!=="active").length});
+}
+
 export async function DELETE(request:Request){
  if(!await admin())return NextResponse.json({error:"Acesso de administrador necessário"},{status:403});
  let payload:{jobIds?:unknown;all?:unknown;confirmation?:unknown};try{payload=await request.json()}catch{return NextResponse.json({error:"Envie um comando de exclusão válido"},{status:400})}
