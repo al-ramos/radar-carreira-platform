@@ -9,6 +9,7 @@ const adminRoutes=[
   "../app/api/admin/collect/route.ts",
   "../app/api/admin/gmail-key/route.ts",
   "../app/api/admin/import/route.ts",
+  "../app/api/admin/jobs/route.ts",
   "../app/api/admin/monitor/route.ts",
   "../app/api/admin/quality/route.ts",
   "../app/api/admin/report/route.ts",
