@@ -42,6 +42,8 @@ test("perfil usa checkboxes e o radar expõe filtros de visualização", async (
   assert.match(profile, /type="checkbox"/);
   assert.match(profile, /<details className="profile-choice-field">/);
   assert.match(profile, /Selecionar todas/);
+  assert.match(profile, /todas as competências de/);
+  assert.match(profile, /toggleGroup/);
   assert.match(profile, /Limpar seleção/);
   assert.match(profile, /Competências dominadas/);
   assert.match(profile, /Formato de trabalho/);

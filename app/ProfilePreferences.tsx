@@ -51,8 +51,12 @@ function ChoiceField({ label, hint, options, groups, value, onChange, customPlac
       <div className="profile-choice-actions"><button type="button" aria-label={`${allSelected ? "Limpar" : "Selecionar"} todas as opções de ${label}`} aria-pressed={allSelected} onClick={toggleAll}>{allSelected ? "Limpar seleção" : "Selecionar todas"}</button></div>
       {groups ? <div className="profile-choice-categories">{groups.map(group => {
         const selectedCount = group.options.filter(option => selected.has(normalize(option))).length;
+        const groupAllSelected = selectedCount === group.options.length;
+        const toggleGroup = () => onChange(groupAllSelected
+          ? value.filter(item => !group.options.some(option => normalize(option) === normalize(item)))
+          : [...value, ...group.options.filter(option => !selected.has(normalize(option)))]);
         return <details className="profile-choice-category" key={group.label}>
-          <summary><span>{group.label}</span><small>{selectedCount ? `${selectedCount} selecionada${selectedCount === 1 ? "" : "s"}` : "Expandir"}</small></summary>
+          <summary><span>{group.label}</span><div className="profile-choice-category-actions"><button type="button" aria-label={`${groupAllSelected ? "Limpar" : "Selecionar"} todas as competências de ${group.label}`} aria-pressed={groupAllSelected} onClick={event => { event.preventDefault(); toggleGroup(); }}>{groupAllSelected ? "Limpar" : "Selecionar todas"}</button><small>{selectedCount ? `${selectedCount} selecionada${selectedCount === 1 ? "" : "s"}` : "Expandir"}</small></div></summary>
           <div className="profile-choice-grid">{group.options.map(option => <label key={option} className="profile-choice"><input type="checkbox" checked={selected.has(normalize(option))} onChange={() => toggle(option)} />{option}</label>)}</div>
         </details>;
       })}</div> : <div className="profile-choice-grid">{options.map(option => <label key={option} className="profile-choice"><input type="checkbox" checked={selected.has(normalize(option))} onChange={() => toggle(option)} />{option}</label>)}</div>}
