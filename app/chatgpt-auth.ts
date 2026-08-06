@@ -226,6 +226,7 @@ export async function getChatGPTUser(): Promise<ChatGPTUser | null> {
   const sessionUser = await readLocalSession();
   if (sessionUser) return sessionUser;
 
+  const requestHeaders = await headers();
   const host = requestHeaders.get("host") || "";
   if (host.includes("localhost") || host.includes("127.0.0.1")) {
     return {
