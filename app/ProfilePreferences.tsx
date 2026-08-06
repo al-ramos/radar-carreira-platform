@@ -33,8 +33,9 @@ function ChoiceField({ label, hint, options, groups, value, onChange, customPlac
   const selected = new Set(value.map(normalize));
   const customValues = value.filter(item => !options.some(option => normalize(option) === normalize(item)));
   const toggle = (option: string) => onChange(selected.has(normalize(option)) ? value.filter(item => normalize(item) !== normalize(option)) : [...value, option]);
-  const selectAll = () => onChange([...customValues, ...options]);
-  const clearOptions = () => onChange(customValues);
+  const allSelected = options.length > 0 && options.every(option => selected.has(normalize(option)));
+  const toggleAll = () => onChange(allSelected ? [] : [...value, ...options.filter(option => !selected.has(normalize(option)))]);
+  const selectionLabel = value.length === 0 ? "Nenhuma selecionada" : `${value.length} selecionada${value.length === 1 ? "" : "s"}`;
   const addCustom = () => {
     const additions = custom.split(",").map(item => item.trim()).filter(item => item && !selected.has(normalize(item)));
     if (additions.length) onChange([...value, ...additions]);
@@ -44,18 +45,20 @@ function ChoiceField({ label, hint, options, groups, value, onChange, customPlac
     if (event.key === "Enter") { event.preventDefault(); addCustom(); }
   };
 
-  return <fieldset className="profile-choice-field">
-    <legend>{label}</legend><p>{hint}</p>
-    <div className="profile-choice-actions"><button type="button" onClick={selectAll}>Marcar todas</button><button type="button" onClick={clearOptions} disabled={!value.length}>Desmarcar</button></div>
-    {groups ? <div className="profile-choice-categories">{groups.map(group => {
-      const selectedCount = group.options.filter(option => selected.has(normalize(option))).length;
-      return <details className="profile-choice-category" key={group.label}>
-        <summary><span>{group.label}</span><small>{selectedCount ? `${selectedCount} selecionada${selectedCount === 1 ? "" : "s"}` : "Expandir"}</small></summary>
-        <div className="profile-choice-grid">{group.options.map(option => <label key={option} className="profile-choice"><input type="checkbox" checked={selected.has(normalize(option))} onChange={() => toggle(option)} />{option}</label>)}</div>
-      </details>;
-    })}</div> : <div className="profile-choice-grid">{options.map(option => <label key={option} className="profile-choice"><input type="checkbox" checked={selected.has(normalize(option))} onChange={() => toggle(option)} />{option}</label>)}</div>}
-    {allowCustom && <><div className="profile-custom-choice"><input value={custom} onChange={event => setCustom(event.target.value)} onKeyDown={onKeyDown} placeholder={customPlaceholder} /><button type="button" onClick={addCustom}>Adicionar</button></div>{customValues.length > 0 && <div className="profile-custom-tags">{customValues.map(option => <button type="button" key={option} onClick={() => onChange(value.filter(item => normalize(item) !== normalize(option)))}>{option} ×</button>)}</div>}</>}
-  </fieldset>;
+  return <details className="profile-choice-field">
+    <summary><span className="profile-choice-heading"><strong>{label}</strong><small>{hint}</small></span><span className="profile-choice-status">{selectionLabel}</span></summary>
+    <div className="profile-choice-body">
+      <div className="profile-choice-actions"><button type="button" aria-label={`${allSelected ? "Limpar" : "Selecionar"} todas as opções de ${label}`} aria-pressed={allSelected} onClick={toggleAll}>{allSelected ? "Limpar seleção" : "Selecionar todas"}</button></div>
+      {groups ? <div className="profile-choice-categories">{groups.map(group => {
+        const selectedCount = group.options.filter(option => selected.has(normalize(option))).length;
+        return <details className="profile-choice-category" key={group.label}>
+          <summary><span>{group.label}</span><small>{selectedCount ? `${selectedCount} selecionada${selectedCount === 1 ? "" : "s"}` : "Expandir"}</small></summary>
+          <div className="profile-choice-grid">{group.options.map(option => <label key={option} className="profile-choice"><input type="checkbox" checked={selected.has(normalize(option))} onChange={() => toggle(option)} />{option}</label>)}</div>
+        </details>;
+      })}</div> : <div className="profile-choice-grid">{options.map(option => <label key={option} className="profile-choice"><input type="checkbox" checked={selected.has(normalize(option))} onChange={() => toggle(option)} />{option}</label>)}</div>}
+      {allowCustom && <><div className="profile-custom-choice"><input value={custom} onChange={event => setCustom(event.target.value)} onKeyDown={onKeyDown} placeholder={customPlaceholder} /><button type="button" onClick={addCustom}>Adicionar</button></div>{customValues.length > 0 && <div className="profile-custom-tags">{customValues.map(option => <button type="button" key={option} onClick={() => onChange(value.filter(item => normalize(item) !== normalize(option)))}>{option} ×</button>)}</div>}</>}
+    </div>
+  </details>;
 }
 
 export default function ProfilePreferences({ value, onChange, onSave, onClose, message, isAdmin }: Props) {

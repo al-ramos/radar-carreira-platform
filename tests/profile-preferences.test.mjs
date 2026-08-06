@@ -33,8 +33,9 @@ test("perfil usa checkboxes e o radar expõe filtros de visualização", async (
     readFile(new URL("../lib/profile-options.ts", import.meta.url), "utf8"),
   ]);
   assert.match(profile, /type="checkbox"/);
-  assert.match(profile, /Marcar todas/);
-  assert.match(profile, /Desmarcar/);
+  assert.match(profile, /<details className="profile-choice-field">/);
+  assert.match(profile, /Selecionar todas/);
+  assert.match(profile, /Limpar seleção/);
   assert.match(profile, /Competências dominadas/);
   assert.match(profile, /Formato de trabalho/);
   assert.match(profile, /allowCustom=\{false\}/);
