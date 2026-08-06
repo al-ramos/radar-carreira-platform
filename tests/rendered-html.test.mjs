@@ -6,7 +6,10 @@ const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
 test("dashboard oferece radar, perfil e pipeline persistente", async () => {
   const dashboard = await read("../app/Dashboard.tsx");
-  assert.match(dashboard, /const nav=\["Radar","Pipeline","Alertas","Métricas","Monitoramento","Auditoria","Qualidade","Usuários","Extensão LinkedIn","Gmail RadarVagas","Fontes","Importações","Configurações"\]/);
+  assert.match(
+    dashboard,
+    /const nav\s*=\s*\[\s*"Radar",\s*"Pipeline",\s*"Alertas",\s*"Métricas",\s*"Monitoramento",\s*"Auditoria",\s*"Qualidade",\s*"Usuários",\s*"Extensão LinkedIn",\s*"Gmail RadarVagas",\s*"Fontes",\s*"Importações",\s*"Configurações",?\s*\]/,
+  );
   assert.match(dashboard, /fetch\(`\/api\/jobs\?limit=250&period=\$\{period\}`\)/);
   assert.match(dashboard, /Últimas 24h/);
   assert.match(dashboard, /Últimos 7 dias/);
@@ -18,12 +21,12 @@ test("dashboard oferece radar, perfil e pipeline persistente", async () => {
   assert.match(dashboard, /gmail-radarvagas\.gs/);
   assert.match(dashboard, /DESCRIÇÃO DA VAGA/);
   assert.match(dashboard, /Copiar descrição/);
-  assert.match(dashboard, /outra ferramenta externa/);
+  assert.match(dashboard, /outra ferramenta\s+externa/);
   assert.doesNotMatch(dashboard, /MENSAGEM SUGERIDA/);
   assert.match(dashboard, /\/api\/jobs\/detail/);
-  assert.match(dashboard, /\[minScore,setMinScore\]=useState\(0\)/);
+  assert.match(dashboard, /\[minScore,\s*setMinScore\]\s*=\s*useState\(0\)/);
   assert.match(dashboard, /Mostrar todas as vagas/);
-  assert.match(dashboard, /selectedJob=filtered\.find/);
+  assert.match(dashboard, /selectedJob\s*=\s*filtered\.find/);
   assert.match(dashboard, /Abrir em tela ampliada/);
   assert.match(dashboard, /Abrir no LinkedIn/);
   assert.match(dashboard, /role="dialog"/);
