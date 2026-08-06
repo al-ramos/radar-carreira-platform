@@ -1,11 +1,14 @@
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { getDb } from "../../../../db/index";
 import { importRuns, jobSources, jobs } from "../../../../db/schema";
 import { normalizeImportedJobs } from "../../../../lib/import-jobs";
-import { fingerprint } from "../../../../lib/jobs";
+import { fingerprint, type ImportedJob } from "../../../../lib/jobs";
 
 export const dynamic = "force-dynamic";
+
 const SOURCE_ID = "linkedin-extension";
+const WRITE_BATCH_SIZE = 50;
+const LOOKUP_BATCH_SIZE = 100;
 const digest = async (value: string) => Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)))).map(byte => byte.toString(16).padStart(2, "0")).join("");
 const CORS_HEADERS = {
   "access-control-allow-origin": "*",
@@ -15,6 +18,31 @@ const CORS_HEADERS = {
 };
 const json = (body: unknown, init?: ResponseInit) => Response.json(body, { ...init, headers: { ...CORS_HEADERS, ...init?.headers } });
 
+const chunks = <T,>(values: T[], size: number) => Array.from({ length: Math.ceil(values.length / size) }, (_, index) => values.slice(index * size, (index + 1) * size));
+
+function valuesFor(job: ImportedJob, now: Date) {
+  return {
+    id: crypto.randomUUID(),
+    fingerprint: fingerprint(job),
+    sourceId: SOURCE_ID,
+    externalId: job.externalId ?? null,
+    company: job.company,
+    title: job.title,
+    seniority: job.seniority ?? null,
+    workMode: job.workMode ?? null,
+    location: job.location ?? null,
+    stack: JSON.stringify(job.stack ?? []),
+    publishedAt: job.publishedAt ? new Date(job.publishedAt) : null,
+    url: job.url,
+    description: job.description ?? "",
+    firstSeenAt: now,
+    lastSeenAt: now,
+    status: "active" as const,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
 export async function OPTIONS() {
   return new Response(null, { status: 204, headers: CORS_HEADERS });
 }
@@ -22,26 +50,68 @@ export async function OPTIONS() {
 export async function POST(request: Request) {
   const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim();
   if (!token) return json({ error: "Chave do coletor ausente" }, { status: 401 });
+
   const db = getDb();
   const source = (await db.select().from(jobSources).where(eq(jobSources.id, SOURCE_ID)).limit(1))[0];
   let config: { hash?: string; userId?: string } = {};
-  try { config = source ? JSON.parse(source.externalRef) as typeof config : {}; } catch { /* invalidated integration */ }
+  try { config = source ? JSON.parse(source.externalRef) as typeof config : {}; } catch { /* integração inválida */ }
   if (!source || !source.enabled || !config.hash || config.hash !== await digest(token)) return json({ error: "Chave do coletor inválida" }, { status: 401 });
+
   const payload = await request.json().catch(() => null) as { action?: string; jobs?: unknown[] } | null;
   if (payload?.action === "test") return json({ ok: true, connected: true });
   const items = normalizeImportedJobs(Array.isArray(payload?.jobs) ? payload.jobs : []);
   if (!items.length) return json({ error: "Nenhuma vaga válida recebida" }, { status: 400 });
   if (items.length > 2000) return json({ error: "O limite é de 2.000 vagas por envio" }, { status: 400 });
-  const runId = crypto.randomUUID(), startedAt = new Date();
-  await db.insert(importRuns).values({ id: runId, source: "Extensão LinkedIn", status: "running", received: items.length, actorUserId: config.userId ?? "collector", startedAt });
-  let inserted = 0, updated = 0;
-  for (const job of items) {
-    const fp = fingerprint(job), now = new Date(), existing = (await db.select({ id: jobs.id }).from(jobs).where(eq(jobs.fingerprint, fp)).limit(1))[0];
-    const values = { id: existing?.id ?? crypto.randomUUID(), fingerprint: fp, sourceId: SOURCE_ID, externalId: job.externalId ?? null, company: job.company, title: job.title, seniority: job.seniority ?? null, workMode: job.workMode ?? null, location: job.location ?? null, stack: JSON.stringify(job.stack ?? []), publishedAt: job.publishedAt ? new Date(job.publishedAt) : null, url: job.url, description: job.description ?? "", firstSeenAt: now, lastSeenAt: now, status: "active" as const, createdAt: now, updatedAt: now };
-    await db.insert(jobs).values(values).onConflictDoUpdate({ target: jobs.fingerprint, set: { sourceId: SOURCE_ID, externalId: values.externalId, company: values.company, title: values.title, seniority: values.seniority, workMode: values.workMode, location: values.location, stack: values.stack, publishedAt: values.publishedAt, url: values.url, description: values.description, lastSeenAt: now, status: "active", updatedAt: now } });
-    if (existing) updated++; else inserted++;
+
+  const entries = [...new Map(items.map(job => [fingerprint(job), job])).entries()].map(([fp, job]) => ({ fp, job }));
+  const duplicateRows = items.length - entries.length;
+  const runId = crypto.randomUUID();
+  const startedAt = new Date();
+  await db.insert(importRuns).values({ id: runId, source: "Extensão LinkedIn", status: "running", received: items.length, duplicates: duplicateRows, actorUserId: config.userId ?? "collector", startedAt });
+
+  let inserted = 0;
+  let updated = 0;
+  try {
+    const existing = new Set<string>();
+    for (const batch of chunks(entries.map(entry => entry.fp), LOOKUP_BATCH_SIZE)) {
+      const rows = await db.select({ fingerprint: jobs.fingerprint }).from(jobs).where(inArray(jobs.fingerprint, batch));
+      rows.forEach(row => existing.add(row.fingerprint));
+    }
+
+    for (const batch of chunks(entries, WRITE_BATCH_SIZE)) {
+      const now = new Date();
+      const statements = batch.map(({ job }) => {
+        const values = valuesFor(job, now);
+        return db.insert(jobs).values(values).onConflictDoUpdate({
+          target: jobs.fingerprint,
+          set: {
+            sourceId: SOURCE_ID,
+            externalId: values.externalId,
+            company: values.company,
+            title: values.title,
+            seniority: values.seniority,
+            workMode: values.workMode,
+            location: values.location,
+            stack: values.stack,
+            publishedAt: values.publishedAt,
+            url: values.url,
+            description: values.description,
+            lastSeenAt: now,
+            status: "active",
+            updatedAt: now,
+          },
+        });
+      });
+      await db.batch(statements as [typeof statements[number], ...typeof statements[number][]]);
+      batch.forEach(entry => existing.has(entry.fp) ? updated++ : inserted++);
+      await db.update(importRuns).set({ inserted, updated, duplicates: duplicateRows }).where(eq(importRuns.id, runId));
+    }
+
+    await db.update(importRuns).set({ status: "completed", inserted, updated, duplicates: duplicateRows, finishedAt: new Date() }).where(eq(importRuns.id, runId));
+    await db.update(jobSources).set({ lastRunAt: new Date() }).where(eq(jobSources.id, SOURCE_ID));
+    return json({ ok: true, accepted: entries.length, received: items.length, duplicates: duplicateRows, rejected: 0, inserted, updated });
+  } catch {
+    await db.update(importRuns).set({ status: "failed", inserted, updated, duplicates: duplicateRows, errors: 1, finishedAt: new Date() }).where(eq(importRuns.id, runId)).catch(() => undefined);
+    return json({ error: "A importação foi interrompida. Reenvie o mesmo lote para concluir as vagas pendentes.", runId, inserted, updated }, { status: 500 });
   }
-  await db.update(importRuns).set({ status: "completed", inserted, updated, finishedAt: new Date() }).where(eq(importRuns.id, runId));
-  await db.update(jobSources).set({ lastRunAt: new Date() }).where(eq(jobSources.id, SOURCE_ID));
-  return json({ ok: true, accepted: items.length, rejected: 0, inserted, updated });
 }

@@ -14,3 +14,12 @@ test("endpoint da extensão LinkedIn responde ao preflight CORS", async()=>{
  assert.match(source,/access-control-allow-headers/);
  assert.match(source,/request\.method === "OPTIONS"/);
 });
+
+test("importação da extensão processa vagas em lotes e registra o progresso", async()=>{
+ const source=await readFile(new URL("../app/api/collector/import/route.ts",import.meta.url),"utf8");
+ assert.match(source,/WRITE_BATCH_SIZE = 50/);
+ assert.match(source,/LOOKUP_BATCH_SIZE = 100/);
+ assert.match(source,/await db\.batch\(/);
+ assert.match(source,/status: "failed"/);
+ assert.match(source,/duplicates: duplicateRows/);
+});
