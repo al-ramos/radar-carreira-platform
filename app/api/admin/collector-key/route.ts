@@ -1,0 +1,36 @@
+import { eq } from "drizzle-orm";
+import { getChatGPTUser } from "../../../chatgpt-auth";
+import { getDb } from "../../../../db/index";
+import { jobSources, profiles } from "../../../../db/schema";
+
+export const dynamic = "force-dynamic";
+const ADMIN_EMAILS = new Set(["contato@amrsolution.com.br", "alexsandro.ramos@gmail.com", "prof.andreiamr@gmail.com"]);
+const SOURCE_ID = "linkedin-extension";
+async function admin() {
+  const user = await getChatGPTUser();
+  if (!user) return null;
+  if (ADMIN_EMAILS.has(user.email.toLowerCase())) return user;
+  const profile = (await getDb().select({ role: profiles.role }).from(profiles).where(eq(profiles.userId, user.userId)).limit(1))[0];
+  return profile?.role === "admin" ? user : null;
+}
+async function digest(value: string) {
+  return Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)))).map(byte => byte.toString(16).padStart(2, "0")).join("");
+}
+
+export async function GET() {
+  if (!await admin()) return Response.json({ error: "Acesso de administrador necessário" }, { status: 403 });
+  const source = (await getDb().select({ id: jobSources.id }).from(jobSources).where(eq(jobSources.id, SOURCE_ID)).limit(1))[0];
+  return Response.json({ configured: Boolean(source) });
+}
+
+export async function POST(request: Request) {
+  const user = await admin();
+  if (!user) return Response.json({ error: "Acesso de administrador necessário" }, { status: 403 });
+  const body = await request.json().catch(() => null) as { key?: string } | null;
+  const key = body?.key?.trim() ?? "";
+  if (key.length < 32) return Response.json({ error: "Gere uma chave segura antes de salvá-la" }, { status: 400 });
+  const now = new Date();
+  const values = { id: SOURCE_ID, name: "Extensão LinkedIn", provider: "manual" as const, externalRef: JSON.stringify({ hash: await digest(key), userId: user.userId, createdAt: now.toISOString() }), enabled: true, lastRunAt: null, createdAt: now };
+  await getDb().insert(jobSources).values(values).onConflictDoUpdate({ target: jobSources.id, set: { externalRef: values.externalRef, enabled: true } });
+  return Response.json({ ok: true });
+}
