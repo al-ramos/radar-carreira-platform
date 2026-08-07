@@ -406,11 +406,14 @@ export default function Dashboard() {
   const filtered = useMemo(
     () =>
       items.filter((j) => {
-        const text =
-          `${j.title} ${j.company} ${j.location} ${j.seniority ?? ""} ${j.stack.join(" ")} ${j.description ?? ""}`.toLowerCase();
+        // A busca principal promete cargo, empresa ou tecnologia. Não usamos a
+        // descrição aqui: palavras comuns no texto longo (como "squad") faziam
+        // parecer que o campo não estava filtrando a lista.
+        const text = `${j.title} ${j.company} ${j.location} ${j.seniority ?? ""} ${j.stack.join(" ")}`.toLowerCase();
+        const searchQuery = query.trim().toLowerCase();
         return (
           j.score >= effectiveMinScore &&
-          text.includes(query.toLowerCase()) &&
+          (!searchQuery || text.includes(searchQuery)) &&
           (!stackFilter ||
             j.stack.some(
               (stack) => stack.toLowerCase() === stackFilter.toLowerCase(),
