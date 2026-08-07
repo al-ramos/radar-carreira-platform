@@ -934,6 +934,7 @@ export default function Dashboard() {
     canManageSources = isOwner,
     visibleNav = nav.filter((item) => {
       if (item === "Fontes" || item === "Importações") return canManageSources;
+      if (item === "Auditoria" || item === "Extensão LinkedIn") return isOwner;
       return (
         (isAdmin && (item !== "Usuários" || isOwner)) ||
         !new Set([

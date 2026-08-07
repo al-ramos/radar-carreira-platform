@@ -1,17 +1,15 @@
 import { eq } from "drizzle-orm";
 import { getChatGPTUser } from "../../../chatgpt-auth";
+import { isOwnerEmail } from "../../../../lib/access";
 import { getDb } from "../../../../db/index";
-import { jobSources, profiles } from "../../../../db/schema";
+import { jobSources } from "../../../../db/schema";
 
 export const dynamic = "force-dynamic";
-const ADMIN_EMAILS = new Set(["contato@amrsolution.com.br", "alexsandro.ramos@gmail.com", "prof.andreiamr@gmail.com"]);
 const SOURCE_ID = "linkedin-extension";
 async function admin() {
   const user = await getChatGPTUser();
   if (!user) return null;
-  if (ADMIN_EMAILS.has(user.email.toLowerCase())) return user;
-  const profile = (await getDb().select({ role: profiles.role }).from(profiles).where(eq(profiles.userId, user.userId)).limit(1))[0];
-  return profile?.role === "admin" ? user : null;
+  return isOwnerEmail(user.email) ? user : null;
 }
 async function digest(value: string) {
   return Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)))).map(byte => byte.toString(16).padStart(2, "0")).join("");
