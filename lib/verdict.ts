@@ -112,12 +112,17 @@ function detectSeniority(title: string, text: string): { status: string; ok: boo
   return { status: "Não especificado — provável Pleno/Sênior", ok: null };
 }
 
-function detectStack(text: string, jobStack: string[]): { status: string; ok: boolean | null } {
+function detectStack(text: string, jobStack: string[], userSkills?: string[]): { status: string; ok: boolean | null } {
   const combined = `${text} ${jobStack.join(" ")}`.toLowerCase();
-  const hits = CANDIDATE_STACK.filter((s) => combined.includes(s));
-  if (hits.length >= 3) return { status: `${hits.slice(0, 4).map((s) => s.toUpperCase().replace(".", "")).join(", ")} ✅`, ok: true };
-  if (hits.length >= 1) return { status: `${hits.map((s) => s.toUpperCase().replace(".", "")).join(", ")} — fit parcial`, ok: null };
-  return { status: "Sem aderência clara ao stack .NET", ok: false };
+  // Usa skills do perfil do usuário quando disponíveis; caso contrário, usa a lista fixa
+  const skillList = (userSkills && userSkills.length > 0)
+    ? userSkills.map((s) => s.toLowerCase())
+    : CANDIDATE_STACK;
+  const hits = skillList.filter((s) => combined.includes(s));
+  const threshold = userSkills && userSkills.length > 0 ? Math.max(2, Math.ceil(userSkills.length * 0.25)) : 3;
+  if (hits.length >= threshold) return { status: `${hits.slice(0, 4).map((s) => s.toUpperCase()).join(", ")} ✅`, ok: true };
+  if (hits.length >= 1) return { status: `${hits.slice(0, 3).map((s) => s.toUpperCase()).join(", ")} — fit parcial`, ok: null };
+  return { status: "Sem aderência clara ao seu stack", ok: false };
 }
 
 function detectLanguageReq(text: string): { status: string; ok: boolean | null } {
@@ -148,7 +153,7 @@ export function computeVerdict(job: {
   stack: string[];
   seniority?: string | null;
   workMode?: string | null;
-}): VerdictResult {
+}, userSkills?: string[]): VerdictResult {
   const fullText = `${job.title} ${job.description}`;
   const lc = fullText.toLowerCase();
 
@@ -165,7 +170,7 @@ export function computeVerdict(job: {
         : "Vaga em espanhol (LATAM)";
 
     const langRow = detectLanguageReq(fullText);
-    const stackRow = detectStack(lc, job.stack);
+    const stackRow = detectStack(lc, job.stack, userSkills);
     const workRow = detectWorkMode(lc);
     const contrRow = detectContratacao(lc);
     const seniorRow = detectSeniority(job.title, lc);
@@ -187,7 +192,7 @@ export function computeVerdict(job: {
   }
 
   // 2. Avalia critérios normais
-  const stackRow = detectStack(lc, job.stack);
+  const stackRow = detectStack(lc, job.stack, userSkills);
   const workRow = detectWorkMode(lc);
   const contrRow = detectContratacao(lc);
   const seniorRow = detectSeniority(job.title, lc);
