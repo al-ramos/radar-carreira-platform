@@ -457,3 +457,95 @@
   border-radius: 99px;
   transition: width .3s;
 }
+
+/* ─── Aderência mínima: slider de 10 em 10% ──────────────────── */
+.fit-filter {
+  min-width: 200px;
+  flex: 0 0 auto;
+}
+.fit-filter-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.fit-filter-head strong {
+  font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+  transition: color .2s;
+}
+.fit-filter-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  min-height: 4px;
+  border-radius: 99px;
+  margin: 8px 0 1px;
+  cursor: pointer;
+  outline: none;
+  background: linear-gradient(
+    to right,
+    var(--fit-color, #173f32) 0%,
+    var(--fit-color, #173f32) var(--fit-fill, 0%),
+    #e0e8dc var(--fit-fill, 0%),
+    #e0e8dc 100%
+  );
+  transition: background .15s;
+}
+.fit-filter-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--fit-color, #173f32);
+  box-shadow: 0 1px 3px rgba(0,0,0,.25);
+  cursor: pointer;
+}
+.fit-filter-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--fit-color, #173f32);
+  box-shadow: 0 1px 3px rgba(0,0,0,.25);
+  cursor: pointer;
+}
+.fit-filter-slider::-moz-range-track {
+  height: 4px;
+  border-radius: 99px;
+  background: #e0e8dc;
+}
+.fit-filter-slider::-moz-range-progress {
+  height: 4px;
+  border-radius: 99px;
+  background: var(--fit-color, #173f32);
+}
+.fit-filter-slider:focus-visible {
+  box-shadow: 0 0 0 3px #b9dfae55;
+  border-radius: 99px;
+}
+.fit-filter-profile-chip {
+  display: inline-block;
+  background: #fff;
+  border: 1px solid #cad8c5;
+  border-radius: 999px;
+  color: #486154;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 4px 9px;
+  margin-top: 3px;
+  white-space: nowrap;
+  transition: background .15s, border-color .15s, color .15s;
+}
+.fit-filter-profile-chip:hover {
+  border-color: var(--green);
+  color: var(--green);
+}
+.fit-filter-profile-chip.active {
+  background: #173f32;
+  border-color: #173f32;
+  color: #fff;
+}

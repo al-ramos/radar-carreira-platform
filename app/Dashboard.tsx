@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import AlertCenter from "./AlertCenter";
 import Analytics from "./Analytics";
 import Monitoring from "./Monitoring";
@@ -261,9 +261,7 @@ export default function Dashboard() {
     [query, setQuery] = useState(""),
     [items, setItems] = useState<Job[]>(demo),
     [selected, setSelected] = useState<Job>(demo[0]),
-    [fitFilter, setFitFilter] = useState<"profile" | "all" | "70" | "80">(
-      "all",
-    ),
+    [fitFilter, setFitFilter] = useState<"profile" | number>(0),
     [period, setPeriod] = useState<string | null>(null),
     [mode, setMode] = useState("preview"),
     [importing, setImporting] = useState(false),
@@ -470,11 +468,13 @@ export default function Dashboard() {
     return map;
   }, [items, profileMasteredSkills]);
   const effectiveMinScore =
-    fitFilter === "profile"
-      ? profileMinScore
-      : fitFilter === "all"
-        ? 0
-        : Number(fitFilter);
+    fitFilter === "profile" ? profileMinScore : fitFilter;
+  /** Cor do trilho do slider — mesmos limiares usados no score das vagas. */
+  const fitFilterColor =
+    effectiveMinScore >= 80 ? "#2e6b3e" : effectiveMinScore >= 60 ? "#7a6200" : effectiveMinScore > 0 ? "#b04a1a" : "#173f32";
+  /** Posição do polegar do slider nativo (múltiplo de 10; "profile" arredonda). */
+  const fitFilterSliderValue =
+    fitFilter === "profile" ? Math.round(profileMinScore / 10) * 10 : fitFilter;
   const filtered = useMemo(
     () =>
       items.filter((j) => {
@@ -518,7 +518,7 @@ export default function Dashboard() {
     filtered.find((job) => job.id === selected.id) ?? filtered[0] ?? null;
   function clearRadarFilters() {
     setQuery("");
-    setFitFilter("all");
+    setFitFilter(0);
     setPeriod("all");
     setSourceFilter("all");
   }
@@ -1132,25 +1132,45 @@ export default function Dashboard() {
               <option value="168">Últimos 7 dias</option>
               <option value="all">Todas</option>
             </select>
-            <label className="fit-filter">
-              <span>Aderência mínima</span>
-              <select
-                aria-label="Aderência ao seu perfil"
-                value={fitFilter}
-                onChange={(event) =>
-                  setFitFilter(
-                    event.target.value as "profile" | "all" | "70" | "80",
-                  )
+            <div className="fit-filter">
+              <div className="fit-filter-head">
+                <span>Aderência mínima</span>
+                <strong style={{ color: fitFilterColor }}>
+                  {effectiveMinScore === 0
+                    ? "Todas as vagas"
+                    : `${effectiveMinScore}% ou mais`}
+                </strong>
+              </div>
+              <input
+                type="range"
+                className="fit-filter-slider"
+                aria-label="Aderência mínima ao seu perfil"
+                min={0}
+                max={100}
+                step={10}
+                list="fit-filter-ticks"
+                value={fitFilterSliderValue}
+                onChange={(event) => setFitFilter(Number(event.target.value))}
+                style={
+                  {
+                    "--fit-fill": `${fitFilterSliderValue}%`,
+                    "--fit-color": fitFilterColor,
+                  } as CSSProperties
                 }
+              />
+              <datalist id="fit-filter-ticks">
+                {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((tick) => (
+                  <option key={tick} value={tick} />
+                ))}
+              </datalist>
+              <button
+                type="button"
+                className={`fit-filter-profile-chip${fitFilter === "profile" ? " active" : ""}`}
+                onClick={() => setFitFilter("profile")}
               >
-                <option value="all">Todas as vagas</option>
-                <option value="profile">
-                  Meu perfil ({profileMinScore}% ou mais)
-                </option>
-                <option value="70">70% ou mais</option>
-                <option value="80">80% ou mais</option>
-              </select>
-            </label>
+                ★ Meu perfil ({profileMinScore}% ou mais)
+              </button>
+            </div>
           </div>
         </div>
         <div className="radar-filters-compact" aria-label="Filtros de vagas">
@@ -1318,9 +1338,18 @@ export default function Dashboard() {
                   {loadingMore
                     ? "Carregando…"
                     : totalJobs != null
-                      ? `Carregar mais · ${totalJobs - items.length} vagas restantes`
-                      : "Carregar mais vagas"}
+                      ? `Carregar mais 50 vagas · ${totalJobs - items.length} restantes`
+                      : "Carregar mais 50 vagas"}
                 </button>
+                {typeof fitFilter === "number" && fitFilter < 80 && (
+                  <button
+                    type="button"
+                    className="load-more-refine"
+                    onClick={() => setFitFilter(80)}
+                  >
+                    Ou filtre para aderência de 80% ou mais
+                  </button>
+                )}
               </div>
             )}
             {filtered.length === 0 && (
