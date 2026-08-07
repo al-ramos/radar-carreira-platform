@@ -3,13 +3,21 @@ import { useEffect, useMemo, useState } from "react";
 import { CURATED_SOURCES, QUARANTINED_SOURCES } from "../lib/curated-sources";
 
 type ValidationStatus = "ok" | "empty" | "mismatch" | "error";
-type Source = { id: string; name: string; provider: string; collectionMode: "pull" | "push"; enabled: boolean; lastRunAt: string | null; lastSuccessAt: string | null; lastError: string | null; consecutiveFailures: number; canCollect: boolean; catalogId?: string; validationStatus: ValidationStatus | null; foundName?: string };
+type Source = { id: string; name: string; provider: string; collectionMode: "pull" | "push"; enabled: boolean; lastRunAt: string | null; lastSuccessAt: string | null; lastError: string | null; consecutiveFailures: number; canCollect: boolean; catalogId?: string; validationStatus: ValidationStatus | null; foundName?: string; lastValidated: string | null };
 type Props = { onStart: (catalogId: string, name: string) => Promise<void>; onActivateAll: () => Promise<void>; refreshKey?: number };
+
+type RevalidateResult = { validated: number; ok: number; empty: number; mismatch: number; error: number };
 
 const PROVIDER_LABELS: Record<string, string> = { greenhouse: "Greenhouse", ashby: "Ashby", lever: "Lever" };
 const PROVIDER_ICONS: Record<string, string> = { greenhouse: "🌱", ashby: "🔷", lever: "⚡" };
 const providerIcon = (p: string) => PROVIDER_ICONS[p] ?? "🔗";
 const providerLabel = (p: string) => PROVIDER_LABELS[p] ?? p;
+
+function daysSince(isoOrMs: string | null): number | null {
+  if (!isoOrMs) return null;
+  const ms = Date.now() - new Date(isoOrMs).getTime();
+  return Math.floor(ms / 86_400_000);
+}
 
 export default function SourceList({ onStart, onActivateAll, refreshKey = 0 }: Props) {
   const [sources, setSources] = useState<Source[]>([]);
@@ -17,6 +25,8 @@ export default function SourceList({ onStart, onActivateAll, refreshKey = 0 }: P
   const [query, setQuery] = useState("");
   const [starting, setStarting] = useState("");
   const [activating, setActivating] = useState(false);
+  const [revalidating, setRevalidating] = useState(false);
+  const [revalidateResult, setRevalidateResult] = useState<RevalidateResult | null>(null);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
@@ -32,6 +42,25 @@ export default function SourceList({ onStart, onActivateAll, refreshKey = 0 }: P
 
   async function start(catalogId: string, name: string) { setStarting(catalogId); try { await onStart(catalogId, name); } finally { setStarting(""); } }
   async function activateAll() { setActivating(true); try { await onActivateAll(); } finally { setActivating(false); } }
+
+  async function revalidateAll() {
+    setRevalidating(true);
+    setRevalidateResult(null);
+    try {
+      const r = await fetch("/api/admin/sources/revalidate", { method: "POST" });
+      if (r.ok) {
+        const result = await r.json() as RevalidateResult;
+        setRevalidateResult(result);
+        // Refresh source list to reflect updated validationStatus / lastValidated
+        const fresh = await fetch("/api/admin/sources");
+        if (fresh.ok) { const d = await fresh.json() as { sources: Source[] }; setSources(d.sources); }
+      } else {
+        setStatus("Erro ao revalidar fontes.");
+      }
+    } finally {
+      setRevalidating(false);
+    }
+  }
 
   const normalized = query.trim().toLocaleLowerCase("pt-BR");
   const configured = new Map(sources.filter(s => s.catalogId).map(s => [s.catalogId, s]));
@@ -74,9 +103,23 @@ export default function SourceList({ onStart, onActivateAll, refreshKey = 0 }: P
       <section className="source-group source-catalog">
         <h3>Empresas prontas para coletar <span>{CURATED_SOURCES.length} verificadas</span></h3>
         <p>Ative o catálogo completo em um clique ou inicie uma empresa específica.</p>
-        <button className="activate-catalog" disabled={activating || hasMismatch} title={hasMismatch ? "Resolva os conflitos de nome antes de ativar o catálogo" : undefined} onClick={() => void activateAll()}>
-          {activating ? "Ativando catálogo…" : "Ativar catálogo completo"}
-        </button>
+        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
+          <button className="activate-catalog" disabled={activating || hasMismatch} title={hasMismatch ? "Resolva os conflitos de nome antes de ativar o catálogo" : undefined} onClick={() => void activateAll()}>
+            {activating ? "Ativando catálogo…" : "Ativar catálogo completo"}
+          </button>
+          <button className="activate-catalog" disabled={revalidating} onClick={() => void revalidateAll()} style={{ background: revalidating ? undefined : "var(--color-secondary, #6366f1)" }}>
+            {revalidating ? "⏳ Revalidando…" : "Revalidar todas"}
+          </button>
+        </div>
+        {revalidateResult && (
+          <div className="notice" style={{ marginTop: "0.5rem" }}>
+            ✅ {revalidateResult.ok} ok
+            {revalidateResult.empty > 0 && <> · 🟡 {revalidateResult.empty} sem vagas</>}
+            {revalidateResult.mismatch > 0 && <> · ⚠️ {revalidateResult.mismatch} mismatch</>}
+            {revalidateResult.error > 0 && <> · ❌ {revalidateResult.error} erro</>}
+            {" "}({revalidateResult.validated} verificadas)
+          </div>
+        )}
         <input className="source-search" value={query} onChange={e => setQuery(e.target.value)} placeholder="Buscar empresa no catálogo" aria-label="Buscar empresa no catálogo" />
 
         {noResults && <div className="source-empty">Nenhuma empresa encontrada no catálogo.</div>}
@@ -97,6 +140,7 @@ export default function SourceList({ onStart, onActivateAll, refreshKey = 0 }: P
               {open && visible.map(source => {
                 const registered = configured.get(source.id);
                 const isMismatch = registered?.validationStatus === "mismatch";
+                const days = daysSince(registered?.lastValidated ?? null);
                 return (
                   <article key={source.id}>
                     <i className={isMismatch ? "mismatch" : registered?.lastError ? "warn" : registered?.enabled ? "on" : "off"} />
@@ -104,6 +148,7 @@ export default function SourceList({ onStart, onActivateAll, refreshKey = 0 }: P
                       <b>{source.name}</b>
                       <small>
                         {registered?.lastSuccessAt ? `última coleta: ${new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(registered.lastSuccessAt))}` : "Pronta para a primeira coleta"}
+                        {days !== null && <> · verificada há {days === 0 ? "menos de 1 dia" : `${days} dia${days === 1 ? "" : "s"}`}</>}
                         {isMismatch && <><br />⚠ Retornou: {registered!.foundName}</>}
                         {!isMismatch && registered?.lastError && <><br />Última falha: {registered.lastError}</>}
                       </small>

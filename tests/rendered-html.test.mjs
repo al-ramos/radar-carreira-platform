@@ -10,7 +10,7 @@ test("dashboard oferece radar, perfil e pipeline persistente", async () => {
     dashboard,
     /const nav\s*=\s*\[\s*"Radar",\s*"Pipeline",\s*"Alertas",\s*"Métricas",\s*"Monitoramento",\s*"Auditoria",\s*"Qualidade",\s*"Usuários",\s*"Extensão LinkedIn",\s*"Gmail RadarVagas",\s*"Fontes",\s*"Importações",\s*"Configurações",?\s*\]/,
   );
-  assert.match(dashboard, /fetch\(`\/api\/jobs\?limit=250\$\{period \? `&period=\$\{period\}` : ""\}`\)/);
+  assert.match(dashboard, /fetch\(`\/api\/jobs\?page=1&limit=50/);
   assert.match(dashboard, /Últimas 24h/);
   assert.match(dashboard, /Últimos 7 dias/);
   assert.match(dashboard, /Todas as vagas/);
@@ -32,7 +32,7 @@ test("dashboard oferece radar, perfil e pipeline persistente", async () => {
   assert.match(dashboard, /Mostrar todas as vagas/);
   assert.match(dashboard, /selectedJob\s*=\s*filtered\.find/);
   assert.match(dashboard, /Abrir em tela ampliada/);
-  assert.match(dashboard, /Abrir no LinkedIn/);
+  assert.match(dashboard, /Candidatar via LinkedIn/);
   assert.match(dashboard, /role="dialog"/);
   assert.match(dashboard, /setDetailJob\(job\)/);
   assert.match(dashboard, /Tecnologias da vaga/);

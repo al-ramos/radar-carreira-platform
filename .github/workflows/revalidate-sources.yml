@@ -1,0 +1,16 @@
+name: Revalidar fontes
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'  # toda segunda-feira às 6h UTC (3h Brasília)
+  workflow_dispatch:       # permite rodar manualmente
+
+jobs:
+  revalidate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Chamar endpoint de revalidação
+        run: |
+          curl -X POST \
+            -H "Authorization: Bearer ${{ secrets.REVALIDATION_SECRET }}" \
+            https://radar-carreira-almir-v2.prof-andreiamr.chatgpt.site/api/admin/sources/revalidate
