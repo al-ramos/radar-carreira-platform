@@ -186,6 +186,19 @@ const nav = [
 // importados por e-mail (Gmail RadarVagas).
 const isLinkedInJob = (job: Job) =>
   Boolean(job.url && /linkedin\.com/i.test(job.url));
+
+// Infere o provider da vaga pela URL para exibir o rótulo correto no botão
+// de candidatura — sem necessidade de JOIN com a tabela de fontes.
+function jobProviderLabel(job: Job): string {
+  if (!job.url) return "Ver vaga";
+  if (/linkedin\.com/i.test(job.url)) return "Candidatar via LinkedIn";
+  if (/greenhouse\.io/i.test(job.url)) return "Candidatar via Greenhouse";
+  if (/lever\.co/i.test(job.url)) return "Candidatar via Lever";
+  if (/ashbyhq\.com/i.test(job.url)) return "Candidatar via Ashby";
+  if (/gupy\.io/i.test(job.url)) return "Candidatar via Gupy";
+  if (/quickin\.com\.br/i.test(job.url)) return "Candidatar via Quickin";
+  return "Ver vaga ↗";
+}
 const adapt = (j: ApiJob): Job => ({
   id: j.id,
   score: j.score ?? 70,
@@ -243,6 +256,11 @@ export default function Dashboard() {
   const [totalOtherSources, setTotalOtherSources] = useState<number | null>(
     null,
   );
+  const [sourcesCount, setSourcesCount] = useState<number | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [profileMasteredSkills, setProfileMasteredSkills] = useState<string[]>([]);
   const [sourceFilter, setSourceFilter] = useState<"all" | "linkedin" | "other">(
     "all",
   );
@@ -290,13 +308,15 @@ export default function Dashboard() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
   useEffect(() => {
-    fetch(`/api/jobs?limit=250${period ? `&period=${period}` : ""}`)
+    const sourceParam = sourceFilter !== "all" ? `&sourceType=${sourceFilter}` : "";
+    fetch(`/api/jobs?page=1&limit=50${period ? `&period=${period}` : ""}${sourceParam}`)
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((data) => {
         const next = (data.jobs ?? [])
           .map(adapt)
           .sort((a: Job, b: Job) => b.score - a.score);
         setItems(next);
+        setCurrentPage(1);
         if (next.length) setSelected(next[0]);
         setTotalJobs(typeof data.total === "number" ? data.total : next.length);
         setTotalLinkedIn(
@@ -307,17 +327,22 @@ export default function Dashboard() {
             ? data.totalOtherSources
             : null,
         );
+        setSourcesCount(typeof data.sourcesCount === "number" ? data.sourcesCount : null);
+        setHasMore(data.hasMore === true);
         setPeriod((current) => current ?? data.period ?? "24");
         setMode("database");
       })
       .catch(() => setMode("preview"));
-  }, [period]);
+  }, [period, sourceFilter]);
   useEffect(() => {
     fetch("/api/profile")
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((data) => {
         setCurrentUser(data.user);
         setProfileMinScore(Number(data.profile?.minScore ?? 60));
+        if (Array.isArray(data.profile?.masteredSkills)) {
+          setProfileMasteredSkills(data.profile.masteredSkills as string[]);
+        }
       })
       .catch(() => setCurrentUser(null));
   }, []);
@@ -398,6 +423,28 @@ export default function Dashboard() {
     setSeniorityFilter("");
     setWorkModeFilter("");
     setSourceFilter("all");
+  }
+  async function loadMoreJobs() {
+    setLoadingMore(true);
+    try {
+      const nextPage = currentPage + 1;
+      const sourceParam = sourceFilter !== "all" ? `&sourceType=${sourceFilter}` : "";
+      const r = await fetch(
+        `/api/jobs?page=${nextPage}&limit=50${period ? `&period=${period}` : ""}${sourceParam}`,
+      );
+      if (!r.ok) return;
+      const data = await r.json();
+      const next: Job[] = (data.jobs ?? []).map(adapt);
+      setItems((current) => {
+        const existingIds = new Set(current.map((j) => j.id));
+        const newItems = next.filter((j) => !existingIds.has(j.id));
+        return [...current, ...newItems].sort((a, b) => b.score - a.score);
+      });
+      setCurrentPage(nextPage);
+      setHasMore(data.hasMore === true);
+    } finally {
+      setLoadingMore(false);
+    }
   }
   async function runImport() {
     setMessage("Importando…");
@@ -519,8 +566,9 @@ export default function Dashboard() {
     const result = `${received} encontradas: ${inserted} novas e ${updated} atualizadas.`;
     setMessage(errors ? `${result} ${errors} fonte(s) falharam — consulte Monitoramento.` : result);
     setSourceVersion((version) => version + 1);
+    const sourceParam = sourceFilter !== "all" ? `&sourceType=${sourceFilter}` : "";
     const jobsResponse = await fetch(
-      `/api/jobs?limit=250${period ? `&period=${period}` : ""}`,
+      `/api/jobs?page=1&limit=50${period ? `&period=${period}` : ""}${sourceParam}`,
     );
     if (jobsResponse.ok) {
       const jobsData = await jobsResponse.json();
@@ -528,10 +576,13 @@ export default function Dashboard() {
         .map(adapt)
         .sort((a: Job, b: Job) => b.score - a.score);
       setItems(next);
+      setCurrentPage(1);
       if (next.length) setSelected(next[0]);
       setTotalJobs(
         typeof jobsData.total === "number" ? jobsData.total : next.length,
       );
+      setSourcesCount(typeof jobsData.sourcesCount === "number" ? jobsData.sourcesCount : null);
+      setHasMore(jobsData.hasMore === true);
     }
   }
   async function activateCatalog() {
@@ -826,7 +877,18 @@ export default function Dashboard() {
                 ? `Seu radar de hoje${currentUser ? `, ${userName.split(" ")[0]}` : ""}`
                 : active}
             </h1>
-            <p>Oportunidades ordenadas pela aderência ao seu perfil.</p>
+            <p>
+              {period === "24"
+                ? "Últimas 24h"
+                : period === "72"
+                  ? "Últimos 3 dias"
+                  : period === "168"
+                    ? "Últimos 7 dias"
+                    : "Todas as vagas"}
+              {sourcesCount !== null && sourcesCount > 0
+                ? ` · ${sourcesCount} fonte${sourcesCount !== 1 ? "s" : ""} ativa${sourcesCount !== 1 ? "s" : ""}`
+                : ""}
+            </p>
           </div>
           <div className="header-actions">
             {!currentUser && (
@@ -911,6 +973,12 @@ export default function Dashboard() {
             </select>
             <label className="fit-filter">
               Aderência
+              {fitFilter !== "profile" && fitFilter !== "all" && (
+                <em className="filter-chip">≥{fitFilter}%</em>
+              )}
+              {fitFilter === "profile" && (
+                <em className="filter-chip filter-chip--profile">≥{profileMinScore}% perfil</em>
+              )}
               <select
                 aria-label="Aderência ao seu perfil"
                 value={fitFilter}
@@ -934,21 +1002,30 @@ export default function Dashboard() {
           <div className="radar-filter-copy"><span>Filtros avançados</span><small>Combine tecnologia, nível e modalidade</small></div>
           <div className="radar-filter-fields">
             <label className="radar-filter-field">
-              <span>Tecnologia</span>
+              <span>
+                Tecnologia
+                {stackFilter && <em className="filter-chip">{stackFilter} ×</em>}
+              </span>
               <select aria-label="Filtrar por tecnologia" value={stackFilter} onChange={(event) => setStackFilter(event.target.value)}>
                 <option value="">Todas</option>
                 {stackFilterOptions.map((option) => <option value={option} key={option}>{option}</option>)}
               </select>
             </label>
             <label className="radar-filter-field">
-              <span>Senioridade</span>
+              <span>
+                Senioridade
+                {seniorityFilter && <em className="filter-chip">{seniorityFilter} ×</em>}
+              </span>
               <select aria-label="Filtrar por senioridade" value={seniorityFilter} onChange={(event) => setSeniorityFilter(event.target.value)}>
                 <option value="">Todas</option>
                 {seniorityFilterOptions.map((option) => <option value={option} key={option}>{option}</option>)}
               </select>
             </label>
             <label className="radar-filter-field">
-              <span>Modalidade</span>
+              <span>
+                Modalidade
+                {workModeFilter && <em className="filter-chip">{workModeFilter} ×</em>}
+              </span>
               <select aria-label="Filtrar por modalidade" value={workModeFilter} onChange={(event) => setWorkModeFilter(event.target.value)}>
                 <option value="">Todas</option>
                 {["Remoto", "Híbrido", "Presencial"].map((option) => <option value={option} key={option}>{option}</option>)}
@@ -958,6 +1035,7 @@ export default function Dashboard() {
           {(stackFilter || seniorityFilter || workModeFilter) && (
             <button
               type="button"
+              className="clear-filters-btn"
               onClick={() => {
                 setStackFilter("");
                 setSeniorityFilter("");
@@ -972,7 +1050,9 @@ export default function Dashboard() {
           <div className="job-list">
             <div className="list-head">
               <span>
-                {filtered.length} de {items.length} vagas carregadas exibidas
+                Exibindo{" "}
+                <strong>{filtered.length}</strong> de{" "}
+                <strong>{totalJobs ?? items.length}</strong> vagas
                 {sourceFilter !== "all" &&
                   (sourceFilter === "linkedin"
                     ? " · só LinkedIn"
@@ -1012,6 +1092,17 @@ export default function Dashboard() {
                 <span>♡</span>
               </button>
             ))}
+            {hasMore && filtered.length > 0 && (
+              <div className="load-more-row">
+                <button
+                  className="load-more-btn"
+                  onClick={() => void loadMoreJobs()}
+                  disabled={loadingMore}
+                >
+                  {loadingMore ? "Carregando…" : `Carregar mais vagas (${items.length} de ${totalJobs ?? "?"} carregadas)`}
+                </button>
+              </div>
+            )}
             {filtered.length === 0 && (
               <div className="radar-empty">
                 <strong>Nenhuma vaga corresponde aos filtros atuais.</strong>
@@ -1069,7 +1160,7 @@ export default function Dashboard() {
                     selectedJob.url && open(selectedJob.url, "_blank")
                   }
                 >
-                  LinkedIn ↗
+                  {jobProviderLabel(selectedJob)}
                 </button>
               </div>
               <section className="selected-description">
@@ -1145,12 +1236,32 @@ export default function Dashboard() {
                 <span key={reason}>{reason}</span>
               ))}
             </div>
+            {profileMasteredSkills.length > 0 && (() => {
+              const missingSkills = detailJob.stack
+                .filter(
+                  (skill) =>
+                    !profileMasteredSkills.some(
+                      (s) => s.toLowerCase() === skill.toLowerCase(),
+                    ),
+                )
+                .slice(0, 2);
+              return missingSkills.length > 0 ? (
+                <div className="match-improve">
+                  <h4>COMO MELHORAR</h4>
+                  {missingSkills.map((skill) => (
+                    <span key={skill}>
+                      ＋ Adicionar <strong>{skill}</strong> ao perfil pode aumentar o score nesta vaga
+                    </span>
+                  ))}
+                </div>
+              ) : null;
+            })()}
             <div className="job-detail-buttons">
               <button
                 className="linkedin-action"
                 onClick={() => detailJob.url && open(detailJob.url, "_blank")}
               >
-                Abrir no LinkedIn ↗
+                {jobProviderLabel(detailJob)}
               </button>
               <button className="primary" onClick={() => save(detailJob)}>
                 Salvar oportunidade
