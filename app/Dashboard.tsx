@@ -1030,7 +1030,10 @@ export default function Dashboard() {
                   ? "ÚLTIMOS 3 DIAS"
                   : period === "168"
                     ? "ÚLTIMOS 7 DIAS"
-                    : "TODAS AS VAGAS"}{" "}
+                    : "TODAS AS VAGAS"}
+              {sourcesCount !== null && sourcesCount > 0
+                ? ` · ${sourcesCount} FONTE${sourcesCount !== 1 ? "S" : ""} ATIVA${sourcesCount !== 1 ? "S" : ""}`
+                : ""}{" "}
               · {mode === "database" ? "BANCO ATIVO" : "PRÉVIA LOCAL"}
             </p>
             <h1>
@@ -1038,18 +1041,6 @@ export default function Dashboard() {
                 ? `Seu radar de hoje${currentUser ? `, ${userName.split(" ")[0]}` : ""}`
                 : active}
             </h1>
-            <p>
-              {period === "24"
-                ? "Últimas 24h"
-                : period === "72"
-                  ? "Últimos 3 dias"
-                  : period === "168"
-                    ? "Últimos 7 dias"
-                    : "Todas as vagas"}
-              {sourcesCount !== null && sourcesCount > 0
-                ? ` · ${sourcesCount} fonte${sourcesCount !== 1 ? "s" : ""} ativa${sourcesCount !== 1 ? "s" : ""}`
-                : ""}
-            </p>
           </div>
           <div className="header-actions">
             {!currentUser && (
@@ -1075,43 +1066,44 @@ export default function Dashboard() {
         {message && <div className="notice">{message}</div>}
         <div className="radar-controls">
           <div className="radar-result-summary">
-            <span><strong>{totalJobs ?? items.length}</strong> vagas no período selecionado</span>
-            <span className="radar-source-breakdown">
-              <strong>{totalLinkedIn ?? loadedLinkedIn}</strong> do LinkedIn
-              <b> · </b>
-              <strong>{totalOtherSources ?? loadedOtherSources}</strong> de
-              outras fontes
+            <span>
+              <strong>{totalJobs ?? items.length}</strong> vagas no período selecionado
+              {totalJobs !== null && totalJobs > items.length && (
+                <span className="list-head-dim"> · {items.length} carregadas</span>
+              )}
             </span>
-            {totalJobs !== null && totalJobs > items.length && (
-              <em>Carregadas as {items.length} mais recentes para exibição</em>
-            )}
           </div>
           <div
-            className="radar-source-filter"
+            className="compact-pills"
             role="group"
             aria-label="Filtrar por origem da vaga"
           >
-            <button
-              type="button"
-              className={sourceFilter === "all" ? "active" : ""}
-              onClick={() => setSourceFilter("all")}
-            >
-              Todas
-            </button>
-            <button
-              type="button"
-              className={sourceFilter === "linkedin" ? "active" : ""}
-              onClick={() => setSourceFilter("linkedin")}
-            >
-              LinkedIn ({totalLinkedIn ?? loadedLinkedIn})
-            </button>
-            <button
-              type="button"
-              className={sourceFilter === "other" ? "active" : ""}
-              onClick={() => setSourceFilter("other")}
-            >
-              Outras fontes ({totalOtherSources ?? loadedOtherSources})
-            </button>
+            {(
+              [
+                { id: "all", label: "Todas", count: totalJobs ?? items.length },
+                {
+                  id: "linkedin",
+                  label: "LinkedIn",
+                  count: totalLinkedIn ?? loadedLinkedIn,
+                },
+                {
+                  id: "other",
+                  label: "Outras fontes",
+                  count: totalOtherSources ?? loadedOtherSources,
+                },
+              ] as const
+            ).map(({ id, label, count }) => (
+              <button
+                key={id}
+                type="button"
+                className={sourceFilter === id ? "active" : ""}
+                onClick={() => setSourceFilter(id)}
+                aria-pressed={sourceFilter === id}
+              >
+                {label}
+                {count > 0 && <span>{count}</span>}
+              </button>
+            ))}
           </div>
           <div className="toolbar">
             <div className="search">
