@@ -4,14 +4,20 @@ import { CURATED_SOURCES, QUARANTINED_SOURCES } from "../lib/curated-sources";
 
 type ValidationStatus = "ok" | "empty" | "mismatch" | "error";
 type Source = { id: string; name: string; provider: string; collectionMode: "pull" | "push"; enabled: boolean; lastRunAt: string | null; lastSuccessAt: string | null; lastError: string | null; consecutiveFailures: number; canCollect: boolean; catalogId?: string; validationStatus: ValidationStatus | null; foundName?: string; lastValidated: string | null };
-type Props = { onStart: (catalogId: string, name: string) => Promise<void>; onActivateAll: () => Promise<void>; refreshKey?: number };
+type Props = {
+  onStart: (catalogId: string, name: string) => Promise<void>;
+  onActivateAll: () => Promise<void>;
+  onCollectAll: () => Promise<void>;
+  refreshKey?: number;
+};
 
 type RevalidateResult = { validated: number; ok: number; empty: number; mismatch: number; error: number };
+type SourceView = "catalog" | "configured" | "quarantine" | "integrations";
 
 const PROVIDER_LABELS: Record<string, string> = { greenhouse: "Greenhouse", ashby: "Ashby", lever: "Lever" };
 const providerLabel = (p: string) => PROVIDER_LABELS[p] ?? p;
 
-export default function SourceList({ onStart, onActivateAll, refreshKey = 0 }: Props) {
+export default function SourceList({ onStart, onActivateAll, onCollectAll, refreshKey = 0 }: Props) {
   const [sources, setSources] = useState<Source[]>([]);
   const [status, setStatus] = useState("Carregando catálogo…");
   const [query, setQuery] = useState("");
@@ -20,6 +26,8 @@ export default function SourceList({ onStart, onActivateAll, refreshKey = 0 }: P
   const [revalidating, setRevalidating] = useState(false);
   const [revalidateResult, setRevalidateResult] = useState<RevalidateResult | null>(null);
   const [providerFilter, setProviderFilter] = useState("all");
+  const [activeView, setActiveView] = useState<SourceView>("configured");
+  const [collectingAll, setCollectingAll] = useState(false);
 
   useEffect(() => {
     fetch("/api/admin/sources").then(async r => ({ ok: r.ok, data: await r.json() })).then(({ ok, data }) => {
@@ -34,6 +42,7 @@ export default function SourceList({ onStart, onActivateAll, refreshKey = 0 }: P
 
   async function start(catalogId: string, name: string) { setStarting(catalogId); try { await onStart(catalogId, name); } finally { setStarting(""); } }
   async function activateAll() { setActivating(true); try { await onActivateAll(); } finally { setActivating(false); } }
+  async function collectAll() { setCollectingAll(true); try { await onCollectAll(); } finally { setCollectingAll(false); } }
 
   async function revalidateAll() {
     setRevalidating(true);
@@ -70,7 +79,24 @@ export default function SourceList({ onStart, onActivateAll, refreshKey = 0 }: P
     <section className="source-manager">
       {status && <div className="notice">{status}</div>}
 
-      <section className="source-group source-catalog">
+      <div className="source-workspace-summary">
+        <div>
+          <strong>{pullSources.filter(source => source.enabled).length} fontes ativas</strong>
+          <span>{pullSources.length} empresas cadastradas para coleta automática</span>
+        </div>
+        <button className="primary" disabled={collectingAll || !pullSources.length} onClick={() => void collectAll()}>
+          {collectingAll ? "Coletando…" : "Coletar fontes ativas"}
+        </button>
+      </div>
+
+      <nav className="source-tabs" aria-label="Seções de empresas e integrações">
+        <button className={activeView === "configured" ? "active" : ""} onClick={() => setActiveView("configured")}>Cadastradas <span>{pullSources.length}</span></button>
+        <button className={activeView === "catalog" ? "active" : ""} onClick={() => setActiveView("catalog")}>Explorar catálogo <span>{CURATED_SOURCES.length}</span></button>
+        <button className={activeView === "quarantine" ? "active" : ""} onClick={() => setActiveView("quarantine")}>Quarentena <span>{QUARANTINED_SOURCES.length}</span></button>
+        <button className={activeView === "integrations" ? "active" : ""} onClick={() => setActiveView("integrations")}>Integrações <span>{pushSources.length}</span></button>
+      </nav>
+
+      {activeView === "catalog" && <section className="source-group source-catalog">
         <h3>Empresas prontas para coletar <span>{CURATED_SOURCES.length} verificadas</span></h3>
         <p>Ative o catálogo completo em um clique ou inicie uma empresa específica.</p>
         <div className="source-bulk-actions">
@@ -117,27 +143,27 @@ export default function SourceList({ onStart, onActivateAll, refreshKey = 0 }: P
           })}</tbody>
         </SourceTable>
         {!catalogRows.length && <div className="source-empty">Nenhuma empresa encontrada com esses filtros.</div>}
-      </section>
+      </section>}
 
-      <section className="source-group source-configured">
+      {activeView === "configured" && <section className="source-group source-configured">
         <h3>Empresas cadastradas <span>{pullSources.length}</span></h3>
         <p>Pause uma fonte quando não quiser incluí-la nas coletas em lote.</p>
         <SourceTable><thead><tr><th>Empresa</th><th>Plataforma</th><th>Status</th><th><span className="sr-only">Ação</span></th></tr></thead><tbody>{pullSources.map(source => <tr key={source.id}><td><strong>{source.name}</strong></td><td>{providerLabel(source.provider)}</td><td><span className={`source-status ${source.enabled ? "active" : "paused"}`}>{source.enabled ? "Ativa" : "Pausada"}</span></td><td><button onClick={() => void toggle(source)}>{source.enabled ? "Pausar" : "Reativar"}</button></td></tr>)}</tbody></SourceTable>
         {!pullSources.length && <div className="source-empty">Nenhuma fonte ativada ainda.</div>}
-      </section>
+      </section>}
 
-      <section className="source-group source-quarantine">
+      {activeView === "quarantine" && <section className="source-group source-quarantine">
         <h3>Fontes em quarentena <span>{QUARANTINED_SOURCES.length}</span></h3>
         <p>Retiradas do catálogo por retornar vagas vazias ou de empresa incorreta. Não reativar sem localizar o board correto.</p>
         <SourceTable><thead><tr><th>Empresa</th><th>Plataforma</th><th>Motivo</th></tr></thead><tbody>{QUARANTINED_SOURCES.map(source => <tr key={source.id}><td><strong>{source.name}</strong></td><td>{providerLabel(source.provider)}</td><td>{source.reason}</td></tr>)}</tbody></SourceTable>
-      </section>
+      </section>}
 
-      <section className="source-group">
+      {activeView === "integrations" && <section className="source-group">
         <h3>Integrações de entrada <span>{pushSources.length}</span></h3>
         <p>Recebem vagas enviadas por outros serviços e não participam da coleta automática.</p>
         <SourceTable><thead><tr><th>Integração</th><th>Tipo</th><th>Status</th><th><span className="sr-only">Ação</span></th></tr></thead><tbody>{pushSources.map(source => <tr key={source.id}><td><strong>{source.name}</strong></td><td>{providerLabel(source.provider)}</td><td><span className={`source-status ${source.enabled ? "active" : "paused"}`}>{source.enabled ? "Ativa" : "Pausada"}</span></td><td><button onClick={() => void toggle(source)}>{source.enabled ? "Pausar" : "Reativar"}</button></td></tr>)}</tbody></SourceTable>
         {!pushSources.length && <div className="source-empty">Nenhuma integração configurada.</div>}
-      </section>
+      </section>}
     </section>
   );
 }
