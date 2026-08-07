@@ -41,8 +41,19 @@ export default function LoginPage() {
     }
   }
 
-  return <main className="login-page"><form className="login-card" onSubmit={submit}>
-    <div className="login-brand"><span>R</span><strong>RADAR<br />CARREIRA</strong></div>
+  return <main className="login-page">
+    <section className="login-pitch">
+      <div className="login-brand"><span>R</span><strong>RADAR<br />CARREIRA</strong></div>
+      <h1>Todas as suas vagas, num só lugar</h1>
+      <p>O radar cruza LinkedIn e outras fontes automaticamente, calcula sua aderência a cada vaga e organiza tudo num pipeline — sem você abrir dez abas por dia.</p>
+      <ul className="login-pitch-list">
+        <li><span className="login-pitch-icon">📡</span><div><strong>Vagas de várias fontes</strong><small>LinkedIn e outros sites reunidos automaticamente todo dia.</small></div></li>
+        <li><span className="login-pitch-icon">🎯</span><div><strong>Score de aderência</strong><small>Cada vaga ganha uma nota de match com seu perfil.</small></div></li>
+        <li><span className="login-pitch-icon">🗂️</span><div><strong>Pipeline de candidaturas</strong><small>Acompanhe salvas, candidaturas, entrevistas e encerradas.</small></div></li>
+        <li><span className="login-pitch-icon">🔔</span><div><strong>Alertas e métricas</strong><small>Avisos de novas vagas e visão geral da sua busca.</small></div></li>
+      </ul>
+    </section>
+    <form className="login-card" onSubmit={submit}>
     <p className="eyebrow">ACESSO AO PORTAL</p>
     <h1>{creatingAccount ? "Criar sua conta" : "Entrar no Radar"}</h1>
     <p>{creatingAccount ? "Use seu e-mail e uma senha para começar a acompanhar vagas." : "Administradores entram apenas com a senha. Usuários entram com e-mail e senha."}</p>
@@ -56,5 +67,6 @@ export default function LoginPage() {
     <div className="login-alternative"><span>ou</span></div>
     <a className="login-chatgpt" href="/api/auth/chatgpt?return_to=%2F">Continuar com ChatGPT</a>
     <small className="login-chatgpt-hint">Disponível ao abrir o Radar pela versão hospedada no ChatGPT.</small>
-  </form></main>;
+  </form>
+  </main>;
 }
