@@ -12,6 +12,7 @@ import ProfilePreferences from "./ProfilePreferences";
 import {
   emptyProfileChoices,
   ProfileChoices,
+  SENIORITY_OPTIONS,
   SKILL_OPTIONS,
   WORK_MODE_OPTIONS,
 } from "../lib/profile-options";
@@ -310,9 +311,12 @@ export default function Dashboard() {
     () =>
       [
         ...new Set(
-          items
-            .map((job) => job.seniority)
-            .filter((value): value is string => Boolean(value)),
+          [
+            ...SENIORITY_OPTIONS,
+            ...items
+              .map((job) => job.seniority)
+              .filter((value): value is string => Boolean(value)),
+          ],
         ),
       ].sort((a, b) => a.localeCompare(b, "pt-BR")),
     [items],

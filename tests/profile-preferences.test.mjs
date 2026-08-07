@@ -55,6 +55,7 @@ test("perfil usa checkboxes e o radar expõe filtros de visualização", async (
   assert.match(dashboard, /Modalidade[\s\S]{0,120}<select/);
   assert.match(dashboard, /useState<string \| null>\(null\)/);
   assert.match(dashboard, /data\.period/);
+  assert.match(dashboard, /SENIORITY_OPTIONS/);
   assert.match(dashboard, /event\.key\s*===\s*"Escape"/);
   assert.match(options, /Front-end e mobile/);
   assert.doesNotMatch(options, /Remoto - Brasil/);
