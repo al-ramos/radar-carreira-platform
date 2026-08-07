@@ -310,6 +310,7 @@ export default function Dashboard() {
   const [detailJob, setDetailJob] = useState<Job | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [descriptionCopied, setDescriptionCopied] = useState(false);
+  const [shareMenuJobId, setShareMenuJobId] = useState<string | null>(null);
   const [analysisOpen, setAnalysisOpen] = useState(false);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [profileChoices, setProfileChoices] =
@@ -746,7 +747,7 @@ export default function Dashboard() {
     setSelected(job);
     setAnalysisOpen(false);
     void loadJobDetail(job);
-    if (!job.id.startsWith("demo")) {
+    if (!job.id.startsWith("demo") && currentUser) {
       // Optimistic update: marca como viewed localmente sem rebaixar estágio existente
       setPipelineItems((prev) => {
         if (prev.some((p) => p.id === job.id)) return prev;
@@ -881,6 +882,28 @@ export default function Dashboard() {
       setDetailLoading(false);
     }
   }
+  function buildShareLinks(job: Job) {
+    const title = job.title;
+    const company = job.company;
+    const url = job.url ?? "";
+    const text = company ? `${title} — ${company}` : title;
+    const withUrl = url ? `${text}\n${url}` : text;
+    const emailSubject = encodeURIComponent(`Vaga: ${text}`);
+    const emailBody = encodeURIComponent(`Olá! Encontrei esta vaga que pode te interessar:\n\n${withUrl}`);
+    const waText = encodeURIComponent(`Olá! Encontrei esta vaga que pode te interessar: ${withUrl}`);
+    return {
+      email: `mailto:?subject=${emailSubject}&body=${emailBody}`,
+      whatsapp: `https://wa.me/?text=${waText}`,
+    };
+  }
+  useEffect(() => {
+    if (!shareMenuJobId) return;
+    function handleOutsideClick(e: MouseEvent) {
+      if (!(e.target as Element).closest(".share-wrap")) setShareMenuJobId(null);
+    }
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, [shareMenuJobId]);
   function openJobDetail(job: Job) {
     setDescriptionCopied(false);
     setDetailJob(job);
@@ -1219,6 +1242,18 @@ export default function Dashboard() {
                 <div className="score">
                   {j.score}
                   <small>match</small>
+                  <div
+                    className="score-bar"
+                    title={`${j.score}% de aderência`}
+                  >
+                    <div
+                      className="score-bar-fill"
+                      style={{
+                        width: `${j.score}%`,
+                        background: j.score >= 80 ? "#2e6b3e" : j.score >= 60 ? "#7a6200" : "#b04a1a",
+                      }}
+                    />
+                  </div>
                   {profileMasteredSkills.length > 0 && (() => {
                     const v = verdictMap.get(j.id);
                     return v ? <span className={`verdict-badge verdict-${v.emoji === "✅" ? "ok" : v.emoji === "🟡" ? "maybe" : v.emoji === "🔴" ? "no" : "blocked"}`}>{v.emoji}</span> : null;
@@ -1250,6 +1285,27 @@ export default function Dashboard() {
                   </div>
                 </div>
                 <span>♡</span>
+                <div className="share-wrap" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    className="share-btn"
+                    title="Encaminhar vaga"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShareMenuJobId(shareMenuJobId === j.id ? null : j.id);
+                    }}
+                  >
+                    📤
+                  </button>
+                  {shareMenuJobId === j.id && (() => {
+                    const links = buildShareLinks(j);
+                    return (
+                      <div className="share-menu">
+                        <button className="share-menu-item" onClick={() => window.open(links.email, "_blank")}>📧 E-mail</button>
+                        <button className="share-menu-item" onClick={() => window.open(links.whatsapp, "_blank")}>💬 WhatsApp</button>
+                      </div>
+                    );
+                  })()}
+                </div>
               </button>
             ))}
             {hasMore && filtered.length > 0 && (
@@ -1302,6 +1358,15 @@ export default function Dashboard() {
                 <span className="fit-inline">
                   <strong>{selectedJob.score}%</strong>
                   <small>match</small>
+                  <div className="fit-inline-bar">
+                    <div
+                      className="fit-inline-bar-fill"
+                      style={{
+                        width: `${selectedJob.score}%`,
+                        background: selectedJob.score >= 80 ? "#2e6b3e" : selectedJob.score >= 60 ? "#7a6200" : "#b04a1a",
+                      }}
+                    />
+                  </div>
                 </span>
               </div>
               <div className="match-reasons">
@@ -1370,6 +1435,44 @@ export default function Dashboard() {
                 >
                   {jobProviderLabel(selectedJob)}
                 </button>
+                <div className="share-wrap">
+                  <button
+                    className="linkedin-action"
+                    onClick={() =>
+                      setShareMenuJobId(
+                        shareMenuJobId === `detail-${selectedJob.id}`
+                          ? null
+                          : `detail-${selectedJob.id}`,
+                      )
+                    }
+                  >
+                    📤 Encaminhar
+                  </button>
+                  {shareMenuJobId === `detail-${selectedJob.id}` && (() => {
+                    const links = buildShareLinks(selectedJob);
+                    return (
+                      <div className="share-menu">
+                        <button className="share-menu-item" onClick={() => window.open(links.email, "_blank")}>📧 E-mail</button>
+                        <button className="share-menu-item" onClick={() => window.open(links.whatsapp, "_blank")}>💬 WhatsApp</button>
+                      </div>
+                    );
+                  })()}
+                </div>
+                <button
+                  className="linkedin-action"
+                  onClick={copyDescription}
+                  disabled={detailLoading || !(jobDetail?.description || selectedJob.description)}
+                  title={jobDetail?.descriptionSource === "linkedin" ? "Descrição enriquecida do LinkedIn" : "Leitura organizada automaticamente"}
+                >
+                  {descriptionCopied ? "✓ Copiada" : "⎘ Copiar descrição"}
+                </button>
+                <button
+                  className="linkedin-action"
+                  onClick={() => openJobDetail(selectedJob)}
+                  title="Abrir descrição em tela ampliada"
+                >
+                  ⛶ Ampliar
+                </button>
               </div>
               {profileMasteredSkills.length > 0 && (() => {
                 const missingImprove = selectedJob.stack
@@ -1388,24 +1491,6 @@ export default function Dashboard() {
                 <section className="selected-description">
                   <div>
                     <h4>DESCRIÇÃO DA VAGA</h4>
-                    <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
-                      {jobDetail?.descriptionSource === "linkedin"
-                        ? <span>Descrição enriquecida</span>
-                        : <span>Leitura organizada automaticamente</span>}
-                      <button
-                        onClick={copyDescription}
-                        disabled={detailLoading || !(jobDetail?.description || selectedJob.description)}
-                        style={{ fontSize: "9px", padding: "3px 8px", border: "1px solid #b9c8bf", borderRadius: "6px", background: "#fff", color: "#345c4d", cursor: "pointer" }}
-                      >
-                        {descriptionCopied ? "Copiada ✓" : "Copiar descrição"}
-                      </button>
-                      <button
-                        onClick={() => openJobDetail(selectedJob)}
-                        style={{ fontSize: "9px", padding: "3px 8px", border: "1px solid #b9c8bf", borderRadius: "6px", background: "#fff", color: "#345c4d", cursor: "pointer" }}
-                      >
-                        ⛶ Abrir em tela ampliada
-                      </button>
-                    </div>
                   </div>
                   {detailLoading ? (
                     <p className="detail-loading">Buscando a descrição completa…</p>
