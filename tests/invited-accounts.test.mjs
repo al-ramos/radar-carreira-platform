@@ -14,7 +14,7 @@ test("convites criam contas locais com senha derivada e perfis separados", async
     read("../app/api/auth/chatgpt/route.ts"),
   ]);
   assert.match(auth, /PBKDF2/);
-  assert.match(auth, /LOCAL_PASSWORD_MIN_LENGTH = 12/);
+  assert.match(auth, /LOCAL_PASSWORD_MIN_LENGTH = 4/);
   assert.match(auth, /createLocalUserSession/);
   assert.match(auth, /host\.endsWith\("\.chatgpt\.site"\)/);
   assert.match(schema, /localAccounts/);

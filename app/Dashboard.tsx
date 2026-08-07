@@ -481,30 +481,68 @@ export default function Dashboard() {
         : (data.error ?? "Falha ao cadastrar"),
     );
   }
-  async function collectNow() {
-    setMessage("Coletando vagas nas fontes automáticas…");
+  async function collectNow(catalogId?: string, companyName?: string) {
+    setMessage(
+      catalogId
+        ? `Iniciando coleta de ${companyName}…`
+        : "Coletando vagas nas fontes automáticas…",
+    );
     setCollectionResults([]);
-    const r = await fetch("/api/admin/collect", {
+    let offset = 0;
+    const allOutcomes: CollectionOutcome[] = [];
+    let received = 0, inserted = 0, updated = 0, errors = 0;
+    do {
+      const r = await fetch("/api/admin/collect", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: "{}",
-      }),
-      data = await r.json();
-    if (!r.ok) {
-      setMessage(data.error ?? "Falha na coleta");
-      return;
-    }
-    if (data.message) {
-      setMessage(data.message);
-      return;
-    }
-    const result = `${data.received} encontradas: ${data.inserted} novas e ${data.updated} atualizadas.`;
-    setMessage(
-      data.errors
-        ? `${result} ${data.errors} fonte(s) falharam — consulte Monitoramento.`
-        : result,
+        body: JSON.stringify(catalogId ? { catalogId } : { offset }),
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        setMessage(data.error ?? "Falha na coleta");
+        return;
+      }
+      if (data.message) {
+        setMessage(data.message);
+        return;
+      }
+      received += data.received ?? 0;
+      inserted += data.inserted ?? 0;
+      updated += data.updated ?? 0;
+      errors += data.errors ?? 0;
+      allOutcomes.push(...(data.outcomes ?? []));
+      setCollectionResults([...allOutcomes]);
+      if (data.nextOffset == null) break;
+      offset = data.nextOffset;
+      setMessage(`Coletando fontes: ${data.processed} de ${data.totalSources} concluídas…`);
+    } while (!catalogId);
+    const result = `${received} encontradas: ${inserted} novas e ${updated} atualizadas.`;
+    setMessage(errors ? `${result} ${errors} fonte(s) falharam — consulte Monitoramento.` : result);
+    setSourceVersion((version) => version + 1);
+    const jobsResponse = await fetch(
+      `/api/jobs?limit=250${period ? `&period=${period}` : ""}`,
     );
-    setCollectionResults(data.outcomes ?? []);
+    if (jobsResponse.ok) {
+      const jobsData = await jobsResponse.json();
+      const next = (jobsData.jobs ?? [])
+        .map(adapt)
+        .sort((a: Job, b: Job) => b.score - a.score);
+      setItems(next);
+      if (next.length) setSelected(next[0]);
+      setTotalJobs(
+        typeof jobsData.total === "number" ? jobsData.total : next.length,
+      );
+    }
+  }
+  async function activateCatalog() {
+    setMessage("Ativando as empresas do catálogo…");
+    const response = await fetch("/api/admin/sources", { method: "PUT" });
+    const data = await response.json();
+    if (!response.ok) {
+      setMessage(data.error ?? "Não foi possível ativar o catálogo.");
+      return;
+    }
+    setMessage(`${data.added} empresas ativadas${data.reactivated ? ` e ${data.reactivated} reativadas` : ""}. Agora use “Coletar todas” para iniciar a coleta em lote.`);
     setSourceVersion((version) => version + 1);
   }
   async function openProfile() {
@@ -1259,7 +1297,11 @@ export default function Dashboard() {
               Inicie a coleta de uma empresa abaixo ou atualize todas as fontes
               automáticas.
             </p>
-            <SourceList refreshKey={sourceVersion} />
+            <SourceList
+              refreshKey={sourceVersion}
+              onStart={(catalogId, name) => collectNow(catalogId, name)}
+              onActivateAll={activateCatalog}
+            />
             {message && <div className="notice">{message}</div>}
             {collectionResults.length > 0 && (
               <div className="collection-results" aria-live="polite">
@@ -1274,7 +1316,7 @@ export default function Dashboard() {
               </div>
             )}
             <div className="source-actions">
-              <button className="primary" onClick={collectNow}>
+              <button className="primary" onClick={() => void collectNow()}>
                 Coletar todas
               </button>
             </div>

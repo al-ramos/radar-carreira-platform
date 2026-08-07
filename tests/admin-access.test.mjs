@@ -2,23 +2,23 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const adminRoutes=[
-  "../app/api/profile/route.ts",
-  "../app/api/admin/audit/route.ts",
-  "../app/api/admin/backup/route.ts",
-  "../app/api/admin/collect/route.ts",
-  "../app/api/admin/gmail-key/route.ts",
-  "../app/api/admin/import/route.ts",
-  "../app/api/admin/jobs/route.ts",
-  "../app/api/admin/monitor/route.ts",
-  "../app/api/admin/quality/route.ts",
-  "../app/api/admin/report/route.ts",
-  "../app/api/admin/settings/route.ts",
-  "../app/api/admin/sources/route.ts",
-  "../app/api/admin/users/route.ts",
-];
+test("o cadastro próprio cria contas de usuário sem acesso administrativo", async()=>{
+  const profile=await readFile(new URL("../app/api/profile/route.ts",import.meta.url),"utf8");
+  const register=await readFile(new URL("../app/api/auth/register/route.ts",import.meta.url),"utf8");
+  const users=await readFile(new URL("../app/api/admin/users/route.ts",import.meta.url),"utf8");
+  assert.match(profile,/existing\?\.role\?\?"user"/);
+  assert.match(register,/role: "user"/);
+  assert.match(users,/role: "admin"/);
+});
 
-test("a proprietária do Sites tem acesso administrativo", async()=>{
-  const sources=await Promise.all(adminRoutes.map(path=>readFile(new URL(path,import.meta.url),"utf8")));
-  for(const source of sources)assert.match(source,/prof\.andreiamr@gmail\.com/);
+test("apenas o proprietário pode gerenciar ou visualizar outras contas", async()=>{
+  const users=await readFile(new URL("../app/api/admin/users/route.ts",import.meta.url),"utf8");
+  assert.match(users,/const OWNER_EMAIL = "alexsandro\.ramos@gmail\.com"/);
+  assert.match(users,/user\.email\.toLowerCase\(\) === OWNER_EMAIL/);
+});
+
+test("apenas o proprietário pode limpar a base", async()=>{
+  const jobs=await readFile(new URL("../app/api/admin/jobs/route.ts",import.meta.url),"utf8");
+  assert.match(jobs,/const OWNER_EMAIL="alexsandro\.ramos@gmail\.com"/);
+  assert.match(jobs,/user\.email\.toLowerCase\(\)!==OWNER_EMAIL/);
 });

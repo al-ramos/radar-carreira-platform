@@ -13,6 +13,7 @@ type Props = {
   onClose: () => void;
   message: string;
   isAdmin: boolean;
+  isOwner: boolean;
 };
 
 type ChoiceFieldProps = {
@@ -65,7 +66,7 @@ function ChoiceField({ label, hint, options, groups, value, onChange, customPlac
   </details>;
 }
 
-export default function ProfilePreferences({ value, onChange, onSave, onClose, message, isAdmin }: Props) {
+export default function ProfilePreferences({ value, onChange, onSave, onClose, message, isAdmin, isOwner }: Props) {
   const update = <K extends keyof ProfileChoices>(key: K, next: ProfileChoices[K]) => onChange({ ...value, [key]: next });
   return <div className="modal-backdrop" onClick={onClose}>
     <section className="modal profile-choice-modal" onClick={event => event.stopPropagation()}>
@@ -79,7 +80,7 @@ export default function ProfilePreferences({ value, onChange, onSave, onClose, m
       <ChoiceField label="Áreas desejadas" hint="Usadas para destacar oportunidades do seu foco." options={AREA_OPTIONS} value={value.desiredAreas} onChange={next => update("desiredAreas", next)} customPlaceholder="Adicionar área" />
       <ChoiceField label="Termos a evitar" hint="Vagas que contêm estes termos ficam com score zero." options={AVOID_TERM_OPTIONS} value={value.avoidTerms} onChange={next => update("avoidTerms", next)} customPlaceholder="Adicionar termo" />
       {message && <div className="notice">{message}</div>}<div className="source-actions"><button className="primary" onClick={onSave}>Salvar preferências</button></div>
-      {isAdmin && <AdminSettings />}
+      {isAdmin && <AdminSettings isOwner={isOwner} />}
     </section>
   </div>;
 }

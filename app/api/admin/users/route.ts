@@ -7,14 +7,12 @@ import { listFromStored } from "../../../../lib/profile-options";
 
 export const dynamic = "force-dynamic";
 
-const PROTECTED = new Set(["contato@amrsolution.com.br", "alexsandro.ramos@gmail.com", "prof.andreiamr@gmail.com"]);
+const OWNER_EMAIL = "alexsandro.ramos@gmail.com";
 
 async function admin() {
   const user = await getChatGPTUser();
   if (!user) return null;
-  if (PROTECTED.has(user.email.toLowerCase())) return user;
-  const profile = (await getDb().select({ role: profiles.role }).from(profiles).where(eq(profiles.userId, user.userId)).limit(1))[0];
-  return profile?.role === "admin" ? user : null;
+  return user.email.toLowerCase() === OWNER_EMAIL ? user : null;
 }
 
 function userSummary(profile: typeof profiles.$inferSelect, pipeline: typeof userJobStatus.$inferSelect[], access: "convite" | "chatgpt" | "administrador") {
@@ -33,7 +31,7 @@ function userSummary(profile: typeof profiles.$inferSelect, pipeline: typeof use
     areas: areas.length,
     pipeline: pipeline.filter(item => item.userId === profile.userId).length,
     profileComplete: Boolean(seniority.length && preferredMode.length && skills.length && areas.length),
-    protected: PROTECTED.has(profile.email.toLowerCase()),
+    protected: profile.email.toLowerCase() === OWNER_EMAIL,
     access,
     updatedAt: profile.updatedAt,
   };
@@ -55,7 +53,7 @@ export async function GET() {
   });
   const automatic = profileRows
     .filter(profile => !accountIds.has(profile.userId))
-    .map(profile => userSummary(profile, pipeline, PROTECTED.has(profile.email.toLowerCase()) ? "administrador" : "chatgpt"));
+    .map(profile => userSummary(profile, pipeline, profile.email.toLowerCase() === OWNER_EMAIL ? "administrador" : "chatgpt"));
   return NextResponse.json({ users: [...invited, ...automatic] });
 }
 
@@ -69,7 +67,7 @@ export async function POST(request: Request) {
   if (!name || !/^\S+@\S+\.\S+$/.test(email) || password.length < LOCAL_PASSWORD_MIN_LENGTH) {
     return NextResponse.json({ error: `Informe nome, e-mail válido e uma senha com ao menos ${LOCAL_PASSWORD_MIN_LENGTH} caracteres.` }, { status: 400 });
   }
-  if (PROTECTED.has(email)) return NextResponse.json({ error: "Este e-mail já é reservado para a administração principal." }, { status: 409 });
+  if (email === OWNER_EMAIL) return NextResponse.json({ error: "Este e-mail já é reservado para a administração principal." }, { status: 409 });
   const db = getDb();
   const existing = (await db.select({ userId: profiles.userId }).from(profiles).where(eq(profiles.email, email)).limit(1))[0];
   if (existing) return NextResponse.json({ error: "Já existe uma conta para este e-mail." }, { status: 409 });
@@ -89,7 +87,7 @@ export async function POST(request: Request) {
     userId,
     email,
     name,
-    role: "user",
+    role: "admin",
     seniority: null,
     preferredMode: null,
     cities: "[]",
@@ -100,17 +98,4 @@ export async function POST(request: Request) {
     updatedAt: now,
   });
   return NextResponse.json({ ok: true, userId }, { status: 201 });
-}
-
-export async function PATCH(request: Request) {
-  const actor = await admin();
-  if (!actor) return NextResponse.json({ error: "Acesso de administrador necessário" }, { status: 403 });
-  const body = await request.json() as { userId?: string; role?: string };
-  if (!body.userId || !new Set(["admin", "user"]).has(body.role ?? "")) return NextResponse.json({ error: "Usuário e função são obrigatórios" }, { status: 400 });
-  const db = getDb();
-  const target = (await db.select().from(profiles).where(eq(profiles.userId, body.userId)).limit(1))[0];
-  if (!target) return NextResponse.json({ error: "Usuário não encontrado" }, { status: 404 });
-  if (PROTECTED.has(target.email.toLowerCase()) && body.role !== "admin") return NextResponse.json({ error: "O administrador principal não pode ser rebaixado" }, { status: 409 });
-  await db.update(profiles).set({ role: body.role as "admin" | "user", updatedAt: new Date() }).where(eq(profiles.userId, body.userId));
-  return NextResponse.json({ ok: true });
 }
