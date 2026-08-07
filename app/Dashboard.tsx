@@ -17,6 +17,7 @@ import {
   WORK_MODE_OPTIONS,
 } from "../lib/profile-options";
 import { parseCareerSource } from "../lib/career-source";
+import { computeVerdict, VerdictResult } from "../lib/verdict";
 type Job = {
   id: string;
   score: number;
@@ -314,6 +315,7 @@ export default function Dashboard() {
   const [profileChoices, setProfileChoices] =
     useState<ProfileChoices>(emptyProfileChoices);
   const [pipelineFilter, setPipelineFilter] = useState<"all"|"unseen"|"viewed"|"saved"|"applied"|"interview"|"rejected">("all");
+  const [verdictFilter, setVerdictFilter] = useState<"all"|"✅"|"🟡"|"🔴"|"❌">("all");
   const closeOpenOverlays = () => {
     setImporting(false);
     setSourcesOpen(false);
@@ -388,6 +390,21 @@ export default function Dashboard() {
     pipelineItems.forEach((item) => map.set(item.id, item.stage));
     return map;
   }, [pipelineItems]);
+
+  /** Mapa jobId → VerdictResult (calculado uma vez por lista carregada) */
+  const verdictMap = useMemo(() => {
+    const map = new Map<string, VerdictResult>();
+    items.forEach((job) => {
+      map.set(job.id, computeVerdict({
+        title: job.title,
+        description: job.description ?? "",
+        stack: job.stack,
+        seniority: job.seniority,
+        workMode: job.workMode,
+      }));
+    });
+    return map;
+  }, [items]);
   const effectiveMinScore =
     fitFilter === "profile"
       ? profileMinScore
@@ -410,7 +427,8 @@ export default function Dashboard() {
           (pipelineFilter === "all" ||
             (pipelineFilter === "unseen"
               ? !pipelineStageMap.has(j.id)
-              : pipelineStageMap.get(j.id) === pipelineFilter))
+              : pipelineStageMap.get(j.id) === pipelineFilter)) &&
+          (verdictFilter === "all" || verdictMap.get(j.id)?.emoji === verdictFilter)
         );
       }),
     [
@@ -420,6 +438,8 @@ export default function Dashboard() {
       sourceFilter,
       pipelineFilter,
       pipelineStageMap,
+      verdictFilter,
+      verdictMap,
     ],
   );
   // Contagem das vagas atualmente carregadas (até 250, dentro do período
@@ -665,6 +685,11 @@ export default function Dashboard() {
     setAnalysisOpen(false);
     void loadJobDetail(job);
     if (!job.id.startsWith("demo")) {
+      // Optimistic update: marca como viewed localmente sem rebaixar estágio existente
+      setPipelineItems((prev) => {
+        if (prev.some((p) => p.id === job.id)) return prev;
+        return [...prev, { id: job.id, stage: "viewed" } as PipelineJob];
+      });
       void fetch("/api/pipeline", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -682,9 +707,17 @@ export default function Dashboard() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ jobId: job.id, stage: "saved" }),
     });
-    setMessage(
-      r.ok ? "Vaga salva no seu pipeline." : "Entre com sua conta para salvar.",
-    );
+    if (r.ok) {
+      setMessage("Vaga salva no seu pipeline.");
+      // Atualiza pipelineItems localmente para refletir nos filtros sem recarregar
+      setPipelineItems((prev) => {
+        const exists = prev.some((p) => p.id === job.id);
+        if (exists) return prev.map((p) => p.id === job.id ? { ...p, stage: "saved" } : p);
+        return [...prev, { id: job.id, stage: "saved" } as PipelineJob];
+      });
+    } else {
+      setMessage("Entre com sua conta para salvar.");
+    }
   }
   async function signOut() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -1067,6 +1100,27 @@ export default function Dashboard() {
             })}
           </div>
         </div>
+        <div className="radar-advanced-filters radar-verdict-row" aria-label="Filtros de veredito">
+          <div className="radar-filter-copy"><span>Veredito</span><small>Resultado da análise de aderência</small></div>
+          <div className="radar-pipeline-filter" role="group" aria-label="Filtrar por veredito">
+            {(["all", "✅", "🟡", "🔴", "❌"] as const).map((v) => {
+              const label = v === "all" ? "Todos" : v === "✅" ? "Bate" : v === "🟡" ? "Provável" : v === "🔴" ? "Não bate" : "Bloqueado";
+              const count = v === "all" ? items.length : [...verdictMap.values()].filter((r) => r.emoji === v).length;
+              return (
+                <button
+                  key={v}
+                  type="button"
+                  className={verdictFilter === v ? "active" : ""}
+                  onClick={() => setVerdictFilter(v)}
+                  aria-pressed={verdictFilter === v}
+                >
+                  {v !== "all" && <>{v} </>}{label}
+                  {count > 0 && <span>{count}</span>}
+                </button>
+              );
+            })}
+          </div>
+        </div>
         <div className="list-status-bar">
           <span>
             <strong>{filtered.length}</strong>{" "}
@@ -1098,6 +1152,10 @@ export default function Dashboard() {
                 <div className="score">
                   {j.score}
                   <small>match</small>
+                  {(() => {
+                    const v = verdictMap.get(j.id);
+                    return v ? <span className={`verdict-badge verdict-${v.emoji === "✅" ? "ok" : v.emoji === "🟡" ? "maybe" : v.emoji === "🔴" ? "no" : "blocked"}`}>{v.emoji}</span> : null;
+                  })()}
                 </div>
                 <div className="job-main">
                   <small>{j.company.toUpperCase()}</small>
@@ -1246,34 +1304,15 @@ export default function Dashboard() {
                   )}
                 </section>
                 {analysisOpen && (() => {
-                  // Extrai skills matched/missing dos reasons (funciona mesmo quando stack[] está vazio)
-                  const matchReasonRaw = selectedJob.reasons.find((r) => r.startsWith("✅ Skills:"));
-                  const gapReasonRaw = selectedJob.reasons.find((r) => r.startsWith("❌ Não menciona:"));
-                  const matchedSkills = matchReasonRaw
-                    ? matchReasonRaw.replace(/✅ Skills:\s*/, "").replace(/\s*\(\+\d+\)$/, "").split(",").map((s) => s.trim()).filter(Boolean)
-                    : [];
-                  const missingSkills = gapReasonRaw
-                    ? gapReasonRaw.replace(/❌ Não menciona:\s*/, "").split(",").map((s) => s.trim()).filter(Boolean)
-                    : [];
-                  const hasLocationIssue = selectedJob.reasons.some((r) => r.includes("(-20)") || r.includes("(-25)") || r.includes("fora de SP"));
-                  const hasSeniorityIssue = selectedJob.reasons.some((r) => r.includes("(-10)"));
-                  const seniorityOk = selectedJob.reasons.some((r) => r.includes("Senioridade compatível"));
-                  const modeOk = selectedJob.reasons.some((r) => r.includes("Modalidade preferida"));
-                  const tips: string[] = [];
-                  if (matchedSkills.length > 0)
-                    tips.push(`Destaque ${matchedSkills.slice(0, 3).join(", ")} no currículo e LinkedIn.`);
-                  if (missingSkills.length > 0 && missingSkills.length <= 3)
-                    tips.push(`A vaga cita ${missingSkills.join(", ")} — mencione mesmo que com nível básico.`);
-                  if (selectedJob.score >= 80)
-                    tips.push("Aderência alta — priorize esta vaga na semana.");
-                  else if (selectedJob.score >= 60)
-                    tips.push("Aderência boa — vale candidatar com carta de apresentação focada.");
-                  else
-                    tips.push("Aderência baixa — avalie o custo-benefício antes de aplicar.");
-                  if (hasLocationIssue)
-                    tips.push("Localização fora de SP/Mogi — confirme se há exceção remota ou home office.");
-                  if (hasSeniorityIssue)
-                    tips.push("Nível da vaga difere do seu perfil — ajuste o posicionamento na candidatura.");
+                  // Usa a descrição enriquecida se disponível para maior precisão
+                  const verdict = computeVerdict({
+                    title: selectedJob.title,
+                    description: jobDetail?.description || selectedJob.description || "",
+                    stack: selectedJob.stack,
+                    seniority: selectedJob.seniority,
+                    workMode: selectedJob.workMode,
+                  });
+                  const verdictColor = verdict.emoji === "✅" ? "#2e6b3e" : verdict.emoji === "🟡" ? "#7a6200" : verdict.emoji === "🔴" ? "#b04a1a" : "#8a1a1a";
                   return (
                     <aside className="job-analysis-panel">
                       <div className="analysis-score-bar">
@@ -1281,45 +1320,49 @@ export default function Dashboard() {
                         <div className="analysis-score-track">
                           <div className="analysis-score-fill" style={{ width: `${selectedJob.score}%`, background: selectedJob.score >= 80 ? "#2e6b3e" : selectedJob.score >= 60 ? "#4a7a35" : "#b04a1a" }} />
                         </div>
-                        <span className="analysis-score-label">
-                          {selectedJob.score >= 80 ? "Alta aderência" : selectedJob.score >= 60 ? "Boa aderência" : "Baixa aderência"}
+                        <span className="analysis-score-label" style={{ color: verdictColor }}>
+                          {verdict.emoji} {verdict.label}
+                          {verdict.blocker && <><br /><span style={{ fontSize: "8px", fontWeight: 400 }}>{verdict.blocker}</span></>}
                         </span>
                       </div>
 
-                      {matchedSkills.length > 0 && (
-                        <div className="analysis-skill-group">
-                          <p className="analysis-label analysis-match">✅ Skills do seu perfil encontradas</p>
-                          <div className="tags">
-                            {matchedSkills.map((s) => <span key={s} className="tag-match">{s}</span>)}
-                          </div>
-                        </div>
-                      )}
-                      {missingSkills.length > 0 && (
-                        <div className="analysis-skill-group">
-                          <p className="analysis-label analysis-gap">❌ Skills citadas não estão no seu perfil</p>
-                          <div className="tags">
-                            {missingSkills.map((s) => <span key={s} className="tag-gap">{s}</span>)}
-                          </div>
-                        </div>
-                      )}
+                      <table className="verdict-table">
+                        <tbody>
+                          {verdict.rows.map((row) => (
+                            <tr key={row.criterion} className={row.ok === false ? "verdict-row-bad" : row.ok === true ? "verdict-row-ok" : ""}>
+                              <td className="verdict-criterion">{row.criterion}</td>
+                              <td className="verdict-status">{row.status}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
 
-                      <div className="analysis-checks">
-                        <span className={seniorityOk ? "check-ok" : hasSeniorityIssue ? "check-warn" : "check-neutral"}>
-                          {seniorityOk ? "✅" : hasSeniorityIssue ? "⚠️" : "—"} Senioridade
-                        </span>
-                        <span className={modeOk ? "check-ok" : hasLocationIssue ? "check-warn" : "check-neutral"}>
-                          {modeOk ? "✅" : hasLocationIssue ? "⚠️" : "—"} Modalidade / Localização
-                        </span>
-                      </div>
-
-                      {tips.length > 0 && (
-                        <div className="analysis-tips">
-                          <p className="analysis-label">💡 Sugestões para a candidatura</p>
-                          <ul>
-                            {tips.map((tip) => <li key={tip}>{tip}</li>)}
-                          </ul>
-                        </div>
-                      )}
+                      {(() => {
+                        const matchReasonRaw = selectedJob.reasons.find((r) => r.startsWith("✅ Skills:"));
+                        const gapReasonRaw = selectedJob.reasons.find((r) => r.startsWith("❌ Não menciona:"));
+                        const matchedSkills = matchReasonRaw
+                          ? matchReasonRaw.replace(/✅ Skills:\s*/, "").replace(/\s*\(\+\d+\)$/, "").split(",").map((s) => s.trim()).filter(Boolean)
+                          : [];
+                        const missingSkills = gapReasonRaw
+                          ? gapReasonRaw.replace(/❌ Não menciona:\s*/, "").split(",").map((s) => s.trim()).filter(Boolean)
+                          : [];
+                        return (
+                          <>
+                            {matchedSkills.length > 0 && (
+                              <div className="analysis-skill-group">
+                                <p className="analysis-label analysis-match">✅ Skills do seu perfil</p>
+                                <div className="tags">{matchedSkills.map((s) => <span key={s} className="tag-match">{s}</span>)}</div>
+                              </div>
+                            )}
+                            {missingSkills.length > 0 && (
+                              <div className="analysis-skill-group">
+                                <p className="analysis-label analysis-gap">❌ Não estão no seu perfil</p>
+                                <div className="tags">{missingSkills.map((s) => <span key={s} className="tag-gap">{s}</span>)}</div>
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
                     </aside>
                   );
                 })()}

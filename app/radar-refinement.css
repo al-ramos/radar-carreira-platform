@@ -221,6 +221,42 @@
   .selected-description > .radar-description-content { max-height: none; min-height: 0; }
 }
 
+/* Badge de veredito nos cards da lista */
+.verdict-badge {
+  display: block;
+  font-size: 12px;
+  margin-top: 4px;
+  line-height: 1;
+}
+.score { display: flex; flex-direction: column; align-items: center; }
+
+/* Tabela de veredito no painel de análise */
+.verdict-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 12px;
+  font-size: 10px;
+}
+.verdict-table td {
+  padding: 5px 6px;
+  border-bottom: 1px solid #e8ede4;
+  vertical-align: top;
+  line-height: 1.4;
+}
+.verdict-criterion {
+  font-weight: 700;
+  color: #607168;
+  white-space: nowrap;
+  width: 36%;
+}
+.verdict-status { color: #34423b; }
+.verdict-row-ok .verdict-criterion,
+.verdict-row-ok .verdict-status { color: #2e6b3e; }
+.verdict-row-bad .verdict-criterion,
+.verdict-row-bad .verdict-status { color: #8a4a2a; }
+.verdict-row-bad { background: #fff8f5; }
+.verdict-row-ok { background: #f5fbf2; }
+
 /* Filtro de pipeline no radar */
 .radar-pipeline-filter {
   display: flex;
