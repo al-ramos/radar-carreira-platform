@@ -675,6 +675,17 @@ export default function Dashboard() {
       setTimeout(() => location.reload(), 900);
     }
   }
+  /** Seleciona uma vaga e registra visualização no pipeline (sem sobrescrever estágio já existente) */
+  function selectJob(job: Job) {
+    setSelected(job);
+    if (!job.id.startsWith("demo")) {
+      void fetch("/api/pipeline", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ jobId: job.id, stage: "viewed" }),
+      });
+    }
+  }
   async function save(job: Job) {
     if (job.id.startsWith("demo")) {
       setMessage("Entre na versão publicada para salvar vagas reais.");
@@ -798,10 +809,10 @@ export default function Dashboard() {
     setTimeout(() => setDescriptionCopied(false), 1800);
   }
   const pipelineStages = [
+    { id: "viewed", label: "Visualizadas" },
     { id: "saved", label: "Salvas" },
     { id: "applied", label: "Candidaturas" },
     { id: "interview", label: "Entrevistas" },
-    { id: "offer", label: "Ofertas" },
     { id: "rejected", label: "Encerradas" },
   ];
   const userName =
@@ -1108,7 +1119,7 @@ export default function Dashboard() {
               <button
                 key={j.id}
                 className={`job-card ${selectedJob?.id === j.id ? "selected" : ""}`}
-                onClick={() => setSelected(j)}
+                onClick={() => selectJob(j)}
               >
                 <div className="score">
                   {j.score}

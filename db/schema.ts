@@ -41,7 +41,7 @@ export const jobs = sqliteTable("jobs", {
 
 export const userJobStatus = sqliteTable("user_job_status", {
   userId: text("user_id").notNull(), jobId: text("job_id").notNull().references(() => jobs.id),
-  stage: text("stage", { enum: ["new", "saved", "applied", "interview", "offer", "rejected", "archived"] }).notNull().default("new"),
+  stage: text("stage", { enum: ["viewed", "saved", "applied", "interview", "rejected", "archived"] }).notNull().default("viewed"),
   note: text("note"), updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
 }, t => [primaryKey({ columns: [t.userId, t.jobId] })]);
 

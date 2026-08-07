@@ -21,7 +21,7 @@ test("dashboard oferece radar, perfil e pipeline persistente", async () => {
   assert.match(dashboard, /fetch\("\/api\/profile"\)/);
   assert.match(dashboard, /Salvas/);
   assert.match(dashboard, /Entrevistas/);
-  assert.match(dashboard, /Ofertas/);
+  assert.match(dashboard, /Visualizadas/);
   assert.match(dashboard, /gmail-radarvagas\.gs/);
   assert.match(dashboard, /DESCRIÇÃO DA VAGA/);
   assert.match(dashboard, /Copiar descrição/);
