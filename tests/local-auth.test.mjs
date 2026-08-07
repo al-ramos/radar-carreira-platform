@@ -20,7 +20,8 @@ test("login local cria uma sessão protegida no Worker", async () => {
   assert.match(login, /LOCAL_SESSION_COOKIE/);
   assert.match(login, /localAccounts/);
   assert.match(logout, /maxAge: 0/);
-  assert.match(page, /Usuários convidados/);
+  assert.match(page, /Criar minha conta/);
+  assert.match(page, /api\/auth\/register/);
   assert.match(page, /Continuar com ChatGPT/);
   assert.match(page, /auth_error/);
   assert.match(dashboard, /\/login\?return_to=\//);

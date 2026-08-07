@@ -1,10 +1,11 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db/index";
 import { importRuns, jobSources, jobs, profiles } from "../../../../db/schema";
 import { collect, isPullProvider } from "../../../../lib/connectors";
 import { fingerprint } from "../../../../lib/jobs";
+import { findCuratedSource } from "../../../../lib/curated-sources";
 
 export const dynamic = "force-dynamic";
 
@@ -25,14 +26,33 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Acesso de administrador necessário" }, { status: 403 });
   }
 
-  const body = await request.json().catch(() => ({})) as { sourceId?: string };
-  const candidates = body.sourceId
+  const body = await request.json().catch(() => ({})) as { sourceId?: string; catalogId?: string; offset?: number };
+  const curated = body.catalogId ? findCuratedSource(body.catalogId) : null;
+  if (body.catalogId && !curated) return NextResponse.json({ error: "Empresa não encontrada no catálogo" }, { status: 404 });
+  let candidates = body.sourceId
     ? await db.select().from(jobSources).where(eq(jobSources.id, body.sourceId))
     : await db.select().from(jobSources).where(eq(jobSources.enabled, true));
+  if (curated) {
+    let source = (await db.select().from(jobSources).where(and(eq(jobSources.provider, curated.provider), eq(jobSources.externalRef, curated.externalRef))).limit(1))[0];
+    if (!source) {
+      source = { id: crypto.randomUUID(), name: curated.name, provider: curated.provider, collectionMode: "pull" as const, externalRef: curated.externalRef, enabled: true, lastRunAt: null, lastAttemptAt: null, lastSuccessAt: null, lastError: null, consecutiveFailures: 0, createdAt: new Date() };
+      await db.insert(jobSources).values(source);
+    } else if (!source.enabled) {
+      await db.update(jobSources).set({ enabled: true }).where(eq(jobSources.id, source.id));
+      source = { ...source, enabled: true };
+    }
+    candidates = [source];
+  }
   if (!candidates.length) return NextResponse.json({ error: "Fonte não encontrada ou desativada" }, { status: 404 });
-  const sources = candidates.filter(source => source.enabled && source.collectionMode === "pull" && isPullProvider(source.provider));
-  if (body.sourceId && !sources.length) return NextResponse.json({ error: "Esta integração recebe vagas enviadas por outro serviço e não suporta coleta automática" }, { status: 400 });
-  if (!sources.length) return NextResponse.json({ ok: true, sources: 0, received: 0, inserted: 0, updated: 0, errors: 0, message: "Nenhuma fonte de coleta automática está ativa. Cadastre uma fonte Greenhouse, Lever ou Ashby." });
+  const eligibleSources = candidates.filter(source => source.enabled && source.collectionMode === "pull" && isPullProvider(source.provider));
+  if (body.sourceId && !eligibleSources.length) return NextResponse.json({ error: "Esta integração recebe vagas enviadas por outro serviço e não suporta coleta automática" }, { status: 400 });
+  if (!eligibleSources.length) return NextResponse.json({ ok: true, sources: 0, received: 0, inserted: 0, updated: 0, errors: 0, message: "Nenhuma fonte de coleta automática está ativa. Cadastre uma fonte Greenhouse, Lever ou Ashby." });
+  const bulk = !body.sourceId && !curated;
+  const offset = bulk ? Math.max(0, Number(body.offset) || 0) : 0;
+  // Uma fonte por requisição: algumas empresas publicam muitas vagas e a
+  // gravação no banco remoto precisa terminar antes de seguir para a próxima.
+  const sources = bulk ? eligibleSources.slice(offset, offset + 1) : eligibleSources;
+  if (!sources.length) return NextResponse.json({ ok: true, sources: 0, received: 0, inserted: 0, updated: 0, errors: 0, outcomes: [], totalSources: eligibleSources.length, processed: eligibleSources.length, nextOffset: null });
 
   let received = 0;
   let inserted = 0;
@@ -83,5 +103,6 @@ export async function POST(request: Request) {
       outcomes.push({id:source.id,name:source.name,status:"failed",received:0,inserted:0,updated:0,error:message});
     }
   }
-  return NextResponse.json({ ok: errors === 0, sources: sources.length, received, inserted, updated, errors, outcomes });
+  const processed = Math.min(offset + sources.length, eligibleSources.length);
+  return NextResponse.json({ ok: errors === 0, sources: sources.length, received, inserted, updated, errors, outcomes, totalSources: eligibleSources.length, processed, nextOffset: bulk && processed < eligibleSources.length ? processed : null });
 }

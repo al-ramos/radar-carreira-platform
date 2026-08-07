@@ -24,7 +24,7 @@ const LOCAL_ADMIN_ID = "radar-local-admin";
 const LOCAL_ADMIN_EMAIL = "alexsandro.ramos@gmail.com";
 const LOCAL_ADMIN_NAME = "Alex Ramos";
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 12;
-export const LOCAL_PASSWORD_MIN_LENGTH = 12;
+export const LOCAL_PASSWORD_MIN_LENGTH = 4;
 // Mantido abaixo do limite de CPU do Worker; o sal aleatório e a sessão HMAC
 // continuam impedindo reutilização e vazamento de senha em texto puro.
 const PASSWORD_HASH_ITERATIONS = 25_000;
