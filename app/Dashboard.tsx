@@ -697,27 +697,31 @@ export default function Dashboard() {
       });
     }
   }
+  /** Helper centralizado: atualiza estágio no servidor e no estado local */
+  async function updateStage(jobId: string, stage: string, toast?: string) {
+    const r = await fetch("/api/pipeline", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ jobId, stage }),
+    });
+    if (r.ok) {
+      if (toast) setMessage(toast);
+      setPipelineItems((prev) => {
+        const exists = prev.some((p) => p.id === jobId);
+        if (exists) return prev.map((p) => p.id === jobId ? { ...p, stage } : p);
+        return [...prev, { id: jobId, stage } as PipelineJob];
+      });
+    } else {
+      setMessage("Entre com sua conta para atualizar o pipeline.");
+    }
+    return r.ok;
+  }
   async function save(job: Job) {
     if (job.id.startsWith("demo")) {
       setMessage("Entre na versão publicada para salvar vagas reais.");
       return;
     }
-    const r = await fetch("/api/pipeline", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ jobId: job.id, stage: "saved" }),
-    });
-    if (r.ok) {
-      setMessage("Vaga salva no seu pipeline.");
-      // Atualiza pipelineItems localmente para refletir nos filtros sem recarregar
-      setPipelineItems((prev) => {
-        const exists = prev.some((p) => p.id === job.id);
-        if (exists) return prev.map((p) => p.id === job.id ? { ...p, stage: "saved" } : p);
-        return [...prev, { id: job.id, stage: "saved" } as PipelineJob];
-      });
-    } else {
-      setMessage("Entre com sua conta para salvar.");
-    }
+    await updateStage(job.id, "saved", "Vaga salva no seu pipeline.");
   }
   async function signOut() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -1064,61 +1068,58 @@ export default function Dashboard() {
             </label>
           </div>
         </div>
-        <div className="radar-advanced-filters" aria-label="Filtros de vagas">
-          <div className="radar-filter-copy"><span>Pipeline</span><small>Filtre pelo estágio no seu funil</small></div>
-          <div
-            className="radar-pipeline-filter"
-            role="group"
-            aria-label="Filtrar por estágio do pipeline"
-          >
-            {([
-              { id: "all", label: "Todas" },
-              { id: "unseen", label: "Não vistas" },
-              { id: "viewed", label: "Visualizadas" },
-              { id: "saved", label: "Salvas" },
-              { id: "applied", label: "Candidaturas" },
-              { id: "interview", label: "Entrevistas" },
-              { id: "rejected", label: "Encerradas" },
-            ] as const).map(({ id, label }) => {
-              const count = id === "all"
-                ? items.length
-                : id === "unseen"
-                  ? items.filter((j) => !pipelineStageMap.has(j.id)).length
-                  : items.filter((j) => pipelineStageMap.get(j.id) === id).length;
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  className={pipelineFilter === id ? "active" : ""}
-                  onClick={() => setPipelineFilter(id)}
-                  aria-pressed={pipelineFilter === id}
-                >
-                  {label}
-                  {count > 0 && <span>{count}</span>}
-                </button>
-              );
-            })}
+        <div className="radar-filters-compact" aria-label="Filtros de vagas">
+          <div className="compact-filter-group">
+            <span className="compact-filter-label">Pipeline</span>
+            <div className="compact-pills" role="group" aria-label="Filtrar por estágio do pipeline">
+              {([
+                { id: "all", label: "Todas" },
+                { id: "unseen", label: "Não vistas" },
+                { id: "viewed", label: "Vistas" },
+                { id: "saved", label: "Salvas" },
+                { id: "applied", label: "Candidaturas" },
+                { id: "interview", label: "Entrevistas" },
+                { id: "rejected", label: "Encerradas" },
+              ] as const).map(({ id, label }) => {
+                const count = id === "all"
+                  ? items.length
+                  : id === "unseen"
+                    ? items.filter((j) => !pipelineStageMap.has(j.id)).length
+                    : items.filter((j) => pipelineStageMap.get(j.id) === id).length;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    className={pipelineFilter === id ? "active" : ""}
+                    onClick={() => setPipelineFilter(id)}
+                    aria-pressed={pipelineFilter === id}
+                  >
+                    {label}{count > 0 && <span>{count}</span>}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
-        <div className="radar-advanced-filters radar-verdict-row" aria-label="Filtros de veredito">
-          <div className="radar-filter-copy"><span>Veredito</span><small>Resultado da análise de aderência</small></div>
-          <div className="radar-pipeline-filter" role="group" aria-label="Filtrar por veredito">
-            {(["all", "✅", "🟡", "🔴", "❌"] as const).map((v) => {
-              const label = v === "all" ? "Todos" : v === "✅" ? "Bate" : v === "🟡" ? "Provável" : v === "🔴" ? "Não bate" : "Bloqueado";
-              const count = v === "all" ? items.length : [...verdictMap.values()].filter((r) => r.emoji === v).length;
-              return (
-                <button
-                  key={v}
-                  type="button"
-                  className={verdictFilter === v ? "active" : ""}
-                  onClick={() => setVerdictFilter(v)}
-                  aria-pressed={verdictFilter === v}
-                >
-                  {v !== "all" && <>{v} </>}{label}
-                  {count > 0 && <span>{count}</span>}
-                </button>
-              );
-            })}
+          <div className="compact-filter-divider" aria-hidden="true" />
+          <div className="compact-filter-group">
+            <span className="compact-filter-label">Veredito</span>
+            <div className="compact-pills" role="group" aria-label="Filtrar por veredito">
+              {(["all", "✅", "🟡", "🔴", "❌"] as const).map((v) => {
+                const label = v === "all" ? "Todos" : v === "✅" ? "Bate" : v === "🟡" ? "Provável" : v === "🔴" ? "Não bate" : "Bloqueado";
+                const count = v === "all" ? items.length : [...verdictMap.values()].filter((r) => r.emoji === v).length;
+                return (
+                  <button
+                    key={v}
+                    type="button"
+                    className={verdictFilter === v ? "active" : ""}
+                    onClick={() => setVerdictFilter(v)}
+                    aria-pressed={verdictFilter === v}
+                  >
+                    {v !== "all" && <>{v} </>}{label}{count > 0 && <span>{count}</span>}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
         <div className="list-status-bar">
@@ -1155,6 +1156,12 @@ export default function Dashboard() {
                   {(() => {
                     const v = verdictMap.get(j.id);
                     return v ? <span className={`verdict-badge verdict-${v.emoji === "✅" ? "ok" : v.emoji === "🟡" ? "maybe" : v.emoji === "🔴" ? "no" : "blocked"}`}>{v.emoji}</span> : null;
+                  })()}
+                  {(() => {
+                    const stage = pipelineStageMap.get(j.id);
+                    if (!stage || stage === "viewed") return null;
+                    const icons: Record<string, string> = { saved: "🔖", applied: "📨", interview: "🗓", rejected: "✕", archived: "✕" };
+                    return icons[stage] ? <span className="card-stage-badge">{icons[stage]}</span> : null;
                   })()}
                 </div>
                 <div className="job-main">
@@ -1238,7 +1245,43 @@ export default function Dashboard() {
                 ))}
               </div>
               <div className="detail-actions radar-job-actions">
-                <button onClick={() => save(selectedJob)}>♡ Salvar</button>
+                {/* Seletor de estágio do pipeline */}
+                {(() => {
+                  const currentStage = pipelineStageMap.get(selectedJob.id) ?? "unseen";
+                  const stageLabels: Record<string, string> = {
+                    unseen: "♡ Salvar",
+                    viewed: "👁 Visualizada",
+                    saved: "🔖 Salva",
+                    applied: "📨 Candidatura",
+                    interview: "🗓 Entrevista",
+                    rejected: "✕ Encerrada",
+                    archived: "✕ Encerrada",
+                  };
+                  return (
+                    <div className="stage-selector-wrap">
+                      <select
+                        className="stage-selector"
+                        value={currentStage === "unseen" ? "" : currentStage}
+                        aria-label="Estágio no pipeline"
+                        onChange={async (e) => {
+                          const stage = e.target.value;
+                          if (!stage) return;
+                          if (selectedJob.id.startsWith("demo")) {
+                            setMessage("Entre na versão publicada para salvar vagas reais.");
+                            return;
+                          }
+                          await updateStage(selectedJob.id, stage, `Estágio atualizado: ${stageLabels[stage] ?? stage}`);
+                        }}
+                      >
+                        <option value="" disabled>{stageLabels[currentStage]}</option>
+                        <option value="saved">🔖 Salvar</option>
+                        <option value="applied">📨 Candidatura</option>
+                        <option value="interview">🗓 Entrevista</option>
+                        <option value="rejected">✕ Encerrar</option>
+                      </select>
+                    </div>
+                  );
+                })()}
                 <button
                   className={`analysis-toggle-btn${analysisOpen ? " active" : ""}`}
                   onClick={() => setAnalysisOpen((v) => !v)}
@@ -1248,9 +1291,16 @@ export default function Dashboard() {
                 </button>
                 <button
                   className="linkedin-action"
-                  onClick={() =>
-                    selectedJob.url && open(selectedJob.url, "_blank")
-                  }
+                  onClick={async () => {
+                    if (selectedJob.url) open(selectedJob.url, "_blank");
+                    if (!selectedJob.id.startsWith("demo")) {
+                      const current = pipelineStageMap.get(selectedJob.id);
+                      // Avança para Candidatura se ainda não passou desse estágio
+                      if (!current || current === "viewed" || current === "saved") {
+                        await updateStage(selectedJob.id, "applied", "Registrado como candidatura ✓");
+                      }
+                    }
+                  }}
                 >
                   {jobProviderLabel(selectedJob)}
                 </button>

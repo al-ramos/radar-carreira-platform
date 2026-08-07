@@ -221,14 +221,35 @@
   .selected-description > .radar-description-content { max-height: none; min-height: 0; }
 }
 
-/* Badge de veredito nos cards da lista */
-.verdict-badge {
-  display: block;
-  font-size: 12px;
-  margin-top: 4px;
+/* Score column: veredito + estágio pipeline */
+.score { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.verdict-badge { font-size: 12px; line-height: 1; }
+.card-stage-badge {
+  font-size: 10px;
   line-height: 1;
+  background: #e8f4ff;
+  border-radius: 4px;
+  padding: 1px 3px;
 }
-.score { display: flex; flex-direction: column; align-items: center; }
+
+/* Seletor de estágio na barra de ações */
+.stage-selector-wrap { position: relative; }
+.stage-selector {
+  appearance: none;
+  background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='7' viewBox='0 0 10 7'%3E%3Cpath fill='none' stroke='%23465f51' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m1 1 4 4 4-4'/%3E%3C/svg%3E") no-repeat right 8px center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 700;
+  min-height: 38px;
+  padding: 8px 28px 8px 11px;
+  transition: border-color .15s;
+  white-space: nowrap;
+}
+.stage-selector:hover { border-color: var(--green); }
+.stage-selector:focus { border-color: var(--green); box-shadow: 0 0 0 3px #b9dfae55; outline: 0; }
 
 /* Tabela de veredito no painel de análise */
 .verdict-table {
@@ -257,48 +278,78 @@
 .verdict-row-bad { background: #fff8f5; }
 .verdict-row-ok { background: #f5fbf2; }
 
-/* Filtro de pipeline no radar */
-.radar-pipeline-filter {
+/* Filtros compactos (Pipeline + Veredito na mesma linha) */
+.radar-filters-compact {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  padding: 8px 0 10px;
+  border-bottom: 1px solid var(--line);
+}
+.compact-filter-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.compact-filter-label {
+  font-size: 8.5px;
+  font-weight: 800;
+  color: #8a9491;
+  text-transform: uppercase;
+  letter-spacing: .6px;
+  white-space: nowrap;
+}
+.compact-filter-divider {
+  width: 1px;
+  height: 16px;
+  background: var(--line);
+  flex-shrink: 0;
+}
+.compact-pills {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  flex: 1;
+  gap: 4px;
 }
-.radar-pipeline-filter button {
+.compact-pills button {
   background: #fff;
   border: 1px solid #cad8c5;
   border-radius: 999px;
   color: #486154;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
-  padding: 7px 12px;
+  padding: 4px 9px;
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 3px;
   transition: background .15s, border-color .15s, color .15s;
+  white-space: nowrap;
 }
-.radar-pipeline-filter button:hover {
+.compact-pills button:hover {
   border-color: var(--green);
   color: var(--green);
 }
-.radar-pipeline-filter button.active {
+.compact-pills button.active {
   background: #173f32;
   border-color: #173f32;
   color: #fff;
 }
-.radar-pipeline-filter button span {
+.compact-pills button span {
   background: rgba(255,255,255,.25);
   border-radius: 999px;
-  font-size: 9px;
+  font-size: 8px;
   font-weight: 800;
-  min-width: 18px;
-  padding: 1px 5px;
+  min-width: 14px;
+  padding: 0 4px;
   text-align: center;
 }
-.radar-pipeline-filter button:not(.active) span {
+.compact-pills button:not(.active) span {
   background: #eef2ea;
   color: #486154;
 }
+/* Mantido para compatibilidade (não mais renderizado, mas não quebra nada) */
+.radar-pipeline-filter { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; }
 
 .detail-section-title > div > button {
   display: inline-flex;
