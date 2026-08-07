@@ -659,10 +659,11 @@ export default function Dashboard() {
       setTimeout(() => location.reload(), 900);
     }
   }
-  /** Seleciona uma vaga e registra visualização no pipeline (sem sobrescrever estágio já existente) */
+  /** Seleciona uma vaga, carrega descrição enriquecida e registra visualização no pipeline */
   function selectJob(job: Job) {
     setSelected(job);
     setAnalysisOpen(false);
+    void loadJobDetail(job);
     if (!job.id.startsWith("demo")) {
       void fetch("/api/pipeline", {
         method: "POST",
@@ -787,7 +788,7 @@ export default function Dashboard() {
     void loadJobDetail(job);
   }
   async function copyDescription() {
-    const description = jobDetail?.description || detailJob?.description;
+    const description = jobDetail?.description || detailJob?.description || selected?.description;
     if (!description) return;
     await navigator.clipboard.writeText(description);
     setDescriptionCopied(true);
@@ -1181,12 +1182,6 @@ export default function Dashboard() {
               <div className="detail-actions radar-job-actions">
                 <button onClick={() => save(selectedJob)}>♡ Salvar</button>
                 <button
-                  className="expand-description"
-                  onClick={() => openJobDetail(selectedJob)}
-                >
-                  ⛶ Abrir em tela ampliada
-                </button>
-                <button
                   className={`analysis-toggle-btn${analysisOpen ? " active" : ""}`}
                   onClick={() => setAnalysisOpen((v) => !v)}
                   title="Análise de candidatura com base no seu perfil"
@@ -1202,18 +1197,53 @@ export default function Dashboard() {
                   {jobProviderLabel(selectedJob)}
                 </button>
               </div>
+              {profileMasteredSkills.length > 0 && (() => {
+                const missingImprove = selectedJob.stack
+                  .filter((skill) => !profileMasteredSkills.some((s) => s.toLowerCase() === skill.toLowerCase()))
+                  .slice(0, 2);
+                return missingImprove.length > 0 ? (
+                  <div className="match-improve">
+                    <h4>COMO MELHORAR</h4>
+                    {missingImprove.map((skill) => (
+                      <span key={skill}>＋ Adicionar <strong>{skill}</strong> ao perfil pode aumentar o score nesta vaga</span>
+                    ))}
+                  </div>
+                ) : null;
+              })()}
               <div className={`selected-description-columns${analysisOpen ? " analysis-open" : ""}`}>
                 <section className="selected-description">
                   <div>
                     <h4>DESCRIÇÃO DA VAGA</h4>
-                    <span>Leitura organizada automaticamente</span>
+                    <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                      {jobDetail?.descriptionSource === "linkedin"
+                        ? <span>Descrição enriquecida</span>
+                        : <span>Leitura organizada automaticamente</span>}
+                      <button
+                        onClick={copyDescription}
+                        disabled={detailLoading || !(jobDetail?.description || selectedJob.description)}
+                        style={{ fontSize: "9px", padding: "3px 8px", border: "1px solid #b9c8bf", borderRadius: "6px", background: "#fff", color: "#345c4d", cursor: "pointer" }}
+                      >
+                        {descriptionCopied ? "Copiada ✓" : "Copiar descrição"}
+                      </button>
+                      <button
+                        onClick={() => openJobDetail(selectedJob)}
+                        style={{ fontSize: "9px", padding: "3px 8px", border: "1px solid #b9c8bf", borderRadius: "6px", background: "#fff", color: "#345c4d", cursor: "pointer" }}
+                      >
+                        ⛶ Abrir em tela ampliada
+                      </button>
+                    </div>
                   </div>
-                  <DescriptionContent
-                    text={
-                      selectedJob.description ||
-                      "A descrição completa ainda não está disponível para esta vaga."
-                    }
-                  />
+                  {detailLoading ? (
+                    <p className="detail-loading">Buscando a descrição completa…</p>
+                  ) : (
+                    <DescriptionContent
+                      text={
+                        jobDetail?.description ||
+                        selectedJob.description ||
+                        "A descrição completa ainda não está disponível para esta vaga."
+                      }
+                    />
+                  )}
                 </section>
                 {analysisOpen && (() => {
                   // Extrai skills matched/missing dos reasons (funciona mesmo quando stack[] está vazio)
