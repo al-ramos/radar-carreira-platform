@@ -23,12 +23,25 @@ function detectTitleSeniority(title: string): string | null {
 
 const REMOTE_TERMS = ["remoto", "remote", "home office"];
 const ONSITE_TERMS = ["presencial", "on-site", "onsite", "in-office"];
+const HYBRID_TERMS = ["híbrido", "hibrido", "hybrid", "flexível", "flexivel"];
+
+// Cidades aceitas para presencial/híbrido
+const ACCEPTED_CITIES = [
+  "são paulo", "sao paulo", "sp", "mogi das cruzes", "mogi", "grande são paulo", "grande sp", "abc paulista",
+];
 
 function profilePrefersRemote(modes: string[]): boolean {
   return modes.some(m => REMOTE_TERMS.includes(normalize(m)));
 }
 function profilePrefersOnsite(modes: string[]): boolean {
   return modes.some(m => ONSITE_TERMS.includes(normalize(m)));
+}
+
+/** Retorna true se a localização da vaga é aceita para trabalho presencial/híbrido */
+function isAcceptedLocation(location: string | null | undefined): boolean {
+  if (!location) return true; // sem info = não penaliza
+  const loc = normalize(location);
+  return ACCEPTED_CITIES.some(city => loc.includes(city));
 }
 
 /**
@@ -55,11 +68,12 @@ export function scoreJob(job:ScoreInput,profile:ScoreProfile){
    if(matchedSkills.length){
      const shown=matchedSkills.slice(0,5).join(", ")+(matchedSkills.length>5?` +${matchedSkills.length-5}`:"");
      reasons.push(`✅ Skills: ${shown} (+${points})`);
+     // Mostra faltantes apenas quando houve match parcial (não quando nenhuma bateu)
+     if(unmatchedSkills.length > 0 && unmatchedSkills.length <= 4){
+       reasons.push(`❌ Não menciona: ${unmatchedSkills.join(", ")}`);
+     }
    } else {
      reasons.push(`Nenhuma das ${selectedSkills.length} skills foi encontrada`);
-   }
-   if(unmatchedSkills.length && unmatchedSkills.length <= 4){
-     reasons.push(`❌ Não menciona: ${unmatchedSkills.join(", ")}`);
    }
  }
 
@@ -80,20 +94,41 @@ export function scoreJob(job:ScoreInput,profile:ScoreProfile){
    reasons.push(`Nível indicado no título: ${titleSeniority}`);
  }
 
- // --- Modalidade: match (+10) / presencial quando prefere remoto (-15) / remoto quando prefere presencial (-5) ---
+ // --- Modalidade + localização ---
  const jobMode = normalize(job.workMode ?? "");
+ const isOnsite = ONSITE_TERMS.some(t=>jobMode.includes(t));
+ const isHybrid = HYBRID_TERMS.some(t=>jobMode.includes(t));
+ const isRemote = REMOTE_TERMS.some(t=>jobMode.includes(t));
+ const acceptedLoc = isAcceptedLocation(job.location);
+
  if(profile.preferredMode.length){
    const modeMatch = profile.preferredMode.some(mode=>normalize(mode)===jobMode);
    if(modeMatch){
-     score+=10;
-     reasons.push("Modalidade preferida (+10)");
-   } else if(profilePrefersRemote(profile.preferredMode) && ONSITE_TERMS.some(t=>jobMode.includes(t))){
-     score-=15;
-     reasons.push("⚠️ Vaga presencial (você prefere remoto) (-15)");
-   } else if(profilePrefersOnsite(profile.preferredMode) && REMOTE_TERMS.some(t=>jobMode.includes(t))){
+     // Presencial/híbrido na cidade certa: bônus normal; fora: penalidade
+     if((isOnsite || isHybrid) && !acceptedLoc){
+       score-=20;
+       reasons.push(`⚠️ ${isHybrid?"Híbrido":"Presencial"} fora de SP/Mogi (${job.location ?? "sem cidade"}) (-20)`);
+     } else {
+       score+=10;
+       reasons.push("Modalidade preferida (+10)");
+       if(isOnsite||isHybrid) reasons.push(`📍 ${job.location ?? "localização compatível"}`);
+     }
+   } else if(profilePrefersRemote(profile.preferredMode) && (isOnsite||isHybrid)){
+     // Prefere remoto mas vaga é presencial/híbrido
+     if(!acceptedLoc){
+       score-=25;
+       reasons.push(`⚠️ Presencial/híbrido fora de SP/Mogi (você prefere remoto) (-25)`);
+     } else {
+       score-=10;
+       reasons.push(`⚠️ Híbrido/presencial em SP (você prefere remoto) (-10)`);
+     }
+   } else if(profilePrefersOnsite(profile.preferredMode) && isRemote){
      score-=5;
      reasons.push("Vaga remota (você prefere presencial) (-5)");
    }
+ } else if((isOnsite||isHybrid) && !acceptedLoc){
+   // Perfil sem seleção: informa apenas se for fora das cidades aceitas
+   reasons.push(`📍 ${isHybrid?"Híbrido":"Presencial"} — ${job.location ?? "cidade não informada"}`);
  }
 
  // --- Recência (+5) ---

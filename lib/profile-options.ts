@@ -26,8 +26,13 @@ export const AREA_OPTIONS = [
 ];
 
 export const AVOID_TERM_OPTIONS = [
+  // Tipos de vaga indesejados
   "Estágio", "Trainee", "Júnior", "Presencial", "Vendas", "Comercial",
   "Suporte", "Atendimento", "Freelancer", "Temporário",
+  // Inglês — papéis não-técnicos
+  "Sales", "Support", "Customer Success", "Account Executive", "SDR", "BDR", "Internship", "Intern",
+  // Espanhol — filtra vagas fora do Brasil
+  "Desarrollador", "Programador", "Ingeniero", "Desarrolladora",
 ];
 
 export type ProfileChoices = {
