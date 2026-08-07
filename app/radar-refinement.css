@@ -71,10 +71,197 @@
   line-height: 1.82;
 }
 
+/* Painel de análise lateral ao selecionar vaga */
+.selected-description-columns {
+  padding-top: 22px;
+}
+.selected-description-columns.analysis-open {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 20px;
+  align-items: start;
+}
+.selected-description-columns .selected-description {
+  padding-top: 0;
+  border-top: 0;
+}
+.selected-description-columns .selected-description > .radar-description-content {
+  max-height: calc(100vh - 400px);
+  min-height: 220px;
+  overflow: auto;
+  padding: 2px 18px 12px 0;
+  max-width: 78ch;
+}
+.selected-description-columns.analysis-open .selected-description > .radar-description-content {
+  max-width: none;
+}
+/* Botão Analisar */
+.analysis-toggle-btn {
+  background: #fff !important;
+  border: 1px solid var(--green) !important;
+  color: var(--green) !important;
+  font-weight: 700;
+}
+.analysis-toggle-btn.active {
+  background: var(--green) !important;
+  color: #fff !important;
+}
+/* Painel */
+.job-analysis-panel {
+  background: #f5f8f2;
+  border: 1px solid #dde8d5;
+  border-radius: 10px;
+  padding: 14px;
+  position: sticky;
+  top: 0;
+}
+/* Score bar */
+.analysis-score-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #dde8d5;
+}
+.analysis-score-num {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--ink);
+  min-width: 44px;
+}
+.analysis-score-track {
+  flex: 1;
+  height: 6px;
+  background: #e0e8dc;
+  border-radius: 99px;
+  overflow: hidden;
+}
+.analysis-score-fill {
+  height: 100%;
+  border-radius: 99px;
+  transition: width .4s;
+}
+.analysis-score-label {
+  font-size: 9px;
+  font-weight: 700;
+  color: #607168;
+  white-space: nowrap;
+}
+/* Skills */
+.analysis-skill-group { margin-bottom: 12px; }
+.analysis-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .05em;
+  margin: 0 0 6px;
+  color: #607168;
+}
+.analysis-label.analysis-match { color: #2e6b3e; }
+.analysis-label.analysis-gap { color: #8a4a2a; }
+.job-analysis-panel .tags { gap: 4px; }
+.tag-match {
+  background: #dff0e0 !important;
+  border-color: #a8d5af !important;
+  color: #1e5c30 !important;
+  font-weight: 650;
+}
+.tag-gap {
+  background: #fdefd8 !important;
+  border-color: #e8c89a !important;
+  color: #7a3e10 !important;
+  font-weight: 650;
+}
+/* Checks rápidos */
+.analysis-checks {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+.analysis-checks span {
+  font-size: 10px;
+  color: #46534c;
+}
+.check-ok { color: #2e6b3e !important; font-weight: 650; }
+.check-warn { color: #8a4a2a !important; font-weight: 650; }
+.check-neutral { color: #8a9491 !important; }
+/* Tips */
+.analysis-tips {
+  border-top: 1px solid #dde8d5;
+  padding-top: 10px;
+  margin-top: 4px;
+}
+.analysis-tips ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 6px;
+}
+.analysis-tips li {
+  font-size: 10px;
+  color: #46534c;
+  line-height: 1.5;
+  padding: 6px 8px;
+  background: #fff;
+  border-radius: 6px;
+  border: 1px solid #e0e8dc;
+}
+@media (max-width: 900px) {
+  .selected-description-columns.analysis-open {
+    grid-template-columns: 1fr;
+  }
+  .job-analysis-panel { position: static; }
+}
+
 @media (max-width: 650px) {
   .radar-job-actions { flex-wrap: wrap; }
   .radar-job-actions .expand-description { order: -1; width: 100%; }
   .selected-description > .radar-description-content { max-height: none; min-height: 0; }
+}
+
+/* Filtro de pipeline no radar */
+.radar-pipeline-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 1;
+}
+.radar-pipeline-filter button {
+  background: #fff;
+  border: 1px solid #cad8c5;
+  border-radius: 999px;
+  color: #486154;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 7px 12px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transition: background .15s, border-color .15s, color .15s;
+}
+.radar-pipeline-filter button:hover {
+  border-color: var(--green);
+  color: var(--green);
+}
+.radar-pipeline-filter button.active {
+  background: #173f32;
+  border-color: #173f32;
+  color: #fff;
+}
+.radar-pipeline-filter button span {
+  background: rgba(255,255,255,.25);
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 800;
+  min-width: 18px;
+  padding: 1px 5px;
+  text-align: center;
+}
+.radar-pipeline-filter button:not(.active) span {
+  background: #eef2ea;
+  color: #486154;
 }
 
 .detail-section-title > div > button {

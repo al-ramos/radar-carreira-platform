@@ -59,9 +59,7 @@ test("perfil usa checkboxes e o radar expõe filtros de visualização", async (
   assert.match(profile, /allowCustom=\{false\}/);
   assert.doesNotMatch(profile, /Cidades e regiões/);
   assert.match(profile, /SKILL_GROUPS/);
-  assert.match(dashboard, /aria-label="Filtrar por tecnologia"/);
-  assert.match(dashboard, /aria-label="Filtrar por senioridade"/);
-  assert.match(dashboard, /aria-label="Filtrar por modalidade"/);
+  assert.match(dashboard, /aria-label="Filtrar por estágio do pipeline"/);
   assert.match(dashboard, /useState<string \| null>\(null\)/);
   assert.match(dashboard, /data\.period/);
   assert.match(dashboard, /SENIORITY_OPTIONS/);

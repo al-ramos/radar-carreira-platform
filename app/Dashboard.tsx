@@ -309,12 +309,11 @@ export default function Dashboard() {
   const [detailJob, setDetailJob] = useState<Job | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [descriptionCopied, setDescriptionCopied] = useState(false);
+  const [analysisOpen, setAnalysisOpen] = useState(false);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [profileChoices, setProfileChoices] =
     useState<ProfileChoices>(emptyProfileChoices);
-  const [stackFilter, setStackFilter] = useState("");
-  const [seniorityFilter, setSeniorityFilter] = useState("");
-  const [workModeFilter, setWorkModeFilter] = useState("");
+  const [pipelineFilter, setPipelineFilter] = useState<"all"|"unseen"|"viewed"|"saved"|"applied"|"interview"|"rejected">("all");
   const closeOpenOverlays = () => {
     setImporting(false);
     setSourcesOpen(false);
@@ -383,20 +382,12 @@ export default function Dashboard() {
       ].sort((a, b) => a.localeCompare(b, "pt-BR")),
     [items],
   );
-  const seniorityFilterOptions = useMemo(
-    () =>
-      [
-        ...new Set(
-          [
-            ...SENIORITY_OPTIONS,
-            ...items
-              .map((job) => job.seniority)
-              .filter((value): value is string => Boolean(value)),
-          ],
-        ),
-      ].sort((a, b) => a.localeCompare(b, "pt-BR")),
-    [items],
-  );
+  /** Mapa jobId → stage para filtragem rápida do pipeline no radar */
+  const pipelineStageMap = useMemo(() => {
+    const map = new Map<string, string>();
+    pipelineItems.forEach((item) => map.set(item.id, item.stage));
+    return map;
+  }, [pipelineItems]);
   const effectiveMinScore =
     fitFilter === "profile"
       ? profileMinScore
@@ -414,28 +405,21 @@ export default function Dashboard() {
         return (
           j.score >= effectiveMinScore &&
           (!searchQuery || text.includes(searchQuery)) &&
-          (!stackFilter ||
-            j.stack.some(
-              (stack) => stack.toLowerCase() === stackFilter.toLowerCase(),
-            ) ||
-            text.includes(stackFilter.toLowerCase())) &&
-          (!seniorityFilter ||
-            j.seniority
-              ?.toLowerCase()
-              .includes(seniorityFilter.toLowerCase())) &&
-          (!workModeFilter || j.mode === workModeFilter) &&
           (sourceFilter === "all" ||
-            (sourceFilter === "linkedin") === isLinkedInJob(j))
+            (sourceFilter === "linkedin") === isLinkedInJob(j)) &&
+          (pipelineFilter === "all" ||
+            (pipelineFilter === "unseen"
+              ? !pipelineStageMap.has(j.id)
+              : pipelineStageMap.get(j.id) === pipelineFilter))
         );
       }),
     [
       items,
       query,
       effectiveMinScore,
-      stackFilter,
-      seniorityFilter,
-      workModeFilter,
       sourceFilter,
+      pipelineFilter,
+      pipelineStageMap,
     ],
   );
   // Contagem das vagas atualmente carregadas (até 250, dentro do período
@@ -678,6 +662,7 @@ export default function Dashboard() {
   /** Seleciona uma vaga e registra visualização no pipeline (sem sobrescrever estágio já existente) */
   function selectJob(job: Job) {
     setSelected(job);
+    setAnalysisOpen(false);
     if (!job.id.startsWith("demo")) {
       void fetch("/api/pipeline", {
         method: "POST",
@@ -1046,52 +1031,40 @@ export default function Dashboard() {
           </div>
         </div>
         <div className="radar-advanced-filters" aria-label="Filtros de vagas">
-          <div className="radar-filter-copy"><span>Filtros avançados</span><small>Combine tecnologia, nível e modalidade</small></div>
-          <div className="radar-filter-fields">
-            <label className="radar-filter-field">
-              <span>
-                Tecnologia
-                {stackFilter && <em className="filter-chip">{stackFilter} ×</em>}
-              </span>
-              <select aria-label="Filtrar por tecnologia" value={stackFilter} onChange={(event) => setStackFilter(event.target.value)}>
-                <option value="">Todas</option>
-                {stackFilterOptions.map((option) => <option value={option} key={option}>{option}</option>)}
-              </select>
-            </label>
-            <label className="radar-filter-field">
-              <span>
-                Senioridade
-                {seniorityFilter && <em className="filter-chip">{seniorityFilter} ×</em>}
-              </span>
-              <select aria-label="Filtrar por senioridade" value={seniorityFilter} onChange={(event) => setSeniorityFilter(event.target.value)}>
-                <option value="">Todas</option>
-                {seniorityFilterOptions.map((option) => <option value={option} key={option}>{option}</option>)}
-              </select>
-            </label>
-            <label className="radar-filter-field">
-              <span>
-                Modalidade
-                {workModeFilter && <em className="filter-chip">{workModeFilter} ×</em>}
-              </span>
-              <select aria-label="Filtrar por modalidade" value={workModeFilter} onChange={(event) => setWorkModeFilter(event.target.value)}>
-                <option value="">Todas</option>
-                {["Remoto", "Híbrido", "Presencial"].map((option) => <option value={option} key={option}>{option}</option>)}
-              </select>
-            </label>
+          <div className="radar-filter-copy"><span>Pipeline</span><small>Filtre pelo estágio no seu funil</small></div>
+          <div
+            className="radar-pipeline-filter"
+            role="group"
+            aria-label="Filtrar por estágio do pipeline"
+          >
+            {([
+              { id: "all", label: "Todas" },
+              { id: "unseen", label: "Não vistas" },
+              { id: "viewed", label: "Visualizadas" },
+              { id: "saved", label: "Salvas" },
+              { id: "applied", label: "Candidaturas" },
+              { id: "interview", label: "Entrevistas" },
+              { id: "rejected", label: "Encerradas" },
+            ] as const).map(({ id, label }) => {
+              const count = id === "all"
+                ? items.length
+                : id === "unseen"
+                  ? items.filter((j) => !pipelineStageMap.has(j.id)).length
+                  : items.filter((j) => pipelineStageMap.get(j.id) === id).length;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  className={pipelineFilter === id ? "active" : ""}
+                  onClick={() => setPipelineFilter(id)}
+                  aria-pressed={pipelineFilter === id}
+                >
+                  {label}
+                  {count > 0 && <span>{count}</span>}
+                </button>
+              );
+            })}
           </div>
-          {(stackFilter || seniorityFilter || workModeFilter) && (
-            <button
-              type="button"
-              className="clear-filters-btn"
-              onClick={() => {
-                setStackFilter("");
-                setSeniorityFilter("");
-                setWorkModeFilter("");
-              }}
-            >
-              Limpar filtros
-            </button>
-          )}
         </div>
         <div className="list-status-bar">
           <span>
@@ -1214,6 +1187,13 @@ export default function Dashboard() {
                   ⛶ Abrir em tela ampliada
                 </button>
                 <button
+                  className={`analysis-toggle-btn${analysisOpen ? " active" : ""}`}
+                  onClick={() => setAnalysisOpen((v) => !v)}
+                  title="Análise de candidatura com base no seu perfil"
+                >
+                  {analysisOpen ? "✕ Fechar análise" : "🔍 Analisar candidatura"}
+                </button>
+                <button
                   className="linkedin-action"
                   onClick={() =>
                     selectedJob.url && open(selectedJob.url, "_blank")
@@ -1222,28 +1202,98 @@ export default function Dashboard() {
                   {jobProviderLabel(selectedJob)}
                 </button>
               </div>
-              <section className="selected-description">
-                <div>
-                  <h4>DESCRIÇÃO DA VAGA</h4>
-                  <span>Leitura organizada automaticamente</span>
-                </div>
-                <DescriptionContent
-                  text={
-                    selectedJob.description ||
-                    "A descrição completa ainda não está disponível para esta vaga."
-                  }
-                />
-              </section>
-              {selectedJob.stack.length > 0 && (
-                <section className="selected-stack">
-                  <h4>TECNOLOGIAS IDENTIFICADAS</h4>
-                  <div className="tags">
-                    {selectedJob.stack.map((t) => (
-                      <span key={t}>{t}</span>
-                    ))}
+              <div className={`selected-description-columns${analysisOpen ? " analysis-open" : ""}`}>
+                <section className="selected-description">
+                  <div>
+                    <h4>DESCRIÇÃO DA VAGA</h4>
+                    <span>Leitura organizada automaticamente</span>
                   </div>
+                  <DescriptionContent
+                    text={
+                      selectedJob.description ||
+                      "A descrição completa ainda não está disponível para esta vaga."
+                    }
+                  />
                 </section>
-              )}
+                {analysisOpen && (() => {
+                  // Extrai skills matched/missing dos reasons (funciona mesmo quando stack[] está vazio)
+                  const matchReasonRaw = selectedJob.reasons.find((r) => r.startsWith("✅ Skills:"));
+                  const gapReasonRaw = selectedJob.reasons.find((r) => r.startsWith("❌ Não menciona:"));
+                  const matchedSkills = matchReasonRaw
+                    ? matchReasonRaw.replace(/✅ Skills:\s*/, "").replace(/\s*\(\+\d+\)$/, "").split(",").map((s) => s.trim()).filter(Boolean)
+                    : [];
+                  const missingSkills = gapReasonRaw
+                    ? gapReasonRaw.replace(/❌ Não menciona:\s*/, "").split(",").map((s) => s.trim()).filter(Boolean)
+                    : [];
+                  const hasLocationIssue = selectedJob.reasons.some((r) => r.includes("(-20)") || r.includes("(-25)") || r.includes("fora de SP"));
+                  const hasSeniorityIssue = selectedJob.reasons.some((r) => r.includes("(-10)"));
+                  const seniorityOk = selectedJob.reasons.some((r) => r.includes("Senioridade compatível"));
+                  const modeOk = selectedJob.reasons.some((r) => r.includes("Modalidade preferida"));
+                  const tips: string[] = [];
+                  if (matchedSkills.length > 0)
+                    tips.push(`Destaque ${matchedSkills.slice(0, 3).join(", ")} no currículo e LinkedIn.`);
+                  if (missingSkills.length > 0 && missingSkills.length <= 3)
+                    tips.push(`A vaga cita ${missingSkills.join(", ")} — mencione mesmo que com nível básico.`);
+                  if (selectedJob.score >= 80)
+                    tips.push("Aderência alta — priorize esta vaga na semana.");
+                  else if (selectedJob.score >= 60)
+                    tips.push("Aderência boa — vale candidatar com carta de apresentação focada.");
+                  else
+                    tips.push("Aderência baixa — avalie o custo-benefício antes de aplicar.");
+                  if (hasLocationIssue)
+                    tips.push("Localização fora de SP/Mogi — confirme se há exceção remota ou home office.");
+                  if (hasSeniorityIssue)
+                    tips.push("Nível da vaga difere do seu perfil — ajuste o posicionamento na candidatura.");
+                  return (
+                    <aside className="job-analysis-panel">
+                      <div className="analysis-score-bar">
+                        <span className="analysis-score-num">{selectedJob.score}%</span>
+                        <div className="analysis-score-track">
+                          <div className="analysis-score-fill" style={{ width: `${selectedJob.score}%`, background: selectedJob.score >= 80 ? "#2e6b3e" : selectedJob.score >= 60 ? "#4a7a35" : "#b04a1a" }} />
+                        </div>
+                        <span className="analysis-score-label">
+                          {selectedJob.score >= 80 ? "Alta aderência" : selectedJob.score >= 60 ? "Boa aderência" : "Baixa aderência"}
+                        </span>
+                      </div>
+
+                      {matchedSkills.length > 0 && (
+                        <div className="analysis-skill-group">
+                          <p className="analysis-label analysis-match">✅ Skills do seu perfil encontradas</p>
+                          <div className="tags">
+                            {matchedSkills.map((s) => <span key={s} className="tag-match">{s}</span>)}
+                          </div>
+                        </div>
+                      )}
+                      {missingSkills.length > 0 && (
+                        <div className="analysis-skill-group">
+                          <p className="analysis-label analysis-gap">❌ Skills citadas não estão no seu perfil</p>
+                          <div className="tags">
+                            {missingSkills.map((s) => <span key={s} className="tag-gap">{s}</span>)}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="analysis-checks">
+                        <span className={seniorityOk ? "check-ok" : hasSeniorityIssue ? "check-warn" : "check-neutral"}>
+                          {seniorityOk ? "✅" : hasSeniorityIssue ? "⚠️" : "—"} Senioridade
+                        </span>
+                        <span className={modeOk ? "check-ok" : hasLocationIssue ? "check-warn" : "check-neutral"}>
+                          {modeOk ? "✅" : hasLocationIssue ? "⚠️" : "—"} Modalidade / Localização
+                        </span>
+                      </div>
+
+                      {tips.length > 0 && (
+                        <div className="analysis-tips">
+                          <p className="analysis-label">💡 Sugestões para a candidatura</p>
+                          <ul>
+                            {tips.map((tip) => <li key={tip}>{tip}</li>)}
+                          </ul>
+                        </div>
+                      )}
+                    </aside>
+                  );
+                })()}
+              </div>
             </aside>
           ) : (
             <aside className="detail radar-detail-empty">
