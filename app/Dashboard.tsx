@@ -84,8 +84,28 @@ const descriptionHeadings = new Set([
   "benefícios",
   "benefits",
 ]);
+function decodeAndStrip(raw: string): string {
+  // 1. Decodifica entidades HTML (duplo-codificadas ou simples)
+  const decoded = raw
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, " ");
+  // 2. Substitui quebras de bloco HTML por newlines antes de remover tags
+  const withBreaks = decoded
+    .replace(/<\/?(p|div|h[1-6]|li|br|section|article)[^>]*>/gi, "\n")
+    .replace(/<\/?(strong|b)>/gi, "**")
+    .replace(/<[^>]+>/g, " ");
+  // 3. Normaliza espaços
+  return withBreaks.replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+}
+
 function DescriptionContent({ text }: { text: string }) {
-  const clean = text.replace(/\s+/g, " ").trim(),
+  const needsDecode = /&lt;|&amp;|&gt;|<[a-z]/i.test(text);
+  const processed = needsDecode ? decodeAndStrip(text) : text;
+  const clean = processed.replace(/[ \t]+/g, " ").trim(),
     marked = clean.replace(
       /\b(Sobre a vaga|About the job|Responsabilidades|Responsibilities|Requisitos|Requirements|Qualificações|Qualifications|O que você fará|O que buscamos|Diferenciais|Benefícios|Benefits)\b:?/gi,
       "\n$1\n",
@@ -103,13 +123,22 @@ function DescriptionContent({ text }: { text: string }) {
         grouped.push(sentences.slice(index, index + 3).join(" "));
       return grouped.map((value) => ({ kind: "paragraph", text: value }));
     });
+  function renderText(str: string) {
+    // Renders **bold** markers from decoded <strong> tags
+    const parts = str.split(/(\*\*[^*]+\*\*)/g);
+    return parts.map((part, i) =>
+      part.startsWith("**") && part.endsWith("**")
+        ? <strong key={i}>{part.slice(2, -2)}</strong>
+        : part
+    );
+  }
   return (
     <div className="radar-description-content">
       {blocks.map((block, index) =>
         block.kind === "heading" ? (
           <h5 key={`${block.text}-${index}`}>{block.text}</h5>
         ) : (
-          <p key={index}>{block.text}</p>
+          <p key={index}>{renderText(block.text)}</p>
         ),
       )}
     </div>
