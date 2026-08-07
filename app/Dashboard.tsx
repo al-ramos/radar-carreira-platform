@@ -408,10 +408,10 @@ export default function Dashboard() {
         stack: job.stack,
         seniority: job.seniority,
         workMode: job.workMode,
-      }));
+      }, profileMasteredSkills));
     });
     return map;
-  }, [items]);
+  }, [items, profileMasteredSkills]);
   const effectiveMinScore =
     fitFilter === "profile"
       ? profileMinScore
@@ -1107,27 +1107,31 @@ export default function Dashboard() {
               })}
             </div>
           </div>
-          <div className="compact-filter-divider" aria-hidden="true" />
-          <div className="compact-filter-group">
-            <span className="compact-filter-label">Veredito</span>
-            <div className="compact-pills" role="group" aria-label="Filtrar por veredito">
-              {(["all", "✅", "🟡", "🔴", "❌"] as const).map((v) => {
-                const label = v === "all" ? "Todos" : v === "✅" ? "Bate" : v === "🟡" ? "Provável" : v === "🔴" ? "Não bate" : "Bloqueado";
-                const count = v === "all" ? items.length : [...verdictMap.values()].filter((r) => r.emoji === v).length;
-                return (
-                  <button
-                    key={v}
-                    type="button"
-                    className={verdictFilter === v ? "active" : ""}
-                    onClick={() => setVerdictFilter(v)}
-                    aria-pressed={verdictFilter === v}
-                  >
-                    {v !== "all" && <>{v} </>}{label}{count > 0 && <span>{count}</span>}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+          {currentUser && (
+            <>
+              <div className="compact-filter-divider" aria-hidden="true" />
+              <div className="compact-filter-group">
+                <span className="compact-filter-label">Veredito</span>
+                <div className="compact-pills" role="group" aria-label="Filtrar por veredito">
+                  {(["all", "✅", "🟡", "🔴", "❌"] as const).map((v) => {
+                    const label = v === "all" ? "Todos" : v === "✅" ? "Bate" : v === "🟡" ? "Provável" : v === "🔴" ? "Não bate" : "Bloqueado";
+                    const count = v === "all" ? items.length : [...verdictMap.values()].filter((r) => r.emoji === v).length;
+                    return (
+                      <button
+                        key={v}
+                        type="button"
+                        className={verdictFilter === v ? "active" : ""}
+                        onClick={() => setVerdictFilter(v)}
+                        aria-pressed={verdictFilter === v}
+                      >
+                        {v !== "all" && <>{v} </>}{label}{count > 0 && <span>{count}</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
+          )}
         </div>
         <div className="list-status-bar">
           <span>
@@ -1368,7 +1372,7 @@ export default function Dashboard() {
                     stack: selectedJob.stack,
                     seniority: selectedJob.seniority,
                     workMode: selectedJob.workMode,
-                  });
+                  }, profileMasteredSkills);
                   const verdictColor = verdict.emoji === "✅" ? "#2e6b3e" : verdict.emoji === "🟡" ? "#7a6200" : verdict.emoji === "🔴" ? "#b04a1a" : "#8a1a1a";
                   return (
                     <aside className="job-analysis-panel">
