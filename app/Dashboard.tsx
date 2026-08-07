@@ -180,6 +180,12 @@ const nav = [
   "Importações",
   "Configurações",
 ];
+// Mesmo critério usado no backend (app/api/jobs/route.ts) e na busca da
+// descrição oficial (app/api/jobs/detail/route.ts): a URL da vaga aponta
+// para o LinkedIn. Cobre tanto a extensão do LinkedIn quanto os alertas
+// importados por e-mail (Gmail RadarVagas).
+const isLinkedInJob = (job: Job) =>
+  Boolean(job.url && /linkedin\.com/i.test(job.url));
 const adapt = (j: ApiJob): Job => ({
   id: j.id,
   score: j.score ?? 70,
@@ -233,6 +239,13 @@ export default function Dashboard() {
     CollectionOutcome[]
   >([]);
   const [totalJobs, setTotalJobs] = useState<number | null>(null);
+  const [totalLinkedIn, setTotalLinkedIn] = useState<number | null>(null);
+  const [totalOtherSources, setTotalOtherSources] = useState<number | null>(
+    null,
+  );
+  const [sourceFilter, setSourceFilter] = useState<"all" | "linkedin" | "other">(
+    "all",
+  );
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [profileMinScore, setProfileMinScore] = useState(60);
   const [gmailOpen, setGmailOpen] = useState(false);
@@ -286,6 +299,14 @@ export default function Dashboard() {
         setItems(next);
         if (next.length) setSelected(next[0]);
         setTotalJobs(typeof data.total === "number" ? data.total : next.length);
+        setTotalLinkedIn(
+          typeof data.totalLinkedIn === "number" ? data.totalLinkedIn : null,
+        );
+        setTotalOtherSources(
+          typeof data.totalOtherSources === "number"
+            ? data.totalOtherSources
+            : null,
+        );
         setPeriod((current) => current ?? data.period ?? "24");
         setMode("database");
       })
@@ -344,7 +365,9 @@ export default function Dashboard() {
             j.seniority
               ?.toLowerCase()
               .includes(seniorityFilter.toLowerCase())) &&
-          (!workModeFilter || j.mode === workModeFilter)
+          (!workModeFilter || j.mode === workModeFilter) &&
+          (sourceFilter === "all" ||
+            (sourceFilter === "linkedin") === isLinkedInJob(j))
         );
       }),
     [
@@ -354,8 +377,17 @@ export default function Dashboard() {
       stackFilter,
       seniorityFilter,
       workModeFilter,
+      sourceFilter,
     ],
   );
+  // Contagem das vagas atualmente carregadas (até 250, dentro do período
+  // selecionado), usada para o detalhamento por fonte no resumo do topo
+  // quando a API ainda não respondeu com os totais reais do banco.
+  const loadedLinkedIn = useMemo(
+    () => items.filter(isLinkedInJob).length,
+    [items],
+  );
+  const loadedOtherSources = items.length - loadedLinkedIn;
   const selectedJob =
     filtered.find((job) => job.id === selected.id) ?? filtered[0] ?? null;
   function clearRadarFilters() {
@@ -365,6 +397,7 @@ export default function Dashboard() {
     setStackFilter("");
     setSeniorityFilter("");
     setWorkModeFilter("");
+    setSourceFilter("all");
   }
   async function runImport() {
     setMessage("Importando…");
@@ -781,11 +814,43 @@ export default function Dashboard() {
         {message && <div className="notice">{message}</div>}
         <div className="radar-controls">
           <div className="radar-result-summary">
-            <span><strong>{totalJobs ?? items.length}</strong> vagas encontradas</span>
-            <small>no período selecionado</small>
+            <span><strong>{totalJobs ?? items.length}</strong> vagas no período selecionado</span>
+            <span className="radar-source-breakdown">
+              <strong>{totalLinkedIn ?? loadedLinkedIn}</strong> do LinkedIn
+              <b> · </b>
+              <strong>{totalOtherSources ?? loadedOtherSources}</strong> de
+              outras fontes
+            </span>
             {totalJobs !== null && totalJobs > items.length && (
-              <em>Mostrando as {items.length} mais recentes</em>
+              <em>Carregadas as {items.length} mais recentes para exibição</em>
             )}
+          </div>
+          <div
+            className="radar-source-filter"
+            role="group"
+            aria-label="Filtrar por origem da vaga"
+          >
+            <button
+              type="button"
+              className={sourceFilter === "all" ? "active" : ""}
+              onClick={() => setSourceFilter("all")}
+            >
+              Todas
+            </button>
+            <button
+              type="button"
+              className={sourceFilter === "linkedin" ? "active" : ""}
+              onClick={() => setSourceFilter("linkedin")}
+            >
+              LinkedIn ({totalLinkedIn ?? loadedLinkedIn})
+            </button>
+            <button
+              type="button"
+              className={sourceFilter === "other" ? "active" : ""}
+              onClick={() => setSourceFilter("other")}
+            >
+              Outras fontes ({totalOtherSources ?? loadedOtherSources})
+            </button>
           </div>
           <div className="toolbar">
             <div className="search">
@@ -868,7 +933,13 @@ export default function Dashboard() {
         <div className="workspace">
           <div className="job-list">
             <div className="list-head">
-              <span>{filtered.length} oportunidades exibidas</span>
+              <span>
+                {filtered.length} de {items.length} vagas carregadas exibidas
+                {sourceFilter !== "all" &&
+                  (sourceFilter === "linkedin"
+                    ? " · só LinkedIn"
+                    : " · só outras fontes")}
+              </span>
               <span>ordenadas por aderência</span>
             </div>
             {filtered.map((j) => (

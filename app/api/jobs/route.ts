@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gte } from "drizzle-orm";
+import { and, count, desc, eq, gte, like } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../chatgpt-auth";
 import { getDb } from "../../../db/index";
@@ -54,7 +54,12 @@ export async function GET(request: Request) {
     const condition = cutoff
       ? and(eq(jobs.status, "active"), gte(jobs.publishedAt, cutoff))
       : eq(jobs.status, "active");
-    const [rows, totals] = await Promise.all([
+    // Uma vaga é considerada "do LinkedIn" quando sua URL aponta para o
+    // LinkedIn — mesmo padrão já usado para localizar a descrição oficial
+    // em app/api/jobs/detail/route.ts. Isso cobre tanto as vagas trazidas
+    // pela extensão do LinkedIn quanto as importadas via alerta do Gmail.
+    const linkedInCondition = and(condition, like(jobs.url, "%linkedin.com%"));
+    const [rows, totals, linkedInTotals] = await Promise.all([
       getDb()
         .select()
         .from(jobs)
@@ -62,7 +67,11 @@ export async function GET(request: Request) {
         .orderBy(desc(jobs.publishedAt))
         .limit(limit),
       getDb().select({ total: count() }).from(jobs).where(condition),
+      getDb().select({ total: count() }).from(jobs).where(linkedInCondition),
     ]);
+    const totalCount = Number(totals[0]?.total ?? 0);
+    const totalLinkedIn = Number(linkedInTotals[0]?.total ?? 0);
+    const totalOtherSources = Math.max(0, totalCount - totalLinkedIn);
     const selectedSeniority = profile ? listFromStored(profile.seniority) : [];
     const result = rows
       .filter((job) =>
@@ -97,7 +106,9 @@ export async function GET(request: Request) {
       });
     return NextResponse.json({
       jobs: result,
-      total: Number(totals[0]?.total ?? 0),
+      total: totalCount,
+      totalLinkedIn,
+      totalOtherSources,
       mode: "database",
       personalized: Boolean(profile),
       period: period === "all" ? "all" : hours,
