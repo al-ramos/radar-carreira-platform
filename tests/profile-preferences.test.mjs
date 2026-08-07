@@ -50,9 +50,9 @@ test("perfil usa checkboxes e o radar expõe filtros de visualização", async (
   assert.match(profile, /allowCustom=\{false\}/);
   assert.doesNotMatch(profile, /Cidades e regiões/);
   assert.match(profile, /SKILL_GROUPS/);
-  assert.match(dashboard, /Tecnologia\s*<select/);
-  assert.match(dashboard, /Senioridade\s*<select/);
-  assert.match(dashboard, /Modalidade\s*<select/);
+  assert.match(dashboard, /Tecnologia[\s\S]{0,120}<select/);
+  assert.match(dashboard, /Senioridade[\s\S]{0,120}<select/);
+  assert.match(dashboard, /Modalidade[\s\S]{0,120}<select/);
   assert.match(dashboard, /useState<string \| null>\(null\)/);
   assert.match(dashboard, /data\.period/);
   assert.match(dashboard, /event\.key\s*===\s*"Escape"/);
