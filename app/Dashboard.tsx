@@ -1053,20 +1053,28 @@ export default function Dashboard() {
             </button>
           )}
         </div>
+        <div className="list-status-bar">
+          <span>
+            <strong>{filtered.length}</strong>{" "}
+            {filtered.length === 1 ? "vaga" : "vagas"}
+            {filtered.length < items.length && (
+              <>{" "}<span className="list-head-dim">({items.length} carregadas{totalJobs != null && totalJobs > items.length ? ` de ${totalJobs} disponíveis` : ""})</span></>
+            )}
+            {filtered.length === items.length && totalJobs != null && totalJobs > items.length && (
+              <>{" "}<span className="list-head-dim">({items.length} carregadas de {totalJobs} disponíveis)</span></>
+            )}
+            {sourceFilter === "linkedin" && <>{" "}<span className="list-head-badge">só LinkedIn</span></>}
+            {sourceFilter === "other" && <>{" "}<span className="list-head-badge">só ATS</span></>}
+          </span>
+          {totalJobs != null && items.length < totalJobs && (
+            <span className="list-status-progress">
+              <span className="list-status-bar-fill" style={{ width: `${Math.round((items.length / totalJobs) * 100)}%` }} />
+            </span>
+          )}
+          <span className="list-head-dim">por aderência</span>
+        </div>
         <div className="workspace">
           <div className="job-list">
-            <div className="list-head">
-              <span>
-                Exibindo{" "}
-                <strong>{filtered.length}</strong> de{" "}
-                <strong>{totalJobs ?? items.length}</strong> vagas
-                {sourceFilter !== "all" &&
-                  (sourceFilter === "linkedin"
-                    ? " · só LinkedIn"
-                    : " · só outras fontes")}
-              </span>
-              <span>ordenadas por aderência</span>
-            </div>
             {filtered.map((j) => (
               <button
                 key={j.id}
@@ -1106,7 +1114,11 @@ export default function Dashboard() {
                   onClick={() => void loadMoreJobs()}
                   disabled={loadingMore}
                 >
-                  {loadingMore ? "Carregando…" : `Carregar mais vagas (${items.length} de ${totalJobs ?? "?"} carregadas)`}
+                  {loadingMore
+                    ? "Carregando…"
+                    : totalJobs != null
+                      ? `Carregar mais · ${totalJobs - items.length} vagas restantes`
+                      : "Carregar mais vagas"}
                 </button>
               </div>
             )}
