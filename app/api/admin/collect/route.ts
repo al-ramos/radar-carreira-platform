@@ -2,29 +2,22 @@ import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db/index";
-import { importRuns, jobSources, jobs, profiles } from "../../../../db/schema";
+import { importRuns, jobSources, jobs } from "../../../../db/schema";
 import { collect, isPullProvider } from "../../../../lib/connectors";
 import { fingerprint } from "../../../../lib/jobs";
 import { findCuratedSource } from "../../../../lib/curated-sources";
+import { isOwnerEmail } from "../../../../lib/access";
 
 export const dynamic = "force-dynamic";
 
-const ADMINS = new Set([
-  "contato@amrsolution.com.br",
-  "alexsandro.ramos@gmail.com",
-  "prof.andreiamr@gmail.com",
-]);
 const errorMessage=(error:unknown)=>error instanceof Error?error.message.slice(0,300):"Falha desconhecida na coleta";
 
 export async function POST(request: Request) {
   const user = await getChatGPTUser();
   if (!user) return NextResponse.json({ error: "Autenticação necessária" }, { status: 401 });
 
+  if (!isOwnerEmail(user.email)) return NextResponse.json({ error: "Acesso restrito ao proprietário" }, { status: 403 });
   const db = getDb();
-  const profile = (await db.select({ role: profiles.role }).from(profiles).where(eq(profiles.userId, user.userId)).limit(1))[0];
-  if (profile?.role !== "admin" && !ADMINS.has(user.email.toLowerCase())) {
-    return NextResponse.json({ error: "Acesso de administrador necessário" }, { status: 403 });
-  }
 
   const body = await request.json().catch(() => ({})) as { sourceId?: string; catalogId?: string; offset?: number };
   const curated = body.catalogId ? findCuratedSource(body.catalogId) : null;

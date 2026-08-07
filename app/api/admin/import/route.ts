@@ -2,14 +2,14 @@ import { eq, inArray } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db/index";
-import { importRuns, jobs, profiles } from "../../../../db/schema";
+import { importRuns, jobs } from "../../../../db/schema";
 import { fingerprint, type ImportedJob } from "../../../../lib/jobs";
 import { parseCsvJobs } from "../../../../lib/csv-jobs";
 import { normalizeImportedJobs } from "../../../../lib/import-jobs";
+import { isOwnerEmail } from "../../../../lib/access";
 
 export const dynamic = "force-dynamic";
 
-const ADMINS = new Set(["contato@amrsolution.com.br", "alexsandro.ramos@gmail.com", "prof.andreiamr@gmail.com"]);
 const WRITE_BATCH_SIZE = 50;
 const LOOKUP_BATCH_SIZE = 100;
 
@@ -52,9 +52,8 @@ export async function POST(request: Request) {
   const user = await getChatGPTUser();
   if (!user) return NextResponse.json({ error: "Autenticação necessária" }, { status: 401 });
 
+  if (!isOwnerEmail(user.email)) return NextResponse.json({ error: "Acesso restrito ao proprietário" }, { status: 403 });
   const db = getDb();
-  const profile = (await db.select({ role: profiles.role }).from(profiles).where(eq(profiles.userId, user.userId)).limit(1))[0];
-  if (profile?.role !== "admin" && !ADMINS.has(user.email.toLowerCase())) return NextResponse.json({ error: "Acesso de administrador necessário" }, { status: 403 });
 
   let items: ImportedJob[];
   try { items = await payload(request); } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Formato inválido" }, { status: 400 }); }

@@ -22,3 +22,15 @@ test("apenas o proprietário pode limpar a base", async()=>{
   assert.match(jobs,/const OWNER_EMAIL="alexsandro\.ramos@gmail\.com"/);
   assert.match(jobs,/user\.email\.toLowerCase\(\)!==OWNER_EMAIL/);
 });
+
+test("fontes e importações são exclusivas do proprietário", async()=>{
+  const dashboard=await readFile(new URL("../app/Dashboard.tsx",import.meta.url),"utf8");
+  const access=await readFile(new URL("../lib/access.ts",import.meta.url),"utf8");
+  const collect=await readFile(new URL("../app/api/admin/collect/route.ts",import.meta.url),"utf8");
+  const importRoute=await readFile(new URL("../app/api/admin/import/route.ts",import.meta.url),"utf8");
+  const sources=await readFile(new URL("../app/api/admin/sources/route.ts",import.meta.url),"utf8");
+  assert.match(access,/OWNER_EMAIL = "alexsandro\.ramos@gmail\.com"/);
+  assert.match(dashboard,/item === "Fontes" \|\| item === "Importações"/);
+  assert.match(dashboard,/canManageSources/);
+  for(const route of [collect,importRoute,sources]) assert.match(route,/isOwnerEmail\(user\.email\)|isOwnerEmail\(u\.email\)/);
+});

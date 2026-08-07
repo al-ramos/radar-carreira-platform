@@ -17,6 +17,7 @@ import {
   WORK_MODE_OPTIONS,
 } from "../lib/profile-options";
 import { parseCareerSource } from "../lib/career-source";
+import { isOwnerEmail } from "../lib/access";
 import { computeVerdict, VerdictResult } from "../lib/verdict";
 type Job = {
   id: string;
@@ -929,9 +930,11 @@ export default function Dashboard() {
       .join("")
       .toUpperCase();
   const isAdmin = currentUser?.role === "admin",
-    isOwner = currentUser?.email.toLowerCase() === "alexsandro.ramos@gmail.com",
-    visibleNav = nav.filter(
-      (item) =>
+    isOwner = isOwnerEmail(currentUser?.email),
+    canManageSources = isOwner,
+    visibleNav = nav.filter((item) => {
+      if (item === "Fontes" || item === "Importações") return canManageSources;
+      return (
         (isAdmin && (item !== "Usuários" || isOwner)) ||
         !new Set([
           "Monitoramento",
@@ -940,10 +943,9 @@ export default function Dashboard() {
           "Usuários",
           "Extensão LinkedIn",
           "Gmail RadarVagas",
-          "Fontes",
-          "Importações",
-        ]).has(item),
-    ),
+        ]).has(item)
+      );
+    }),
     icons: Record<string, string> = {
       Radar: "⌁",
       Pipeline: "▦",
@@ -1062,7 +1064,7 @@ export default function Dashboard() {
                 ↓ Relatório Excel
               </a>
             )}
-            {isAdmin && (
+            {canManageSources && (
               <button className="primary" onClick={() => setImporting(true)}>
                 ＋ Importar vagas
               </button>

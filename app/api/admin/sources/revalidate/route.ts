@@ -2,9 +2,10 @@ import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../../chatgpt-auth";
 import { getDb } from "../../../../../db/index";
-import { jobSources, profiles } from "../../../../../db/schema";
+import { jobSources } from "../../../../../db/schema";
 import { validate } from "../../../../../lib/connectors";
 import { CURATED_SOURCES } from "../../../../../lib/curated-sources";
+import { isOwnerEmail } from "../../../../../lib/access";
 
 export const dynamic = "force-dynamic";
 
@@ -14,11 +15,10 @@ async function isAuthorized(request: Request): Promise<boolean> {
   const auth = request.headers.get("Authorization");
   if (secret && auth === `Bearer ${secret}`) return true;
 
-  // 2. Sessão de admin — usado pelo botão na UI
+  // 2. Sessão do proprietário — usada pelo botão na UI
   const u = await getChatGPTUser();
   if (!u) return false;
-  const p = (await getDb().select({ role: profiles.role }).from(profiles).where(eq(profiles.userId, u.userId)).limit(1))[0];
-  return p?.role === "admin" || new Set(["contato@amrsolution.com.br", "alexsandro.ramos@gmail.com", "prof.andreiamr@gmail.com"]).has(u.email.toLowerCase());
+  return isOwnerEmail(u.email);
 }
 
 export async function POST(request: Request) {
