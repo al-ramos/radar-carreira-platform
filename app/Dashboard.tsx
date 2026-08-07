@@ -248,6 +248,7 @@ export default function Dashboard() {
     [importCount, setImportCount] = useState(0),
     [message, setMessage] = useState(""),
     [sourceVersion, setSourceVersion] = useState(0);
+  const [slugWarning, setSlugWarning] = useState<string[] | null>(null);
   const [collectionResults, setCollectionResults] = useState<
     CollectionOutcome[]
   >([]);
@@ -511,14 +512,20 @@ export default function Dashboard() {
       setMessage("");
     } catch {}
   }
-  async function addSource(test = false) {
+  async function addSource(test = false, forceAdd = false) {
+    setSlugWarning(null);
     setMessage(test ? "Testando página de carreiras…" : "Salvando fonte…");
     const r = await fetch("/api/admin/sources", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name: sourceName, provider, careerUrl, test }),
+        body: JSON.stringify({ name: sourceName, provider, careerUrl, test, forceAdd }),
       }),
       data = await r.json();
+    if (!r.ok && data.warning === "slug_ambiguous") {
+      setSlugWarning(data.reasons ?? []);
+      setMessage("");
+      return;
+    }
     if (r.ok) setSourceVersion((version) => version + 1);
     setMessage(
       r.ok
@@ -1475,6 +1482,19 @@ export default function Dashboard() {
                 <button onClick={() => addSource(true)}>Salvar e testar</button>
                 <button onClick={() => addSource()}>Cadastrar fonte</button>
               </div>
+              {slugWarning && (
+                <div className="slug-warning">
+                  <strong>⚠ Slug suspeito — revisão recomendada</strong>
+                  <ul>
+                    {slugWarning.map((reason, i) => <li key={i}>{reason}</li>)}
+                  </ul>
+                  <p>Slugs curtos ou genéricos costumam colidir com outras empresas na mesma plataforma ATS, retornando vagas incorretas.</p>
+                  <div className="source-actions">
+                    <button onClick={() => addSource(true, true)}>Testar mesmo assim</button>
+                    <button onClick={() => addSource(false, true)}>Adicionar mesmo assim</button>
+                  </div>
+                </div>
+              )}
             </details>
           </section>
         </div>

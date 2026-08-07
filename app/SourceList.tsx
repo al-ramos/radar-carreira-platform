@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { CURATED_SOURCES } from "../lib/curated-sources";
+import { CURATED_SOURCES, QUARANTINED_SOURCES } from "../lib/curated-sources";
 
 type ValidationStatus = "ok" | "empty" | "mismatch" | "error";
 type Source = { id: string; name: string; provider: string; collectionMode: "pull" | "push"; enabled: boolean; lastRunAt: string | null; lastSuccessAt: string | null; lastError: string | null; consecutiveFailures: number; canCollect: boolean; catalogId?: string; validationStatus: ValidationStatus | null; foundName?: string };
@@ -130,6 +130,24 @@ export default function SourceList({ onStart, onActivateAll, refreshKey = 0 }: P
           </article>
         ))}
         {!sources.filter(s => s.collectionMode === "pull").length && <div className="source-empty">Nenhuma fonte ativada ainda.</div>}
+      </section>
+
+      <section className="source-group source-quarantine">
+        <h3>Fontes em quarentena <span>{QUARANTINED_SOURCES.length}</span></h3>
+        <p>Retiradas do catálogo por retornar vagas vazias ou de empresa incorreta. Não reativar sem localizar o board correto.</p>
+        {QUARANTINED_SOURCES.map(source => (
+          <article key={source.id}>
+            <i className="off" />
+            <span>
+              <b>{source.name}</b>
+              <small>
+                {providerLabel(source.provider)} · <code>{source.externalRef}</code>
+                {source.ambiguousSlug && <> · <mark className="badge-ambiguous">slug ambíguo</mark></>}
+                <br />{source.reason}
+              </small>
+            </span>
+          </article>
+        ))}
       </section>
 
       <section className="source-group">
