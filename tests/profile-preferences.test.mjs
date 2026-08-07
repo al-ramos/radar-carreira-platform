@@ -1,13 +1,22 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { allowedWorkModes, listFromStored } from "../lib/profile-options.ts";
+import { allowedWorkModes, listFromStored, normalizeMinScore } from "../lib/profile-options.ts";
 import { matchesSelectedSeniority, scoreJob } from "../lib/scoring.ts";
 
 test("preserva preferências novas e legadas como listas", () => {
   assert.deepEqual(listFromStored('["C#", "SQL"]'), ["C#", "SQL"]);
   assert.deepEqual(listFromStored("Sênior, Pleno"), ["Sênior", "Pleno"]);
   assert.deepEqual(allowedWorkModes(["Remoto", "Híbrido", "Presencial"]), ["Remoto", "Presencial"]);
+});
+
+test("preserva score mínimo zero e limita valores ao intervalo permitido", () => {
+  assert.equal(normalizeMinScore(0), 0);
+  assert.equal(normalizeMinScore("75"), 75);
+  assert.equal(normalizeMinScore(-1), 0);
+  assert.equal(normalizeMinScore(101), 100);
+  assert.equal(normalizeMinScore(""), 60);
+  assert.equal(normalizeMinScore("inválido"), 60);
 });
 
 test("calcula aderência para mais de uma senioridade e modalidade", () => {

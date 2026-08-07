@@ -56,3 +56,9 @@ export function listFromStored(value: unknown): string[] {
 export function allowedWorkModes(value: unknown): string[] {
   return listFromStored(value).filter(mode => WORK_MODE_OPTIONS.includes(mode));
 }
+
+export function normalizeMinScore(value: unknown, fallback = 60): number {
+  if (value === null || value === undefined || value === "") return fallback;
+  const score = Number(value);
+  return Number.isFinite(score) ? Math.max(0, Math.min(100, score)) : fallback;
+}
