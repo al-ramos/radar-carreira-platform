@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import AlertCenter from "./AlertCenter";
 import Analytics from "./Analytics";
 import Monitoring from "./Monitoring";
@@ -314,8 +314,33 @@ export default function Dashboard() {
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [profileChoices, setProfileChoices] =
     useState<ProfileChoices>(emptyProfileChoices);
-  const [pipelineFilter, setPipelineFilter] = useState<"all"|"unseen"|"viewed"|"saved"|"applied"|"interview"|"rejected">("all");
-  const [verdictFilter, setVerdictFilter] = useState<"all"|"✅"|"🟡"|"🔴"|"❌">("all");
+  const [pipelineFilter, setPipelineFilter] = useState<"all"|"unseen"|"viewed"|"saved"|"applied"|"interview"|"rejected">(() => {
+    try { return (sessionStorage.getItem("radar_pipelineFilter") as "all"|"unseen"|"viewed"|"saved"|"applied"|"interview"|"rejected") ?? "all"; } catch { return "all"; }
+  });
+  const [verdictFilter, setVerdictFilter] = useState<"all"|"✅"|"🟡"|"🔴"|"❌">(() => {
+    try { return (sessionStorage.getItem("radar_verdictFilter") as "all"|"✅"|"🟡"|"🔴"|"❌") ?? "all"; } catch { return "all"; }
+  });
+  // ── Persistência de estado UI no sessionStorage (sobrevive ao F5) ──────────
+  const jobListRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { try { sessionStorage.setItem("radar_pipelineFilter", pipelineFilter); } catch {} }, [pipelineFilter]);
+  useEffect(() => { try { sessionStorage.setItem("radar_verdictFilter", verdictFilter); } catch {} }, [verdictFilter]);
+  useEffect(() => {
+    if (selected?.id && !selected.id.startsWith("demo")) {
+      try { sessionStorage.setItem("radar_selectedJobId", selected.id); } catch {}
+    }
+  }, [selected]);
+  // Salva scroll da lista com throttle simples
+  const scrollSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  function handleJobListScroll() {
+    if (scrollSaveTimerRef.current) clearTimeout(scrollSaveTimerRef.current);
+    scrollSaveTimerRef.current = setTimeout(() => {
+      try {
+        const top = jobListRef.current?.scrollTop ?? 0;
+        sessionStorage.setItem("radar_listScrollTop", String(top));
+      } catch {}
+    }, 200);
+  }
+  // ──────────────────────────────────────────────────────────────────────────
   const closeOpenOverlays = () => {
     setImporting(false);
     setSourcesOpen(false);
@@ -348,7 +373,15 @@ export default function Dashboard() {
           .sort((a: Job, b: Job) => b.score - a.score);
         setItems(next);
         setCurrentPage(1);
-        if (next.length) setSelected(next[0]);
+        if (next.length) {
+          try {
+            const savedId = sessionStorage.getItem("radar_selectedJobId");
+            const restored = savedId ? next.find((j: Job) => j.id === savedId) : null;
+            setSelected(restored ?? next[0]);
+          } catch {
+            setSelected(next[0]);
+          }
+        }
         setTotalJobs(typeof data.total === "number" ? data.total : next.length);
         setTotalLinkedIn(
           typeof data.totalLinkedIn === "number" ? data.totalLinkedIn : null,
@@ -377,13 +410,33 @@ export default function Dashboard() {
         // Carrega pipeline automaticamente ao confirmar usuário autenticado
         if (data.user) {
           fetch("/api/pipeline")
-            .then((r) => (r.ok ? r.json() : Promise.reject()))
+            .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
             .then((d) => setPipelineItems(d.items ?? []))
-            .catch(() => {/* silencioso — usuário pode não ter items ainda */});
+            .catch((err) => {
+              // Log em dev para diagnóstico — não bloqueia a UI
+              if (typeof window !== "undefined" && window.location.hostname === "localhost") {
+                console.error("[radar] pipeline auto-load falhou:", err);
+              }
+            });
         }
       })
       .catch(() => setCurrentUser(null));
   }, []);
+  // Restaura scroll da lista após os jobs carregarem
+  useEffect(() => {
+    if (!items.length || mode === "preview") return;
+    try {
+      const savedTop = Number(sessionStorage.getItem("radar_listScrollTop") ?? "0");
+      if (savedTop > 0 && jobListRef.current) {
+        // requestAnimationFrame garante que o DOM já renderizou
+        requestAnimationFrame(() => {
+          if (jobListRef.current) jobListRef.current.scrollTop = savedTop;
+        });
+      }
+    } catch {}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items]);
+
   const stackFilterOptions = useMemo(
     () =>
       [
@@ -398,8 +451,10 @@ export default function Dashboard() {
     return map;
   }, [pipelineItems]);
 
-  /** Mapa jobId → VerdictResult (calculado uma vez por lista carregada) */
+  /** Mapa jobId → VerdictResult (calculado uma vez por lista carregada).
+   *  Retorna mapa vazio se o usuário não configurou skills no perfil. */
   const verdictMap = useMemo(() => {
+    if (profileMasteredSkills.length === 0) return new Map<string, VerdictResult>();
     const map = new Map<string, VerdictResult>();
     items.forEach((job) => {
       map.set(job.id, computeVerdict({
@@ -1107,7 +1162,7 @@ export default function Dashboard() {
               })}
             </div>
           </div>
-          {currentUser && (
+          {currentUser && profileMasteredSkills.length > 0 && (
             <>
               <div className="compact-filter-divider" aria-hidden="true" />
               <div className="compact-filter-group">
@@ -1154,7 +1209,7 @@ export default function Dashboard() {
           <span className="list-head-dim">por aderência</span>
         </div>
         <div className="workspace">
-          <div className="job-list">
+          <div className="job-list" ref={jobListRef} onScroll={handleJobListScroll}>
             {filtered.map((j) => (
               <button
                 key={j.id}
@@ -1164,7 +1219,7 @@ export default function Dashboard() {
                 <div className="score">
                   {j.score}
                   <small>match</small>
-                  {(() => {
+                  {profileMasteredSkills.length > 0 && (() => {
                     const v = verdictMap.get(j.id);
                     return v ? <span className={`verdict-badge verdict-${v.emoji === "✅" ? "ok" : v.emoji === "🟡" ? "maybe" : v.emoji === "🔴" ? "no" : "blocked"}`}>{v.emoji}</span> : null;
                   })()}
