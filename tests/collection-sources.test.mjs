@@ -25,6 +25,7 @@ test("somente fontes ATS participam da coleta automática",async()=>{
  assert.match(sourceList,/Empresas cadastradas/);
  assert.match(sourceList,/Integrações de entrada/);
  assert.match(dashboard,/Coletar todas/);
+ assert.match(dashboard,/onClick=\{\(\) => void collectNow\(\)\}/);
  assert.match(dashboard,/collectionResults/);
  assert.match(dashboard,/data\.outcomes/);
  assert.match(dashboard,/Adicionar nova empresa/);
