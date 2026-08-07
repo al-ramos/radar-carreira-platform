@@ -374,6 +374,13 @@ export default function Dashboard() {
         if (Array.isArray(data.profile?.masteredSkills)) {
           setProfileMasteredSkills(data.profile.masteredSkills as string[]);
         }
+        // Carrega pipeline automaticamente ao confirmar usuário autenticado
+        if (data.user) {
+          fetch("/api/pipeline")
+            .then((r) => (r.ok ? r.json() : Promise.reject()))
+            .then((d) => setPipelineItems(d.items ?? []))
+            .catch(() => {/* silencioso — usuário pode não ter items ainda */});
+        }
       })
       .catch(() => setCurrentUser(null));
   }, []);
