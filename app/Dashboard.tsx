@@ -260,7 +260,7 @@ export default function Dashboard() {
     [items, setItems] = useState<Job[]>(demo),
     [selected, setSelected] = useState<Job>(demo[0]),
     [fitFilter, setFitFilter] = useState<"profile" | "all" | "70" | "80">(
-      "profile",
+      "all",
     ),
     [period, setPeriod] = useState<string | null>(null),
     [mode, setMode] = useState("preview"),
@@ -661,13 +661,16 @@ export default function Dashboard() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(profileChoices),
     });
+    const data = await r.json().catch(() => null);
     setMessage(
       r.ok
         ? "Preferências salvas. Recalculando seu radar…"
-        : "Entre com sua conta para salvar o perfil.",
+        : data?.error ?? "Não foi possível salvar as preferências.",
     );
     if (r.ok) {
-      setProfileMinScore(profileChoices.minScore);
+      const savedMinScore = Number(data?.profile?.minScore ?? profileChoices.minScore);
+      setProfileMinScore(savedMinScore);
+      setProfileChoices((current) => ({ ...current, minScore: savedMinScore }));
       setFitFilter("profile");
       setTimeout(() => location.reload(), 900);
     }
@@ -1011,13 +1014,7 @@ export default function Dashboard() {
               <option value="all">Todas</option>
             </select>
             <label className="fit-filter">
-              Aderência
-              {fitFilter !== "profile" && fitFilter !== "all" && (
-                <em className="filter-chip">≥{fitFilter}%</em>
-              )}
-              {fitFilter === "profile" && (
-                <em className="filter-chip filter-chip--profile">≥{profileMinScore}% perfil</em>
-              )}
+              <span>Aderência mínima</span>
               <select
                 aria-label="Aderência ao seu perfil"
                 value={fitFilter}
@@ -1027,12 +1024,12 @@ export default function Dashboard() {
                   )
                 }
               >
-                <option value="profile">
-                  Usar meu perfil (mínimo {profileMinScore}%+)
-                </option>
                 <option value="all">Todas as vagas</option>
-                <option value="70">Boa aderência (70%+)</option>
-                <option value="80">Alta aderência (80%+)</option>
+                <option value="profile">
+                  Meu perfil ({profileMinScore}% ou mais)
+                </option>
+                <option value="70">70% ou mais</option>
+                <option value="80">80% ou mais</option>
               </select>
             </label>
           </div>
@@ -1455,14 +1452,12 @@ export default function Dashboard() {
             </button>
             <p className="eyebrow">ORIGENS DE VAGAS</p>
             <h2>Empresas e integrações</h2>
-            <p>
-              Inicie a coleta de uma empresa abaixo ou atualize todas as fontes
-              automáticas.
-            </p>
+            <p>Gerencie o catálogo, as fontes ativas e as integrações.</p>
             <SourceList
               refreshKey={sourceVersion}
               onStart={(catalogId, name) => collectNow(catalogId, name)}
               onActivateAll={activateCatalog}
+              onCollectAll={() => collectNow()}
             />
             {message && <div className="notice">{message}</div>}
             {collectionResults.length > 0 && (
@@ -1477,11 +1472,6 @@ export default function Dashboard() {
                 ))}
               </div>
             )}
-            <div className="source-actions">
-              <button className="primary" onClick={() => void collectNow()}>
-                Coletar todas
-              </button>
-            </div>
             <details className="add-source">
               <summary>＋ Adicionar nova empresa</summary>
               <p>
