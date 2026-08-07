@@ -519,9 +519,6 @@ export default function Dashboard() {
     setQuery("");
     setFitFilter("all");
     setPeriod("all");
-    setStackFilter("");
-    setSeniorityFilter("");
-    setWorkModeFilter("");
     setSourceFilter("all");
   }
   async function loadMoreJobs() {
