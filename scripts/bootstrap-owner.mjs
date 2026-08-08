@@ -18,6 +18,7 @@
 
 import { createInterface } from "readline";
 import { webcrypto } from "crypto";
+import { writeFileSync } from "fs";
 
 const OWNER_USER_ID  = "radar-local-admin";
 const OWNER_EMAIL    = "alexsandro.ramos@gmail.com";
@@ -61,8 +62,16 @@ async function readPassword() {
 }
 
 async function main() {
+  const outputFile = process.argv[2] || null;
+
   err("=== bootstrap-owner: geração de SQL para conta local do owner ===");
-  err("Tudo que você vê aqui é stderr — não vai para o arquivo SQL.");
+  if (outputFile) {
+    err(`Saída: ${outputFile}`);
+  } else {
+    err("Uso: node scripts/bootstrap-owner.mjs <caminho-do-arquivo.sql>");
+    err("Exemplo: node scripts/bootstrap-owner.mjs $env:TEMP\\owner.sql");
+    process.exit(1);
+  }
   err("");
 
   const password = await readPassword();
@@ -79,16 +88,13 @@ async function main() {
   const hash = encodeBase64Url(hashBytes);
   const now = Date.now();
 
-  // --- stdout: apenas o INSERT, sem comentários nem SELECT ---
-  // O wrangler D1 não tolera múltiplos statements misturados com comentários.
-  process.stdout.write(
-    `INSERT INTO local_accounts (user_id, email, name, password_hash, password_salt, created_by, created_at, updated_at) VALUES ('${OWNER_USER_ID}', '${OWNER_EMAIL}', '${OWNER_NAME}', '${hash}', '${salt}', NULL, ${now}, ${now}) ON CONFLICT(user_id) DO UPDATE SET password_hash = excluded.password_hash, password_salt = excluded.password_salt, updated_at = excluded.updated_at;\n`
-  );
+  const sql = `INSERT INTO local_accounts (user_id, email, name, password_hash, password_salt, created_by, created_at, updated_at) VALUES ('${OWNER_USER_ID}', '${OWNER_EMAIL}', '${OWNER_NAME}', '${hash}', '${salt}', NULL, ${now}, ${now}) ON CONFLICT(user_id) DO UPDATE SET password_hash = excluded.password_hash, password_salt = excluded.password_salt, updated_at = excluded.updated_at;\n`;
 
-  // --- volta para stderr ---
+  writeFileSync(outputFile, sql, { encoding: "utf8" });
+
   err("");
-  err("✅ SQL gerado em stdout.");
-  err("   Salve em arquivo temporário FORA do repo e execute via wrangler --remote.");
+  err(`✅ SQL gravado em: ${outputFile}`);
+  err("   Execute: npx wrangler d1 execute radar-carreira-db --remote --file=" + outputFile);
   err("   Apague o arquivo imediatamente após a execução.");
   err("   Guarde a senha no seu gerenciador de senhas agora — ela não é recuperável.");
   err("");
