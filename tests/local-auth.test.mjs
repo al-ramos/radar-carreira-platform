@@ -19,6 +19,7 @@ test("login local cria uma sessão protegida no Worker", async () => {
   assert.match(auth, /PBKDF2/);
   assert.match(auth, /httpOnly: true/);
   assert.match(login, /LOCAL_SESSION_COOKIE/);
+  assert.match(login, /LOCAL_ADMIN_EMAIL/);
   assert.match(login, /localAccounts/);
   assert.match(logout, /maxAge: 0/);
   assert.match(page, /Criar minha conta/);

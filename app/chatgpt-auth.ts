@@ -21,7 +21,7 @@ const CALLBACK_PATH = "/callback";
 
 export const LOCAL_SESSION_COOKIE = "radar_admin_session";
 const LOCAL_ADMIN_ID = "radar-local-admin";
-const LOCAL_ADMIN_EMAIL = "alexsandro.ramos@gmail.com";
+export const LOCAL_ADMIN_EMAIL = "alexsandro.ramos@gmail.com";
 const LOCAL_ADMIN_NAME = "Alex Ramos";
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 12;
 export const LOCAL_PASSWORD_MIN_LENGTH = 4;
@@ -159,7 +159,8 @@ async function readLocalSession(): Promise<ChatGPTUser | null> {
   }
 }
 
-export async function createLocalAdminSession(password: string): Promise<string | null> {
+export async function createLocalAdminSession(email: string, password: string): Promise<string | null> {
+  if (email.trim().toLowerCase() !== LOCAL_ADMIN_EMAIL) return null;
   const salt = decodeBase64Url(runtimeEnv().RADAR_ADMIN_PASSWORD_SALT?.trim() ?? "");
   const expectedHash = decodeBase64Url(runtimeEnv().RADAR_ADMIN_PASSWORD_HASH?.trim() ?? "");
   if (!salt || !expectedHash) return null;
