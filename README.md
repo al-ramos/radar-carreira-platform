@@ -118,6 +118,47 @@ Antes do primeiro push com deploy, crie estes **Repository secrets** em `Setting
 
 As credenciais não devem ser adicionadas a arquivos do repositório ou ao código-fonte. O binding `DB`, o ID do D1 e as migrations ficam em `wrangler.jsonc` e `drizzle/`.
 
+## Acesso administrativo local (fora do Sign in with ChatGPT)
+
+Quando o Worker roda fora de `*.chatgpt.site` (ex.: outro domínio, ou como plano B de acesso), o login por e-mail e senha usa duas famílias de credenciais:
+
+- **Sua conta (dona da plataforma, `alexsandro.ramos@gmail.com`)**: autentica com uma senha própria, comparada por hash contra os secrets `RADAR_ADMIN_PASSWORD_HASH` e `RADAR_ADMIN_PASSWORD_SALT` do Worker. Não existe mais um secret de senha em texto puro (`RADAR_ADMIN_PASSWORD` foi removido).
+- **Demais contas**: criadas pela própria proprietária em **Usuários** dentro do portal, com senha com hash e sal armazenados na tabela `local_accounts`. Toda conta criada por convite nasce com papel `user`; apenas `alexsandro.ramos@gmail.com` tem papel `admin`.
+
+Para configurar ou trocar a senha da conta principal, gere um hash PBKDF2 (mesmo algoritmo usado no restante do app, 25.000 iterações, SHA-256, 16 bytes de sal) e publique-o como secret do Worker:
+
+```bash
+node -e '
+const crypto = require("node:crypto").webcrypto;
+function b64url(bytes) {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return Buffer.from(binary, "binary").toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+(async () => {
+  const password = process.argv[1];
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt, iterations: 25000 }, key, 256);
+  console.log("HASH=" + b64url(new Uint8Array(bits)));
+  console.log("SALT=" + b64url(salt));
+})();
+' "SUA_SENHA_NOVA_AQUI"
+```
+
+Depois, publique os dois valores como secrets do Worker (nunca em `.env` versionado):
+
+```bash
+npx wrangler secret put RADAR_ADMIN_PASSWORD_HASH
+npx wrangler secret put RADAR_ADMIN_PASSWORD_SALT
+```
+
+Se existir um secret antigo `RADAR_ADMIN_PASSWORD` (senha em texto puro), remova-o:
+
+```bash
+npx wrangler secret delete RADAR_ADMIN_PASSWORD
+```
+
 ## Integração Gmail RadarVagas
 
 ### 1. Preparar o Gmail

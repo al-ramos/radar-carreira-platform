@@ -91,9 +91,10 @@ O objetivo das próximas entregas é conectar essa experiência enxuta aos módu
 
 ### 4.5 Revisar mudanças locais antes de publicar
 
-- Há mudanças locais de administração/autenticação e a migration `0007` ainda não publicadas.
+- Migrations `0007` a `0009` (papel padrão de conta e hash da senha administrativa) ainda não publicadas.
 - Revisar escopo e diff, executar testes relevantes e validar impacto de banco/permissões.
 - Publicar essas alterações em ciclo próprio, sem misturá-las a mudanças não relacionadas.
+- Antes de publicar, trocar os secrets do Cloudflare Worker: remover `RADAR_ADMIN_PASSWORD` e configurar `RADAR_ADMIN_PASSWORD_HASH` / `RADAR_ADMIN_PASSWORD_SALT` (ver README).
 
 ## 5. Roadmap de produto
 
@@ -192,7 +193,7 @@ O formulário atual pede o nome da empresa antes de explicar que a pessoa está 
 ### Restrições atuais a confirmar antes de uso
 
 - O acesso é por e-mail e senha; não pelo botão ChatGPT.
-- O convite cria perfil de administrador.
+- Desde a migration `0009_default_role_user`, o convite cria perfil comum (`user`); apenas `alexsandro.ramos@gmail.com` é administrador.
 - Não há e-mail automático de convite.
 
 ## 10. Checklist de verificação futura

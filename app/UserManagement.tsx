@@ -26,6 +26,7 @@ export default function UserManagement({ close }: { close: () => void }) {
   const [invite, setInvite] = useState(blankInvite);
   const [message, setMessage] = useState("Carregando usuários…");
   const [submitting, setSubmitting] = useState(false);
+  const [changingRole, setChangingRole] = useState<string | null>(null);
 
   async function load() {
     const response = await fetch("/api/admin/users");
@@ -75,6 +76,25 @@ export default function UserManagement({ close }: { close: () => void }) {
     setSubmitting(false);
   }
 
+  async function changeRole(user: User) {
+    const nextRole = user.role === "admin" ? "user" : "admin";
+    setChangingRole(user.userId);
+    setMessage("");
+    const response = await fetch(`/api/admin/users/${user.userId}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ role: nextRole }),
+    });
+    const data = await response.json();
+    if (response.ok) {
+      await load();
+      setMessage(nextRole === "admin" ? "Usuário promovido a administrador." : "Usuário rebaixado para acesso comum.");
+    } else {
+      setMessage(data.error ?? "Não foi possível alterar o papel do usuário.");
+    }
+    setChangingRole(null);
+  }
+
   const filtered = users.filter(user => `${user.name} ${user.email}`.toLowerCase().includes(query.toLowerCase()));
 
   return <div className="modal-backdrop" onClick={close}><section className="modal users-modal" onClick={event => event.stopPropagation()}>
@@ -89,6 +109,6 @@ export default function UserManagement({ close }: { close: () => void }) {
       <button className="primary" disabled={submitting} type="submit">{submitting ? "Criando…" : "Criar convite"}</button>
     </form>
     {message && <div className="notice">{message}</div>}
-    <div className="users-list">{filtered.map(user => <article key={user.userId}><div className="user-initial">{(user.name ?? user.email).slice(0, 2).toUpperCase()}</div><div><small>{user.email} · {user.access === "convite" ? "convite" : user.access === "chatgpt" ? "ChatGPT" : "administrador principal"}</small><h3>{user.name ?? "Nome não informado"}</h3><p>{user.seniority ?? "Senioridade pendente"} · {user.preferredMode ?? "Modalidade pendente"} · {user.skills} competências · {user.pipeline} no pipeline</p></div><span className={user.profileComplete ? "complete" : "pending"}>{user.profileComplete ? "Perfil completo" : "Perfil pendente"}</span><span className="complete">Administrador</span></article>)}</div>
+    <div className="users-list">{filtered.map(user => <article key={user.userId}><div className="user-initial">{(user.name ?? user.email).slice(0, 2).toUpperCase()}</div><div><small>{user.email} · {user.access === "convite" ? "convite" : user.access === "chatgpt" ? "ChatGPT" : "administrador principal"}</small><h3>{user.name ?? "Nome não informado"}</h3><p>{user.seniority ?? "Senioridade pendente"} · {user.preferredMode ?? "Modalidade pendente"} · {user.skills} competências · {user.pipeline} no pipeline</p></div><span className={user.profileComplete ? "complete" : "pending"}>{user.profileComplete ? "Perfil completo" : "Perfil pendente"}</span>{user.protected ? <span className="complete">Administrador</span> : <button className="role-toggle" disabled={changingRole === user.userId} onClick={() => void changeRole(user)}>{changingRole === user.userId ? "Alterando…" : user.role === "admin" ? "Rebaixar para usuário" : "Promover a admin"}</button>}</article>)}</div>
   </section></div>;
 }

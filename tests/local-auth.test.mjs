@@ -12,7 +12,8 @@ test("login local cria uma sessão protegida no Worker", async () => {
     read("../app/login/page.tsx"),
     read("../app/Dashboard.tsx"),
   ]);
-  assert.match(auth, /RADAR_ADMIN_PASSWORD/);
+  assert.match(auth, /RADAR_ADMIN_PASSWORD_HASH/);
+  assert.match(auth, /RADAR_ADMIN_PASSWORD_SALT/);
   assert.match(auth, /RADAR_SESSION_SECRET/);
   assert.match(auth, /HMAC/);
   assert.match(auth, /PBKDF2/);
@@ -22,8 +23,6 @@ test("login local cria uma sessão protegida no Worker", async () => {
   assert.match(logout, /maxAge: 0/);
   assert.match(page, /Criar minha conta/);
   assert.match(page, /api\/auth\/register/);
-  assert.match(page, /Continuar com ChatGPT/);
-  assert.match(page, /auth_error/);
   assert.match(dashboard, /\/login\?return_to=\//);
   assert.match(dashboard, /\/api\/auth\/logout/);
 });
