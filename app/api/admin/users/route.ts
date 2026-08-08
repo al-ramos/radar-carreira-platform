@@ -7,12 +7,14 @@ import { listFromStored } from "../../../../lib/profile-options";
 
 export const dynamic = "force-dynamic";
 
+// E-mail reservado para exibição de badge "protegido" na listagem de usuários
 const OWNER_EMAIL = "alexsandro.ramos@gmail.com";
 
 async function admin() {
   const user = await getChatGPTUser();
   if (!user) return null;
-  return user.email.toLowerCase() === OWNER_EMAIL ? user : null;
+  const profile = (await getDb().select({ role: profiles.role }).from(profiles).where(eq(profiles.userId, user.userId)).limit(1))[0];
+  return profile?.role === "admin" ? user : null;
 }
 
 function userSummary(profile: typeof profiles.$inferSelect, pipeline: typeof userJobStatus.$inferSelect[], access: "convite" | "chatgpt" | "administrador") {
