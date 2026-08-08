@@ -1,18 +1,15 @@
 import { and, desc, eq, gte } from "drizzle-orm";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db/index";
-import { jobs, jobSources, profiles, userJobStatus } from "../../../../db/schema";
+import { jobs, jobSources, userJobStatus } from "../../../../db/schema";
 
 export const dynamic = "force-dynamic";
-const ADMIN_EMAILS = new Set(["contato@amrsolution.com.br", "alexsandro.ramos@gmail.com", "prof.andreiamr@gmail.com"]);
 const csv = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""').replace(/[\r\n]+/g, " ")}"`;
 
 export async function GET(request: Request) {
   const user = await getChatGPTUser();
   if (!user) return Response.json({error:"Autenticação necessária"},{status:401});
   const db = getDb();
-  const profile = (await db.select({role:profiles.role}).from(profiles).where(eq(profiles.userId,user.userId)).limit(1))[0];
-  if (profile?.role !== "admin" && !ADMIN_EMAILS.has(user.email.toLowerCase())) return Response.json({error:"Acesso de administrador necessário"},{status:403});
   const url = new URL(request.url), period = url.searchParams.get("period") ?? "24";
   const hours = period === "all" ? null : Math.max(1, Math.min(Number(period) || 24, 720));
   const cutoff = hours ? new Date(Date.now() - hours * 36e5) : null;

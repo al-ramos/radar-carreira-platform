@@ -1041,7 +1041,7 @@ export default function Dashboard() {
                 Entrar
               </a>
             )}
-            {isAdmin && (
+            {currentUser && (
               <a
                 className="icon-btn"
                 href={`/api/admin/report?period=${period}`}
