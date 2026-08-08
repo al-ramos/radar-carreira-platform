@@ -937,14 +937,7 @@ export default function Dashboard() {
       if (item === "Auditoria" || item === "Extensão LinkedIn") return isOwner;
       return (
         (isAdmin && (item !== "Usuários" || isOwner)) ||
-        !new Set([
-          "Monitoramento",
-          "Auditoria",
-          "Qualidade",
-          "Usuários",
-          "Extensão LinkedIn",
-          "Gmail RadarVagas",
-        ]).has(item)
+        !new Set(["Auditoria", "Usuários", "Extensão LinkedIn"]).has(item)
       );
     }),
     icons: Record<string, string> = {
