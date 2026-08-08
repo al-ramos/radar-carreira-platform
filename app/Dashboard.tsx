@@ -1246,10 +1246,18 @@ export default function Dashboard() {
         <div className="workspace">
           <div className="job-list" ref={jobListRef} onScroll={handleJobListScroll}>
             {filtered.map((j) => (
-              <button
+              <div
                 key={j.id}
+                role="button"
+                tabIndex={0}
                 className={`job-card ${selectedJob?.id === j.id ? "selected" : ""}`}
                 onClick={() => selectJob(j)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    selectJob(j);
+                  }
+                }}
               >
                 <div className="score">
                   {j.score}
@@ -1318,7 +1326,7 @@ export default function Dashboard() {
                     );
                   })()}
                 </div>
-              </button>
+              </div>
             ))}
             {hasMore && filtered.length > 0 && (
               <div className="load-more-row">
