@@ -469,6 +469,14 @@ export default function Dashboard() {
   }, [items, profileMasteredSkills]);
   const effectiveMinScore =
     fitFilter === "profile" ? profileMinScore : fitFilter;
+  const reportHref = `/api/admin/report?${new URLSearchParams({
+    period: period ?? "24",
+    sourceType: sourceFilter,
+    q: query.trim(),
+    minScore: String(effectiveMinScore),
+    pipeline: pipelineFilter,
+    verdict: verdictFilter,
+  }).toString()}`;
   /** Cor do trilho do slider — mesmos limiares usados no score das vagas. */
   const fitFilterColor =
     effectiveMinScore >= 80 ? "#2e6b3e" : effectiveMinScore >= 60 ? "#7a6200" : effectiveMinScore > 0 ? "#b04a1a" : "#173f32";
@@ -1044,7 +1052,7 @@ export default function Dashboard() {
             {currentUser && (
               <a
                 className="icon-btn"
-                href={`/api/admin/report?period=${period}`}
+                href={reportHref}
               >
                 ↓ Relatório Excel
               </a>
