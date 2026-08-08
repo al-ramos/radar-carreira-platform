@@ -223,6 +223,7 @@
 
 /* Score column: veredito + estágio pipeline */
 .score { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.score-locked { font-size: 15px; opacity: .5; }
 .verdict-badge { font-size: 12px; line-height: 1; }
 .card-stage-badge {
   font-size: 10px;
@@ -457,6 +458,7 @@
   border-radius: 99px;
   transition: width .3s;
 }
+.fit-inline-locked { font-size: 20px; opacity: .45; }
 
 /* ─── Aderência mínima: slider de 10 em 10% ──────────────────── */
 .fit-filter {

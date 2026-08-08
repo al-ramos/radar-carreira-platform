@@ -1260,20 +1260,31 @@ export default function Dashboard() {
                 }}
               >
                 <div className="score">
-                  {j.score}
-                  <small>match</small>
-                  <div
-                    className="score-bar"
-                    title={`${j.score}% de aderência`}
-                  >
-                    <div
-                      className="score-bar-fill"
-                      style={{
-                        width: `${j.score}%`,
-                        background: j.score >= 80 ? "#2e6b3e" : j.score >= 60 ? "#7a6200" : "#b04a1a",
-                      }}
-                    />
-                  </div>
+                  {currentUser ? (
+                    <>
+                      {j.score}
+                      <small>match</small>
+                      <div
+                        className="score-bar"
+                        title={`${j.score}% de aderência`}
+                      >
+                        <div
+                          className="score-bar-fill"
+                          style={{
+                            width: `${j.score}%`,
+                            background: j.score >= 80 ? "#2e6b3e" : j.score >= 60 ? "#7a6200" : "#b04a1a",
+                          }}
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <span
+                      className="score-locked"
+                      title="Entre para ver a aderência ao seu perfil"
+                    >
+                      🔒
+                    </span>
+                  )}
                   {profileMasteredSkills.length > 0 && (() => {
                     const v = verdictMap.get(j.id);
                     return v ? <span className={`verdict-badge verdict-${v.emoji === "✅" ? "ok" : v.emoji === "🟡" ? "maybe" : v.emoji === "🔴" ? "no" : "blocked"}`}>{v.emoji}</span> : null;
@@ -1385,17 +1396,28 @@ export default function Dashboard() {
                   </p>
                 </div>
                 <span className="fit-inline">
-                  <strong>{selectedJob.score}%</strong>
-                  <small>match</small>
-                  <div className="fit-inline-bar">
-                    <div
-                      className="fit-inline-bar-fill"
-                      style={{
-                        width: `${selectedJob.score}%`,
-                        background: selectedJob.score >= 80 ? "#2e6b3e" : selectedJob.score >= 60 ? "#7a6200" : "#b04a1a",
-                      }}
-                    />
-                  </div>
+                  {currentUser ? (
+                    <>
+                      <strong>{selectedJob.score}%</strong>
+                      <small>match</small>
+                      <div className="fit-inline-bar">
+                        <div
+                          className="fit-inline-bar-fill"
+                          style={{
+                            width: `${selectedJob.score}%`,
+                            background: selectedJob.score >= 80 ? "#2e6b3e" : selectedJob.score >= 60 ? "#7a6200" : "#b04a1a",
+                          }}
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <span
+                      className="fit-inline-locked"
+                      title="Entre para ver a aderência ao seu perfil"
+                    >
+                      🔒
+                    </span>
+                  )}
                 </span>
               </div>
               <div className="match-reasons">
