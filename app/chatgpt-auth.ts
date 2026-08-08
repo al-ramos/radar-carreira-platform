@@ -20,9 +20,6 @@ const SIGN_OUT_PATH = "/api/auth/logout";
 const CALLBACK_PATH = "/callback";
 
 export const LOCAL_SESSION_COOKIE = "radar_admin_session";
-const LOCAL_ADMIN_ID = "radar-local-admin";
-export const LOCAL_ADMIN_EMAIL = "alexsandro.ramos@gmail.com";
-const LOCAL_ADMIN_NAME = "Alex Ramos";
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 12;
 export const LOCAL_PASSWORD_MIN_LENGTH = 4;
 // Mantido abaixo do limite de CPU do Worker; o sal aleatório e a sessão HMAC
@@ -30,8 +27,6 @@ export const LOCAL_PASSWORD_MIN_LENGTH = 4;
 const PASSWORD_HASH_ITERATIONS = 25_000;
 
 type RuntimeEnv = {
-  RADAR_ADMIN_PASSWORD_HASH?: string;
-  RADAR_ADMIN_PASSWORD_SALT?: string;
   RADAR_SESSION_SECRET?: string;
 };
 
@@ -108,15 +103,6 @@ function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
   return difference === 0;
 }
 
-function localAdmin(): ChatGPTUser {
-  return {
-    userId: LOCAL_ADMIN_ID,
-    displayName: LOCAL_ADMIN_NAME,
-    email: LOCAL_ADMIN_EMAIL,
-    fullName: LOCAL_ADMIN_NAME,
-  };
-}
-
 function localUser(payload: SessionPayload): ChatGPTUser {
   return {
     userId: payload.sub,
@@ -157,16 +143,6 @@ async function readLocalSession(): Promise<ChatGPTUser | null> {
   } catch {
     return null;
   }
-}
-
-export async function createLocalAdminSession(email: string, password: string): Promise<string | null> {
-  if (email.trim().toLowerCase() !== LOCAL_ADMIN_EMAIL) return null;
-  const salt = decodeBase64Url(runtimeEnv().RADAR_ADMIN_PASSWORD_SALT?.trim() ?? "");
-  const expectedHash = decodeBase64Url(runtimeEnv().RADAR_ADMIN_PASSWORD_HASH?.trim() ?? "");
-  if (!salt || !expectedHash) return null;
-  const receivedHash = await derivePassword(password, salt);
-  if (!sameBytes(receivedHash, expectedHash)) return null;
-  return createLocalSession(localAdmin());
 }
 
 export async function hashLocalPassword(password: string) {

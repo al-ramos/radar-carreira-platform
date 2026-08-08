@@ -1,11 +1,5 @@
 import { NextResponse } from "next/server";
-import {
-  createLocalAdminSession,
-  createLocalUserSession,
-  LOCAL_ADMIN_EMAIL,
-  LOCAL_SESSION_COOKIE,
-  localSessionCookieOptions,
-} from "../../../chatgpt-auth";
+import { createLocalUserSession, LOCAL_SESSION_COOKIE, localSessionCookieOptions } from "../../../chatgpt-auth";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../db";
 import { localAccounts } from "../../../../db/schema";
@@ -22,11 +16,7 @@ export async function POST(request: Request) {
   const account = email
     ? (await getDb().select().from(localAccounts).where(eq(localAccounts.email, email)).limit(1))[0]
     : null;
-  const session = account
-    ? await createLocalUserSession(account, body.password)
-    : email === LOCAL_ADMIN_EMAIL
-      ? await createLocalAdminSession(email, body.password)
-      : null;
+  const session = account ? await createLocalUserSession(account, body.password) : null;
   if (!session) {
     return NextResponse.json({ error: email ? "E-mail ou senha inválidos." : "Senha inválida ou autenticação ainda não configurada." }, { status: 401 });
   }

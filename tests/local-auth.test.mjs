@@ -12,14 +12,13 @@ test("login local cria uma sessão protegida no Worker", async () => {
     read("../app/login/page.tsx"),
     read("../app/Dashboard.tsx"),
   ]);
-  assert.match(auth, /RADAR_ADMIN_PASSWORD_HASH/);
-  assert.match(auth, /RADAR_ADMIN_PASSWORD_SALT/);
+  assert.doesNotMatch(auth, /RADAR_ADMIN_PASSWORD/);
   assert.match(auth, /RADAR_SESSION_SECRET/);
   assert.match(auth, /HMAC/);
   assert.match(auth, /PBKDF2/);
   assert.match(auth, /httpOnly: true/);
   assert.match(login, /LOCAL_SESSION_COOKIE/);
-  assert.match(login, /LOCAL_ADMIN_EMAIL/);
+  assert.doesNotMatch(login, /createLocalAdminSession/);
   assert.match(login, /localAccounts/);
   assert.match(logout, /maxAge: 0/);
   assert.match(page, /Criar minha conta/);
