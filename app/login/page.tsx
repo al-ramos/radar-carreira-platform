@@ -1,14 +1,12 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { useSearchParams } from "next/navigation";
 
 function safeReturnTo(value: string | null): string {
   return value && value.startsWith("/") && !value.startsWith("//") ? value : "/";
 }
 
 export default function LoginPage() {
-  const searchParams = useSearchParams();
   const [creatingAccount, setCreatingAccount] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -61,12 +59,9 @@ export default function LoginPage() {
     <label>E-mail <small>{creatingAccount ? "usado para acessar sua conta" : "somente para usuários cadastrados"}</small><input autoComplete="username" onChange={event => setEmail(event.target.value)} placeholder="voce@exemplo.com" type="email" value={email} /></label>
     <label>Senha<input autoComplete="current-password" autoFocus onChange={event => setPassword(event.target.value)} required type="password" value={password} /></label>
     {creatingAccount && <label>Confirmar senha<input autoComplete="new-password" onChange={event => setPasswordConfirmation(event.target.value)} required type="password" value={passwordConfirmation} /></label>}
-    {(error || searchParams.get("auth_error") === "chatgpt") && <p className="login-error" role="alert">{error || "O acesso com ChatGPT funciona ao abrir o Radar pela versão hospedada no ChatGPT."}</p>}
+    {error && <p className="login-error" role="alert">{error}</p>}
     <button className="primary" disabled={submitting} type="submit">{submitting ? (creatingAccount ? "Criando…" : "Entrando…") : (creatingAccount ? "Criar conta" : "Entrar")}</button>
     <button className="login-secondary" onClick={() => { setCreatingAccount(value => !value); setError(""); }} type="button">{creatingAccount ? "Já tenho uma conta" : "Criar minha conta"}</button>
-    <div className="login-alternative"><span>ou</span></div>
-    <a className="login-chatgpt" href="/api/auth/chatgpt?return_to=%2F">Continuar com ChatGPT</a>
-    <small className="login-chatgpt-hint">Disponível ao abrir o Radar pela versão hospedada no ChatGPT.</small>
   </form>
   </main>;
 }
