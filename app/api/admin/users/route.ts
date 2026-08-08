@@ -87,7 +87,7 @@ export async function POST(request: Request) {
     userId,
     email,
     name,
-    role: "admin",
+    role: "user",
     seniority: null,
     preferredMode: null,
     cities: "[]",

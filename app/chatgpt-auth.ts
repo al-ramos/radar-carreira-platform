@@ -30,7 +30,8 @@ export const LOCAL_PASSWORD_MIN_LENGTH = 4;
 const PASSWORD_HASH_ITERATIONS = 25_000;
 
 type RuntimeEnv = {
-  RADAR_ADMIN_PASSWORD?: string;
+  RADAR_ADMIN_PASSWORD_HASH?: string;
+  RADAR_ADMIN_PASSWORD_SALT?: string;
   RADAR_SESSION_SECRET?: string;
 };
 
@@ -159,10 +160,11 @@ async function readLocalSession(): Promise<ChatGPTUser | null> {
 }
 
 export async function createLocalAdminSession(password: string): Promise<string | null> {
-  const configuredPassword = runtimeEnv().RADAR_ADMIN_PASSWORD?.trim();
-  if (!configuredPassword || !sameBytes(new TextEncoder().encode(password), new TextEncoder().encode(configuredPassword))) {
-    return null;
-  }
+  const salt = decodeBase64Url(runtimeEnv().RADAR_ADMIN_PASSWORD_SALT?.trim() ?? "");
+  const expectedHash = decodeBase64Url(runtimeEnv().RADAR_ADMIN_PASSWORD_HASH?.trim() ?? "");
+  if (!salt || !expectedHash) return null;
+  const receivedHash = await derivePassword(password, salt);
+  if (!sameBytes(receivedHash, expectedHash)) return null;
   return createLocalSession(localAdmin());
 }
 

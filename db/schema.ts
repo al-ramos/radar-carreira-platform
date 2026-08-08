@@ -2,7 +2,7 @@ import { integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm
 
 export const profiles = sqliteTable("profiles", {
   userId: text("user_id").primaryKey(), email: text("email").notNull(), name: text("name"),
-  role: text("role", { enum: ["user", "admin"] }).notNull().default("admin"), seniority: text("seniority"),
+  role: text("role", { enum: ["user", "admin"] }).notNull().default("user"), seniority: text("seniority"),
   preferredMode: text("preferred_mode"), cities: text("cities").notNull().default("[]"),
   masteredSkills: text("mastered_skills").notNull().default("[]"), desiredAreas: text("desired_areas").notNull().default("[]"),
   avoidTerms: text("avoid_terms").notNull().default("[]"), minScore: integer("min_score").notNull().default(60),
