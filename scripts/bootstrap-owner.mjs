@@ -79,38 +79,11 @@ async function main() {
   const hash = encodeBase64Url(hashBytes);
   const now = Date.now();
 
-  // --- stdout: apenas SQL válido a partir daqui ---
-
-  // Verifica se o perfil existe (pré-requisito); falha limpo se não existir
+  // --- stdout: apenas o INSERT, sem comentários nem SELECT ---
+  // O wrangler D1 não tolera múltiplos statements misturados com comentários.
   process.stdout.write(
-    `-- Verifica pré-requisito: perfil deve existir antes da conta local\n`
+    `INSERT INTO local_accounts (user_id, email, name, password_hash, password_salt, created_by, created_at, updated_at) VALUES ('${OWNER_USER_ID}', '${OWNER_EMAIL}', '${OWNER_NAME}', '${hash}', '${salt}', NULL, ${now}, ${now}) ON CONFLICT(user_id) DO UPDATE SET password_hash = excluded.password_hash, password_salt = excluded.password_salt, updated_at = excluded.updated_at;\n`
   );
-  process.stdout.write(
-    `-- (Se o SELECT retornar 0 linhas, execute primeiro o bootstrap de perfil)\n`
-  );
-  process.stdout.write(
-    `SELECT COUNT(*) as perfil_existe FROM profiles WHERE user_id = '${OWNER_USER_ID}';\n`
-  );
-  process.stdout.write(`\n`);
-
-  // Upsert idempotente da conta de autenticação
-  process.stdout.write(
-    `INSERT INTO local_accounts (user_id, email, name, password_hash, password_salt, created_by, created_at, updated_at)\n`
-  );
-  process.stdout.write(`VALUES (\n`);
-  process.stdout.write(`  '${OWNER_USER_ID}',\n`);
-  process.stdout.write(`  '${OWNER_EMAIL}',\n`);
-  process.stdout.write(`  '${OWNER_NAME}',\n`);
-  process.stdout.write(`  '${hash}',\n`);
-  process.stdout.write(`  '${salt}',\n`);
-  process.stdout.write(`  NULL,\n`);
-  process.stdout.write(`  ${now},\n`);
-  process.stdout.write(`  ${now}\n`);
-  process.stdout.write(`)\n`);
-  process.stdout.write(`ON CONFLICT(user_id) DO UPDATE SET\n`);
-  process.stdout.write(`  password_hash = excluded.password_hash,\n`);
-  process.stdout.write(`  password_salt = excluded.password_salt,\n`);
-  process.stdout.write(`  updated_at    = excluded.updated_at;\n`);
 
   // --- volta para stderr ---
   err("");
