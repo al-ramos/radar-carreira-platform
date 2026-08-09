@@ -1339,7 +1339,8 @@ export default function Dashboard() {
                 key={j.id}
                 role="button"
                 tabIndex={0}
-                className={`job-card ${selectedJob?.id === j.id ? "selected" : ""}`}
+                className={`job-card ${selectedJob?.id === j.id ? "selected" : ""} ${currentUser ? "job-card-scored" : ""}`}
+                style={currentUser ? ({ "--score-fill": `${j.score}%`, "--score-tint": j.score >= 80 ? "#e4f4db" : j.score >= 60 ? "#fdf1d8" : "#f0f2ed" } as CSSProperties) : undefined}
                 onClick={() => selectJob(j)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
@@ -1353,18 +1354,6 @@ export default function Dashboard() {
                     <>
                       {j.score}
                       <small>match</small>
-                      <div
-                        className="score-bar"
-                        title={`${j.score}% de aderência`}
-                      >
-                        <div
-                          className="score-bar-fill"
-                          style={{
-                            width: `${j.score}%`,
-                            background: j.score >= 80 ? "#2e6b3e" : j.score >= 60 ? "#7a6200" : "#b04a1a",
-                          }}
-                        />
-                      </div>
                     </>
                   ) : (
                     <span
