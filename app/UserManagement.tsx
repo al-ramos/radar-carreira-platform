@@ -26,6 +26,7 @@ export default function UserManagement({ close }: { close: () => void }) {
   const [invite, setInvite] = useState(blankInvite);
   const [message, setMessage] = useState("Carregando usuários…");
   const [submitting, setSubmitting] = useState(false);
+  const [changingRole, setChangingRole] = useState<string | null>(null);
 
   async function load() {
     const response = await fetch("/api/admin/users");
@@ -73,6 +74,25 @@ export default function UserManagement({ close }: { close: () => void }) {
       setMessage(data.error ?? "Não foi possível criar a conta.");
     }
     setSubmitting(false);
+  }
+
+  async function changeRole(user: User) {
+    const nextRole = user.role === "admin" ? "user" : "admin";
+    setChangingRole(user.userId);
+    setMessage("");
+    const response = await fetch(`/api/admin/users/${user.userId}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ role: nextRole }),
+    });
+    const data = await response.json();
+    if (response.ok) {
+      await load();
+      setMessage(nextRole === "admin" ? "Usuário promovido a administrador." : "Usuário rebaixado para acesso comum.");
+    } else {
+      setMessage(data.error ?? "Não foi possível alterar o papel do usuário.");
+    }
+    setChangingRole(null);
   }
 
   const filtered = users.filter(user => `${user.name} ${user.email}`.toLowerCase().includes(query.toLowerCase()));
