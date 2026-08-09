@@ -1,11 +1,12 @@
-import { and, count, desc, eq, gte, like, notLike, sql } from "drizzle-orm";
+import { and, eq, gte, like, notLike, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../chatgpt-auth";
 import { getDb } from "../../../db/index";
-import { jobs, platformSettings, profiles } from "../../../db/schema";
+import { jobs, platformSettings, profiles, userJobStatus } from "../../../db/schema";
 import { matchesSelectedSeniority, scoreJob } from "../../../lib/scoring";
 import { inferTechnologyStack } from "../../../lib/technology-stack";
 import { allowedWorkModes, listFromStored } from "../../../lib/profile-options";
+import { computeVerdict, type VerdictEmoji } from "../../../lib/verdict";
 
 export const dynamic = "force-dynamic";
 const parse = (value: string) => {
@@ -52,6 +53,21 @@ export async function GET(request: Request) {
             .limit(1)
         )[0] ?? null;
 
+    // Filtros que antes eram aplicados só no client, em cima da página já
+    // carregada — o que fazia o total (e a contagem de páginas) não bater
+    // com o que realmente restava depois de filtrar por aderência, busca,
+    // etapa do pipeline ou veredito. Agora entram na mesma passada do
+    // servidor, antes do LIMIT/OFFSET, para que 'total' seja sempre o
+    // total real pós-filtro.
+    const searchQuery = (url.searchParams.get("q") ?? "").trim().toLowerCase();
+    const minScoreParam = url.searchParams.get("minScore");
+    const minScore =
+      minScoreParam !== null && Number.isFinite(Number(minScoreParam))
+        ? Math.max(0, Math.min(100, Number(minScoreParam)))
+        : 0;
+    const pipelineFilter = url.searchParams.get("pipeline") ?? "all";
+    const verdictFilter = url.searchParams.get("verdict") ?? "all";
+
     const cutoff = hours ? new Date(Date.now() - hours * 36e5) : null;
     // baseCondition: período + status — sem filtro de fonte
     const baseCondition = cutoff
@@ -71,27 +87,28 @@ export async function GET(request: Request) {
         : sourceType === "other"
           ? otherCondition
           : baseCondition;
-    const [rows, totals, linkedInTotals, baseTotals, sourcesResult] = await Promise.all([
-      getDb()
-        .select()
-        .from(jobs)
-        .where(condition)
-        .orderBy(desc(jobs.publishedAt))
-        .limit(limit)
-        .offset(offset),
-      getDb().select({ total: count() }).from(jobs).where(condition),
-      getDb().select({ total: count() }).from(jobs).where(linkedInCondition),
-      getDb().select({ total: count() }).from(jobs).where(baseCondition),
+    // Sem LIMIT/OFFSET aqui: score, veredito e etapa do pipeline só existem
+    // depois de calculados em JS, então o universo do período+fonte inteiro
+    // precisa ser processado antes de sabermos quais linhas sobrevivem aos
+    // filtros — e só então paginar sobre o resultado já filtrado.
+    const [rows, linkedInTotals, baseTotals, sourcesResult, pipeline] = await Promise.all([
+      getDb().select().from(jobs).where(condition),
+      getDb().select({ total: sql<number>`count(*)` }).from(jobs).where(linkedInCondition),
+      getDb().select({ total: sql<number>`count(*)` }).from(jobs).where(baseCondition),
       getDb()
         .select({ count: sql<number>`count(distinct ${jobs.sourceId})` })
         .from(jobs)
         .where(baseCondition),
+      user
+        ? getDb().select().from(userJobStatus).where(eq(userJobStatus.userId, user.userId))
+        : Promise.resolve([]),
     ]);
-    const totalCount = Number(totals[0]?.total ?? 0);
-    const baseTotal = Number(baseTotals[0]?.total ?? 0);
     const totalLinkedIn = Number(linkedInTotals[0]?.total ?? 0);
+    const baseTotal = Number(baseTotals[0]?.total ?? 0);
     const totalOtherSources = Math.max(0, baseTotal - totalLinkedIn);
     const sourcesCount = Number(sourcesResult[0]?.count ?? 0);
+    const byJob = new Map(pipeline.map((item) => [item.jobId, item]));
+
     // Deduplicação por título+empresa (vagas da mesma empresa em fontes diferentes)
     const seen = new Set<string>();
     const dedupedRows = rows.filter((job) => {
@@ -101,10 +118,9 @@ export async function GET(request: Request) {
       return true;
     });
     const selectedSeniority = profile ? listFromStored(profile.seniority) : [];
-    const result = dedupedRows
-      .filter((job) =>
-        matchesSelectedSeniority(job.seniority, selectedSeniority),
-      )
+    const masteredSkills = profile ? listFromStored(profile.masteredSkills) : [];
+    const enriched = dedupedRows
+      .filter((job) => matchesSelectedSeniority(job.seniority, selectedSeniority))
       .map((job) => {
         const stack = inferTechnologyStack(
           `${job.title} ${job.description}`,
@@ -122,7 +138,7 @@ export async function GET(request: Request) {
                 publishedAt: job.publishedAt,
               },
               {
-                masteredSkills: listFromStored(profile.masteredSkills),
+                masteredSkills,
                 desiredAreas: listFromStored(profile.desiredAreas),
                 avoidTerms: listFromStored(profile.avoidTerms),
                 seniority: selectedSeniority,
@@ -130,8 +146,46 @@ export async function GET(request: Request) {
               },
             )
           : { score: 70, reasons: ["Complete seu perfil para personalizar"] };
-        return { ...job, stack, score: match.score, reasons: match.reasons };
+        const verdict = masteredSkills.length
+          ? computeVerdict(
+              {
+                title: job.title,
+                description: job.description,
+                stack,
+                seniority: job.seniority,
+                workMode: job.workMode,
+              },
+              masteredSkills,
+            )
+          : null;
+        const state = byJob.get(job.id);
+        return { job, stack, score: match.score, reasons: match.reasons, verdict, state };
       });
+
+    const searchable = (item: (typeof enriched)[number]) =>
+      `${item.job.title} ${item.job.company} ${item.job.location ?? ""} ${item.job.seniority ?? ""} ${item.stack.join(" ")}`.toLowerCase();
+    const filtered = enriched.filter((item) => {
+      const matchesScore = item.score >= minScore;
+      const matchesQuery = !searchQuery || searchable(item).includes(searchQuery);
+      const matchesPipeline =
+        pipelineFilter === "all" ||
+        (pipelineFilter === "unseen" ? !item.state : item.state?.stage === pipelineFilter);
+      const matchesVerdict =
+        verdictFilter === "all" || item.verdict?.emoji === (verdictFilter as VerdictEmoji);
+      return matchesScore && matchesQuery && matchesPipeline && matchesVerdict;
+    });
+    const totalCount = filtered.length;
+    // Mesmo critério de ordenação já usado no client (maior aderência primeiro),
+    // aplicado antes de paginar para que a ordem seja estável entre páginas.
+    filtered.sort((a, b) => b.score - a.score);
+    const page_ = filtered.slice(offset, offset + limit);
+    const result = page_.map(({ job, stack, score, reasons }) => ({
+      ...job,
+      stack,
+      score,
+      reasons,
+    }));
+
     return NextResponse.json({
       jobs: result,
       total: totalCount,

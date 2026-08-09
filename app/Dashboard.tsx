@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import AlertCenter from "./AlertCenter";
 import Analytics from "./Analytics";
 import Monitoring from "./Monitoring";
@@ -320,6 +320,10 @@ export default function Dashboard() {
   const [verdictFilter, setVerdictFilter] = useState<"all"|"✅"|"🟡"|"🔴"|"❌">(() => {
     try { return (sessionStorage.getItem("radar_verdictFilter") as "all"|"✅"|"🟡"|"🔴"|"❌") ?? "all"; } catch { return "all"; }
   });
+  /** Score mínimo efetivo — usado tanto para colorir o slider quanto para
+   *  pedir ao servidor só as vagas que batem (mantém a paginação correta). */
+  const effectiveMinScore =
+    fitFilter === "profile" ? profileMinScore : fitFilter;
   // ── Persistência de estado UI no sessionStorage (sobrevive ao F5) ──────────
   const jobListRef = useRef<HTMLDivElement>(null);
   useEffect(() => { try { sessionStorage.setItem("radar_pipelineFilter", pipelineFilter); } catch {} }, [pipelineFilter]);
@@ -363,9 +367,31 @@ export default function Dashboard() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
+  // Busca por texto tem debounce: sem isso, cada tecla digitada dispararia
+  // um fetch completo (o filtro de busca agora é aplicado no servidor).
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   useEffect(() => {
-    const sourceParam = sourceFilter !== "all" ? `&sourceType=${sourceFilter}` : "";
-    fetch(`/api/jobs?page=1&limit=50${period ? `&period=${period}` : ""}${sourceParam}`)
+    const timer = setTimeout(() => setDebouncedQuery(query.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [query]);
+  /** Monta a querystring de filtros compartilhada entre a carga inicial e a
+   *  troca de página — os dois precisam pedir exatamente os mesmos critérios
+   *  para que a paginação numérica sempre bata com o total filtrado. */
+  const buildJobsParams = useCallback(
+    (page: number) => {
+      const params = new URLSearchParams({ page: String(page), limit: "50" });
+      if (period) params.set("period", period);
+      if (sourceFilter !== "all") params.set("sourceType", sourceFilter);
+      if (debouncedQuery) params.set("q", debouncedQuery);
+      if (effectiveMinScore > 0) params.set("minScore", String(effectiveMinScore));
+      if (pipelineFilter !== "all") params.set("pipeline", pipelineFilter);
+      if (verdictFilter !== "all") params.set("verdict", verdictFilter);
+      return params.toString();
+    },
+    [period, sourceFilter, debouncedQuery, effectiveMinScore, pipelineFilter, verdictFilter],
+  );
+  useEffect(() => {
+    fetch(`/api/jobs?${buildJobsParams(1)}`)
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((data) => {
         const next = (data.jobs ?? [])
@@ -396,7 +422,7 @@ export default function Dashboard() {
         setMode("database");
       })
       .catch(() => setMode("preview"));
-  }, [period, sourceFilter]);
+  }, [period, sourceFilter, debouncedQuery, effectiveMinScore, pipelineFilter, verdictFilter, buildJobsParams]);
   useEffect(() => {
     fetch("/api/profile")
       .then((r) => (r.ok ? r.json() : Promise.reject()))
@@ -466,8 +492,6 @@ export default function Dashboard() {
     });
     return map;
   }, [items, profileMasteredSkills]);
-  const effectiveMinScore =
-    fitFilter === "profile" ? profileMinScore : fitFilter;
   /** Cor do trilho do slider — mesmos limiares usados no score das vagas. */
   const fitFilterColor =
     effectiveMinScore >= 80 ? "#2e6b3e" : effectiveMinScore >= 60 ? "#7a6200" : effectiveMinScore > 0 ? "#b04a1a" : "#173f32";
@@ -564,10 +588,7 @@ export default function Dashboard() {
     if (page === currentPage || page < 1) return;
     setLoadingMore(true);
     try {
-      const sourceParam = sourceFilter !== "all" ? `&sourceType=${sourceFilter}` : "";
-      const r = await fetch(
-        `/api/jobs?page=${page}&limit=50${period ? `&period=${period}` : ""}${sourceParam}`,
-      );
+      const r = await fetch(`/api/jobs?${buildJobsParams(page)}`);
       if (!r.ok) return;
       const data = await r.json();
       const next: Job[] = (data.jobs ?? []).map(adapt).sort((a: Job, b: Job) => b.score - a.score);
@@ -704,10 +725,7 @@ export default function Dashboard() {
     const result = `${received} encontradas: ${inserted} novas e ${updated} atualizadas.`;
     setMessage(errors ? `${result} ${errors} fonte(s) falharam — consulte Monitoramento.` : result);
     setSourceVersion((version) => version + 1);
-    const sourceParam = sourceFilter !== "all" ? `&sourceType=${sourceFilter}` : "";
-    const jobsResponse = await fetch(
-      `/api/jobs?page=1&limit=50${period ? `&period=${period}` : ""}${sourceParam}`,
-    );
+    const jobsResponse = await fetch(`/api/jobs?${buildJobsParams(1)}`);
     if (jobsResponse.ok) {
       const jobsData = await jobsResponse.json();
       const next = (jobsData.jobs ?? [])
