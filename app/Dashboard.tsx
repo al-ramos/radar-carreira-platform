@@ -288,7 +288,6 @@ export default function Dashboard() {
   );
   const [sourcesCount, setSourcesCount] = useState<number | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [profileMasteredSkills, setProfileMasteredSkills] = useState<string[]>([]);
   const [sourceFilter, setSourceFilter] = useState<"all" | "linkedin" | "other">(
@@ -308,6 +307,7 @@ export default function Dashboard() {
   const [jobDetail, setJobDetail] = useState<JobDetail | null>(null);
   const [detailJob, setDetailJob] = useState<Job | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [reportLoading, setReportLoading] = useState(false);
   const [descriptionCopied, setDescriptionCopied] = useState(false);
   const [shareMenuJobId, setShareMenuJobId] = useState<string | null>(null);
   const [analysisOpen, setAnalysisOpen] = useState(false);
@@ -392,7 +392,6 @@ export default function Dashboard() {
             : null,
         );
         setSourcesCount(typeof data.sourcesCount === "number" ? data.sourcesCount : null);
-        setHasMore(data.hasMore === true);
         setPeriod((current) => current ?? data.period ?? "24");
         setMode("database");
       })
@@ -469,14 +468,6 @@ export default function Dashboard() {
   }, [items, profileMasteredSkills]);
   const effectiveMinScore =
     fitFilter === "profile" ? profileMinScore : fitFilter;
-  const reportHref = `/api/admin/report?${new URLSearchParams({
-    period: period ?? "24",
-    sourceType: sourceFilter,
-    q: query.trim(),
-    minScore: String(effectiveMinScore),
-    pipeline: pipelineFilter,
-    verdict: verdictFilter,
-  }).toString()}`;
   /** Cor do trilho do slider — mesmos limiares usados no score das vagas. */
   const fitFilterColor =
     effectiveMinScore >= 80 ? "#2e6b3e" : effectiveMinScore >= 60 ? "#7a6200" : effectiveMinScore > 0 ? "#b04a1a" : "#173f32";
@@ -514,6 +505,45 @@ export default function Dashboard() {
       verdictMap,
     ],
   );
+  /** Baixa o relatório em Excel/CSV com exatamente as vagas visíveis na tela
+   *  (mesma lista de `filtered`, na mesma ordem) — score e veredito são os
+   *  já calculados no client, para não haver divergência com o que a pessoa
+   *  está vendo no momento do clique. */
+  async function downloadReport() {
+    if (reportLoading || filtered.length === 0) return;
+    setReportLoading(true);
+    try {
+      const rows = filtered.map((job) => ({
+        id: job.id,
+        score: job.score,
+        verdict: verdictMap.get(job.id)
+          ? `${verdictMap.get(job.id)!.emoji} ${verdictMap.get(job.id)!.label}`
+          : undefined,
+      }));
+      const response = await fetch("/api/admin/report", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ rows }),
+      });
+      if (!response.ok) {
+        setMessage("Não foi possível gerar o relatório. Tente novamente.");
+        return;
+      }
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = `radar-vagas-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch {
+      setMessage("Não foi possível gerar o relatório. Tente novamente.");
+    } finally {
+      setReportLoading(false);
+    }
+  }
   // Contagem das vagas atualmente carregadas (até 250, dentro do período
   // selecionado), usada para o detalhamento por fonte no resumo do topo
   // quando a API ainda não respondeu com os totais reais do banco.
@@ -530,24 +560,20 @@ export default function Dashboard() {
     setPeriod("all");
     setSourceFilter("all");
   }
-  async function loadMoreJobs() {
+  async function goToJobsPage(page: number) {
+    if (page === currentPage || page < 1) return;
     setLoadingMore(true);
     try {
-      const nextPage = currentPage + 1;
       const sourceParam = sourceFilter !== "all" ? `&sourceType=${sourceFilter}` : "";
       const r = await fetch(
-        `/api/jobs?page=${nextPage}&limit=50${period ? `&period=${period}` : ""}${sourceParam}`,
+        `/api/jobs?page=${page}&limit=50${period ? `&period=${period}` : ""}${sourceParam}`,
       );
       if (!r.ok) return;
       const data = await r.json();
-      const next: Job[] = (data.jobs ?? []).map(adapt);
-      setItems((current) => {
-        const existingIds = new Set(current.map((j) => j.id));
-        const newItems = next.filter((j) => !existingIds.has(j.id));
-        return [...current, ...newItems].sort((a, b) => b.score - a.score);
-      });
-      setCurrentPage(nextPage);
-      setHasMore(data.hasMore === true);
+      const next: Job[] = (data.jobs ?? []).map(adapt).sort((a: Job, b: Job) => b.score - a.score);
+      setItems(next);
+      setCurrentPage(page);
+      jobListRef.current?.scrollTo({ top: 0 });
     } finally {
       setLoadingMore(false);
     }
@@ -694,7 +720,6 @@ export default function Dashboard() {
         typeof jobsData.total === "number" ? jobsData.total : next.length,
       );
       setSourcesCount(typeof jobsData.sourcesCount === "number" ? jobsData.sourcesCount : null);
-      setHasMore(jobsData.hasMore === true);
     }
   }
   async function activateCatalog() {
@@ -1050,12 +1075,14 @@ export default function Dashboard() {
               </a>
             )}
             {currentUser && (
-              <a
+              <button
+                type="button"
                 className="icon-btn"
-                href={reportHref}
+                onClick={downloadReport}
+                disabled={reportLoading || filtered.length === 0}
               >
-                ↓ Relatório Excel
-              </a>
+                {reportLoading ? "Gerando…" : "↓ Relatório Excel"}
+              </button>
             )}
             {canManageSources && (
               <button className="primary" onClick={() => setImporting(true)}>
@@ -1244,6 +1271,49 @@ export default function Dashboard() {
           )}
           <span className="list-head-dim">por aderência</span>
         </div>
+        {totalJobs != null && totalJobs > 50 && (
+          <div className="list-pagination">
+            <button
+              type="button"
+              className="pagination-arrow"
+              onClick={() => void goToJobsPage(currentPage - 1)}
+              disabled={loadingMore || currentPage <= 1}
+              aria-label="Página anterior"
+            >
+              ‹
+            </button>
+            {Array.from({ length: Math.ceil(totalJobs / 50) }, (_, i) => i + 1).map((page) => (
+              <button
+                type="button"
+                key={page}
+                className={`pagination-page ${page === currentPage ? "active" : ""}`}
+                onClick={() => void goToJobsPage(page)}
+                disabled={loadingMore}
+                aria-current={page === currentPage ? "page" : undefined}
+              >
+                {page}
+              </button>
+            ))}
+            <button
+              type="button"
+              className="pagination-arrow"
+              onClick={() => void goToJobsPage(currentPage + 1)}
+              disabled={loadingMore || currentPage >= Math.ceil(totalJobs / 50)}
+              aria-label="Próxima página"
+            >
+              ›
+            </button>
+            {typeof fitFilter === "number" && fitFilter < 80 && (
+              <button
+                type="button"
+                className="load-more-refine"
+                onClick={() => setFitFilter(80)}
+              >
+                Ou filtre para aderência de 80% ou mais
+              </button>
+            )}
+          </div>
+        )}
         <div className="workspace">
           <div className="job-list" ref={jobListRef} onScroll={handleJobListScroll}>
             {filtered.map((j) => (
@@ -1340,30 +1410,6 @@ export default function Dashboard() {
                 </div>
               </div>
             ))}
-            {hasMore && filtered.length > 0 && (
-              <div className="load-more-row">
-                <button
-                  className="load-more-btn"
-                  onClick={() => void loadMoreJobs()}
-                  disabled={loadingMore}
-                >
-                  {loadingMore
-                    ? "Carregando…"
-                    : totalJobs != null
-                      ? `Carregar mais 50 vagas · ${totalJobs - items.length} restantes`
-                      : "Carregar mais 50 vagas"}
-                </button>
-                {typeof fitFilter === "number" && fitFilter < 80 && (
-                  <button
-                    type="button"
-                    className="load-more-refine"
-                    onClick={() => setFitFilter(80)}
-                  >
-                    Ou filtre para aderência de 80% ou mais
-                  </button>
-                )}
-              </div>
-            )}
             {filtered.length === 0 && (
               <div className="radar-empty">
                 <strong>Nenhuma vaga corresponde aos filtros atuais.</strong>
