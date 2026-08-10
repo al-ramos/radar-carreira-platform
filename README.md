@@ -2,9 +2,9 @@
 
 Portal multiusuário para reunir vagas, calcular a aderência ao perfil profissional e acompanhar candidaturas em um único lugar.
 
-**Produção:** [radar-carreira-almir-v2.prof-andreiamr.chatgpt.site](https://radar-carreira-almir-v2.prof-andreiamr.chatgpt.site)
+**Produção:** [radar-carreira-platform.al-ramos.workers.dev](https://radar-carreira-platform.al-ramos.workers.dev)
 
-> A hospedagem atual usa Sign in with ChatGPT. O portal está público, mas o visitante precisa entrar com uma conta ChatGPT para acessar as áreas identificadas.
+> O portal está público, mas o visitante precisa entrar (e-mail/senha ou, quando hospedado em `*.chatgpt.site`, Sign in with ChatGPT) para acessar as áreas identificadas.
 
 ## O que o portal faz
 
@@ -137,7 +137,7 @@ Baixe `public/gmail-radarvagas.gs`, cole o conteúdo em um projeto do Google App
 
 | Propriedade | Valor |
 |---|---|
-| `RADAR_URL` | `https://radar-carreira-almir-v2.prof-andreiamr.chatgpt.site` |
+| `RADAR_URL` | `https://radar-carreira-platform.al-ramos.workers.dev` |
 | `RADAR_SECRET` | A mesma chave salva no painel Gmail RadarVagas |
 
 Não coloque a chave diretamente no arquivo `.gs`.
