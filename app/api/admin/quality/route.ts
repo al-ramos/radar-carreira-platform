@@ -1,7 +1,7 @@
 import { desc,eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
-import { can } from "../../../../lib/access";
+import { can } from "../../../../lib/rbac";
 import { getDb } from "../../../../db/index";
 import { jobs } from "../../../../db/schema";
 import { enrichLinkedInJobs } from "../../../../lib/enrichment";

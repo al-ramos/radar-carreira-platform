@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db/index";
 import { jobSources } from "../../../../db/schema";
-import { can } from "../../../../lib/access";
+import { can } from "../../../../lib/rbac";
 import { parseCareerSource } from "../../../../lib/career-source";
 import { validate, isPullProvider } from "../../../../lib/connectors";
 import { CURATED_SOURCES } from "../../../../lib/curated-sources";

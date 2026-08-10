@@ -32,13 +32,16 @@ test("apenas o proprietário pode limpar a base", async()=>{
 test("fontes e importações são exclusivas de quem tem a permissão (RBAC), owner sempre incluído", async()=>{
   const dashboard=await readFile(new URL("../app/Dashboard.tsx",import.meta.url),"utf8");
   const access=await readFile(new URL("../lib/access.ts",import.meta.url),"utf8");
+  const rbac=await readFile(new URL("../lib/rbac.ts",import.meta.url),"utf8");
   const collect=await readFile(new URL("../app/api/admin/collect/route.ts",import.meta.url),"utf8");
   const importRoute=await readFile(new URL("../app/api/admin/import/route.ts",import.meta.url),"utf8");
   const sources=await readFile(new URL("../app/api/admin/sources/route.ts",import.meta.url),"utf8");
   assert.match(access,/OWNER_EMAIL = "alexsandro\.ramos@gmail\.com"/);
   // Desde a migração para RBAC (Fase 2), can() já embute o bypass de owner —
   // não é mais preciso checar isOwnerEmail em paralelo nessas 3 rotas.
-  assert.match(access,/if \(isOwnerEmail\(user\.email\)\) return true;/);
+  // can() vive em lib/rbac.ts (server-only), separado de lib/access.ts
+  // (client-safe) para não quebrar o bundle do navegador via Dashboard.tsx.
+  assert.match(rbac,/if \(isOwnerEmail\(user\.email\)\) return true;/);
   assert.match(dashboard,/item === "Fontes" \|\| item === "Importações"/);
   assert.match(dashboard,/canManageSources/);
   assert.match(collect,/await can\(user,\s*"collect\.run"\)/);

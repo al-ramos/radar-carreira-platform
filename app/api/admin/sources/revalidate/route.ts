@@ -5,7 +5,7 @@ import { getDb } from "../../../../../db/index";
 import { jobSources } from "../../../../../db/schema";
 import { validate } from "../../../../../lib/connectors";
 import { CURATED_SOURCES } from "../../../../../lib/curated-sources";
-import { can } from "../../../../../lib/access";
+import { can } from "../../../../../lib/rbac";
 
 export const dynamic = "force-dynamic";
 

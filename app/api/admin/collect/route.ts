@@ -6,7 +6,7 @@ import { importRuns, jobSources, jobs } from "../../../../db/schema";
 import { collect, isPullProvider } from "../../../../lib/connectors";
 import { fingerprint } from "../../../../lib/jobs";
 import { findCuratedSource } from "../../../../lib/curated-sources";
-import { can } from "../../../../lib/access";
+import { can } from "../../../../lib/rbac";
 
 export const dynamic = "force-dynamic";
 

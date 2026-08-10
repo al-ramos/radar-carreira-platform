@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../../chatgpt-auth";
 import { getDb } from "../../../../../db/index";
 import { jobSources } from "../../../../../db/schema";
-import { can } from "../../../../../lib/access";
+import { can } from "../../../../../lib/rbac";
 import { validate, isPullProvider } from "../../../../../lib/connectors";
 
 export async function POST(request: Request) {

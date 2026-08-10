@@ -1,7 +1,7 @@
 import { getChatGPTUser } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db/index";
 import { jobSources } from "../../../../db/schema";
-import { can } from "../../../../lib/access";
+import { can } from "../../../../lib/rbac";
 
 export const dynamic="force-dynamic";
 const digest=async(value:string)=>Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(value)))).map(byte=>byte.toString(16).padStart(2,"0")).join("");

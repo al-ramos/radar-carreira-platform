@@ -2,17 +2,31 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-test("lib/access.ts expõe can() com bypass de owner e resolução via roles/grupos", async () => {
-  const access = await readFile(new URL("../lib/access.ts", import.meta.url), "utf8");
-  assert.match(access, /export async function can\(/);
+test("lib/rbac.ts expõe can() com bypass de owner e resolução via roles/grupos", async () => {
+  // can() foi extraído de lib/access.ts para lib/rbac.ts (server-only) para
+  // que componentes client ("use client") possam importar isOwnerEmail de
+  // lib/access.ts sem arrastar cloudflare:workers para o bundle do navegador.
+  const rbac = await readFile(new URL("../lib/rbac.ts", import.meta.url), "utf8");
+  assert.match(rbac, /export async function can\(/);
   // Owner sempre passa, sem consultar o banco.
-  assert.match(access, /if \(isOwnerEmail\(user\.email\)\) return true;/);
+  assert.match(rbac, /if \(isOwnerEmail\(user\.email\)\) return true;/);
   // Resolve roles diretas (user_roles) e roles herdadas de grupos (user_groups -> group_roles).
-  assert.match(access, /userRoles/);
-  assert.match(access, /userGroups/);
-  assert.match(access, /groupRoles/);
+  assert.match(rbac, /userRoles/);
+  assert.match(rbac, /userGroups/);
+  assert.match(rbac, /groupRoles/);
   // A checagem final filtra por permissionId, não retorna true incondicionalmente.
-  assert.match(access, /eq\(rolePermissions\.permissionId, permissionId\)/);
+  assert.match(rbac, /eq\(rolePermissions\.permissionId, permissionId\)/);
+});
+
+test("lib/access.ts permanece client-safe, sem nenhuma dependência de banco", async () => {
+  // Este arquivo é importado por Dashboard.tsx ("use client") — não pode
+  // importar db/index.ts (que puxa cloudflare:workers) nem qualquer schema.
+  const access = await readFile(new URL("../lib/access.ts", import.meta.url), "utf8");
+  assert.match(access, /export function isOwnerEmail\(/);
+  assert.match(access, /OWNER_EMAIL = "alexsandro\.ramos@gmail\.com"/);
+  assert.doesNotMatch(access, /cloudflare:workers/);
+  assert.doesNotMatch(access, /db\/index/);
+  assert.doesNotMatch(access, /export async function can\(/);
 });
 
 test("schema RBAC define as 7 tabelas esperadas", async () => {

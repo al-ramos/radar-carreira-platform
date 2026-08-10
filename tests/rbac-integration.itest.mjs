@@ -11,7 +11,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { can } from "../lib/access.ts";
+import { can } from "../lib/rbac.ts";
 import { getRawSqlite } from "../db/index.ts";
 
 async function seedSchema() {

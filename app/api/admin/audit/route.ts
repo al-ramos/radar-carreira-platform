@@ -1,7 +1,7 @@
 import { desc,eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
-import { can } from "../../../../lib/access";
+import { can } from "../../../../lib/rbac";
 import { getDb } from "../../../../db/index";
 import { importRuns,jobEvents,jobs } from "../../../../db/schema";
 export const dynamic="force-dynamic";

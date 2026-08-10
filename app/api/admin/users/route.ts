@@ -4,7 +4,7 @@ import { getChatGPTUser, hashLocalPassword, LOCAL_PASSWORD_MIN_LENGTH } from "..
 import { getDb } from "../../../../db/index";
 import { localAccounts, profiles, userJobStatus } from "../../../../db/schema";
 import { listFromStored } from "../../../../lib/profile-options";
-import { can } from "../../../../lib/access";
+import { can } from "../../../../lib/rbac";
 
 export const dynamic = "force-dynamic";
 

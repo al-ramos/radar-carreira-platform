@@ -6,7 +6,7 @@ import { importRuns, jobs } from "../../../../db/schema";
 import { fingerprint, type ImportedJob } from "../../../../lib/jobs";
 import { parseCsvJobs } from "../../../../lib/csv-jobs";
 import { normalizeImportedJobs } from "../../../../lib/import-jobs";
-import { can } from "../../../../lib/access";
+import { can } from "../../../../lib/rbac";
 
 export const dynamic = "force-dynamic";
 

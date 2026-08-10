@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db/index";
 import { alertReads,jobEvents,jobs,userJobStatus } from "../../../../db/schema";
-import { can } from "../../../../lib/access";
+import { can } from "../../../../lib/rbac";
 
 export const dynamic="force-dynamic";
 const ALL_CONFIRMATION="EXCLUIR TODAS AS VAGAS";

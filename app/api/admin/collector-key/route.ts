@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { getChatGPTUser } from "../../../chatgpt-auth";
-import { can } from "../../../../lib/access";
+import { can } from "../../../../lib/rbac";
 import { getDb } from "../../../../db/index";
 import { jobSources } from "../../../../db/schema";
 

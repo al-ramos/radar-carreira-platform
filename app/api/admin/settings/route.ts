@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { getDb } from "../../../../db/index";
 import { platformSettings } from "../../../../db/schema";
 import { getChatGPTUser } from "../../../chatgpt-auth";
-import { can } from "../../../../lib/access";
+import { can } from "../../../../lib/rbac";
 export const dynamic="force-dynamic";
 const defaults={id:"global",collectionEnabled:true,emailImportEnabled:true,enrichmentEnabled:true,defaultPeriod:"24",defaultMinScore:70,staleAfterDays:7,retentionDays:180,updatedBy:null,updatedAt:new Date()};
 async function admin(permissionId:"settings.view"|"settings.edit"){const u=await getChatGPTUser();if(!u)return null;return await can(u,permissionId)?u:null}
