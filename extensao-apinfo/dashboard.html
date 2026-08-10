@@ -28,6 +28,26 @@
     <div class="status" id="collect-status" aria-live="polite"></div>
 
     <section class="settings">
+      <h2>Coleta automática (todas as páginas, sem filtro)</h2>
+      <p>Avança sozinho por todas as páginas do resultado. Só funciona com <strong>nenhum filtro marcado</strong> na busca do APinfo — filtro de estado, cidade ou cargo faz o avanço automático quebrar a busca. Para trazer um recorte filtrado, use a coleta manual acima.</p>
+      <label>Intervalo entre páginas (segundos)
+        <input id="auto-delay" type="number" min="2" max="30" step="1" value="4">
+      </label>
+      <label>Limite de páginas nesta execução
+        <input id="auto-max-pages" type="number" min="1" max="500" step="1" value="200">
+      </label>
+      <div class="actions">
+        <button class="primary" id="auto-collect-start" type="button">Coletar todas as páginas</button>
+        <button class="secondary" id="auto-collect-cancel" type="button" disabled>Cancelar</button>
+      </div>
+      <div class="auto-progress" id="auto-progress" hidden>
+        <div class="auto-progress-bar"><div class="auto-progress-fill" id="auto-progress-fill"></div></div>
+        <small id="auto-progress-label">—</small>
+      </div>
+      <div class="status" id="auto-collect-status" aria-live="polite"></div>
+    </section>
+
+    <section class="settings">
       <h2>Stacks aceitas</h2>
       <p>Marque as tecnologias desejadas. Sem marcação, todas as vagas coletadas serão mantidas.</p>
       <div class="stack-grid" id="stack-options"></div>
@@ -53,7 +73,7 @@
         <input id="download-folder" type="text" value="RadarCarreira" placeholder="RadarCarreira">
       </label>
       <label>Endpoint do Radar
-        <input id="portal-url" type="url" value="https://radar-carreira-almir-v2.prof-andreiamr.chatgpt.site/api/collector/import/apinfo-extension">
+        <input id="portal-url" type="url" value="https://radar-carreira-platform.al-ramos.workers.dev/api/collector/import/apinfo-extension">
       </label>
       <label>Chave exclusiva do coletor
         <input id="portal-token" type="password" autocomplete="new-password" placeholder="Gerada em Radar → Extensão APinfo">

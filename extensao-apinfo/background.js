@@ -3,15 +3,22 @@ importScripts('stacks.js');
 /**
  * background.js — service worker da extensão.
  *
- * Diferente do coletor do LinkedIn, esta extensão NÃO navega páginas
- * automaticamente nem simula cliques na paginação do APinfo: o site usa
- * um formulário de busca com filtros (estado, cidade, cargo) que só são
- * preservados quando a própria pessoa navega pelos controles nativos da
- * página. Automatizar isso reconstruiria a busca sem esses filtros.
+ * Há dois modos de coleta:
  *
- * O fluxo aqui é: a pessoa navega manualmente até a página que quer, clica
- * em "Coletar esta página" no painel, e o resultado se acumula em
- * chrome.storage.session até ela exportar ou limpar.
+ * 1) Manual (COLLECT_CURRENT_PAGE): a pessoa navega até a página que quer
+ *    (preservando filtros de estado/cidade/cargo como preferir) e clica em
+ *    "Coletar esta página". Funciona com qualquer filtro.
+ *
+ * 2) Automático (AUTO_COLLECT_ALL, via porta): avança sozinho por todas as
+ *    páginas do resultado usando o mini-formulário nativo "Pular para a
+ *    página" do APinfo (pkey/tcv gerados pelo servidor). Só funciona SEM
+ *    filtro nenhum marcado — reenviar o formulário principal de busca com
+ *    o campo de página alterado à mão quebra o resultado (testado: a busca
+ *    "zera" para 1 vaga encontrada). Por isso o modo automático é para
+ *    trazer o total geral de vagas de uma vez; filtro por stack ainda pode
+ *    ser aplicado depois, na exportação.
+ *
+ * Ambos acumulam em chrome.storage.session até a pessoa exportar ou limpar.
  */
 
 const normalized = value => String(value || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -89,14 +96,141 @@ async function sendToRadar(items, settings) {
   return data;
 }
 
-/** Injeta page-collector.js na aba ativa e devolve o resultado bruto (sem filtro de stack ainda). */
+/**
+ * Injeta page-collector.js na aba do APinfo já identificada pelo chamador
+ * (dashboard.js ou popup.js) e devolve o resultado bruto (sem filtro de
+ * stack ainda). Não tenta redescobrir "a aba ativa": o tabId recebido já é
+ * a aba certa — reconsultar por foco reintroduziria o mesmo bug em que o
+ * painel (que está em foco no momento do clique) era confundido com a aba
+ * de resultados do APinfo em segundo plano.
+ */
 async function collectActiveTab(tabId) {
-  const [tab] = await chrome.tabs.query({ active: true, windowId: (await chrome.tabs.get(tabId)).windowId });
+  const tab = await chrome.tabs.get(tabId).catch(() => null);
   if (!tab || !tab.url || !/^https:\/\/www\.apinfo\.com\//.test(tab.url)) {
     throw new Error('Abra uma página de resultados do APinfo antes de coletar.');
   }
   const result = await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['page-collector.js'] });
   return result[0]?.result || { jobs: [], totalResults: 0, currentPage: 1, totalPages: 1 };
+}
+
+/**
+ * Submete o mini-formulário nativo "Pular para a página" do APinfo, distinto
+ * do formulário principal de busca (~165 campos). Esse mini-form já vem
+ * preenchido pelo servidor com os campos pkey (token) e tcv (total de
+ * resultados da busca atual) corretos — usar ESSE form, alterando só o
+ * campo pag, é o que preserva o resultado. Reconstruir o form principal com
+ * pag alterado à mão quebra a busca (testado: retorna 1 vaga encontrada).
+ *
+ * Por isso a coleta automática só funciona SEM filtro nenhum marcado — é o
+ * modo que o usuário escolheu usar.
+ *
+ * Passa targetPage via `args` porque `func` (diferente de `files`) aceita
+ * argumentos — não precisamos de uma variável global intermediária.
+ */
+function submitPagingForm(targetPage) {
+  const forms = [...document.querySelectorAll('form')];
+  const pagForm = forms.find((f) => f.textContent.includes('Pular para a página'));
+  if (!pagForm) return { ok: false, error: 'Controle de paginação não encontrado nesta página.' };
+
+  const pagInput = pagForm.querySelector('input[name="pag"]');
+  if (!pagInput) return { ok: false, error: 'Campo de página não encontrado no formulário de paginação.' };
+
+  pagInput.value = String(targetPage);
+  pagForm.submit();
+  return { ok: true, submittedPage: targetPage };
+}
+
+async function advanceToPage(tabId, targetPage) {
+  const result = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: submitPagingForm,
+    args: [targetPage],
+  });
+  const outcome = result[0]?.result;
+  if (!outcome?.ok) throw new Error(outcome?.error || 'Falha ao avançar de página.');
+  return outcome;
+}
+
+/** Espera a aba terminar de carregar (status 'complete') após um form.submit(). */
+function waitForTabLoad(tabId, timeoutMs = 15000) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      chrome.tabs.onUpdated.removeListener(listener);
+      reject(new Error('A página demorou demais para carregar.'));
+    }, timeoutMs);
+
+    function listener(updatedTabId, changeInfo) {
+      if (updatedTabId !== tabId || changeInfo.status !== 'complete') return;
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      chrome.tabs.onUpdated.removeListener(listener);
+      resolve();
+    }
+    chrome.tabs.onUpdated.addListener(listener);
+  });
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Textos que indicam que o APinfo aplicou algum limite de consultas na sessão. */
+const RATE_LIMIT_PATTERNS = [/limite.{0,20}consulta/i, /limite.{0,20}esgotad/i, /muitas consultas/i, /tente novamente mais tarde/i];
+
+function looksRateLimited(pageText) {
+  return RATE_LIMIT_PATTERNS.some((pattern) => pattern.test(pageText || ''));
+}
+
+/**
+ * Coleta automática de várias páginas em sequência, sem filtro. Delay entre
+ * páginas e um teto de páginas por execução evitam martelar o servidor;
+ * `looksRateLimited` interrompe cedo se o próprio APinfo sinalizar limite.
+ * Progresso é reportado incrementalmente via `onProgress` para a UI poder
+ * atualizar "coletando página N de M…" em tempo real.
+ */
+async function autoCollectAllPages(tabId, { delayMs = 4000, maxPages = 200 } = {}, onProgress = () => {}) {
+  let current = await collectActiveTab(tabId);
+  let byCode = new Map();
+  for (const job of current.jobs) byCode.set(job.codigo_apinfo, job);
+
+  const totalPages = current.totalPages || 1;
+  const lastPage = Math.min(totalPages, maxPages);
+  onProgress({ currentPage: current.currentPage, totalPages, totalResults: current.totalResults, collected: byCode.size, stopped: false });
+
+  let stoppedReason = null;
+  for (let page = (current.currentPage || 1) + 1; page <= lastPage; page++) {
+    await sleep(delayMs);
+
+    await advanceToPage(tabId, page);
+    await waitForTabLoad(tabId).catch(() => {});
+    await sleep(800); // pequena folga extra após 'complete' para o DOM assentar
+
+    const tab = await chrome.tabs.get(tabId).catch(() => null);
+    const pageResult = await chrome.scripting.executeScript({ target: { tabId }, files: ['page-collector.js'] }).catch(() => null);
+    const bodyText = await chrome.scripting
+      .executeScript({ target: { tabId }, func: () => document.body?.innerText || '' })
+      .then((r) => r[0]?.result || '')
+      .catch(() => '');
+
+    if (looksRateLimited(bodyText)) {
+      stoppedReason = 'O APinfo sinalizou limite de consultas. Coleta interrompida — tente retomar mais tarde.';
+      break;
+    }
+
+    const jobs = pageResult?.[0]?.result?.jobs || [];
+    if (!jobs.length && !tab) {
+      stoppedReason = 'A aba do APinfo foi fechada ou navegou para outro lugar.';
+      break;
+    }
+    for (const job of jobs) byCode.set(job.codigo_apinfo, job);
+
+    current = pageResult?.[0]?.result || current;
+    onProgress({ currentPage: page, totalPages, totalResults: current.totalResults, collected: byCode.size, stopped: false });
+  }
+
+  return { jobs: [...byCode.values()], stoppedReason, lastPageReached: Math.min(lastPage, current.currentPage || lastPage) };
 }
 
 /** Acumula vagas coletadas entre chamadas, deduplicadas por código da vaga. */
@@ -185,4 +319,79 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     })();
     return true;
   }
+});
+
+/**
+ * AUTO_COLLECT_ALL roda via porta (chrome.runtime.connect), não via
+ * sendMessage: a coleta de todas as páginas leva minutos, e uma porta
+ * permite emitir eventos de progresso incrementais ("página 15 de 115…")
+ * enquanto o loop roda, em vez de um único request/response no final.
+ *
+ * Mensagens do painel → background: { type: 'START', tabId }, { type: 'CANCEL' }
+ * Mensagens do background → painel: { type: 'PROGRESS', ... }, { type: 'DONE', ... }, { type: 'ERROR', error }
+ */
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== 'apinfo-auto-collect') return;
+
+  let cancelled = false;
+  port.onDisconnect.addListener(() => {
+    cancelled = true;
+  });
+
+  port.onMessage.addListener((message) => {
+    if (message?.type === 'CANCEL') {
+      cancelled = true;
+      return;
+    }
+    if (message?.type !== 'START') return;
+
+    (async () => {
+      try {
+        const tabId = message.tabId;
+        if (!tabId) throw new Error('Nenhuma aba do APinfo identificada.');
+
+        const result = await autoCollectAllPages(
+          tabId,
+          { delayMs: message.delayMs || 4000, maxPages: message.maxPages || 200 },
+          (progress) => {
+            if (cancelled) return;
+            try {
+              port.postMessage({ type: 'PROGRESS', ...progress });
+            } catch {
+              /* porta pode já ter sido fechada pelo painel */
+            }
+          },
+        );
+
+        if (cancelled) return;
+
+        const current = await getAccumulated();
+        const byCode = new Map(current.map((job) => [job.codigo_apinfo, job]));
+        let added = 0;
+        for (const job of result.jobs) {
+          if (!byCode.has(job.codigo_apinfo)) added++;
+          byCode.set(job.codigo_apinfo, job);
+        }
+        const accumulated = [...byCode.values()];
+        await setAccumulated(accumulated);
+
+        port.postMessage({
+          ok: true,
+          type: 'DONE',
+          collected: result.jobs.length,
+          added,
+          totalAccumulated: accumulated.length,
+          lastPageReached: result.lastPageReached,
+          stoppedReason: result.stoppedReason || null,
+        });
+      } catch (error) {
+        if (cancelled) return;
+        try {
+          port.postMessage({ ok: false, type: 'ERROR', error: error.message || 'Falha na coleta automática.' });
+        } catch {
+          /* porta fechada */
+        }
+      }
+    })();
+  });
 });

@@ -220,6 +220,13 @@ const nav = [
 const isLinkedInJob = (job: Job) =>
   Boolean(job.url && /linkedin\.com/i.test(job.url));
 
+// sourceId não chega ao client (ApiJob/Job não o expõem), então aqui a
+// checagem usa só a URL — o mesmo fallback que o backend usa quando
+// sourceId não está preenchido. O link sintético gerado pela extensão do
+// APinfo sempre aponta para apinfo.com.
+const isApinfoJob = (job: Job) =>
+  Boolean(job.url && /apinfo\.com/i.test(job.url));
+
 // Infere o provider da vaga pela URL para exibir o rótulo correto no botão
 // de candidatura — sem necessidade de JOIN com a tabela de fontes.
 function jobProviderLabel(job: Job): string {
@@ -286,6 +293,7 @@ export default function Dashboard() {
   >([]);
   const [totalJobs, setTotalJobs] = useState<number | null>(null);
   const [totalLinkedIn, setTotalLinkedIn] = useState<number | null>(null);
+  const [totalApinfo, setTotalApinfo] = useState<number | null>(null);
   const [totalOtherSources, setTotalOtherSources] = useState<number | null>(
     null,
   );
@@ -293,9 +301,9 @@ export default function Dashboard() {
   const [currentPage, setCurrentPage] = useState(1);
   const [loadingMore, setLoadingMore] = useState(false);
   const [profileMasteredSkills, setProfileMasteredSkills] = useState<string[]>([]);
-  const [sourceFilter, setSourceFilter] = useState<"all" | "linkedin" | "other">(
-    "all",
-  );
+  const [sourceFilter, setSourceFilter] = useState<
+    "all" | "linkedin" | "apinfo" | "other"
+  >("all");
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [profileMinScore, setProfileMinScore] = useState(60);
   const [gmailOpen, setGmailOpen] = useState(false);
@@ -433,6 +441,9 @@ export default function Dashboard() {
         setTotalLinkedIn(
           typeof data.totalLinkedIn === "number" ? data.totalLinkedIn : null,
         );
+        setTotalApinfo(
+          typeof data.totalApinfo === "number" ? data.totalApinfo : null,
+        );
         setTotalOtherSources(
           typeof data.totalOtherSources === "number"
             ? data.totalOtherSources
@@ -527,11 +538,15 @@ export default function Dashboard() {
         // parecer que o campo não estava filtrando a lista.
         const text = `${j.title} ${j.company} ${j.location} ${j.seniority ?? ""} ${j.stack.join(" ")}`.toLowerCase();
         const searchQuery = query.trim().toLowerCase();
+        const matchesSource =
+          sourceFilter === "all" ||
+          (sourceFilter === "linkedin" && isLinkedInJob(j)) ||
+          (sourceFilter === "apinfo" && isApinfoJob(j)) ||
+          (sourceFilter === "other" && !isLinkedInJob(j) && !isApinfoJob(j));
         return (
           j.score >= effectiveMinScore &&
           (!searchQuery || text.includes(searchQuery)) &&
-          (sourceFilter === "all" ||
-            (sourceFilter === "linkedin") === isLinkedInJob(j)) &&
+          matchesSource &&
           (pipelineFilter === "all" ||
             (pipelineFilter === "unseen"
               ? !pipelineStageMap.has(j.id)
@@ -596,7 +611,11 @@ export default function Dashboard() {
     () => items.filter(isLinkedInJob).length,
     [items],
   );
-  const loadedOtherSources = items.length - loadedLinkedIn;
+  const loadedApinfo = useMemo(
+    () => items.filter(isApinfoJob).length,
+    [items],
+  );
+  const loadedOtherSources = items.length - loadedLinkedIn - loadedApinfo;
   const selectedJob =
     filtered.find((job) => job.id === selected.id) ?? filtered[0] ?? null;
   function clearRadarFilters() {
@@ -1156,6 +1175,11 @@ export default function Dashboard() {
                   count: totalLinkedIn ?? loadedLinkedIn,
                 },
                 {
+                  id: "apinfo",
+                  label: "APinfo",
+                  count: totalApinfo ?? loadedApinfo,
+                },
+                {
                   id: "other",
                   label: "Outras fontes",
                   count: totalOtherSources ?? loadedOtherSources,
@@ -1303,6 +1327,7 @@ export default function Dashboard() {
               <>{" "}<span className="list-head-dim">({items.length} carregadas de {totalJobs} disponíveis)</span></>
             )}
             {sourceFilter === "linkedin" && <>{" "}<span className="list-head-badge">só LinkedIn</span></>}
+            {sourceFilter === "apinfo" && <>{" "}<span className="list-head-badge">só APinfo</span></>}
             {sourceFilter === "other" && <>{" "}<span className="list-head-badge">só ATS</span></>}
           </span>
           {totalJobs != null && items.length < totalJobs && (

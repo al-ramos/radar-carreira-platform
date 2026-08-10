@@ -2,19 +2,30 @@
 
 Extensão para Google Chrome com painel próprio que coleta vagas visíveis nas páginas de resultados do APinfo, uma página por vez, remove duplicidades e exporta os resultados consolidados em CSV e JSON — ou envia direto ao Radar de Carreira.
 
-Versão atual da extensão: **1.0.0**.
+Versão atual da extensão: **1.1.0**.
 > Este é um projeto independente. Não é afiliado, patrocinado nem mantido pela APinfo.
 
-## Por que a coleta é manual, página por página
+## Dois modos de coleta
 
-[#por-que-a-coleta-é-manual-página-por-página](#por-que-a-coleta-é-manual-página-por-página)
+[#dois-modos-de-coleta](#dois-modos-de-coleta)
 
-Diferente de outras extensões de coleta que avançam a paginação sozinhas, este coletor **não clica em nada na página do APinfo** e não recria a busca por URL. Dois motivos técnicos:
+### Manual, página por página (com filtro)
 
-- A busca de vagas do APinfo é um formulário `POST` com filtros de estado, cidade e cargo. Não existe uma forma de "pular direto" para outra página sem reenviar esses filtros — e o próprio site não garante preservá-los fora da navegação normal pelos controles nativos da página.
-- O APinfo aplica um limite de consultas em pouco tempo ("Seu limite de consultas está temporariamente esgotado"). Automatizar cliques em sequência aumenta o risco de esbarrar nesse limite.
+Você navega normalmente pelo APinfo — com os filtros de estado, cidade e cargo que quiser — e a cada página clica em **Coletar esta página** na extensão. Funciona com qualquer combinação de filtro, porque quem está navegando é você mesmo, pelos controles nativos da página.
 
-Por isso o fluxo é: você navega normalmente pelo APinfo (na sua velocidade, com seus filtros), e a cada página clica em **Coletar esta página** na extensão. Os resultados se acumulam até você exportar.
+### Automática, todas as páginas (sem filtro)
+
+A extensão avança sozinha por todas as páginas do resultado, usando o mesmo mini-formulário nativo "Pular para a página" que o próprio APinfo expõe — o `background.js` só altera o número da página e submete esse formulário, sem reconstruir a busca do zero. Esse mini-formulário já vem preenchido pelo servidor com os tokens corretos da busca atual (`pkey` e `tcv`), então preserva o resultado.
+
+**Só funciona sem nenhum filtro marcado.** Isso porque a busca de vagas do APinfo é um formulário `POST` com filtros de estado, cidade e cargo, e reenviar esse formulário principal com a página alterada à mão quebra o resultado (testado: a busca "zera" para 1 vaga). O mini-formulário de paginação contorna isso, mas ele não carrega os filtros — só o total de resultados da busca atual, que no modo sem filtro é o total geral de vagas do site.
+
+Para não esbarrar no limite de consultas do APinfo, a coleta automática:
+
+- espera um intervalo configurável entre páginas (padrão 4 segundos);
+- para automaticamente depois de um número máximo de páginas por execução (padrão 200);
+- interrompe assim que detecta qualquer mensagem do próprio APinfo sinalizando limite de consultas atingido.
+
+O filtro por stack continua disponível — é aplicado na exportação, então mesmo coletando tudo sem filtro, você decide depois quais vagas exportar.
 
 ## O que o projeto faz
 
@@ -60,7 +71,7 @@ Também é possível usar **Code → Download ZIP** no GitHub e extrair o arquiv
 2. Ative **Modo do desenvolvedor**, no canto superior direito.
 3. Clique em **Carregar sem compactação**.
 4. Selecione a pasta `extensao-apinfo` (ou a raiz deste projeto, se você não separou em subpasta).
-5. Confirme que aparece **Coletor de Vagas do APinfo 1.0.0**.
+5. Confirme que aparece **Coletor de Vagas do APinfo 1.1.0**.
 6. Opcionalmente, fixe a extensão no menu de extensões do Chrome.
 
 ### 3. Abrir o painel
@@ -87,6 +98,18 @@ Também é possível usar **Code → Download ZIP** no GitHub e extrair o arquiv
 
 O contador no topo do painel mostra quantas vagas já estão acumuladas, a página atual e o total de resultados no APinfo.
 
+### Coletar tudo automaticamente (sem filtro)
+
+[#coletar-tudo-automaticamente-sem-filtro](#coletar-tudo-automaticamente-sem-filtro)
+
+1. Abra a busca de vagas do APinfo **sem marcar nenhum filtro** de estado, cidade ou cargo.
+2. No painel, ajuste se quiser o intervalo entre páginas e o limite de páginas da execução, na seção **Coleta automática**.
+3. Clique em **Coletar todas as páginas**.
+4. Acompanhe o progresso na barra ("Página N de M — X vagas coletadas"). É possível clicar em **Cancelar** a qualquer momento — o que já foi coletado permanece acumulado.
+5. Ao final (ou se o APinfo sinalizar limite de consultas), a extensão para sozinha e mostra um resumo.
+
+O filtro por stack, nesse modo, é aplicado depois — na exportação, como de costume.
+
 ### Filtrar por stacks
 
 [#filtrar-por-stacks](#filtrar-por-stacks)
@@ -108,7 +131,7 @@ A correspondência usa o título e a descrição da vaga. Uma vaga é mantida qu
 Para integrar ao portal, use o endpoint:
 
 ```
-https://radar-carreira-almir-v2.prof-andreiamr.chatgpt.site/api/collector/import/apinfo-extension
+https://radar-carreira-platform.al-ramos.workers.dev/api/collector/import/apinfo-extension
 ```
 
 Entre como administrador no Radar, abra **Extensão APinfo**, clique em **Gerar chave**, depois em **Salvar** e **Copiar**. Cole essa chave no painel da extensão e clique em **Testar conexão**.
@@ -170,7 +193,7 @@ O arquivo `manifest.json` declara:
 | `storage`                                                          | Salvar stacks, destinos, pasta, endpoint, chave e o acumulado da sessão       |
 | `downloads`                                                        | Gravar CSV e JSON na subpasta configurada sem perguntar a cada execução       |
 | `https://www.apinfo.com/*`                                        | Ler somente páginas do APinfo necessárias à coleta                            |
-| `https://radar-carreira-almir-v2.prof-andreiamr.chatgpt.site/*`  | Enviar vagas ao portal somente quando essa opção estiver ativada              |
+| `https://radar-carreira-platform.al-ramos.workers.dev/*`         | Enviar vagas ao portal somente quando essa opção estiver ativada              |
 
 Note que esta extensão **não pede a permissão `tabs`** (que permitiria listar e trocar entre todas as suas abas abertas) — ela só age na aba que está ativa no momento em que você clica em coletar.
 
@@ -216,7 +239,7 @@ flowchart LR
 | `dashboard.js`         | Comunicação do painel com o service worker                                 |
 | `dashboard.css`        | Estilos do painel completo                                                 |
 | `stacks.js`            | Catálogo de stacks e termos reconhecidos                                    |
-| `background.js`        | Orquestra coleta, acumulação, deduplicação e exportação                     |
+| `background.js`        | Orquestra coleta manual e automática, avanço de página, acumulação, deduplicação e exportação |
 | `page-collector.js`    | Lê os cartões de vaga da página atual do APinfo                             |
 | `popup.html`           | Interface do popup da extensão                                              |
 | `popup.js`             | Ações rápidas do popup (coletar a página atual sem abrir o painel)          |
@@ -226,13 +249,27 @@ flowchart LR
 
 [#fluxo-interno-da-coleta](#fluxo-interno-da-coleta)
 
+### Modo manual
+
 1. Você navega manualmente até uma página de resultados do APinfo.
 2. Clica em **Coletar esta página** no painel ou no popup.
 3. `background.js` injeta `page-collector.js` na aba ativa.
 4. `page-collector.js` lê todos os cartões de vaga (`div.box-vagas.linha.pd`) e devolve os dados estruturados, junto com a página atual e o total de resultados.
 5. `background.js` funde o resultado com o acumulado anterior, deduplicado por `codigo_apinfo`.
 6. Você repete os passos 1–5 para quantas páginas quiser.
-7. Ao exportar, `background.js` aplica os filtros de stack salvos e grava CSV/JSON e/ou envia ao Radar.
+
+### Modo automático
+
+1. Você abre a busca do APinfo sem filtro e clica em **Coletar todas as páginas**.
+2. `dashboard.js` abre uma porta (`chrome.runtime.connect`) com `background.js` e envia `{ type: 'START', tabId, delayMs, maxPages }`.
+3. `background.js` coleta a página atual, depois entra num loop: espera `delayMs`, injeta a função `submitPagingForm` (via `func`/`args`, não `files`) para preencher e submeter o mini-formulário nativo "Pular para a página" com o próximo número, aguarda a aba recarregar (`chrome.tabs.onUpdated`), coleta a nova página e verifica se o texto da página bate com algum padrão de limite de consultas.
+4. A cada página, `background.js` envia `{ type: 'PROGRESS', ... }` pela porta; `dashboard.js` atualiza a barra e o contador em tempo real.
+5. O loop para ao atingir a última página, o limite `maxPages`, detectar limite de consultas, ou receber `{ type: 'CANCEL' }` do painel.
+6. Ao final, `background.js` funde tudo com o acumulado anterior (deduplicado por `codigo_apinfo`) e envia `{ type: 'DONE', ... }` com o resumo.
+
+### Exportação (comum aos dois modos)
+
+Ao exportar, `background.js` aplica os filtros de stack salvos e grava CSV/JSON e/ou envia ao Radar.
 
 ## Desenvolvimento
 
@@ -256,17 +293,18 @@ Após modificar arquivos da extensão, aumente a versão em `manifest.json`, rec
 
 [#limitações-conhecidas](#limitações-conhecidas)
 
-- O APinfo pode alterar classes, estrutura e comportamento da página sem aviso.
+- O APinfo pode alterar classes, estrutura e comportamento da página sem aviso — inclusive o mini-formulário "Pular para a página" usado pela coleta automática.
 - Não há link estável por vaga — veja a seção "Sobre o link de cada vaga".
-- A coleta é manual por página; não há avanço automático de paginação nem execução desacompanhada.
+- A coleta automática só funciona sem filtro nenhum marcado; com filtro, use a coleta manual página por página.
+- A coleta automática depende da aba do APinfo permanecer aberta e navegável durante toda a execução; fechar ou navegar para outro site nela interrompe a coleta.
 - O acumulado fica em `chrome.storage.session` — fechar o Chrome por completo limpa o acumulado não exportado.
-- O APinfo aplica limite de consultas em pouco tempo; evite recarregar ou coletar a mesma página repetidamente em sequência rápida.
+- O APinfo aplica limite de consultas em pouco tempo; a coleta automática tenta detectar e parar diante desse limite, mas o site pode mudar a mensagem exibida sem aviso, tornando essa detecção obsoleta.
 
 ## Uso responsável
 
 [#uso-responsável](#uso-responsável)
 
-Use a ferramenta somente em conteúdo público que você está navegando normalmente. Respeite os termos aplicáveis, a privacidade de terceiros, os limites do site e a legislação da sua jurisdição. Evite execuções excessivas ou repetidas em sequência rápida — a extensão foi desenhada para acompanhar sua navegação, não para substituí-la.
+Use a ferramenta somente em conteúdo público. Respeite os termos aplicáveis, a privacidade de terceiros, os limites do site e a legislação da sua jurisdição. A coleta automática existe para trazer o total de vagas de uma vez, mas foi desenhada com intervalo entre páginas e parada automática ao detectar limite de consultas — evite reduzir o intervalo padrão ou rodar execuções em sequência sem pausa entre elas.
 
 ## Contribuição
 
