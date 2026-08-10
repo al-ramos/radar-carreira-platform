@@ -271,11 +271,11 @@ const adapt = (j: ApiJob): Job => ({
 export default function Dashboard() {
   const [active, setActive] = useState("Radar"),
     [query, setQuery] = useState(""),
-    [items, setItems] = useState<Job[]>(demo),
+    [items, setItems] = useState<Job[]>([]),
     [selected, setSelected] = useState<Job>(demo[0]),
     [fitFilter, setFitFilter] = useState<"profile" | number>(0),
     [period, setPeriod] = useState<string | null>(null),
-    [mode, setMode] = useState("preview"),
+    [mode, setMode] = useState("loading"),
     [importing, setImporting] = useState(false),
     [sourcesOpen, setSourcesOpen] = useState(false),
     [pipelineOpen, setPipelineOpen] = useState(false),
@@ -326,6 +326,8 @@ export default function Dashboard() {
   const [descriptionCopied, setDescriptionCopied] = useState(false);
   const [shareMenuJobId, setShareMenuJobId] = useState<string | null>(null);
   const [analysisOpen, setAnalysisOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [detailActionsOpen, setDetailActionsOpen] = useState(false);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [profileChoices, setProfileChoices] =
     useState<ProfileChoices>(emptyProfileChoices);
@@ -435,9 +437,12 @@ export default function Dashboard() {
           try {
             const savedId = sessionStorage.getItem("radar_selectedJobId");
             const restored = savedId ? next.find((j: Job) => j.id === savedId) : null;
-            setSelected(restored ?? next[0]);
+            const first = restored ?? next[0];
+            setSelected(first);
+            void loadJobDetail(first);
           } catch {
             setSelected(next[0]);
+            void loadJobDetail(next[0]);
           }
         }
         setTotalJobs(typeof data.total === "number" ? data.total : next.length);
@@ -455,8 +460,17 @@ export default function Dashboard() {
         setSourcesCount(typeof data.sourcesCount === "number" ? data.sourcesCount : null);
         setPeriod((current) => current ?? data.period ?? "24");
         setMode("database");
+        setMessage((current) => current === "O Radar está temporariamente indisponível. Seus dados continuam salvos." ? "" : current);
       })
-      .catch(() => setMode("preview"));
+      .catch(() => {
+        setItems([]);
+        setTotalJobs(null);
+        setTotalLinkedIn(null);
+        setTotalApinfo(null);
+        setTotalOtherSources(null);
+        setMode("unavailable");
+        setMessage("O Radar está temporariamente indisponível. Seus dados continuam salvos.");
+      });
   }, [period, sourceFilter, debouncedQuery, effectiveMinScore, pipelineFilter, verdictFilter, buildJobsParams, jobsRefreshVersion]);
   useEffect(() => {
     fetch("/api/profile")
@@ -533,6 +547,12 @@ export default function Dashboard() {
   /** Posição do polegar do slider nativo (múltiplo de 10; "profile" arredonda). */
   const fitFilterSliderValue =
     fitFilter === "profile" ? Math.round(profileMinScore / 10) * 10 : fitFilter;
+  const activeFilterCount = [
+    sourceFilter !== "all",
+    pipelineFilter !== "all",
+    verdictFilter !== "all",
+    fitFilter !== 0,
+  ].filter(Boolean).length;
   const filtered = useMemo(
     () =>
       items.filter((j) => {
@@ -626,6 +646,8 @@ export default function Dashboard() {
     setFitFilter(0);
     setPeriod("all");
     setSourceFilter("all");
+    setPipelineFilter("all");
+    setVerdictFilter("all");
   }
   async function goToJobsPage(page: number) {
     if (page === currentPage || page < 1) return;
@@ -780,6 +802,9 @@ export default function Dashboard() {
       setTotalJobs(
         typeof jobsData.total === "number" ? jobsData.total : next.length,
       );
+      setTotalLinkedIn(typeof jobsData.totalLinkedIn === "number" ? jobsData.totalLinkedIn : null);
+      setTotalApinfo(typeof jobsData.totalApinfo === "number" ? jobsData.totalApinfo : null);
+      setTotalOtherSources(typeof jobsData.totalOtherSources === "number" ? jobsData.totalOtherSources : null);
       setSourcesCount(typeof jobsData.sourcesCount === "number" ? jobsData.sourcesCount : null);
     }
   }
@@ -838,6 +863,7 @@ export default function Dashboard() {
   function selectJob(job: Job) {
     setSelected(job);
     setAnalysisOpen(false);
+    setDetailActionsOpen(false);
     void loadJobDetail(job);
     if (!job.id.startsWith("demo") && currentUser) {
       // Optimistic update: marca como viewed localmente sem rebaixar estágio existente
@@ -1054,7 +1080,7 @@ export default function Dashboard() {
     <main className="shell">
       <aside className="sidebar">
         <div className="brand">
-          <span className="brand-mark">R</span>
+          <span className="brand-mark" aria-hidden="true" />
           <span>
             RADAR
             <br />
@@ -1164,43 +1190,6 @@ export default function Dashboard() {
               )}
             </span>
           </div>
-          <div
-            className="compact-pills"
-            role="group"
-            aria-label="Filtrar por origem da vaga"
-          >
-            {(
-              [
-                { id: "all", label: "Todas", count: totalJobs ?? items.length },
-                {
-                  id: "linkedin",
-                  label: "LinkedIn",
-                  count: totalLinkedIn ?? loadedLinkedIn,
-                },
-                {
-                  id: "apinfo",
-                  label: "APinfo",
-                  count: totalApinfo ?? loadedApinfo,
-                },
-                {
-                  id: "other",
-                  label: "Outras fontes",
-                  count: totalOtherSources ?? loadedOtherSources,
-                },
-              ] as const
-            ).map(({ id, label, count }) => (
-              <button
-                key={id}
-                type="button"
-                className={sourceFilter === id ? "active" : ""}
-                onClick={() => setSourceFilter(id)}
-                aria-pressed={sourceFilter === id}
-              >
-                {label}
-                {count > 0 && <span>{count}</span>}
-              </button>
-            ))}
-          </div>
           <div className="toolbar">
             <div className="search">
               ⌕
@@ -1220,48 +1209,35 @@ export default function Dashboard() {
               <option value="168">Últimos 7 dias</option>
               <option value="all">Todas</option>
             </select>
-            <div className="fit-filter">
-              <div className="fit-filter-head">
-                <span>Aderência mínima</span>
-                <strong style={{ color: fitFilterColor }}>
-                  {effectiveMinScore === 0
-                    ? "Todas as vagas"
-                    : `${effectiveMinScore}% ou mais`}
-                </strong>
-              </div>
-              <input
-                type="range"
-                className="fit-filter-slider"
-                aria-label="Aderência mínima ao seu perfil"
-                min={0}
-                max={100}
-                step={10}
-                list="fit-filter-ticks"
-                value={fitFilterSliderValue}
-                onChange={(event) => setFitFilter(Number(event.target.value))}
-                style={
-                  {
-                    "--fit-fill": `${fitFilterSliderValue}%`,
-                    "--fit-color": fitFilterColor,
-                  } as CSSProperties
-                }
-              />
-              <datalist id="fit-filter-ticks">
-                {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((tick) => (
-                  <option key={tick} value={tick} />
-                ))}
-              </datalist>
-              <button
-                type="button"
-                className={`fit-filter-profile-chip${fitFilter === "profile" ? " active" : ""}`}
-                onClick={() => setFitFilter("profile")}
-              >
-                ★ Meu perfil ({profileMinScore}% ou mais)
-              </button>
-            </div>
+            <button
+              type="button"
+              className={`filter-trigger${filtersOpen ? " active" : ""}`}
+              onClick={() => setFiltersOpen((open) => !open)}
+              aria-expanded={filtersOpen}
+              aria-controls="radar-filter-panel"
+            >
+              Filtros{activeFilterCount > 0 && <span>{activeFilterCount}</span>}
+            </button>
           </div>
         </div>
-        <div className="radar-filters-compact" aria-label="Filtros de vagas">
+        <div id="radar-filter-panel" className="radar-filter-panel" hidden={!filtersOpen} aria-label="Filtros de vagas">
+          <div className="compact-filter-group filter-source-group">
+            <span className="compact-filter-label">Origem</span>
+            <div className="compact-pills" role="group" aria-label="Filtrar por origem da vaga">
+              {(
+                [
+                  { id: "all", label: "Todas", count: totalJobs ?? items.length },
+                  { id: "linkedin", label: "LinkedIn", count: totalLinkedIn ?? loadedLinkedIn },
+                  { id: "apinfo", label: "APinfo", count: totalApinfo ?? loadedApinfo },
+                  { id: "other", label: "Outras fontes", count: totalOtherSources ?? loadedOtherSources },
+                ] as const
+              ).map(({ id, label, count }) => (
+                <button key={id} type="button" className={sourceFilter === id ? "active" : ""} onClick={() => setSourceFilter(id)} aria-pressed={sourceFilter === id}>
+                  {label}{count > 0 && <span>{count}</span>}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="compact-filter-group">
             <span className="compact-filter-label">Pipeline</span>
             <div className="compact-pills" role="group" aria-label="Filtrar por estágio do pipeline">
@@ -1317,6 +1293,37 @@ export default function Dashboard() {
                 </div>
               </div>
             </>
+          )}
+          <div className="compact-filter-group fit-filter">
+            <div className="fit-filter-head">
+              <span className="compact-filter-label">Aderência mínima</span>
+              <strong style={{ color: fitFilterColor }}>
+                {effectiveMinScore === 0 ? "Todas as vagas" : `${effectiveMinScore}% ou mais`}
+              </strong>
+            </div>
+            <input
+              type="range"
+              className="fit-filter-slider"
+              aria-label="Aderência mínima ao seu perfil"
+              min={0}
+              max={100}
+              step={10}
+              list="fit-filter-ticks"
+              value={fitFilterSliderValue}
+              onChange={(event) => setFitFilter(Number(event.target.value))}
+              style={{ "--fit-fill": `${fitFilterSliderValue}%`, "--fit-color": fitFilterColor } as CSSProperties}
+            />
+            <datalist id="fit-filter-ticks">
+              {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((tick) => <option key={tick} value={tick} />)}
+            </datalist>
+            <button type="button" className={`fit-filter-profile-chip${fitFilter === "profile" ? " active" : ""}`} onClick={() => setFitFilter("profile")}>
+              Meu perfil ({profileMinScore}% ou mais)
+            </button>
+          </div>
+          {activeFilterCount > 0 && (
+            <button type="button" className="clear-radar-filters" onClick={clearRadarFilters}>
+              Limpar filtros
+            </button>
           )}
         </div>
         <div className="list-status-bar">
@@ -1391,7 +1398,6 @@ export default function Dashboard() {
                 role="button"
                 tabIndex={0}
                 className={`job-card ${selectedJob?.id === j.id ? "selected" : ""} ${currentUser ? "job-card-scored" : ""}`}
-                style={currentUser ? ({ "--score-fill": `${j.score}%`, "--score-tint": j.score >= 80 ? "#e4f4db" : j.score >= 60 ? "#fdf1d8" : "#f0f2ed" } as CSSProperties) : undefined}
                 onClick={() => selectJob(j)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
@@ -1436,7 +1442,10 @@ export default function Dashboard() {
                     aria-label="Tecnologias da vaga"
                   >
                     {j.stack.length ? (
-                      j.stack.map((t) => <span key={t}>{t}</span>)
+                      <>
+                        {j.stack.slice(0, 3).map((t) => <span key={t}>{t}</span>)}
+                        {j.stack.length > 3 && <span className="stack-more">+{j.stack.length - 3}</span>}
+                      </>
                     ) : (
                       <span className="stack-unavailable">
                         Stack não informada
@@ -1444,7 +1453,6 @@ export default function Dashboard() {
                     )}
                   </div>
                 </div>
-                <span>♡</span>
                 <div className="share-wrap" onClick={(e) => e.stopPropagation()}>
                   <button
                     className="share-btn"
@@ -1470,21 +1478,33 @@ export default function Dashboard() {
             ))}
             {filtered.length === 0 && (
               <div className="radar-empty">
-                <strong>Nenhuma vaga corresponde aos filtros atuais.</strong>
-                <span>
-                  Reduza o score mínimo ou amplie o período para visualizar as
-                  oportunidades disponíveis.
-                </span>
-                <button onClick={clearRadarFilters}>
-                  Mostrar todas as vagas
-                </button>
-                {isAdmin && (
-                  <button
-                    className="radar-empty-import"
-                    onClick={() => setLinkedInOpen(true)}
-                  >
-                    Importar vagas do LinkedIn
-                  </button>
+                {mode === "unavailable" ? (
+                  <>
+                    <strong>Não foi possível carregar as vagas agora.</strong>
+                    <span>Seus dados continuam salvos. Tente novamente em alguns instantes.</span>
+                    <button onClick={() => setJobsRefreshVersion((version) => version + 1)}>
+                      Tentar novamente
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <strong>Nenhuma vaga corresponde aos filtros atuais.</strong>
+                    <span>
+                      Reduza o score mínimo ou amplie o período para visualizar as
+                      oportunidades disponíveis.
+                    </span>
+                    <button onClick={clearRadarFilters}>
+                      Mostrar todas as vagas
+                    </button>
+                    {isAdmin && (
+                      <button
+                        className="radar-empty-import"
+                        onClick={() => setLinkedInOpen(true)}
+                      >
+                        Importar vagas do LinkedIn
+                      </button>
+                    )}
+                  </>
                 )}
               </div>
             )}
@@ -1597,7 +1617,7 @@ export default function Dashboard() {
                   {analysisOpen ? "✕ Fechar análise" : "🔍 Analisar candidatura"}
                 </button>
                 <button
-                  className="linkedin-action"
+                  className="primary-job-action"
                   onClick={async () => {
                     if (selectedJob.url) open(selectedJob.url, "_blank");
                     if (!selectedJob.id.startsWith("demo")) {
@@ -1609,46 +1629,33 @@ export default function Dashboard() {
                     }
                   }}
                 >
-                  {jobProviderLabel(selectedJob)}
+                  Candidatar
                 </button>
-                <div className="share-wrap">
+                <div className="share-wrap detail-more-actions">
                   <button
-                    className="linkedin-action"
-                    onClick={() =>
-                      setShareMenuJobId(
-                        shareMenuJobId === `detail-${selectedJob.id}`
-                          ? null
-                          : `detail-${selectedJob.id}`,
-                      )
-                    }
+                    className="more-actions-trigger"
+                    onClick={() => setDetailActionsOpen((open) => !open)}
+                    aria-expanded={detailActionsOpen}
+                    aria-label="Mais ações para esta vaga"
                   >
-                    📤 Encaminhar
+                    Mais ações
                   </button>
-                  {shareMenuJobId === `detail-${selectedJob.id}` && (() => {
+                  {detailActionsOpen && (() => {
                     const links = buildShareLinks(selectedJob);
                     return (
-                      <div className="share-menu">
-                        <button className="share-menu-item" onClick={() => window.open(links.email, "_blank")}>📧 E-mail</button>
-                        <button className="share-menu-item" onClick={() => window.open(links.whatsapp, "_blank")}>💬 WhatsApp</button>
+                      <div className="share-menu detail-actions-menu">
+                        <button className="share-menu-item" onClick={() => { window.open(links.email, "_blank"); setDetailActionsOpen(false); }}>Encaminhar por e-mail</button>
+                        <button className="share-menu-item" onClick={() => { window.open(links.whatsapp, "_blank"); setDetailActionsOpen(false); }}>Encaminhar no WhatsApp</button>
+                        <button className="share-menu-item" onClick={() => { void copyDescription(); setDetailActionsOpen(false); }} disabled={detailLoading || !(jobDetail?.description || selectedJob.description)}>
+                          {descriptionCopied ? "Descrição copiada" : "Copiar descrição"}
+                        </button>
+                        <button className="share-menu-item" title="Abrir descrição em tela ampliada" onClick={() => { openJobDetail(selectedJob); setDetailActionsOpen(false); }}>
+                          Ampliar descrição
+                        </button>
                       </div>
                     );
                   })()}
                 </div>
-                <button
-                  className="linkedin-action"
-                  onClick={copyDescription}
-                  disabled={detailLoading || !(jobDetail?.description || selectedJob.description)}
-                  title={jobDetail?.descriptionSource === "linkedin" ? "Descrição enriquecida do LinkedIn" : "Leitura organizada automaticamente"}
-                >
-                  {descriptionCopied ? "✓ Copiada" : "⎘ Copiar descrição"}
-                </button>
-                <button
-                  className="linkedin-action"
-                  onClick={() => openJobDetail(selectedJob)}
-                  title="Abrir descrição em tela ampliada"
-                >
-                  ⛶ Ampliar
-                </button>
               </div>
               {profileMasteredSkills.length > 0 && (() => {
                 const missingImprove = selectedJob.stack

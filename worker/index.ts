@@ -5,6 +5,7 @@ import handler from "vinext/server/app-router-entry";
 interface Env {
   ASSETS: Fetcher;
   DB: D1Database;
+  COLLECTOR_SECRET: string;
   IMAGES: {
     input(stream: ReadableStream): {
       transform(options: Record<string, unknown>): {
@@ -28,6 +29,17 @@ interface ExecutionContext {
 const worker = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+
+    if (["/api/cron/collect", "/api/cron/enrich", "/api/cron/lifecycle"].includes(url.pathname)) {
+      const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
+      if (!token || token !== env.COLLECTOR_SECRET)
+        return Response.json({ error: "Não autorizado" }, { status: 401 });
+
+      const headers = new Headers(request.headers);
+      headers.delete("authorization");
+      headers.set("x-radar-collector-authenticated", "1");
+      request = new Request(request, { headers });
+    }
 
     if (url.pathname === "/_vinext/image") {
       const allowedWidths = [...DEFAULT_DEVICE_SIZES, ...DEFAULT_IMAGE_SIZES];

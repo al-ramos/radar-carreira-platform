@@ -33,6 +33,14 @@ Datadog|greenhouse|datadog
 New Relic|greenhouse|newrelic
 SolarWinds|greenhouse|solarwinds
 GitLab|greenhouse|gitlab
+AlphaSights|greenhouse|alphasights
+CookUnity|greenhouse|cookunity
+Invisible Agency|greenhouse|invisible
+ClickHouse|greenhouse|clickhouse
+Coinbase|greenhouse|coinbase
+Bitso|greenhouse|bitso
+Monks|greenhouse|monks
+Quorum|ashby|quorum
 Docker|ashby|docker
 Canonical|greenhouse|canonical
 Veeam Software|greenhouse|veeamsoftware
