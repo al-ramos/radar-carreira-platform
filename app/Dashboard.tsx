@@ -76,6 +76,36 @@ type CollectionOutcome = {
   updated: number;
   error?: string;
 };
+const JOBS_FETCH_ATTEMPTS = 3;
+const JOBS_RETRY_BASE_DELAY_MS = 350;
+
+function waitForRetry(delayMs: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(resolve, delayMs);
+    signal.addEventListener("abort", () => {
+      window.clearTimeout(timer);
+      reject(new DOMException("Requisição cancelada", "AbortError"));
+    }, { once: true });
+  });
+}
+
+async function fetchJobsWithRetry(url: string, signal: AbortSignal) {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < JOBS_FETCH_ATTEMPTS; attempt += 1) {
+    try {
+      const response = await fetch(url, { cache: "no-store", signal });
+      if (response.ok) return response.json();
+      throw new Error(`Falha ao carregar vagas (HTTP ${response.status})`);
+    } catch (error) {
+      if (signal.aborted) throw error;
+      lastError = error;
+      if (attempt + 1 < JOBS_FETCH_ATTEMPTS) {
+        await waitForRetry(JOBS_RETRY_BASE_DELAY_MS * 2 ** attempt, signal);
+      }
+    }
+  }
+  throw lastError;
+}
 const descriptionHeadings = new Set([
   "sobre a vaga",
   "about the job",
@@ -304,6 +334,7 @@ export default function Dashboard() {
     null,
   );
   const [sourcesCount, setSourcesCount] = useState<number | null>(null);
+  const loadedJobsRef = useRef<Job[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [loadingMore, setLoadingMore] = useState(false);
   const [profileMasteredSkills, setProfileMasteredSkills] = useState<string[]>([]);
@@ -392,7 +423,14 @@ export default function Dashboard() {
   // não compartilha o estado React deste Dashboard, recarregamos os totais ao
   // voltar para o Radar para não deixar a quantidade exibida defasada.
   useEffect(() => {
-    const refreshJobs = () => setJobsRefreshVersion((version) => version + 1);
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+    const refreshJobs = () => {
+      if (refreshTimer) clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(
+        () => setJobsRefreshVersion((version) => version + 1),
+        300,
+      );
+    };
     const refreshWhenVisible = () => {
       if (document.visibilityState === "visible") refreshJobs();
     };
@@ -400,6 +438,7 @@ export default function Dashboard() {
     window.addEventListener("focus", refreshJobs);
     document.addEventListener("visibilitychange", refreshWhenVisible);
     return () => {
+      if (refreshTimer) clearTimeout(refreshTimer);
       window.removeEventListener("focus", refreshJobs);
       document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
@@ -428,12 +467,13 @@ export default function Dashboard() {
     [period, sourceFilter, debouncedQuery, effectiveMinScore, pipelineFilter, verdictFilter],
   );
   useEffect(() => {
-    fetch(`/api/jobs?${buildJobsParams(1)}`)
-      .then((r) => (r.ok ? r.json() : Promise.reject()))
+    const controller = new AbortController();
+    fetchJobsWithRetry(`/api/jobs?${buildJobsParams(1)}`, controller.signal)
       .then((data) => {
         const next = (data.jobs ?? [])
           .map(adapt)
           .sort((a: Job, b: Job) => b.score - a.score);
+        loadedJobsRef.current = next;
         setItems(next);
         setCurrentPage(1);
         if (next.length) {
@@ -463,17 +503,24 @@ export default function Dashboard() {
         setSourcesCount(typeof data.sourcesCount === "number" ? data.sourcesCount : null);
         setPeriod((current) => current ?? data.period ?? "24");
         setMode("database");
-        setMessage((current) => current === "O Radar está temporariamente indisponível. Seus dados continuam salvos." ? "" : current);
+        setMessage((current) =>
+          current.startsWith("O Radar está temporariamente indisponível.") ||
+          current === "Não foi possível atualizar agora. Mantendo a última lista carregada."
+            ? ""
+            : current,
+        );
       })
-      .catch(() => {
-        setItems([]);
-        setTotalJobs(null);
-        setTotalLinkedIn(null);
-        setTotalApinfo(null);
-        setTotalOtherSources(null);
+      .catch((error) => {
+        if (controller.signal.aborted || (error instanceof DOMException && error.name === "AbortError")) return;
+        if (loadedJobsRef.current.length) {
+          setMode("database");
+          setMessage("Não foi possível atualizar agora. Mantendo a última lista carregada.");
+          return;
+        }
         setMode("unavailable");
-        setMessage("O Radar está temporariamente indisponível. Seus dados continuam salvos.");
+        setMessage("O Radar está temporariamente indisponível. Tentaremos novamente automaticamente.");
       });
+    return () => controller.abort();
   }, [period, sourceFilter, debouncedQuery, effectiveMinScore, pipelineFilter, verdictFilter, buildJobsParams, jobsRefreshVersion]);
   useEffect(() => {
     fetch("/api/profile")

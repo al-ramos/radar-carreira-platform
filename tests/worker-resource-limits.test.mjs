@@ -21,5 +21,17 @@ test("falha da API não exibe as quatro vagas demonstrativas", async () => {
   const dashboard = await read("../app/Dashboard.tsx");
   assert.match(dashboard, /useState<Job\[]>\(\[\]\)/);
   assert.match(dashboard, /setMode\("unavailable"\)/);
-  assert.match(dashboard, /Seus dados continuam salvos/);
+  assert.match(dashboard, /fetchJobsWithRetry/);
+  assert.match(dashboard, /Mantendo a última lista carregada/);
+  assert.doesNotMatch(dashboard, /\.catch\(\(\) => \{\s*setItems\(\[\]\)/);
+});
+
+test("a página autenticada não renderiza o dashboard pesado no Worker", async () => {
+  const [page, shell] = await Promise.all([
+    read("../app/page.tsx"),
+    read("../app/DashboardShell.tsx"),
+  ]);
+  assert.match(page, /requireChatGPTUser/);
+  assert.match(page, /<DashboardShell \/>/);
+  assert.match(shell, /ssr: false/);
 });
