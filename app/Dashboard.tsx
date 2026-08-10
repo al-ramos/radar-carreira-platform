@@ -76,7 +76,7 @@ type CollectionOutcome = {
   updated: number;
   error?: string;
 };
-const JOBS_FETCH_ATTEMPTS = 3;
+const JOBS_FETCH_ATTEMPTS = 2;
 const JOBS_RETRY_BASE_DELAY_MS = 350;
 
 function waitForRetry(delayMs: number, signal: AbortSignal): Promise<void> {
@@ -103,6 +103,15 @@ async function fetchJobsWithRetry(url: string, signal: AbortSignal) {
         await waitForRetry(JOBS_RETRY_BASE_DELAY_MS * 2 ** attempt, signal);
       }
     }
+  }
+  const fallbackUrl = new URL(url, window.location.origin);
+  fallbackUrl.searchParams.set("degraded", "1");
+  try {
+    const fallbackResponse = await fetch(fallbackUrl, { cache: "no-store", signal });
+    if (fallbackResponse.ok) return fallbackResponse.json();
+  } catch (error) {
+    if (signal.aborted) throw error;
+    lastError = error;
   }
   throw lastError;
 }
@@ -503,12 +512,15 @@ export default function Dashboard() {
         setSourcesCount(typeof data.sourcesCount === "number" ? data.sourcesCount : null);
         setPeriod((current) => current ?? data.period ?? "24");
         setMode("database");
-        setMessage((current) =>
-          current.startsWith("O Radar está temporariamente indisponível.") ||
-          current === "Não foi possível atualizar agora. Mantendo a última lista carregada."
+        setMessage((current) => {
+          if (data.degraded) {
+            return "Exibindo a lista em modo simplificado enquanto a personalização se recupera.";
+          }
+          return current.startsWith("O Radar está temporariamente indisponível.") ||
+            current === "Não foi possível atualizar agora. Mantendo a última lista carregada."
             ? ""
-            : current,
-        );
+            : current;
+        });
       })
       .catch((error) => {
         if (controller.signal.aborted || (error instanceof DOMException && error.name === "AbortError")) return;
