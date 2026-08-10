@@ -14,15 +14,14 @@ jobs:
           RADAR_BASE_URL: ${{ vars.RADAR_BASE_URL }}
         run: |
           test -n "${RADAR_BASE_URL}"
-          curl --fail-with-body --retry 2 --max-time 300 \
-            -X POST \
-            -H "Authorization: Bearer ${COLLECTOR_SECRET}" \
-            "${RADAR_BASE_URL}/api/cron/collect"
-          curl --fail-with-body --retry 2 --max-time 300 \
-            -X POST \
-            -H "Authorization: Bearer ${COLLECTOR_SECRET}" \
-            "${RADAR_BASE_URL}/api/cron/enrich"
-          curl --fail-with-body --retry 2 --max-time 300 \
-            -X POST \
-            -H "Authorization: Bearer ${COLLECTOR_SECRET}" \
-            "${RADAR_BASE_URL}/api/cron/lifecycle"
+          call_api() {
+            response=$(curl --fail-with-body --retry 2 --max-time 300 \
+              -X POST \
+              -H "Authorization: Bearer ${COLLECTOR_SECRET}" \
+              "${RADAR_BASE_URL}$1")
+            echo "$response"
+            jq -e '.ok == true' >/dev/null <<< "$response"
+          }
+          call_api "/api/cron/collect"
+          call_api "/api/cron/enrich"
+          call_api "/api/cron/lifecycle"
