@@ -33,7 +33,7 @@ const worker = {
     if (["/api/cron/collect", "/api/cron/enrich", "/api/cron/lifecycle"].includes(url.pathname)) {
       const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
       if (!token || token !== env.COLLECTOR_SECRET)
-        return Response.json({ error: "Não autorizado", source: "worker" }, { status: 401 });
+        return Response.json({ error: "Não autorizado" }, { status: 401 });
 
       const headers = new Headers(request.headers);
       headers.delete("authorization");

@@ -12,6 +12,7 @@ export type CollectResult={status:"ok"|"empty"|"mismatch"|"error";jobsCount:numb
 const safe=(value:string)=>{if(!/^[a-zA-Z0-9_-]+$/.test(value))throw new Error("Identificador da fonte inválido");return value};
 const clean=(html:string="")=>html.replace(/<[^>]+>/g," ").replace(/&nbsp;/g," ").replace(/&amp;/g,"&").replace(/\s+/g," ").trim();
 const mode=(text:string)=>/remote|remoto/i.test(text)?"Remoto":/hybrid|híbrido|hibrido/i.test(text)?"Híbrido":"Presencial";
+const request=(url:string)=>fetch(url,{signal:AbortSignal.timeout(15_000)});
 
 function nameSimilarity(a:string,b:string):number{
   const norm=(s:string)=>s.toLowerCase().replace(/[^a-z0-9\s]/g,"").trim();
@@ -28,25 +29,25 @@ export async function validate(provider:Provider|string,externalRef:string,expec
   const ref=safe(externalRef);
   try{
     if(provider==="greenhouse"){
-      const r=await fetch(`https://boards-api.greenhouse.io/v1/boards/${ref}/jobs?content=true`);
+      const r=await request(`https://boards-api.greenhouse.io/v1/boards/${ref}/jobs?content=true`);
       if(!r.ok)return{status:"error",jobsCount:0};
       const data=await r.json() as{jobs?:GreenhouseJob[]};
       const jobsCount=(data.jobs??[]).length;
       if(jobsCount===0)return{status:"empty",jobsCount:0};
-      const br=await fetch(`https://boards-api.greenhouse.io/v1/boards/${ref}`);
+      const br=await request(`https://boards-api.greenhouse.io/v1/boards/${ref}`);
       const foundName=br.ok?((await br.json() as{name?:string}).name):undefined;
       if(foundName&&nameSimilarity(foundName,expectedName)<0.7)return{status:"mismatch",jobsCount,foundName};
       return{status:"ok",jobsCount,foundName};
     }
     if(provider==="lever"){
-      const r=await fetch(`https://api.lever.co/v0/postings/${ref}?mode=json`);
+      const r=await request(`https://api.lever.co/v0/postings/${ref}?mode=json`);
       if(!r.ok)return{status:"error",jobsCount:0};
       const data=await r.json() as LeverJob[];
       const jobsCount=data.length;
       if(jobsCount===0)return{status:"empty",jobsCount:0};
       return{status:"ok",jobsCount};
     }
-    const r=await fetch(`https://api.ashbyhq.com/posting-api/job-board/${ref}`);
+    const r=await request(`https://api.ashbyhq.com/posting-api/job-board/${ref}`);
     if(!r.ok)return{status:"error",jobsCount:0};
     const data=await r.json() as AshbyResponse;
     const jobsCount=(data.jobs??[]).length;
@@ -60,7 +61,7 @@ export async function validate(provider:Provider|string,externalRef:string,expec
 export async function collect(provider:Provider|string,externalRef:string,company:string):Promise<ImportedJob[]>{
  if(!isPullProvider(provider))throw new Error("Este tipo de integração não suporta coleta automática");
  const ref=safe(externalRef);
- if(provider==="greenhouse"){const r=await fetch(`https://boards-api.greenhouse.io/v1/boards/${ref}/jobs?content=true`);if(!r.ok)throw new Error(`Greenhouse respondeu ${r.status}`);const data=await r.json() as {jobs?:GreenhouseJob[]};return (data.jobs??[]).map(j=>({externalId:String(j.id),company,title:j.title,location:j.location?.name??"",workMode:mode(j.location?.name??""),publishedAt:j.updated_at,url:j.absolute_url,description:clean(j.content),stack:[]}))}
- if(provider==="lever"){const r=await fetch(`https://api.lever.co/v0/postings/${ref}?mode=json`);if(!r.ok)throw new Error(`Lever respondeu ${r.status}`);const data=await r.json() as LeverJob[];return data.map(j=>({externalId:j.id,company,title:j.text,location:j.categories?.location??"",workMode:mode(`${j.categories?.location??""} ${j.workplaceType??""}`),url:j.hostedUrl,description:clean(j.descriptionPlain??j.description),stack:[]}))}
- const r=await fetch(`https://api.ashbyhq.com/posting-api/job-board/${ref}`);if(!r.ok)throw new Error(`Ashby respondeu ${r.status}`);const data=await r.json() as AshbyResponse;return (data.jobs??[]).map(j=>({externalId:j.id??j.jobUrl,company,title:j.title,location:j.location??"",workMode:j.isRemote?"Remoto":mode(j.location??""),publishedAt:j.publishedAt,url:j.jobUrl??j.applyUrl??"",description:clean(j.descriptionPlain??j.descriptionHtml),stack:[]}));
+ if(provider==="greenhouse"){const r=await request(`https://boards-api.greenhouse.io/v1/boards/${ref}/jobs?content=true`);if(!r.ok)throw new Error(`Greenhouse respondeu ${r.status}`);const data=await r.json() as {jobs?:GreenhouseJob[]};return (data.jobs??[]).map(j=>({externalId:String(j.id),company,title:j.title,location:j.location?.name??"",workMode:mode(j.location?.name??""),publishedAt:j.updated_at,url:j.absolute_url,description:clean(j.content),stack:[]}))}
+ if(provider==="lever"){const r=await request(`https://api.lever.co/v0/postings/${ref}?mode=json`);if(!r.ok)throw new Error(`Lever respondeu ${r.status}`);const data=await r.json() as LeverJob[];return data.map(j=>({externalId:j.id,company,title:j.text,location:j.categories?.location??"",workMode:mode(`${j.categories?.location??""} ${j.workplaceType??""}`),url:j.hostedUrl,description:clean(j.descriptionPlain??j.description),stack:[]}))}
+ const r=await request(`https://api.ashbyhq.com/posting-api/job-board/${ref}`);if(!r.ok)throw new Error(`Ashby respondeu ${r.status}`);const data=await r.json() as AshbyResponse;return (data.jobs??[]).map(j=>({externalId:j.id??j.jobUrl,company,title:j.title,location:j.location??"",workMode:j.isRemote?"Remoto":mode(j.location??""),publishedAt:j.publishedAt,url:j.jobUrl??j.applyUrl??"",description:clean(j.descriptionPlain??j.descriptionHtml),stack:[]}));
 }
