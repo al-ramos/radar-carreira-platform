@@ -278,7 +278,8 @@ export default function Dashboard() {
     [importFile, setImportFile] = useState(""),
     [importCount, setImportCount] = useState(0),
     [message, setMessage] = useState(""),
-    [sourceVersion, setSourceVersion] = useState(0);
+    [sourceVersion, setSourceVersion] = useState(0),
+    [jobsRefreshVersion, setJobsRefreshVersion] = useState(0);
   const [slugWarning, setSlugWarning] = useState<string[] | null>(null);
   const [collectionResults, setCollectionResults] = useState<
     CollectionOutcome[]
@@ -371,6 +372,22 @@ export default function Dashboard() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
+  // A extensão coleta as vagas em outra aba e grava direto na API. Como ela
+  // não compartilha o estado React deste Dashboard, recarregamos os totais ao
+  // voltar para o Radar para não deixar a quantidade exibida defasada.
+  useEffect(() => {
+    const refreshJobs = () => setJobsRefreshVersion((version) => version + 1);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") refreshJobs();
+    };
+
+    window.addEventListener("focus", refreshJobs);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.removeEventListener("focus", refreshJobs);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, []);
   // Busca por texto tem debounce: sem isso, cada tecla digitada dispararia
   // um fetch completo (o filtro de busca agora é aplicado no servidor).
   const [debouncedQuery, setDebouncedQuery] = useState("");
@@ -426,7 +443,7 @@ export default function Dashboard() {
         setMode("database");
       })
       .catch(() => setMode("preview"));
-  }, [period, sourceFilter, debouncedQuery, effectiveMinScore, pipelineFilter, verdictFilter, buildJobsParams]);
+  }, [period, sourceFilter, debouncedQuery, effectiveMinScore, pipelineFilter, verdictFilter, buildJobsParams, jobsRefreshVersion]);
   useEffect(() => {
     fetch("/api/profile")
       .then((r) => (r.ok ? r.json() : Promise.reject()))
