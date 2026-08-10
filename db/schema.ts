@@ -94,3 +94,44 @@ export const alertDeliveries = sqliteTable("alert_deliveries", {
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   sentAt: integer("sent_at", { mode: "timestamp_ms" }),
 });
+
+// --- RBAC: perfis (roles), permissões e grupos de acesso ---
+
+export const roles = sqliteTable("roles", {
+  id: text("id").primaryKey(), name: text("name").notNull(), description: text("description"),
+  isSystem: integer("is_system", { mode: "boolean" }).notNull().default(false),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+}, table => [uniqueIndex("roles_name_unique").on(table.name)]);
+
+export const permissions = sqliteTable("permissions", {
+  id: text("id").primaryKey(), module: text("module").notNull(), description: text("description").notNull(),
+});
+
+export const rolePermissions = sqliteTable("role_permissions", {
+  roleId: text("role_id").notNull().references(() => roles.id),
+  permissionId: text("permission_id").notNull().references(() => permissions.id),
+}, table => [primaryKey({ columns: [table.roleId, table.permissionId] })]);
+
+export const groups = sqliteTable("groups", {
+  id: text("id").primaryKey(), name: text("name").notNull(), description: text("description"),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+}, table => [uniqueIndex("groups_name_unique").on(table.name)]);
+
+export const groupRoles = sqliteTable("group_roles", {
+  groupId: text("group_id").notNull().references(() => groups.id),
+  roleId: text("role_id").notNull().references(() => roles.id),
+}, table => [primaryKey({ columns: [table.groupId, table.roleId] })]);
+
+export const userRoles = sqliteTable("user_roles", {
+  userId: text("user_id").notNull(), roleId: text("role_id").notNull().references(() => roles.id),
+}, table => [primaryKey({ columns: [table.userId, table.roleId] })]);
+
+export const userGroups = sqliteTable("user_groups", {
+  userId: text("user_id").notNull(), groupId: text("group_id").notNull().references(() => groups.id),
+}, table => [primaryKey({ columns: [table.userId, table.groupId] })]);
+
+export const accessAuditLog = sqliteTable("access_audit_log", {
+  id: text("id").primaryKey(), actorUserId: text("actor_user_id").notNull(), action: text("action").notNull(),
+  targetType: text("target_type").notNull(), targetId: text("target_id").notNull(), metadata: text("metadata"),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+});

@@ -84,9 +84,12 @@ Comandos úteis:
 ```bash
 npm run build
 npm test
+npm run test:rbac-integration
 npm run lint
 npm run db:generate
 ```
+
+`npm test` faz asserção estática sobre o código-fonte (regex), o padrão já usado no projeto inteiro. `npm run test:rbac-integration` é diferente: chama `can()` de `lib/access.ts` de verdade — sem modificação — contra um SQLite real em memória (`node:sqlite`, populado com as migrations `0010`/`0011` de verdade), e prova negação/concessão de acesso de fato. Roda separado do `npm test` porque depende de module loaders (`tests/helpers/*.mjs`) que mockam `cloudflare:workers` e o binding D1 — não é possível misturar no mesmo `node --test tests/*.test.mjs` sem esses loaders.
 
 ## Banco de dados
 
