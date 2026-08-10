@@ -1,4 +1,4 @@
-import { and, eq, gte, like, notLike, sql } from "drizzle-orm";
+import { and, eq, gte, like, notLike, or, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../chatgpt-auth";
 import { getDb } from "../../../db/index";
@@ -78,22 +78,38 @@ export async function GET(request: Request) {
     // em app/api/jobs/detail/route.ts. Isso cobre tanto as vagas trazidas
     // pela extensão do LinkedIn quanto as importadas via alerta do Gmail.
     const linkedInCondition = and(baseCondition, like(jobs.url, "%linkedin.com%"));
-    const otherCondition = and(baseCondition, notLike(jobs.url, "%linkedin.com%"));
+    // "Do APinfo": sourceId setado pela extensão na importação, com
+    // fallback para a URL (o link sintético gerado por page-collector.js
+    // sempre aponta para apinfo.com) — cobre qualquer vaga histórica cujo
+    // sourceId não tenha sido preenchido.
+    const apinfoCondition = and(
+      baseCondition,
+      or(eq(jobs.sourceId, "apinfo-extension"), like(jobs.url, "%apinfo.com%")),
+    );
+    const otherCondition = and(
+      baseCondition,
+      notLike(jobs.url, "%linkedin.com%"),
+      notLike(jobs.url, "%apinfo.com%"),
+      sql`(${jobs.sourceId} is null or ${jobs.sourceId} != ${"apinfo-extension"})`,
+    );
     // sourceType: filtro de fonte aplicado ANTES do LIMIT/OFFSET
     const sourceType = url.searchParams.get("sourceType") ?? "all";
     const condition =
       sourceType === "linkedin"
         ? linkedInCondition
-        : sourceType === "other"
-          ? otherCondition
-          : baseCondition;
+        : sourceType === "apinfo"
+          ? apinfoCondition
+          : sourceType === "other"
+            ? otherCondition
+            : baseCondition;
     // Sem LIMIT/OFFSET aqui: score, veredito e etapa do pipeline só existem
     // depois de calculados em JS, então o universo do período+fonte inteiro
     // precisa ser processado antes de sabermos quais linhas sobrevivem aos
     // filtros — e só então paginar sobre o resultado já filtrado.
-    const [rows, linkedInTotals, baseTotals, sourcesResult, pipeline] = await Promise.all([
+    const [rows, linkedInTotals, apinfoTotals, baseTotals, sourcesResult, pipeline] = await Promise.all([
       getDb().select().from(jobs).where(condition),
       getDb().select({ total: sql<number>`count(*)` }).from(jobs).where(linkedInCondition),
+      getDb().select({ total: sql<number>`count(*)` }).from(jobs).where(apinfoCondition),
       getDb().select({ total: sql<number>`count(*)` }).from(jobs).where(baseCondition),
       getDb()
         .select({ count: sql<number>`count(distinct ${jobs.sourceId})` })
@@ -104,8 +120,9 @@ export async function GET(request: Request) {
         : Promise.resolve([]),
     ]);
     const totalLinkedIn = Number(linkedInTotals[0]?.total ?? 0);
+    const totalApinfo = Number(apinfoTotals[0]?.total ?? 0);
     const baseTotal = Number(baseTotals[0]?.total ?? 0);
-    const totalOtherSources = Math.max(0, baseTotal - totalLinkedIn);
+    const totalOtherSources = Math.max(0, baseTotal - totalLinkedIn - totalApinfo);
     const sourcesCount = Number(sourcesResult[0]?.count ?? 0);
     const byJob = new Map(pipeline.map((item) => [item.jobId, item]));
 
@@ -190,6 +207,7 @@ export async function GET(request: Request) {
       jobs: result,
       total: totalCount,
       totalLinkedIn,
+      totalApinfo,
       totalOtherSources,
       sourcesCount,
       page,
