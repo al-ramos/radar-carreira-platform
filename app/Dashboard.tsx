@@ -8,6 +8,7 @@ import AuditTrail from "./AuditTrail";
 import DataQuality from "./DataQuality";
 import UserManagement from "./UserManagement";
 import LinkedInExtension from "./LinkedInExtension";
+import ApinfoExtension from "./ApinfoExtension";
 import ProfilePreferences from "./ProfilePreferences";
 import {
   emptyProfileChoices,
@@ -206,6 +207,7 @@ const nav = [
   "Qualidade",
   "Usuários",
   "Extensão LinkedIn",
+  "Extensão APinfo",
   "Gmail RadarVagas",
   "Fontes",
   "Importações",
@@ -303,6 +305,7 @@ export default function Dashboard() {
   const [qualityOpen, setQualityOpen] = useState(false);
   const [usersOpen, setUsersOpen] = useState(false);
   const [linkedinOpen, setLinkedInOpen] = useState(false);
+  const [apinfoOpen, setApinfoOpen] = useState(false);
   const [gmailSecret, setGmailSecret] = useState("");
   const [jobDetail, setJobDetail] = useState<JobDetail | null>(null);
   const [detailJob, setDetailJob] = useState<Job | null>(null);
@@ -357,6 +360,7 @@ export default function Dashboard() {
     setQualityOpen(false);
     setUsersOpen(false);
     setLinkedInOpen(false);
+    setApinfoOpen(false);
     setDetailJob(null);
     setPreferencesOpen(false);
   };
@@ -985,10 +989,10 @@ export default function Dashboard() {
     canManageSources = isOwner,
     visibleNav = nav.filter((item) => {
       if (item === "Fontes" || item === "Importações") return canManageSources;
-      if (item === "Auditoria" || item === "Extensão LinkedIn") return isOwner;
+      if (item === "Auditoria" || item === "Extensão LinkedIn" || item === "Extensão APinfo") return isOwner;
       return (
         (isAdmin && (item !== "Usuários" || isOwner)) ||
-        !new Set(["Auditoria", "Usuários", "Extensão LinkedIn"]).has(item)
+        !new Set(["Auditoria", "Usuários", "Extensão LinkedIn", "Extensão APinfo"]).has(item)
       );
     }),
     icons: Record<string, string> = {
@@ -1001,6 +1005,7 @@ export default function Dashboard() {
       Qualidade: "✓",
       Usuários: "♙",
       "Extensão LinkedIn": "in",
+      "Extensão APinfo": "ap",
       "Gmail RadarVagas": "✉",
       Fontes: "◉",
       Importações: "↥",
@@ -1032,6 +1037,7 @@ export default function Dashboard() {
                 if (n === "Qualidade") setQualityOpen(true);
                 if (n === "Usuários") setUsersOpen(true);
                 if (n === "Extensão LinkedIn") setLinkedInOpen(true);
+                if (n === "Extensão APinfo") setApinfoOpen(true);
                 if (n === "Gmail RadarVagas") setGmailOpen(true);
                 if (n === "Importações") setImporting(true);
                 if (n === "Fontes") setSourcesOpen(true);
@@ -1875,6 +1881,12 @@ export default function Dashboard() {
       {linkedinOpen && (
         <LinkedInExtension
           close={() => setLinkedInOpen(false)}
+          openImport={() => setImporting(true)}
+        />
+      )}
+      {apinfoOpen && (
+        <ApinfoExtension
+          close={() => setApinfoOpen(false)}
           openImport={() => setImporting(true)}
         />
       )}
