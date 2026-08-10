@@ -7,6 +7,8 @@ type CollectorExtensionProps = {
   sourceLabel: string;
   close: () => void;
   openImport: () => void;
+  /** Texto do botão de fallback (importação manual de arquivo). */
+  importLabel?: string;
 };
 
 /**
@@ -15,7 +17,7 @@ type CollectorExtensionProps = {
  * salva a chave de autenticação exclusiva daquela fonte — o Radar guarda
  * só o hash, nunca o texto da chave.
  */
-export default function CollectorExtension({ sourceId, sourceLabel, close, openImport }: CollectorExtensionProps) {
+export default function CollectorExtension({ sourceId, sourceLabel, close, openImport, importLabel = "Importar arquivo (JSON ou CSV)" }: CollectorExtensionProps) {
   const [key, setKey] = useState("");
   const [configured, setConfigured] = useState(false);
   const [status, setStatus] = useState("Carregando integração…");
@@ -113,7 +115,7 @@ export default function CollectorExtension({ sourceId, sourceLabel, close, openI
         </div>
         {status && <div className="notice">{status}</div>}
         <div className="linkedin-extension-fallback">
-          <button onClick={openImport}>Importar arquivo (JSON ou CSV)</button>
+          <button onClick={openImport}>{importLabel}</button>
         </div>
       </section>
     </div>
