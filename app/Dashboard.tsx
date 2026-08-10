@@ -32,6 +32,7 @@ type Job = {
   age: string;
   publishedAt?: string;
   url?: string;
+  externalId?: string;
   description?: string;
   stack: string[];
   reasons: string[];
@@ -47,6 +48,7 @@ type ApiJob = {
   seniority?: string;
   publishedAt?: string;
   url?: string;
+  externalId?: string;
   description?: string;
   stack?: string[];
   reasons?: string[];
@@ -263,6 +265,7 @@ const adapt = (j: ApiJob): Job => ({
       : ["Perfil ainda não personalizado"],
   stage: "Nova",
   url: j.url,
+  externalId: j.externalId,
   description: j.description,
 });
 export default function Dashboard() {
@@ -1496,6 +1499,26 @@ export default function Dashboard() {
                     ⌖ {selectedJob.location} · {selectedJob.mode} ·{" "}
                     {selectedJob.age}
                   </p>
+                  {(selectedJob.externalId || selectedJob.url) && (
+                    <p className="list-head-dim job-detail-source">
+                      {selectedJob.externalId && (
+                        <>Código: <code>{selectedJob.externalId}</code></>
+                      )}
+                      {selectedJob.externalId && selectedJob.url && " · "}
+                      {selectedJob.url && (
+                        <a
+                          href={selectedJob.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          title={selectedJob.url}
+                        >
+                          {selectedJob.url.length > 55
+                            ? `${selectedJob.url.slice(0, 52)}…`
+                            : selectedJob.url}
+                        </a>
+                      )}
+                    </p>
+                  )}
                 </div>
                 <span className="fit-inline">
                   {currentUser ? (
