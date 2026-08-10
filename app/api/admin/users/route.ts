@@ -4,17 +4,17 @@ import { getChatGPTUser, hashLocalPassword, LOCAL_PASSWORD_MIN_LENGTH } from "..
 import { getDb } from "../../../../db/index";
 import { localAccounts, profiles, userJobStatus } from "../../../../db/schema";
 import { listFromStored } from "../../../../lib/profile-options";
+import { can } from "../../../../lib/access";
 
 export const dynamic = "force-dynamic";
 
 // E-mail reservado para exibição de badge "protegido" na listagem de usuários
 const OWNER_EMAIL = "alexsandro.ramos@gmail.com";
 
-async function admin() {
+async function admin(permissionId: "users.view" | "users.invite") {
   const user = await getChatGPTUser();
   if (!user) return null;
-  const profile = (await getDb().select({ role: profiles.role }).from(profiles).where(eq(profiles.userId, user.userId)).limit(1))[0];
-  return profile?.role === "admin" ? user : null;
+  return await can(user, permissionId) ? user : null;
 }
 
 function userSummary(profile: typeof profiles.$inferSelect, pipeline: typeof userJobStatus.$inferSelect[], access: "convite" | "chatgpt" | "administrador") {
@@ -40,7 +40,7 @@ function userSummary(profile: typeof profiles.$inferSelect, pipeline: typeof use
 }
 
 export async function GET() {
-  if (!await admin()) return NextResponse.json({ error: "Acesso de administrador necessário" }, { status: 403 });
+  if (!await admin("users.view")) return NextResponse.json({ error: "Acesso de administrador necessário" }, { status: 403 });
   const db = getDb();
   const [accountRows, profileRows, pipeline] = await Promise.all([
     db.select().from(localAccounts).orderBy(desc(localAccounts.createdAt)),
@@ -60,7 +60,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const actor = await admin();
+  const actor = await admin("users.invite");
   if (!actor) return NextResponse.json({ error: "Acesso de administrador necessário" }, { status: 403 });
   const body = await request.json() as { name?: unknown; email?: unknown; password?: unknown };
   const name = typeof body.name === "string" ? body.name.trim() : "";

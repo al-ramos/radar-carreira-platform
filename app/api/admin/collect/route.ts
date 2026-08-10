@@ -6,7 +6,7 @@ import { importRuns, jobSources, jobs } from "../../../../db/schema";
 import { collect, isPullProvider } from "../../../../lib/connectors";
 import { fingerprint } from "../../../../lib/jobs";
 import { findCuratedSource } from "../../../../lib/curated-sources";
-import { isOwnerEmail } from "../../../../lib/access";
+import { can } from "../../../../lib/access";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +16,7 @@ export async function POST(request: Request) {
   const user = await getChatGPTUser();
   if (!user) return NextResponse.json({ error: "Autenticação necessária" }, { status: 401 });
 
-  if (!isOwnerEmail(user.email)) return NextResponse.json({ error: "Acesso restrito ao proprietário" }, { status: 403 });
+  if (!await can(user, "collect.run")) return NextResponse.json({ error: "Acesso restrito ao proprietário" }, { status: 403 });
   const db = getDb();
 
   const body = await request.json().catch(() => ({})) as { sourceId?: string; catalogId?: string; offset?: number };

@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../../chatgpt-auth";
 import { getDb } from "../../../../../db/index";
 import { profiles } from "../../../../../db/schema";
+import { can } from "../../../../../lib/access";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +12,7 @@ const OWNER_EMAIL = "alexsandro.ramos@gmail.com";
 async function admin() {
   const user = await getChatGPTUser();
   if (!user) return null;
-  return user.email.toLowerCase() === OWNER_EMAIL ? user : null;
+  return await can(user, "users.change_role") ? user : null;
 }
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ userId: string }> }) {

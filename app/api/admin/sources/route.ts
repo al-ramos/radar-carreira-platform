@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db/index";
 import { jobSources } from "../../../../db/schema";
-import { isOwnerEmail } from "../../../../lib/access";
+import { can } from "../../../../lib/access";
 import { parseCareerSource } from "../../../../lib/career-source";
 import { validate, isPullProvider } from "../../../../lib/connectors";
 import { CURATED_SOURCES } from "../../../../lib/curated-sources";
@@ -11,9 +11,9 @@ import { isAmbiguousSlug, slugGuardReasons } from "../../../../lib/slug-guard";
 
 export const dynamic = "force-dynamic";
 
-async function owner() {
+async function owner(permissionId: "sources.view" | "sources.manage" = "sources.manage") {
   const user = await getChatGPTUser();
-  return user && isOwnerEmail(user.email) ? user : null;
+  return user && await can(user, permissionId) ? user : null;
 }
 
 function ownerOnly() {
@@ -21,7 +21,7 @@ function ownerOnly() {
 }
 
 export async function GET() {
-  if (!await owner()) return ownerOnly();
+  if (!await owner("sources.view")) return ownerOnly();
   const rows = await getDb().select().from(jobSources).orderBy(desc(jobSources.createdAt));
   return NextResponse.json({
     sources: rows.map(({ externalRef, ...source }) => {

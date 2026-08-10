@@ -3,13 +3,13 @@ import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../../chatgpt-auth";
 import { getDb } from "../../../../../db/index";
 import { jobSources } from "../../../../../db/schema";
-import { isOwnerEmail } from "../../../../../lib/access";
+import { can } from "../../../../../lib/access";
 import { validate, isPullProvider } from "../../../../../lib/connectors";
 
 export async function POST(request: Request) {
   const user = await getChatGPTUser();
   if (!user) return NextResponse.json({ error: "Autenticação necessária" }, { status: 401 });
-  if (!isOwnerEmail(user.email)) return NextResponse.json({ error: "Acesso restrito ao proprietário" }, { status: 403 });
+  if (!await can(user, "sources.manage")) return NextResponse.json({ error: "Acesso restrito ao proprietário" }, { status: 403 });
   const body = await request.json() as { sourceId?: string };
   const source = body.sourceId && (await getDb().select().from(jobSources).where(eq(jobSources.id, body.sourceId)).limit(1))[0];
   if (!source || source.collectionMode !== "pull" || !isPullProvider(source.provider)) return NextResponse.json({ error: "Fonte automática não encontrada" }, { status: 404 });

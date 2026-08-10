@@ -5,7 +5,7 @@ import { getDb } from "../../../../../db/index";
 import { jobSources } from "../../../../../db/schema";
 import { validate } from "../../../../../lib/connectors";
 import { CURATED_SOURCES } from "../../../../../lib/curated-sources";
-import { isOwnerEmail } from "../../../../../lib/access";
+import { can } from "../../../../../lib/access";
 
 export const dynamic = "force-dynamic";
 
@@ -15,10 +15,10 @@ async function isAuthorized(request: Request): Promise<boolean> {
   const auth = request.headers.get("Authorization");
   if (secret && auth === `Bearer ${secret}`) return true;
 
-  // 2. Sessão do proprietário — usada pelo botão na UI
+  // 2. Sessão do proprietário (ou de quem tenha sources.manage) — usada pelo botão na UI
   const u = await getChatGPTUser();
   if (!u) return false;
-  return isOwnerEmail(u.email);
+  return can(u, "sources.manage");
 }
 
 export async function POST(request: Request) {

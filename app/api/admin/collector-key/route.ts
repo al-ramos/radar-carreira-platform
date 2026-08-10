@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { getChatGPTUser } from "../../../chatgpt-auth";
-import { isOwnerEmail } from "../../../../lib/access";
+import { can } from "../../../../lib/access";
 import { getDb } from "../../../../db/index";
 import { jobSources } from "../../../../db/schema";
 
@@ -9,7 +9,7 @@ const SOURCE_ID = "linkedin-extension";
 async function admin() {
   const user = await getChatGPTUser();
   if (!user) return null;
-  return isOwnerEmail(user.email) ? user : null;
+  return await can(user, "collector_key.manage") ? user : null;
 }
 async function digest(value: string) {
   return Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)))).map(byte => byte.toString(16).padStart(2, "0")).join("");

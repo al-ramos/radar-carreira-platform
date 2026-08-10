@@ -6,7 +6,7 @@ import { importRuns, jobs } from "../../../../db/schema";
 import { fingerprint, type ImportedJob } from "../../../../lib/jobs";
 import { parseCsvJobs } from "../../../../lib/csv-jobs";
 import { normalizeImportedJobs } from "../../../../lib/import-jobs";
-import { isOwnerEmail } from "../../../../lib/access";
+import { can } from "../../../../lib/access";
 
 export const dynamic = "force-dynamic";
 
@@ -52,7 +52,7 @@ export async function POST(request: Request) {
   const user = await getChatGPTUser();
   if (!user) return NextResponse.json({ error: "Autenticação necessária" }, { status: 401 });
 
-  if (!isOwnerEmail(user.email)) return NextResponse.json({ error: "Acesso restrito ao proprietário" }, { status: 403 });
+  if (!await can(user, "import.run")) return NextResponse.json({ error: "Acesso restrito ao proprietário" }, { status: 403 });
   const db = getDb();
 
   let items: ImportedJob[];
