@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, like, notInArray, notLike, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, like, notInArray, notLike, or, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../chatgpt-auth";
 import { getDb } from "../../../db/index";
@@ -81,7 +81,7 @@ export async function GET(request: Request) {
 
     const selectedSeniority = profile ? listFromStored(profile.seniority) : [];
     const seniorityCondition = selectedSeniority.length
-      ? or(...selectedSeniority.map((level) => like(jobs.seniority, `%${level}%`)))
+      ? or(isNull(jobs.seniority), ...selectedSeniority.map((level) => like(jobs.seniority, `%${level}%`)))
       : undefined;
     const searchPattern = `%${searchQuery}%`;
     const searchCondition = searchQuery

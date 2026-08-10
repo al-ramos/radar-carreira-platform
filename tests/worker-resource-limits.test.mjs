@@ -9,6 +9,7 @@ test("a listagem pagina no D1 antes de enriquecer o fluxo normal", async () => {
   assert.match(route, /rowsQuery\.limit\(limit\)\.offset\(offset\)/);
   assert.match(route, /MAX_FILTER_CANDIDATES = 400/);
   assert.match(route, /description: ""/);
+  assert.match(route, /or\(isNull\(jobs\.seniority\)/);
 });
 
 test("a coleta agendada processa apenas uma fonte por chamada", async () => {
