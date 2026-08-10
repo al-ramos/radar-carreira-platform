@@ -1187,43 +1187,6 @@ export default function Dashboard() {
               )}
             </span>
           </div>
-          <div
-            className="compact-pills"
-            role="group"
-            aria-label="Filtrar por origem da vaga"
-          >
-            {(
-              [
-                { id: "all", label: "Todas", count: totalJobs ?? items.length },
-                {
-                  id: "linkedin",
-                  label: "LinkedIn",
-                  count: totalLinkedIn ?? loadedLinkedIn,
-                },
-                {
-                  id: "apinfo",
-                  label: "APinfo",
-                  count: totalApinfo ?? loadedApinfo,
-                },
-                {
-                  id: "other",
-                  label: "Outras fontes",
-                  count: totalOtherSources ?? loadedOtherSources,
-                },
-              ] as const
-            ).map(({ id, label, count }) => (
-              <button
-                key={id}
-                type="button"
-                className={sourceFilter === id ? "active" : ""}
-                onClick={() => setSourceFilter(id)}
-                aria-pressed={sourceFilter === id}
-              >
-                {label}
-                {count > 0 && <span>{count}</span>}
-              </button>
-            ))}
-          </div>
           <div className="toolbar">
             <div className="search">
               ⌕
@@ -1243,48 +1206,35 @@ export default function Dashboard() {
               <option value="168">Últimos 7 dias</option>
               <option value="all">Todas</option>
             </select>
-            <div className="fit-filter">
-              <div className="fit-filter-head">
-                <span>Aderência mínima</span>
-                <strong style={{ color: fitFilterColor }}>
-                  {effectiveMinScore === 0
-                    ? "Todas as vagas"
-                    : `${effectiveMinScore}% ou mais`}
-                </strong>
-              </div>
-              <input
-                type="range"
-                className="fit-filter-slider"
-                aria-label="Aderência mínima ao seu perfil"
-                min={0}
-                max={100}
-                step={10}
-                list="fit-filter-ticks"
-                value={fitFilterSliderValue}
-                onChange={(event) => setFitFilter(Number(event.target.value))}
-                style={
-                  {
-                    "--fit-fill": `${fitFilterSliderValue}%`,
-                    "--fit-color": fitFilterColor,
-                  } as CSSProperties
-                }
-              />
-              <datalist id="fit-filter-ticks">
-                {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((tick) => (
-                  <option key={tick} value={tick} />
-                ))}
-              </datalist>
-              <button
-                type="button"
-                className={`fit-filter-profile-chip${fitFilter === "profile" ? " active" : ""}`}
-                onClick={() => setFitFilter("profile")}
-              >
-                ★ Meu perfil ({profileMinScore}% ou mais)
-              </button>
-            </div>
+            <button
+              type="button"
+              className={`filter-trigger${filtersOpen ? " active" : ""}`}
+              onClick={() => setFiltersOpen((open) => !open)}
+              aria-expanded={filtersOpen}
+              aria-controls="radar-filter-panel"
+            >
+              Filtros{activeFilterCount > 0 && <span>{activeFilterCount}</span>}
+            </button>
           </div>
         </div>
-        <div className="radar-filters-compact" aria-label="Filtros de vagas">
+        <div id="radar-filter-panel" className="radar-filter-panel" hidden={!filtersOpen} aria-label="Filtros de vagas">
+          <div className="compact-filter-group filter-source-group">
+            <span className="compact-filter-label">Origem</span>
+            <div className="compact-pills" role="group" aria-label="Filtrar por origem da vaga">
+              {(
+                [
+                  { id: "all", label: "Todas", count: totalJobs ?? items.length },
+                  { id: "linkedin", label: "LinkedIn", count: totalLinkedIn ?? loadedLinkedIn },
+                  { id: "apinfo", label: "APinfo", count: totalApinfo ?? loadedApinfo },
+                  { id: "other", label: "Outras fontes", count: totalOtherSources ?? loadedOtherSources },
+                ] as const
+              ).map(({ id, label, count }) => (
+                <button key={id} type="button" className={sourceFilter === id ? "active" : ""} onClick={() => setSourceFilter(id)} aria-pressed={sourceFilter === id}>
+                  {label}{count > 0 && <span>{count}</span>}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="compact-filter-group">
             <span className="compact-filter-label">Pipeline</span>
             <div className="compact-pills" role="group" aria-label="Filtrar por estágio do pipeline">
@@ -1340,6 +1290,37 @@ export default function Dashboard() {
                 </div>
               </div>
             </>
+          )}
+          <div className="compact-filter-group fit-filter">
+            <div className="fit-filter-head">
+              <span className="compact-filter-label">Aderência mínima</span>
+              <strong style={{ color: fitFilterColor }}>
+                {effectiveMinScore === 0 ? "Todas as vagas" : `${effectiveMinScore}% ou mais`}
+              </strong>
+            </div>
+            <input
+              type="range"
+              className="fit-filter-slider"
+              aria-label="Aderência mínima ao seu perfil"
+              min={0}
+              max={100}
+              step={10}
+              list="fit-filter-ticks"
+              value={fitFilterSliderValue}
+              onChange={(event) => setFitFilter(Number(event.target.value))}
+              style={{ "--fit-fill": `${fitFilterSliderValue}%`, "--fit-color": fitFilterColor } as CSSProperties}
+            />
+            <datalist id="fit-filter-ticks">
+              {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((tick) => <option key={tick} value={tick} />)}
+            </datalist>
+            <button type="button" className={`fit-filter-profile-chip${fitFilter === "profile" ? " active" : ""}`} onClick={() => setFitFilter("profile")}>
+              Meu perfil ({profileMinScore}% ou mais)
+            </button>
+          </div>
+          {activeFilterCount > 0 && (
+            <button type="button" className="clear-radar-filters" onClick={clearRadarFilters}>
+              Limpar filtros
+            </button>
           )}
         </div>
         <div className="list-status-bar">
@@ -1414,7 +1395,6 @@ export default function Dashboard() {
                 role="button"
                 tabIndex={0}
                 className={`job-card ${selectedJob?.id === j.id ? "selected" : ""} ${currentUser ? "job-card-scored" : ""}`}
-                style={currentUser ? ({ "--score-fill": `${j.score}%`, "--score-tint": j.score >= 80 ? "#e4f4db" : j.score >= 60 ? "#fdf1d8" : "#f0f2ed" } as CSSProperties) : undefined}
                 onClick={() => selectJob(j)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
@@ -1459,7 +1439,10 @@ export default function Dashboard() {
                     aria-label="Tecnologias da vaga"
                   >
                     {j.stack.length ? (
-                      j.stack.map((t) => <span key={t}>{t}</span>)
+                      <>
+                        {j.stack.slice(0, 3).map((t) => <span key={t}>{t}</span>)}
+                        {j.stack.length > 3 && <span className="stack-more">+{j.stack.length - 3}</span>}
+                      </>
                     ) : (
                       <span className="stack-unavailable">
                         Stack não informada
@@ -1467,7 +1450,6 @@ export default function Dashboard() {
                     )}
                   </div>
                 </div>
-                <span>♡</span>
                 <div className="share-wrap" onClick={(e) => e.stopPropagation()}>
                   <button
                     className="share-btn"
@@ -1612,7 +1594,7 @@ export default function Dashboard() {
                   {analysisOpen ? "✕ Fechar análise" : "🔍 Analisar candidatura"}
                 </button>
                 <button
-                  className="linkedin-action"
+                  className="primary-job-action"
                   onClick={async () => {
                     if (selectedJob.url) open(selectedJob.url, "_blank");
                     if (!selectedJob.id.startsWith("demo")) {
@@ -1624,46 +1606,33 @@ export default function Dashboard() {
                     }
                   }}
                 >
-                  {jobProviderLabel(selectedJob)}
+                  Candidatar
                 </button>
-                <div className="share-wrap">
+                <div className="share-wrap detail-more-actions">
                   <button
-                    className="linkedin-action"
-                    onClick={() =>
-                      setShareMenuJobId(
-                        shareMenuJobId === `detail-${selectedJob.id}`
-                          ? null
-                          : `detail-${selectedJob.id}`,
-                      )
-                    }
+                    className="more-actions-trigger"
+                    onClick={() => setDetailActionsOpen((open) => !open)}
+                    aria-expanded={detailActionsOpen}
+                    aria-label="Mais ações para esta vaga"
                   >
-                    📤 Encaminhar
+                    Mais ações
                   </button>
-                  {shareMenuJobId === `detail-${selectedJob.id}` && (() => {
+                  {detailActionsOpen && (() => {
                     const links = buildShareLinks(selectedJob);
                     return (
-                      <div className="share-menu">
-                        <button className="share-menu-item" onClick={() => window.open(links.email, "_blank")}>📧 E-mail</button>
-                        <button className="share-menu-item" onClick={() => window.open(links.whatsapp, "_blank")}>💬 WhatsApp</button>
+                      <div className="share-menu detail-actions-menu">
+                        <button className="share-menu-item" onClick={() => { window.open(links.email, "_blank"); setDetailActionsOpen(false); }}>Encaminhar por e-mail</button>
+                        <button className="share-menu-item" onClick={() => { window.open(links.whatsapp, "_blank"); setDetailActionsOpen(false); }}>Encaminhar no WhatsApp</button>
+                        <button className="share-menu-item" onClick={() => { void copyDescription(); setDetailActionsOpen(false); }} disabled={detailLoading || !(jobDetail?.description || selectedJob.description)}>
+                          {descriptionCopied ? "Descrição copiada" : "Copiar descrição"}
+                        </button>
+                        <button className="share-menu-item" title="Abrir descrição em tela ampliada" onClick={() => { openJobDetail(selectedJob); setDetailActionsOpen(false); }}>
+                          Ampliar descrição
+                        </button>
                       </div>
                     );
                   })()}
                 </div>
-                <button
-                  className="linkedin-action"
-                  onClick={copyDescription}
-                  disabled={detailLoading || !(jobDetail?.description || selectedJob.description)}
-                  title={jobDetail?.descriptionSource === "linkedin" ? "Descrição enriquecida do LinkedIn" : "Leitura organizada automaticamente"}
-                >
-                  {descriptionCopied ? "✓ Copiada" : "⎘ Copiar descrição"}
-                </button>
-                <button
-                  className="linkedin-action"
-                  onClick={() => openJobDetail(selectedJob)}
-                  title="Abrir descrição em tela ampliada"
-                >
-                  ⛶ Ampliar
-                </button>
               </div>
               {profileMasteredSkills.length > 0 && (() => {
                 const missingImprove = selectedJob.stack

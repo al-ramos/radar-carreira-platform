@@ -551,3 +551,152 @@
   border-color: #173f32;
   color: #fff;
 }
+
+/* Radar mais direto: filtros sob demanda e uma hierarquia de ação clara. */
+.radar-controls {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 12px;
+}
+.radar-controls .toolbar {
+  flex: 1;
+  min-width: 0;
+}
+.filter-trigger,
+.more-actions-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 42px;
+  padding: 0 13px;
+  background: #fff;
+  border: 1px solid #dedfea;
+  border-radius: 10px;
+  color: #18264d;
+  font-size: 11px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+.filter-trigger:hover,
+.filter-trigger.active,
+.more-actions-trigger:hover {
+  border-color: #b8a7ff;
+  background: #f5f3ff;
+}
+.filter-trigger span {
+  display: grid;
+  place-items: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: #18264d;
+  color: #fff;
+  font-size: 9px;
+}
+.radar-filter-panel {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px 24px;
+  margin: 0 0 14px;
+  padding: 16px 18px;
+  border: 1px solid #e4e5ed;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 8px 24px #101b3506;
+}
+.radar-filter-panel[hidden] { display: none; }
+.radar-filter-panel .compact-filter-group {
+  align-items: flex-start;
+}
+.radar-filter-panel .compact-filter-label {
+  min-width: 68px;
+  padding-top: 5px;
+  color: #69718b;
+}
+.radar-filter-panel .compact-pills button {
+  border-color: #dddfea;
+  color: #59627e;
+}
+.radar-filter-panel .compact-pills button.active {
+  background: #18264d;
+  border-color: #18264d;
+  color: #fff;
+}
+.radar-filter-panel .compact-filter-divider { display: none; }
+.radar-filter-panel .fit-filter {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 12px;
+  min-width: 0;
+  align-content: start;
+}
+.radar-filter-panel .fit-filter-head {
+  grid-column: 1 / -1;
+}
+.radar-filter-panel .fit-filter-slider {
+  margin: 7px 0 0;
+}
+.radar-filter-panel .fit-filter-profile-chip {
+  margin: 0;
+  align-self: center;
+}
+.clear-radar-filters {
+  justify-self: end;
+  align-self: center;
+  border: 0;
+  background: transparent;
+  color: #685ab5;
+  font-size: 10px;
+  font-weight: 750;
+  text-decoration: underline;
+}
+.job-card.job-card-scored,
+.job-card.selected.job-card-scored {
+  background: #fff;
+}
+.job-card.selected.job-card-scored,
+.job-card:hover.job-card-scored {
+  background: #f5f3ff;
+}
+.job-card .share-wrap {
+  align-self: start;
+  justify-self: end;
+}
+.job-card .share-btn {
+  color: #685ab5;
+}
+.stack-more {
+  color: #69718b;
+}
+.primary-job-action {
+  background: #ff5c5c !important;
+  border-color: #ff5c5c !important;
+  color: #fff;
+  font-weight: 750;
+}
+.primary-job-action:hover {
+  background: #ef4f52 !important;
+  border-color: #ef4f52 !important;
+}
+.detail-more-actions { margin-left: auto; }
+.detail-actions-menu { min-width: 205px; }
+.detail-actions-menu .share-menu-item:disabled {
+  cursor: not-allowed;
+  opacity: .45;
+}
+@media (max-width: 850px) {
+  .radar-controls { align-items: stretch; }
+  .radar-filter-panel { grid-template-columns: 1fr; }
+}
+@media (max-width: 650px) {
+  .radar-controls { display: grid; gap: 12px; }
+  .radar-controls .toolbar { flex-wrap: wrap; }
+  .radar-controls .search { min-width: 100%; }
+  .radar-filter-panel { padding: 14px; }
+  .radar-filter-panel .fit-filter { grid-template-columns: 1fr; }
+  .radar-filter-panel .fit-filter-profile-chip { justify-self: start; }
+  .detail-more-actions { margin-left: 0; }
+}
