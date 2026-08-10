@@ -6,7 +6,7 @@ on:
 jobs:
   collect:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     steps:
       - name: Coletar fontes ativas
         env:
@@ -14,14 +14,21 @@ jobs:
           RADAR_BASE_URL: ${{ vars.RADAR_BASE_URL }}
         run: |
           test -n "${RADAR_BASE_URL}"
-          call_api() {
-            response=$(curl --fail-with-body --retry 2 --max-time 300 \
+          collect_errors=0
+          offset=0
+          while true; do
+            response=$(curl --fail-with-body --retry 2 --max-time 120 \
               -X POST \
               -H "Authorization: Bearer ${COLLECTOR_SECRET}" \
-              "${RADAR_BASE_URL}$1")
+              "${RADAR_BASE_URL}/api/cron/collect?offset=${offset}")
+            echo "$response"
+            if [ "$(jq -r '.ok' <<< "$response")" != "true" ]; then collect_errors=1; fi
+            offset=$(jq -r '.nextOffset // empty' <<< "$response")
+            [ -z "$offset" ] && break
+          done
+          [ "$collect_errors" -eq 0 ]
+          for endpoint in /api/cron/enrich /api/cron/lifecycle; do
+            response=$(curl --fail-with-body --retry 2 --max-time 120 -X POST -H "Authorization: Bearer ${COLLECTOR_SECRET}" "${RADAR_BASE_URL}${endpoint}")
             echo "$response"
             jq -e '.ok == true' >/dev/null <<< "$response"
-          }
-          call_api "/api/cron/collect"
-          call_api "/api/cron/enrich"
-          call_api "/api/cron/lifecycle"
+          done
