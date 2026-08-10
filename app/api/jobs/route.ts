@@ -109,17 +109,12 @@ export async function GET(request: Request) {
     const sourcesCount = Number(sourcesResult[0]?.count ?? 0);
     const byJob = new Map(pipeline.map((item) => [item.jobId, item]));
 
-    // Deduplicação por título+empresa (vagas da mesma empresa em fontes diferentes)
-    const seen = new Set<string>();
-    const dedupedRows = rows.filter((job) => {
-      const key = `${job.title.toLowerCase()}|${job.company.toLowerCase()}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
     const selectedSeniority = profile ? listFromStored(profile.seniority) : [];
     const masteredSkills = profile ? listFromStored(profile.masteredSkills) : [];
-    const enriched = dedupedRows
+    // A unicidade já é garantida pelo fingerprint na gravação. Agrupar também
+    // por cargo+empresa ocultava vagas distintas importadas da mesma empresa e
+    // fazia o total da tela divergir do total das fontes.
+    const enriched = rows
       .filter((job) => matchesSelectedSeniority(job.seniority, selectedSeniority))
       .map((job) => {
         const stack = inferTechnologyStack(
