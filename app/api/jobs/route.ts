@@ -10,8 +10,9 @@ import { computeVerdict, type VerdictEmoji } from "../../../lib/verdict";
 
 export const dynamic = "force-dynamic";
 
-const MAX_FILTER_CANDIDATES = 400;
+const MAX_FILTER_CANDIDATES = 150;
 const LIST_DESCRIPTION_CHARS = 2_000;
+const FILTER_DESCRIPTION_CHARS = 1_000;
 const parse = (value: string) => {
   try {
     return JSON.parse(value) as string[];
@@ -120,7 +121,9 @@ export async function GET(request: Request) {
       applyUrl: jobs.applyUrl,
       description: degradedMode
         ? sql<string>`''`
-        : sql<string>`substr(${jobs.description}, 1, ${LIST_DESCRIPTION_CHARS})`,
+        : requiresPostFiltering
+          ? sql<string>`substr(${jobs.description}, 1, ${FILTER_DESCRIPTION_CHARS})`
+          : sql<string>`substr(${jobs.description}, 1, ${LIST_DESCRIPTION_CHARS})`,
     }).from(jobs).where(condition).orderBy(desc(jobs.publishedAt), desc(jobs.createdAt));
     const [rows, eligibleTotals, sourceTotals] = await Promise.all([
       requiresPostFiltering
