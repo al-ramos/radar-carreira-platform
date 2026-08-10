@@ -84,7 +84,13 @@ async function sendToRadar(items, settings) {
     location: job.local,
     description: job.descricao,
     stack: job.stack,
+    // url é a referência estável (busca por código) — não abre a vaga
+    // diretamente, mas nunca muda, então é o que o Radar usa para
+    // deduplicar. applyUrl é o link de candidatura com token de sessão:
+    // abre a vaga/candidatura de fato, mas pode expirar — por isso fica
+    // de fora do identificador único da vaga.
     url: job.link,
+    applyUrl: job.link_candidatura || undefined,
   }));
   const response = await fetch(settings.portalUrl, {
     method: 'POST',

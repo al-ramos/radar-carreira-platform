@@ -32,6 +32,7 @@ type Job = {
   age: string;
   publishedAt?: string;
   url?: string;
+  applyUrl?: string;
   externalId?: string;
   description?: string;
   stack: string[];
@@ -48,6 +49,7 @@ type ApiJob = {
   seniority?: string;
   publishedAt?: string;
   url?: string;
+  applyUrl?: string;
   externalId?: string;
   description?: string;
   stack?: string[];
@@ -265,6 +267,7 @@ const adapt = (j: ApiJob): Job => ({
       : ["Perfil ainda não personalizado"],
   stage: "Nova",
   url: j.url,
+  applyUrl: j.applyUrl,
   externalId: j.externalId,
   description: j.description,
 });
@@ -1539,6 +1542,16 @@ export default function Dashboard() {
                       )}
                     </p>
                   )}
+                  {selectedJob.applyUrl && selectedJob.applyUrl !== selectedJob.url && (
+                    <p className="list-head-dim job-detail-source" title="Link direto usado pelo botão Candidatar — pode expirar">
+                      Candidatura:{" "}
+                      <a href={selectedJob.applyUrl} target="_blank" rel="noreferrer">
+                        {selectedJob.applyUrl.length > 55
+                          ? `${selectedJob.applyUrl.slice(0, 52)}…`
+                          : selectedJob.applyUrl}
+                      </a>
+                    </p>
+                  )}
                 </div>
                 <span className="fit-inline">
                   {currentUser ? (
@@ -1619,7 +1632,12 @@ export default function Dashboard() {
                 <button
                   className="primary-job-action"
                   onClick={async () => {
-                    if (selectedJob.url) open(selectedJob.url, "_blank");
+                    // applyUrl (quando presente) é o link que de fato abre a
+                    // vaga/candidatura — url pode ser só uma referência
+                    // estável (ex.: busca por código no APinfo), usada para
+                    // identificar a vaga sem depender de token de sessão.
+                    const target = selectedJob.applyUrl || selectedJob.url;
+                    if (target) open(target, "_blank");
                     if (!selectedJob.id.startsWith("demo")) {
                       const current = pipelineStageMap.get(selectedJob.id);
                       // Avança para Candidatura se ainda não passou desse estágio
@@ -1825,7 +1843,10 @@ export default function Dashboard() {
             <div className="job-detail-buttons">
               <button
                 className="linkedin-action"
-                onClick={() => detailJob.url && open(detailJob.url, "_blank")}
+                onClick={() => {
+                  const target = detailJob.applyUrl || detailJob.url;
+                  if (target) open(target, "_blank");
+                }}
               >
                 {jobProviderLabel(detailJob)}
               </button>

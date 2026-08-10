@@ -2,7 +2,7 @@
 
 Extensão para Google Chrome com painel próprio que coleta vagas visíveis nas páginas de resultados do APinfo, uma página por vez, remove duplicidades e exporta os resultados consolidados em CSV e JSON — ou envia direto ao Radar de Carreira.
 
-Versão atual da extensão: **1.1.0**.
+Versão atual da extensão: **1.2.0**.
 > Este é um projeto independente. Não é afiliado, patrocinado nem mantido pela APinfo.
 
 ## Dois modos de coleta
@@ -71,7 +71,7 @@ Também é possível usar **Code → Download ZIP** no GitHub e extrair o arquiv
 2. Ative **Modo do desenvolvedor**, no canto superior direito.
 3. Clique em **Carregar sem compactação**.
 4. Selecione a pasta `extensao-apinfo` (ou a raiz deste projeto, se você não separou em subpasta).
-5. Confirme que aparece **Coletor de Vagas do APinfo 1.1.0**.
+5. Confirme que aparece **Coletor de Vagas do APinfo 1.2.0**.
 6. Opcionalmente, fixe a extensão no menu de extensões do Chrome.
 
 ### 3. Abrir o painel
@@ -148,6 +148,8 @@ Por isso, cada vaga é identificada pelo **código** que o próprio APinfo exibe
 | ------------------ | --------------------------------------------------------------------- |
 | `link`              | URL sintética de referência, construída a partir do código da vaga. Estável, mas não é garantido que abra a vaga diretamente. |
 | `link_candidatura` | O link real de "Envie seu currículo" capturado no momento da coleta. Pode expirar — use logo se for se candidatar por ali. |
+
+Desde a versão **1.2.0**, ao enviar ao Radar (**Enviar ao Radar** ativado), `link_candidatura` é enviado também como `applyUrl` — um campo separado que não participa da deduplicação. O painel do Radar usa `applyUrl` (quando presente) como destino do botão **Candidatar**, então o clique abre a vaga de verdade em vez da busca por código. `link` continua sendo o identificador estável usado para não duplicar a vaga entre coletas.
 
 ## Arquivos exportados
 

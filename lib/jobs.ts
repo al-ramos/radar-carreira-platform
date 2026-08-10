@@ -1,4 +1,9 @@
-export type ImportedJob={externalId?:string;company:string;title:string;seniority?:string;workMode?:string;location?:string;stack?:string[];publishedAt?:string;url:string;description?:string;sourceId?:string};
+// applyUrl é o link "vivo" de candidatura (pode carregar token de sessão e
+// expirar) — propositalmente fora do fingerprint, que usa apenas `url` (o
+// identificador estável da vaga). Fontes cujo link de referência não abre a
+// vaga diretamente (ex.: APinfo, cuja URL estável é uma busca por código)
+// devem preencher applyUrl com o link que realmente abre a vaga/candidatura.
+export type ImportedJob={externalId?:string;company:string;title:string;seniority?:string;workMode?:string;location?:string;stack?:string[];publishedAt?:string;url:string;applyUrl?:string;description?:string;sourceId?:string};
 
 export function normalize(value:string){return value.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim()}
 export function fingerprint(job:ImportedJob){const input=[job.company,job.title,job.location??"",job.url].map(normalize).join("|");let hash=2166136261;for(let i=0;i<input.length;i++){hash^=input.charCodeAt(i);hash=Math.imul(hash,16777619)}return (hash>>>0).toString(16).padStart(8,"0")}

@@ -33,7 +33,7 @@ export const jobs = sqliteTable("jobs", {
   id: text("id").primaryKey(), fingerprint: text("fingerprint").notNull(), sourceId: text("source_id").references(() => jobSources.id),
   externalId: text("external_id"), company: text("company").notNull(), title: text("title").notNull(), seniority: text("seniority"),
   workMode: text("work_mode"), location: text("location"), stack: text("stack").notNull().default("[]"),
-  publishedAt: integer("published_at", { mode: "timestamp_ms" }), url: text("url").notNull(), description: text("description").notNull().default(""),
+  publishedAt: integer("published_at", { mode: "timestamp_ms" }), url: text("url").notNull(), applyUrl: text("apply_url"), description: text("description").notNull().default(""),
   firstSeenAt: integer("first_seen_at", { mode: "timestamp_ms" }).notNull(), lastSeenAt: integer("last_seen_at", { mode: "timestamp_ms" }).notNull(),
   status: text("status", { enum: ["active", "possibly_closed", "closed"] }).notNull().default("active"),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(), updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
