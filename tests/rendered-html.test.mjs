@@ -10,7 +10,13 @@ test("dashboard oferece radar, perfil e pipeline persistente", async () => {
     dashboard,
     /const nav\s*=\s*\[\s*"Radar",\s*"Pipeline",\s*"Alertas",\s*"Métricas",\s*"Monitoramento",\s*"Auditoria",\s*"Qualidade",\s*"Usuários",\s*"Extensão LinkedIn",\s*"Gmail RadarVagas",\s*"Fontes",\s*"Importações",\s*"Configurações",?\s*\]/,
   );
-  assert.match(dashboard, /fetch\(`\/api\/jobs\?page=1&limit=50/);
+  // Desde o commit 9239c98 (paginação no servidor após filtros), a URL de
+  // /api/jobs é montada por buildJobsParams(page), não mais como string
+  // literal — verifica a construção real em vez do texto antigo.
+  assert.match(dashboard, /const buildJobsParams = useCallback\(/);
+  assert.match(dashboard, /limit:\s*"50"/);
+  assert.match(dashboard, /fetch\(`\/api\/jobs\?\$\{buildJobsParams\(1\)\}`\)/);
+  assert.match(dashboard, /fetch\(`\/api\/jobs\?\$\{buildJobsParams\(page\)\}`\)/);
   assert.match(dashboard, /Últimas 24h/);
   assert.match(dashboard, /Últimos 7 dias/);
   assert.match(dashboard, /Todas as vagas/);
