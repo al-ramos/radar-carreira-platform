@@ -21,7 +21,7 @@ test("somente fontes ATS participam da coleta automática",async()=>{
  assert.match(schema,/collectionMode: text\("collection_mode", \{ enum: \["pull", "push"\] \}\)\.notNull\(\)\.default\("push"\)/);
  assert.match(migration,/UPDATE `job_sources` SET `collection_mode` = 'pull' WHERE `provider` IN \('greenhouse', 'lever', 'ashby'\)/);
  assert.match(manual,/source\.collectionMode === "pull" && isPullProvider\(source\.provider\)/);
- assert.match(scheduled,/source\.collectionMode==="pull"&&isPullProvider\(source\.provider\)/);
+ assert.match(scheduled,/source\.collectionMode\s*===\s*"pull"\s*&&\s*isPullProvider\(source\.provider\)/);
  assert.match(sourceList,/Empresas cadastradas/);
  assert.match(sourceList,/Integrações de entrada/);
  assert.match(dashboard,/Coletar todas/);

@@ -268,11 +268,11 @@ const adapt = (j: ApiJob): Job => ({
 export default function Dashboard() {
   const [active, setActive] = useState("Radar"),
     [query, setQuery] = useState(""),
-    [items, setItems] = useState<Job[]>(demo),
+    [items, setItems] = useState<Job[]>([]),
     [selected, setSelected] = useState<Job>(demo[0]),
     [fitFilter, setFitFilter] = useState<"profile" | number>(0),
     [period, setPeriod] = useState<string | null>(null),
-    [mode, setMode] = useState("preview"),
+    [mode, setMode] = useState("loading"),
     [importing, setImporting] = useState(false),
     [sourcesOpen, setSourcesOpen] = useState(false),
     [pipelineOpen, setPipelineOpen] = useState(false),
@@ -323,6 +323,8 @@ export default function Dashboard() {
   const [descriptionCopied, setDescriptionCopied] = useState(false);
   const [shareMenuJobId, setShareMenuJobId] = useState<string | null>(null);
   const [analysisOpen, setAnalysisOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [detailActionsOpen, setDetailActionsOpen] = useState(false);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [profileChoices, setProfileChoices] =
     useState<ProfileChoices>(emptyProfileChoices);
@@ -432,9 +434,12 @@ export default function Dashboard() {
           try {
             const savedId = sessionStorage.getItem("radar_selectedJobId");
             const restored = savedId ? next.find((j: Job) => j.id === savedId) : null;
-            setSelected(restored ?? next[0]);
+            const first = restored ?? next[0];
+            setSelected(first);
+            void loadJobDetail(first);
           } catch {
             setSelected(next[0]);
+            void loadJobDetail(next[0]);
           }
         }
         setTotalJobs(typeof data.total === "number" ? data.total : next.length);
@@ -452,8 +457,17 @@ export default function Dashboard() {
         setSourcesCount(typeof data.sourcesCount === "number" ? data.sourcesCount : null);
         setPeriod((current) => current ?? data.period ?? "24");
         setMode("database");
+        setMessage((current) => current === "O Radar está temporariamente indisponível. Seus dados continuam salvos." ? "" : current);
       })
-      .catch(() => setMode("preview"));
+      .catch(() => {
+        setItems([]);
+        setTotalJobs(null);
+        setTotalLinkedIn(null);
+        setTotalApinfo(null);
+        setTotalOtherSources(null);
+        setMode("unavailable");
+        setMessage("O Radar está temporariamente indisponível. Seus dados continuam salvos.");
+      });
   }, [period, sourceFilter, debouncedQuery, effectiveMinScore, pipelineFilter, verdictFilter, buildJobsParams, jobsRefreshVersion]);
   useEffect(() => {
     fetch("/api/profile")
@@ -530,6 +544,12 @@ export default function Dashboard() {
   /** Posição do polegar do slider nativo (múltiplo de 10; "profile" arredonda). */
   const fitFilterSliderValue =
     fitFilter === "profile" ? Math.round(profileMinScore / 10) * 10 : fitFilter;
+  const activeFilterCount = [
+    sourceFilter !== "all",
+    pipelineFilter !== "all",
+    verdictFilter !== "all",
+    fitFilter !== 0,
+  ].filter(Boolean).length;
   const filtered = useMemo(
     () =>
       items.filter((j) => {
@@ -623,6 +643,8 @@ export default function Dashboard() {
     setFitFilter(0);
     setPeriod("all");
     setSourceFilter("all");
+    setPipelineFilter("all");
+    setVerdictFilter("all");
   }
   async function goToJobsPage(page: number) {
     if (page === currentPage || page < 1) return;
@@ -777,6 +799,9 @@ export default function Dashboard() {
       setTotalJobs(
         typeof jobsData.total === "number" ? jobsData.total : next.length,
       );
+      setTotalLinkedIn(typeof jobsData.totalLinkedIn === "number" ? jobsData.totalLinkedIn : null);
+      setTotalApinfo(typeof jobsData.totalApinfo === "number" ? jobsData.totalApinfo : null);
+      setTotalOtherSources(typeof jobsData.totalOtherSources === "number" ? jobsData.totalOtherSources : null);
       setSourcesCount(typeof jobsData.sourcesCount === "number" ? jobsData.sourcesCount : null);
     }
   }
@@ -835,6 +860,7 @@ export default function Dashboard() {
   function selectJob(job: Job) {
     setSelected(job);
     setAnalysisOpen(false);
+    setDetailActionsOpen(false);
     void loadJobDetail(job);
     if (!job.id.startsWith("demo") && currentUser) {
       // Optimistic update: marca como viewed localmente sem rebaixar estágio existente
@@ -1467,21 +1493,33 @@ export default function Dashboard() {
             ))}
             {filtered.length === 0 && (
               <div className="radar-empty">
-                <strong>Nenhuma vaga corresponde aos filtros atuais.</strong>
-                <span>
-                  Reduza o score mínimo ou amplie o período para visualizar as
-                  oportunidades disponíveis.
-                </span>
-                <button onClick={clearRadarFilters}>
-                  Mostrar todas as vagas
-                </button>
-                {isAdmin && (
-                  <button
-                    className="radar-empty-import"
-                    onClick={() => setLinkedInOpen(true)}
-                  >
-                    Importar vagas do LinkedIn
-                  </button>
+                {mode === "unavailable" ? (
+                  <>
+                    <strong>Não foi possível carregar as vagas agora.</strong>
+                    <span>Seus dados continuam salvos. Tente novamente em alguns instantes.</span>
+                    <button onClick={() => setJobsRefreshVersion((version) => version + 1)}>
+                      Tentar novamente
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <strong>Nenhuma vaga corresponde aos filtros atuais.</strong>
+                    <span>
+                      Reduza o score mínimo ou amplie o período para visualizar as
+                      oportunidades disponíveis.
+                    </span>
+                    <button onClick={clearRadarFilters}>
+                      Mostrar todas as vagas
+                    </button>
+                    {isAdmin && (
+                      <button
+                        className="radar-empty-import"
+                        onClick={() => setLinkedInOpen(true)}
+                      >
+                        Importar vagas do LinkedIn
+                      </button>
+                    )}
+                  </>
                 )}
               </div>
             )}

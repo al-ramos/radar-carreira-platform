@@ -7,7 +7,7 @@ import { fingerprint } from "../../../../lib/jobs";
 
 export const dynamic = "force-dynamic";
 
-const BATCH_SIZE = 3;
+const BATCH_SIZE = 1;
 
 export async function POST(request: Request) {
   if (request.headers.get("x-radar-collector-authenticated") !== "1") {
