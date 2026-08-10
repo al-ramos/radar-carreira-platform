@@ -1051,7 +1051,7 @@ export default function Dashboard() {
     <main className="shell">
       <aside className="sidebar">
         <div className="brand">
-          <span className="brand-mark">R</span>
+          <span className="brand-mark" aria-hidden="true" />
           <span>
             RADAR
             <br />

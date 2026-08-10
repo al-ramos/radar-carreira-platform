@@ -41,7 +41,7 @@ export default function LoginPage() {
 
   return <main className="login-page">
     <section className="login-pitch">
-      <div className="login-brand"><span>R</span><strong>RADAR<br />CARREIRA</strong></div>
+      <div className="login-brand"><span aria-hidden="true" /><strong>RADAR<br />CARREIRA</strong></div>
       <h1>Pare de abrir dez abas por dia</h1>
       <p>O radar junta LinkedIn e outras fontes num só lugar, calcula sua aderência a cada vaga e organiza tudo num pipeline — da triagem à entrevista.</p>
       <ul className="login-pitch-list">
