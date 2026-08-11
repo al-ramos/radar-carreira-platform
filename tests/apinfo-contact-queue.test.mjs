@@ -19,5 +19,8 @@ test("extensão APinfo oferece fila de contatos guiada", async () => {
   assert.match(background, /OPEN_NEXT_CONTACT/);
   assert.match(background, /SKIP_CONTACT_QUEUE_ITEM/);
   assert.match(background, /storage\.local/);
-  assert.equal(JSON.parse(manifest).version, "1.4.0");
+  assert.match(background, /sendCapturedContactToRadar/);
+  assert.match(background, /apinfoContactTabId/);
+  assert.match(dashboard, /Enviado ao Radar agora/);
+  assert.equal(JSON.parse(manifest).version, "1.5.0");
 });

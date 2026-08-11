@@ -176,7 +176,14 @@ async function collectContact() {
     }
     await refreshContactCount();
     await refreshContactQueue();
-    showContactStatus(`Contato salvo: vaga ${response.contact.codigo} — ${response.contact.email}.`);
+    const radarStatus = response.radar?.sent
+      ? ' Enviado ao Radar agora.'
+      : response.radar?.skipped
+        ? ` ${response.radar.skipped}`
+        : response.radar?.error
+          ? ` Salvo localmente; envio ao Radar será tentado na próxima exportação (${response.radar.error}).`
+          : '';
+    showContactStatus(`Contato salvo: vaga ${response.contact.codigo} — ${response.contact.email}.${radarStatus}`);
   });
 }
 

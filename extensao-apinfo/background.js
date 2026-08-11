@@ -296,10 +296,36 @@ function nextPending(queue) {
 }
 async function openContactQueueItem(item) {
   const url = `https://www.apinfo.com/apinfo/inc/list4.cfm?keyw=${encodeURIComponent(item.codigo)}`;
-  const tabs = await chrome.tabs.query({ url: 'https://www.apinfo.com/*' });
-  const existing = tabs.sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0))[0];
-  if (existing?.id) await chrome.tabs.update(existing.id, { url, active: true });
-  else await chrome.tabs.create({ url, active: true });
+  // Nunca reaproveita a aba da busca: ela contém os filtros que a pessoa
+  // configurou. A fila usa uma única aba própria, que pode ser trocada de
+  // vaga sem perder a busca original nem alterar seus resultados.
+  const { apinfoContactTabId } = await chrome.storage.session.get('apinfoContactTabId');
+  const contactTab = apinfoContactTabId ? await chrome.tabs.get(apinfoContactTabId).catch(() => null) : null;
+  if (contactTab?.id) {
+    await chrome.tabs.update(contactTab.id, { url, active: true });
+    return;
+  }
+  const created = await chrome.tabs.create({ url, active: true });
+  await chrome.storage.session.set({ apinfoContactTabId: created.id });
+}
+
+async function sendCapturedContactToRadar(contact) {
+  const settings = await chrome.storage.local.get(['sendRadar', 'portalUrl', 'portalToken', 'selectedStacks']);
+  if (!settings.sendRadar) return { sent: false, skipped: 'Envio ao Radar desativado nos parâmetros.' };
+  if (!settings.portalUrl || !settings.portalToken) return { sent: false, skipped: 'Endpoint ou chave do Radar não configurados.' };
+
+  const accumulated = await getAccumulated();
+  const job = accumulated.find(item => String(item.codigo_apinfo) === String(contact.codigo));
+  if (!job) return { sent: false, skipped: 'A vaga ainda não foi acumulada; o contato ficou salvo localmente.' };
+
+  try {
+    await sendToRadar([{ ...job, email_contato: contact.email, assunto_email: contact.assunto }], settings);
+    return { sent: true };
+  } catch (error) {
+    // A captura local não é perdida se o portal estiver indisponível. A
+    // próxima exportação ainda reenviará o contato normalmente.
+    return { sent: false, error: error.message || 'Não foi possível enviar o contato ao Radar.' };
+  }
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -363,6 +389,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         contacts[contact.codigo] = contact;
         await setContacts(contacts);
 
+        const radar = await sendCapturedContactToRadar(contact);
+
         const queue = await getContactQueue();
         const queued = queue.items.find(item => item.codigo === contact.codigo);
         if (queued) {
@@ -371,7 +399,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           await setContactQueue(queue);
         }
 
-        sendResponse({ ok: true, contact, totalContacts: Object.keys(contacts).length });
+        sendResponse({ ok: true, contact, radar, totalContacts: Object.keys(contacts).length });
       } catch (error) {
         sendResponse({ ok: false, error: error.message || 'Falha ao capturar o contato desta vaga.' });
       }
