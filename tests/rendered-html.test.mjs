@@ -38,6 +38,8 @@ test("dashboard oferece radar, perfil e pipeline persistente", async () => {
   assert.match(dashboard, /selectedJob\s*=\s*filtered\.find/);
   assert.match(dashboard, /Abrir descrição em tela ampliada/);
   assert.match(dashboard, /Candidatar via LinkedIn/);
+  assert.match(dashboard, /Enviar e-mail/);
+  assert.match(dashboard, /mail\.google\.com\/mail\/\?view=cm/);
   assert.match(dashboard, /role="dialog"/);
   assert.match(dashboard, /setDetailJob\(job\)/);
   assert.match(dashboard, /Tecnologias da vaga/);

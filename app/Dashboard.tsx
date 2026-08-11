@@ -1116,6 +1116,14 @@ export default function Dashboard() {
       whatsapp: `https://wa.me/?text=${waText}`,
     };
   }
+  function openCapturedEmail(job: Job) {
+    if (!job.contactEmail) return;
+    const to = encodeURIComponent(job.contactEmail);
+    const subject = encodeURIComponent(job.contactSubject || `Vaga: ${job.title}`);
+    // Abrir o compositor do Gmail é mais confiável do que depender de um
+    // programa de e-mail padrão configurado no Windows/navegador.
+    window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${to}&su=${subject}`, "_blank", "noopener,noreferrer");
+  }
   useEffect(() => {
     if (!shareMenuJobId) return;
     function handleOutsideClick(e: MouseEvent) {
@@ -1780,6 +1788,15 @@ export default function Dashboard() {
                 >
                   Candidatar
                 </button>
+                {selectedJob.contactEmail && (
+                  <button
+                    className="contact-email-action"
+                    onClick={() => openCapturedEmail(selectedJob)}
+                    title={`Abrir o Gmail para escrever a ${selectedJob.contactEmail}`}
+                  >
+                    ✉ Enviar e-mail
+                  </button>
+                )}
                 <div className="share-wrap detail-more-actions">
                   <button
                     className="more-actions-trigger"

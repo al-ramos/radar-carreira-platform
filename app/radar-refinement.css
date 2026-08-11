@@ -681,6 +681,15 @@
   background: #ef4f52 !important;
   border-color: #ef4f52 !important;
 }
+.contact-email-action {
+  border-color: #2c5e92 !important;
+  background: #fff !important;
+  color: #244d79 !important;
+  font-weight: 750;
+}
+.contact-email-action:hover {
+  background: #edf5ff !important;
+}
 .detail-more-actions { margin-left: auto; }
 .detail-actions-menu { min-width: 205px; }
 .detail-actions-menu .share-menu-item:disabled {
