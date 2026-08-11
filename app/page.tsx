@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import Dashboard from "./Dashboard";
+import DashboardShell from "./DashboardShell";
 import { requireChatGPTUser } from "./chatgpt-auth";
 
 export const metadata: Metadata = {
@@ -9,5 +9,5 @@ export const metadata: Metadata = {
 
 export default async function Home() {
   await requireChatGPTUser("/");
-  return <Dashboard />;
+  return <DashboardShell />;
 }

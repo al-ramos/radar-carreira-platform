@@ -10,7 +10,9 @@ import { computeVerdict, type VerdictEmoji } from "../../../lib/verdict";
 
 export const dynamic = "force-dynamic";
 
-const MAX_FILTER_CANDIDATES = 400;
+const MAX_FILTER_CANDIDATES = 150;
+const LIST_DESCRIPTION_CHARS = 2_000;
+const FILTER_DESCRIPTION_CHARS = 1_000;
 const parse = (value: string) => {
   try {
     return JSON.parse(value) as string[];
@@ -22,6 +24,7 @@ const parse = (value: string) => {
 export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
+    const degradedMode = url.searchParams.get("degraded") === "1";
     const page = Math.max(1, Number(url.searchParams.get("page") ?? 1));
     const limit = Math.min(Number(url.searchParams.get("limit") ?? 50), 250);
     const offset = (page - 1) * limit;
@@ -38,7 +41,7 @@ export async function GET(request: Request) {
       : configuredPeriod;
     const hours = period === "all" ? null : Math.max(1, Math.min(Number(period) || 24, 24 * 30));
 
-    const user = await getChatGPTUser();
+    const user = degradedMode ? null : await getChatGPTUser();
     const [profile, pipeline] = await Promise.all([
       user
         ? getDb().select().from(profiles).where(eq(profiles.userId, user.userId)).limit(1).then((rows) => rows[0] ?? null)
@@ -49,12 +52,12 @@ export async function GET(request: Request) {
     ]);
 
     const searchQuery = (url.searchParams.get("q") ?? "").trim().toLowerCase();
-    const minScoreParam = url.searchParams.get("minScore");
+    const minScoreParam = degradedMode ? null : url.searchParams.get("minScore");
     const minScore = minScoreParam !== null && Number.isFinite(Number(minScoreParam))
       ? Math.max(0, Math.min(100, Number(minScoreParam)))
       : 0;
-    const pipelineFilter = url.searchParams.get("pipeline") ?? "all";
-    const verdictFilter = url.searchParams.get("verdict") ?? "all";
+    const pipelineFilter = degradedMode ? "all" : url.searchParams.get("pipeline") ?? "all";
+    const verdictFilter = degradedMode ? "all" : url.searchParams.get("verdict") ?? "all";
     const sourceType = url.searchParams.get("sourceType") ?? "all";
     const cutoff = hours ? new Date(Date.now() - hours * 36e5) : null;
     const baseCondition = cutoff
@@ -103,16 +106,36 @@ export async function GET(request: Request) {
     const condition = and(sourceCondition, seniorityCondition, searchCondition, pipelineCondition);
     const requiresPostFiltering = minScore > 0 || verdictFilter !== "all";
 
-    const rowsQuery = getDb().select().from(jobs).where(condition).orderBy(desc(jobs.publishedAt), desc(jobs.createdAt));
-    const [rows, eligibleTotals, linkedInTotals, apinfoTotals, baseTotals, sourcesResult] = await Promise.all([
+    const rowsQuery = getDb().select({
+      id: jobs.id,
+      externalId: jobs.externalId,
+      sourceId: jobs.sourceId,
+      company: jobs.company,
+      title: jobs.title,
+      seniority: jobs.seniority,
+      workMode: jobs.workMode,
+      location: jobs.location,
+      stack: jobs.stack,
+      publishedAt: jobs.publishedAt,
+      url: jobs.url,
+      applyUrl: jobs.applyUrl,
+      description: degradedMode
+        ? sql<string>`''`
+        : requiresPostFiltering
+          ? sql<string>`substr(${jobs.description}, 1, ${FILTER_DESCRIPTION_CHARS})`
+          : sql<string>`substr(${jobs.description}, 1, ${LIST_DESCRIPTION_CHARS})`,
+    }).from(jobs).where(condition).orderBy(desc(jobs.publishedAt), desc(jobs.createdAt));
+    const [rows, eligibleTotals, sourceTotals] = await Promise.all([
       requiresPostFiltering
         ? rowsQuery.limit(MAX_FILTER_CANDIDATES)
         : rowsQuery.limit(limit).offset(offset),
       getDb().select({ total: sql<number>`count(*)` }).from(jobs).where(condition),
-      getDb().select({ total: sql<number>`count(*)` }).from(jobs).where(linkedInCondition),
-      getDb().select({ total: sql<number>`count(*)` }).from(jobs).where(apinfoCondition),
-      getDb().select({ total: sql<number>`count(*)` }).from(jobs).where(baseCondition),
-      getDb().select({ count: sql<number>`count(distinct ${jobs.sourceId})` }).from(jobs).where(baseCondition),
+      getDb().select({
+        total: sql<number>`count(*)`,
+        linkedIn: sql<number>`sum(case when ${jobs.url} like ${"%linkedin.com%"} then 1 else 0 end)`,
+        apinfo: sql<number>`sum(case when ${jobs.sourceId} = ${"apinfo-extension"} or ${jobs.url} like ${"%apinfo.com%"} then 1 else 0 end)`,
+        sources: sql<number>`count(distinct ${jobs.sourceId})`,
+      }).from(jobs).where(baseCondition),
     ]);
 
     const masteredSkills = profile ? listFromStored(profile.masteredSkills) : [];
@@ -138,7 +161,7 @@ export async function GET(request: Request) {
             },
           )
         : { score: 70, reasons: ["Complete seu perfil para personalizar"] };
-      const verdict = masteredSkills.length
+      const verdict = verdictFilter !== "all" && masteredSkills.length
         ? computeVerdict(
             {
               title: job.title,
@@ -172,22 +195,23 @@ export async function GET(request: Request) {
       reasons,
     }));
 
-    const totalLinkedIn = Number(linkedInTotals[0]?.total ?? 0);
-    const totalApinfo = Number(apinfoTotals[0]?.total ?? 0);
-    const baseTotal = Number(baseTotals[0]?.total ?? 0);
+    const totalLinkedIn = Number(sourceTotals[0]?.linkedIn ?? 0);
+    const totalApinfo = Number(sourceTotals[0]?.apinfo ?? 0);
+    const baseTotal = Number(sourceTotals[0]?.total ?? 0);
     return NextResponse.json({
       jobs: result,
       total: totalCount,
       totalLinkedIn,
       totalApinfo,
       totalOtherSources: Math.max(0, baseTotal - totalLinkedIn - totalApinfo),
-      sourcesCount: Number(sourcesResult[0]?.count ?? 0),
+      sourcesCount: Number(sourceTotals[0]?.sources ?? 0),
       page,
       limit,
       hasMore: offset + limit < totalCount,
       limited: requiresPostFiltering && Number(eligibleTotals[0]?.total ?? 0) > MAX_FILTER_CANDIDATES,
       mode: "database",
       personalized: Boolean(profile),
+      degraded: degradedMode,
       period: period === "all" ? "all" : hours,
     });
   } catch (error) {
