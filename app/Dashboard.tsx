@@ -410,7 +410,6 @@ export default function Dashboard() {
   const [shareMenuJobId, setShareMenuJobId] = useState<string | null>(null);
   const [analysisOpen, setAnalysisOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [detailActionsOpen, setDetailActionsOpen] = useState(false);
   // Captura de contato do APinfo pedida à extensão a partir do próprio
   // Radar — ver captureApinfoContact/buildContactMailto e o useEffect que
   // escuta a resposta da extensão (RADAR_CAPTURE_CONTACT_RESULT).
@@ -971,7 +970,6 @@ export default function Dashboard() {
   function selectJob(job: Job) {
     setSelected(job);
     setAnalysisOpen(false);
-    setDetailActionsOpen(false);
     void loadJobDetail(job);
     if (!job.id.startsWith("demo") && currentUser) {
       // Optimistic update: marca como viewed localmente sem rebaixar estágio existente
@@ -1921,31 +1919,33 @@ export default function Dashboard() {
                     ✉ Enviar e-mail
                   </button>
                 )}
-                <div className="share-wrap detail-more-actions">
-                  <button
-                    className="more-actions-trigger"
-                    onClick={() => setDetailActionsOpen((open) => !open)}
-                    aria-expanded={detailActionsOpen}
-                    aria-label="Mais ações para esta vaga"
-                  >
-                    Mais ações
-                  </button>
-                  {detailActionsOpen && (() => {
-                    const links = buildShareLinks(selectedJob);
-                    return (
-                      <div className="share-menu detail-actions-menu">
-                        <button className="share-menu-item" onClick={() => { window.open(links.email, "_blank"); setDetailActionsOpen(false); }}>Encaminhar por e-mail</button>
-                        <button className="share-menu-item" onClick={() => { window.open(links.whatsapp, "_blank"); setDetailActionsOpen(false); }}>Encaminhar no WhatsApp</button>
-                        <button className="share-menu-item" onClick={() => { void copyDescription(); setDetailActionsOpen(false); }} disabled={detailLoading || !(jobDetail?.description || selectedJob.description)}>
-                          {descriptionCopied ? "Descrição copiada" : "Copiar descrição"}
-                        </button>
-                        <button className="share-menu-item" title="Abrir descrição em tela ampliada" onClick={() => { openJobDetail(selectedJob); setDetailActionsOpen(false); }}>
-                          Ampliar descrição
-                        </button>
-                      </div>
-                    );
-                  })()}
-                </div>
+                {(() => {
+                  const links = buildShareLinks(selectedJob);
+                  return (
+                    <>
+                      <button className="analysis-toggle-btn" onClick={() => window.open(links.email, "_blank")}>
+                        Encaminhar por e-mail
+                      </button>
+                      <button className="analysis-toggle-btn" onClick={() => window.open(links.whatsapp, "_blank")}>
+                        Encaminhar no WhatsApp
+                      </button>
+                      <button
+                        className="analysis-toggle-btn"
+                        onClick={() => void copyDescription()}
+                        disabled={detailLoading || !(jobDetail?.description || selectedJob.description)}
+                      >
+                        {descriptionCopied ? "Descrição copiada" : "Copiar descrição"}
+                      </button>
+                      <button
+                        className="analysis-toggle-btn"
+                        title="Abrir descrição em tela ampliada"
+                        onClick={() => openJobDetail(selectedJob)}
+                      >
+                        Ampliar descrição
+                      </button>
+                    </>
+                  );
+                })()}
               </div>
               {contactCaptureMsg && (
                 <p
