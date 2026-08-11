@@ -231,6 +231,40 @@ const isLinkedInJob = (job: Job) =>
 const isApinfoJob = (job: Job) =>
   Boolean(job.url && /apinfo\.com/i.test(job.url));
 
+/**
+ * A busca de vagas do APinfo é um formulário method="post" — um link comum
+ * com "?keyw=código" não funciona porque o parâmetro GET é simplesmente
+ * ignorado pela página, que sempre abre a busca vazia. Para de fato levar
+ * ao código da vaga, é preciso montar e submeter o mesmo POST que o próprio
+ * formulário do site faz (confirmado inspecionando o DOM ao vivo:
+ * keyw/onde/andor/pag são os campos usados na busca).
+ */
+function openApinfoJobSearch(codigo: string) {
+  const form = document.createElement("form");
+  form.method = "post";
+  form.action = "https://www.apinfo.com/apinfo/inc/list4.cfm";
+  form.target = "_blank";
+  form.style.display = "none";
+  const fields: Record<string, string> = {
+    keyw: codigo,
+    onde: "1",
+    andor: "1",
+    ddmmaa1: "",
+    ddmmaa2: "",
+    pag: "1",
+  };
+  for (const [name, value] of Object.entries(fields)) {
+    const input = document.createElement("input");
+    input.type = "hidden";
+    input.name = name;
+    input.value = value;
+    form.appendChild(input);
+  }
+  document.body.appendChild(form);
+  form.submit();
+  form.remove();
+}
+
 // Infere o provider da vaga pela URL para exibir o rótulo correto no botão
 // de candidatura — sem necessidade de JOIN com a tabela de fontes.
 function jobProviderLabel(job: Job): string {
@@ -1534,6 +1568,16 @@ export default function Dashboard() {
                           target="_blank"
                           rel="noreferrer"
                           title={selectedJob.url}
+                          onClick={(event) => {
+                            // No APinfo, esse href é só uma referência (o
+                            // formulário do site é POST, não GET) — clicar
+                            // aqui direto abriria a busca vazia. Substitui
+                            // pelo POST real quando temos o código da vaga.
+                            if (isApinfoJob(selectedJob) && selectedJob.externalId) {
+                              event.preventDefault();
+                              openApinfoJobSearch(selectedJob.externalId);
+                            }
+                          }}
                         >
                           {selectedJob.url.length > 55
                             ? `${selectedJob.url.slice(0, 52)}…`
@@ -1636,8 +1680,16 @@ export default function Dashboard() {
                     // vaga/candidatura — url pode ser só uma referência
                     // estável (ex.: busca por código no APinfo), usada para
                     // identificar a vaga sem depender de token de sessão.
-                    const target = selectedJob.applyUrl || selectedJob.url;
-                    if (target) open(target, "_blank");
+                    // Sem applyUrl, uma vaga do APinfo precisa do POST real
+                    // (não um simples GET) para efetivamente filtrar pelo
+                    // código — ver openApinfoJobSearch.
+                    if (selectedJob.applyUrl) {
+                      open(selectedJob.applyUrl, "_blank");
+                    } else if (isApinfoJob(selectedJob) && selectedJob.externalId) {
+                      openApinfoJobSearch(selectedJob.externalId);
+                    } else if (selectedJob.url) {
+                      open(selectedJob.url, "_blank");
+                    }
                     if (!selectedJob.id.startsWith("demo")) {
                       const current = pipelineStageMap.get(selectedJob.id);
                       // Avança para Candidatura se ainda não passou desse estágio
@@ -1844,8 +1896,13 @@ export default function Dashboard() {
               <button
                 className="linkedin-action"
                 onClick={() => {
-                  const target = detailJob.applyUrl || detailJob.url;
-                  if (target) open(target, "_blank");
+                  if (detailJob.applyUrl) {
+                    open(detailJob.applyUrl, "_blank");
+                  } else if (isApinfoJob(detailJob) && detailJob.externalId) {
+                    openApinfoJobSearch(detailJob.externalId);
+                  } else if (detailJob.url) {
+                    open(detailJob.url, "_blank");
+                  }
                 }}
               >
                 {jobProviderLabel(detailJob)}
