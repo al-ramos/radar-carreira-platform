@@ -6,7 +6,9 @@ const aliases:Record<string,keyof ImportedJob>={
  workmode:"workMode",modalidade:"workMode",seniority:"seniority",senioridade:"seniority",
  stack:"stack",tecnologias:"stack",publishedat:"publishedAt",publicadoem:"publishedAt",data:"publishedAt",
  coletadoem:"publishedAt",externalid:"externalId",idexterno:"externalId",sourceid:"sourceId",
- applyurl:"applyUrl",linkcandidatura:"applyUrl",linkdecandidatura:"applyUrl"
+ applyurl:"applyUrl",linkcandidatura:"applyUrl",linkdecandidatura:"applyUrl",
+ contactemail:"contactEmail",emailcontato:"contactEmail",email:"contactEmail",
+ contactsubject:"contactSubject",assuntoemail:"contactSubject",assunto:"contactSubject"
 };
 
 export const normalizeHeader=(value:string)=>value.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]/g,"");
@@ -44,6 +46,8 @@ export function normalizeImportedJob(value:unknown):ImportedJob|null{
   publishedAt:string("publishedAt")||undefined,
   externalId:string("externalId")||linkedinId,
   applyUrl:string("applyUrl")||undefined,
+  contactEmail:string("contactEmail")||undefined,
+  contactSubject:string("contactSubject")||undefined,
   sourceId:string("sourceId")||undefined
  };
 }

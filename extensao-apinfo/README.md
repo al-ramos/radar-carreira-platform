@@ -2,7 +2,7 @@
 
 Extensão para Google Chrome com painel próprio que coleta vagas visíveis nas páginas de resultados do APinfo, uma página por vez, remove duplicidades e exporta os resultados consolidados em CSV e JSON — ou envia direto ao Radar de Carreira.
 
-Versão atual da extensão: **1.2.0**.
+Versão atual da extensão: **1.3.0**.
 > Este é um projeto independente. Não é afiliado, patrocinado nem mantido pela APinfo.
 
 ## Dois modos de coleta
@@ -71,7 +71,7 @@ Também é possível usar **Code → Download ZIP** no GitHub e extrair o arquiv
 2. Ative **Modo do desenvolvedor**, no canto superior direito.
 3. Clique em **Carregar sem compactação**.
 4. Selecione a pasta `extensao-apinfo` (ou a raiz deste projeto, se você não separou em subpasta).
-5. Confirme que aparece **Coletor de Vagas do APinfo 1.2.0**.
+5. Confirme que aparece **Coletor de Vagas do APinfo 1.3.0**.
 6. Opcionalmente, fixe a extensão no menu de extensões do Chrome.
 
 ### 3. Abrir o painel
@@ -151,6 +151,24 @@ Por isso, cada vaga é identificada pelo **código** que o próprio APinfo exibe
 
 Desde a versão **1.2.0**, ao enviar ao Radar (**Enviar ao Radar** ativado), `link_candidatura` é enviado também como `applyUrl` — um campo separado que não participa da deduplicação. O painel do Radar usa `applyUrl` (quando presente) como destino do botão **Candidatar**, então o clique abre a vaga de verdade em vez da busca por código. `link` continua sendo o identificador estável usado para não duplicar a vaga entre coletas.
 
+## Captura manual de contato da vaga
+
+[#captura-manual-de-contato-da-vaga](#captura-manual-de-contato-da-vaga)
+
+Algumas vagas do APinfo mostram, depois de um login (CPF e senha, feito por você diretamente na tela do site), uma página com o e-mail da empresa e o assunto sugerido para contato. **A extensão nunca vê, pede nem preenche essa senha** — ela só lê o texto já renderizado na página, e só quando você decide clicar no botão de captura.
+
+Como usar:
+
+1. No card da vaga, clique no link de referência (ou em **Candidatar**) para abrir a página da vaga no APinfo.
+2. Faça login normalmente na própria tela do APinfo, se solicitado.
+3. Quando a página mostrar **Empresa**, **Email** e **Assunto a ser colocado no email**, volte ao painel da extensão.
+4. Clique em **Capturar contato desta vaga**, na seção **Contato da vaga (manual)**.
+5. A extensão lê `Empresa`, `Email` e `Assunto` já visíveis na página e guarda esse contato associado ao código da vaga (extraído do próprio assunto sugerido, ex: `apinfo - 85887 - ...`).
+
+O contato capturado fica em `chrome.storage.session` (mesmo armazenamento do acumulado de vagas) até você exportar ou clicar em **Limpar contatos**. Na exportação, cada vaga que tiver um contato capturado ganha os campos `email_contato` e `assunto_email` no CSV/JSON, e — se **Enviar ao Radar** estiver ativado — esses mesmos dados vão como `contactEmail`/`contactSubject`, exibidos no painel do Radar como um link `mailto:` pronto (que só abre seu cliente de e-mail; nada é enviado automaticamente).
+
+Esse fluxo é deliberadamente manual, vaga por vaga: não existe coleta automática de contatos, porque a página de contato fica atrás de login e de um limite de consultas do próprio APinfo — automatizar esse passo específico esbarraria nos dois.
+
 ## Arquivos exportados
 
 [#arquivos-exportados](#arquivos-exportados)
@@ -177,6 +195,8 @@ RadarCarreira/vagas-apinfo-AAAA-MM-DD.json
 | `stack`             | Stacks detectadas no título e na descrição                       |
 | `link`              | URL de referência estável (ver seção acima)                      |
 | `link_candidatura` | Link de candidatura com token de sessão (ver seção acima)         |
+| `email_contato`    | E-mail da empresa, quando capturado manualmente (ver seção acima) |
+| `assunto_email`    | Assunto sugerido para o e-mail, quando capturado manualmente      |
 | `coletado_em`       | Data e hora da coleta em formato ISO 8601                        |
 | `pagina`            | Página da pesquisa em que a vaga foi encontrada                  |
 
@@ -206,8 +226,9 @@ Note que esta extensão **não pede a permissão `tabs`** (que permitiria listar
 - O processamento acontece localmente no navegador.
 - Por padrão, os dados permanecem locais. Quando **Enviar ao Radar** estiver ativado, somente as vagas filtradas são enviadas ao endpoint indicado.
 - Não há backend, banco de dados, telemetria ou analytics.
-- A extensão não lê nem armazena login do APinfo — o site não exige login para pesquisar vagas.
+- A extensão não lê nem armazena login do APinfo — o site não exige login para pesquisar vagas. A página de contato de algumas vagas exige login (CPF e senha, feito por você diretamente na tela do APinfo) — a extensão nunca vê, pede nem preenche essa senha, e só lê o texto (empresa/e-mail/assunto) já renderizado na página quando você clica em **Capturar contato desta vaga**.
 - A extensão usa somente o conteúdo já visível na página no momento da coleta.
+- O botão "Enviar seu currículo" do APinfo, quando presente, apenas revela um link `mailto:` para o seu cliente de e-mail padrão — a extensão não envia nada em nome de ninguém, nem automatiza esse clique.
 - Os arquivos são gerados no próprio navegador e enviados diretamente para a subpasta de Downloads.
 - O projeto não tenta contornar CAPTCHA, autenticação, limite de consultas ou controles de acesso — a coleta é deliberadamente manual e no ritmo da sua navegação normal, sem clicar em nada por conta própria na página do APinfo.
 
@@ -222,8 +243,11 @@ flowchart LR
     A["Painel — dashboard.html"] -->|mensagens da extensão| C["background.js"]
     C -->|injeta na aba ativa| E["page-collector.js"]
     E -->|vagas da página atual| C
-    C -->|acumula em chrome.storage.session| C
-    C -->|filtra por stacks na exportação| G["Vagas compatíveis"]
+    A -->|Capturar contato desta vaga| C
+    C -->|injeta na aba ativa, após login manual| I["contact-collector.js"]
+    I -->|empresa/e-mail/assunto| C
+    C -->|acumula vagas e contatos em chrome.storage.session| C
+    C -->|mescla contato por código, filtra por stacks na exportação| G["Vagas compatíveis"]
     G -->|CSV e JSON| F["Downloads"]
     G -->|Bearer token| H["Radar de Carreira / Cloudflare D1"]
 ```
@@ -241,8 +265,9 @@ flowchart LR
 | `dashboard.js`         | Comunicação do painel com o service worker                                 |
 | `dashboard.css`        | Estilos do painel completo                                                 |
 | `stacks.js`            | Catálogo de stacks e termos reconhecidos                                    |
-| `background.js`        | Orquestra coleta manual e automática, avanço de página, acumulação, deduplicação e exportação |
+| `background.js`        | Orquestra coleta manual e automática, avanço de página, acumulação, deduplicação, contatos e exportação |
 | `page-collector.js`    | Lê os cartões de vaga da página atual do APinfo                             |
+| `contact-collector.js` | Lê empresa/e-mail/assunto já renderizados na página de contato de uma vaga, após login manual |
 | `popup.html`           | Interface do popup da extensão                                              |
 | `popup.js`             | Ações rápidas do popup (coletar a página atual sem abrir o painel)          |
 | `popup.css`            | Estilos do popup                                                             |
@@ -284,6 +309,7 @@ Validações rápidas:
 ```
 node --check background.js
 node --check page-collector.js
+node --check contact-collector.js
 node --check dashboard.js
 node --check popup.js
 node --check stacks.js

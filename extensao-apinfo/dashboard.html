@@ -28,6 +28,21 @@
     <div class="status" id="collect-status" aria-live="polite"></div>
 
     <section class="settings">
+      <h2>Contato da vaga (manual)</h2>
+      <p>
+        Faça login no APinfo com seu CPF e senha <strong>direto na tela do site</strong> (a extensão nunca vê nem
+        preenche essa senha) e abra a página de uma vaga que mostre "Empresa" e "Email". Com essa página aberta,
+        clique abaixo para guardar esse contato — ele é anexado à vaga correspondente na exportação.
+      </p>
+      <div class="actions">
+        <button class="secondary" id="collect-contact" type="button">Capturar contato desta vaga</button>
+        <button class="secondary" id="clear-contacts" type="button">Limpar contatos</button>
+      </div>
+      <div class="status" id="contact-status" aria-live="polite"></div>
+      <small id="contact-count">Nenhum contato capturado ainda.</small>
+    </section>
+
+    <section class="settings">
       <h2>Coleta automática (todas as páginas, sem filtro)</h2>
       <p>Avança sozinho por todas as páginas do resultado. Só funciona com <strong>nenhum filtro marcado</strong> na busca do APinfo — filtro de estado, cidade ou cargo faz o avanço automático quebrar a busca. Para trazer um recorte filtrado, use a coleta manual acima.</p>
       <label>Intervalo entre páginas (segundos)

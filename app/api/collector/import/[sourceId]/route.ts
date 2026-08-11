@@ -1,4 +1,4 @@
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "../../../../../db/index";
 import { importRuns, jobSources, jobs } from "../../../../../db/schema";
 import { normalizeImportedJobs } from "../../../../../lib/import-jobs";
@@ -54,6 +54,8 @@ function valuesFor(sourceId: string, job: ImportedJob, now: Date) {
     publishedAt: job.publishedAt ? new Date(job.publishedAt) : null,
     url: job.url,
     applyUrl: job.applyUrl ?? null,
+    contactEmail: job.contactEmail ?? null,
+    contactSubject: job.contactSubject ?? null,
     description: job.description ?? "",
     firstSeenAt: now,
     lastSeenAt: now,
@@ -136,6 +138,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ sou
             publishedAt: values.publishedAt,
             url: values.url,
             applyUrl: values.applyUrl,
+            // COALESCE: uma recoleta rotineira da listagem não traz contato
+            // (só a captura manual do e-mail traz). Sem isso, reenviar a
+            // mesma vaga sem contato apagaria um e-mail já salvo antes.
+            contactEmail: sql`coalesce(${values.contactEmail}, ${jobs.contactEmail})`,
+            contactSubject: sql`coalesce(${values.contactSubject}, ${jobs.contactSubject})`,
             description: values.description,
             lastSeenAt: now,
             status: "active",

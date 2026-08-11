@@ -1,4 +1,4 @@
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "../../../../db/index";
 import { importRuns, jobSources, jobs } from "../../../../db/schema";
 import { normalizeImportedJobs } from "../../../../lib/import-jobs";
@@ -35,6 +35,8 @@ function valuesFor(job: ImportedJob, now: Date) {
     publishedAt: job.publishedAt ? new Date(job.publishedAt) : null,
     url: job.url,
     applyUrl: job.applyUrl ?? null,
+    contactEmail: job.contactEmail ?? null,
+    contactSubject: job.contactSubject ?? null,
     description: job.description ?? "",
     firstSeenAt: now,
     lastSeenAt: now,
@@ -97,6 +99,8 @@ export async function POST(request: Request) {
             publishedAt: values.publishedAt,
             url: values.url,
             applyUrl: values.applyUrl,
+            contactEmail: sql`coalesce(${values.contactEmail}, ${jobs.contactEmail})`,
+            contactSubject: sql`coalesce(${values.contactSubject}, ${jobs.contactSubject})`,
             description: values.description,
             lastSeenAt: now,
             status: "active",

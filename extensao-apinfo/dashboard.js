@@ -4,6 +4,8 @@ const stackOptions = document.querySelector('#stack-options');
 const progressTotal = document.querySelector('#progress-total');
 const progressPage = document.querySelector('#progress-page');
 const progressResults = document.querySelector('#progress-results');
+const contactStatusElement = document.querySelector('#contact-status');
+const contactCountElement = document.querySelector('#contact-count');
 
 const DEFAULTS = {
   selectedStacks: [],
@@ -24,6 +26,10 @@ const showCollectStatus = (text, error = false) => {
 const showExportStatus = (text, error = false) => {
   exportStatusElement.textContent = text;
   exportStatusElement.classList.toggle('error', error);
+};
+const showContactStatus = (text, error = false) => {
+  contactStatusElement.textContent = text;
+  contactStatusElement.classList.toggle('error', error);
 };
 
 globalThis.STACK_CATALOG.forEach(stack => {
@@ -139,6 +145,37 @@ async function collectCurrentPage() {
     showCollectStatus(
       `Página ${response.currentPage}: ${response.pageJobs} vagas lidas, ${response.added} novas. Total acumulado: ${response.totalAccumulated}.`,
     );
+  });
+}
+
+/** Atualiza a contagem de contatos já capturados, exibida abaixo do botão. */
+async function refreshContactCount() {
+  const response = await chrome.runtime.sendMessage({ type: 'GET_CONTACTS' });
+  const total = response?.ok ? Object.keys(response.items).length : 0;
+  contactCountElement.textContent = total
+    ? `${total} contato${total === 1 ? '' : 's'} capturado${total === 1 ? '' : 's'} até agora.`
+    : 'Nenhum contato capturado ainda.';
+}
+
+/**
+ * Captura o contato (empresa/email/assunto) da página de vaga já aberta na
+ * aba do APinfo, DEPOIS que a pessoa fez login manualmente (CPF e senha, na
+ * própria tela do site — a extensão nunca vê nem preenche essa senha).
+ */
+async function collectContact() {
+  showContactStatus('Lendo o contato desta página…');
+  const tab = await findApinfoTab();
+  if (!tab) {
+    showContactStatus('Nenhuma aba do APinfo encontrada. Abra a página de contato da vaga primeiro.', true);
+    return;
+  }
+  chrome.runtime.sendMessage({ type: 'COLLECT_CONTACT', tabId: tab.id }, async response => {
+    if (chrome.runtime.lastError || !response?.ok) {
+      showContactStatus(response?.error || 'Não foi possível capturar o contato desta página.', true);
+      return;
+    }
+    await refreshContactCount();
+    showContactStatus(`Contato salvo: vaga ${response.contact.codigo} — ${response.contact.email}.`);
   });
 }
 
@@ -269,6 +306,12 @@ async function exportAccumulated() {
 }
 
 document.querySelector('#collect-page').addEventListener('click', collectCurrentPage);
+document.querySelector('#collect-contact').addEventListener('click', collectContact);
+document.querySelector('#clear-contacts').addEventListener('click', async () => {
+  await chrome.runtime.sendMessage({ type: 'CLEAR_CONTACTS' });
+  await refreshContactCount();
+  showContactStatus('Contatos capturados foram limpos.');
+});
 document.querySelector('#auto-collect-start').addEventListener('click', startAutoCollect);
 document.querySelector('#auto-collect-cancel').addEventListener('click', cancelAutoCollect);
 document.querySelector('#clear-accumulated').addEventListener('click', clearAccumulated);
@@ -279,3 +322,4 @@ document.querySelector('#export').addEventListener('click', exportAccumulated);
 
 loadSettings();
 refreshProgress();
+refreshContactCount();

@@ -33,6 +33,8 @@ type Job = {
   publishedAt?: string;
   url?: string;
   applyUrl?: string;
+  contactEmail?: string;
+  contactSubject?: string;
   externalId?: string;
   description?: string;
   stack: string[];
@@ -50,6 +52,8 @@ type ApiJob = {
   publishedAt?: string;
   url?: string;
   applyUrl?: string;
+  contactEmail?: string;
+  contactSubject?: string;
   externalId?: string;
   description?: string;
   stack?: string[];
@@ -341,6 +345,8 @@ const adapt = (j: ApiJob): Job => ({
   stage: "Nova",
   url: j.url,
   applyUrl: j.applyUrl,
+  contactEmail: j.contactEmail,
+  contactSubject: j.contactSubject,
   externalId: j.externalId,
   description: j.description,
 });
@@ -1652,6 +1658,20 @@ export default function Dashboard() {
                         {selectedJob.applyUrl.length > 55
                           ? `${selectedJob.applyUrl.slice(0, 52)}…`
                           : selectedJob.applyUrl}
+                      </a>
+                    </p>
+                  )}
+                  {selectedJob.contactEmail && (
+                    <p className="list-head-dim job-detail-source" title="Capturado manualmente na tela de contato — não é gerado nem enviado por nós">
+                      Contato:{" "}
+                      <a
+                        href={`mailto:${selectedJob.contactEmail}${
+                          selectedJob.contactSubject
+                            ? `?subject=${encodeURIComponent(selectedJob.contactSubject)}`
+                            : ""
+                        }`}
+                      >
+                        {selectedJob.contactEmail}
                       </a>
                     </p>
                   )}

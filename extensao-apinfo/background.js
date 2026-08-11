@@ -67,7 +67,7 @@ async function downloadData(content, mime, filename) {
 }
 
 async function downloadJobs(items, folder) {
-  const cols = ['codigo_apinfo', 'titulo', 'empresa', 'local', 'data_publicacao', 'descricao', 'stack', 'link', 'link_candidatura', 'coletado_em', 'pagina'];
+  const cols = ['codigo_apinfo', 'titulo', 'empresa', 'local', 'data_publicacao', 'descricao', 'stack', 'link', 'link_candidatura', 'email_contato', 'assunto_email', 'coletado_em', 'pagina'];
   const esc = value => `"${String(Array.isArray(value) ? value.join(', ') : value ?? '').replace(/"/g, '""')}"`;
   const csv = '﻿' + [cols.join(';'), ...items.map(job => cols.map(col => esc(job[col])).join(';'))].join('\r\n');
   const stamp = new Date().toISOString().slice(0, 10);
@@ -91,6 +91,11 @@ async function sendToRadar(items, settings) {
     // de fora do identificador único da vaga.
     url: job.link,
     applyUrl: job.link_candidatura || undefined,
+    // Contato capturado manualmente (botão dedicado, após login feito pela
+    // própria pessoa no site). Ausente na maioria das vagas — só existe
+    // quando alguém clicou em "Capturar contato" naquela vaga específica.
+    contactEmail: job.email_contato || undefined,
+    contactSubject: job.assunto_email || undefined,
   }));
   const response = await fetch(settings.portalUrl, {
     method: 'POST',
@@ -117,6 +122,24 @@ async function collectActiveTab(tabId) {
   }
   const result = await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['page-collector.js'] });
   return result[0]?.result || { jobs: [], totalResults: 0, currentPage: 1, totalPages: 1 };
+}
+
+/**
+ * Captura o contato (empresa/email/assunto) já renderizado na aba do APinfo
+ * indicada. A pessoa precisa ter feito login (CPF e senha, na própria tela
+ * do site) e estar na página que mostra "Empresa"/"Email" ANTES de clicar no
+ * botão que dispara isto — a extensão nunca vê nem preenche credenciais,
+ * só lê texto já visível na página no momento do clique.
+ */
+async function collectContact(tabId) {
+  const tab = await chrome.tabs.get(tabId).catch(() => null);
+  if (!tab || !tab.url || !/^https:\/\/www\.apinfo\.com\//.test(tab.url)) {
+    throw new Error('Abra a página de contato da vaga no APinfo antes de capturar.');
+  }
+  const result = await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['contact-collector.js'] });
+  const outcome = result[0]?.result;
+  if (!outcome?.ok) throw new Error(outcome?.error || 'Não foi possível capturar o contato desta página.');
+  return outcome;
 }
 
 /**
@@ -248,6 +271,15 @@ async function setAccumulated(items) {
   await chrome.storage.session.set({ apinfoAccumulated: items });
 }
 
+/** Contatos capturados manualmente, um por código de vaga (chave = codigo_apinfo). */
+async function getContacts() {
+  const { apinfoContacts } = await chrome.storage.session.get('apinfoContacts');
+  return apinfoContacts || {};
+}
+async function setContacts(map) {
+  await chrome.storage.session.set({ apinfoContacts: map });
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === 'COLLECT_CURRENT_PAGE') {
     (async () => {
@@ -298,12 +330,53 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message?.type === 'COLLECT_CONTACT') {
+    (async () => {
+      try {
+        const tabId = message.tabId || sender.tab?.id;
+        if (!tabId) throw new Error('Nenhuma aba ativa identificada.');
+        const contact = await collectContact(tabId);
+
+        const contacts = await getContacts();
+        contacts[contact.codigo] = contact;
+        await setContacts(contacts);
+
+        sendResponse({ ok: true, contact, totalContacts: Object.keys(contacts).length });
+      } catch (error) {
+        sendResponse({ ok: false, error: error.message || 'Falha ao capturar o contato desta vaga.' });
+      }
+    })();
+    return true;
+  }
+
+  if (message?.type === 'GET_CONTACTS') {
+    (async () => {
+      const contacts = await getContacts();
+      sendResponse({ ok: true, items: contacts });
+    })();
+    return true;
+  }
+
+  if (message?.type === 'CLEAR_CONTACTS') {
+    (async () => {
+      await setContacts({});
+      sendResponse({ ok: true });
+    })();
+    return true;
+  }
+
   if (message?.type === 'EXPORT_ACCUMULATED') {
     (async () => {
       try {
         const accumulated = await getAccumulated();
+        const contacts = await getContacts();
+        const withContacts = accumulated.map((job) => {
+          const contact = contacts[job.codigo_apinfo];
+          if (!contact) return job;
+          return { ...job, email_contato: contact.email, assunto_email: contact.assunto };
+        });
         const settings = message.settings || {};
-        const jobs = applyStackFilter(accumulated, settings);
+        const jobs = applyStackFilter(withContacts, settings);
         if (!jobs.length) {
           sendResponse({ ok: false, error: `${accumulated.length} vagas lidas, nenhuma corresponde aos filtros definidos.` });
           return;
