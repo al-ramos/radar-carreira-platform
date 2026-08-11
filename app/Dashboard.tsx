@@ -1911,6 +1911,18 @@ export default function Dashboard() {
                         : "Capturar e-mail"}
                   </button>
                 )}
+                {selectedJob.contactEmail && (
+                  <button
+                    className="primary-job-action"
+                    title={`Abre seu cliente de e-mail com mensagem pronta para ${selectedJob.contactEmail}`}
+                    onClick={() => {
+                      const mailto = buildContactMailto(selectedJob);
+                      if (mailto) open(mailto, "_blank");
+                    }}
+                  >
+                    ✉ Enviar e-mail
+                  </button>
+                )}
                 <div className="share-wrap detail-more-actions">
                   <button
                     className="more-actions-trigger"
