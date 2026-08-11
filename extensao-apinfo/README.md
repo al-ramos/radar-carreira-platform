@@ -2,7 +2,7 @@
 
 Extensão para Google Chrome com painel próprio que coleta vagas visíveis nas páginas de resultados do APinfo, uma página por vez, remove duplicidades e exporta os resultados consolidados em CSV e JSON — ou envia direto ao Radar de Carreira.
 
-Versão atual da extensão: **1.3.0**.
+Versão atual da extensão: **1.4.0**.
 > Este é um projeto independente. Não é afiliado, patrocinado nem mantido pela APinfo.
 
 ## Dois modos de coleta
@@ -71,7 +71,7 @@ Também é possível usar **Code → Download ZIP** no GitHub e extrair o arquiv
 2. Ative **Modo do desenvolvedor**, no canto superior direito.
 3. Clique em **Carregar sem compactação**.
 4. Selecione a pasta `extensao-apinfo` (ou a raiz deste projeto, se você não separou em subpasta).
-5. Confirme que aparece **Coletor de Vagas do APinfo 1.3.0**.
+5. Confirme que aparece **Coletor de Vagas do APinfo 1.4.0**.
 6. Opcionalmente, fixe a extensão no menu de extensões do Chrome.
 
 ### 3. Abrir o painel
@@ -169,6 +169,23 @@ O contato capturado fica em `chrome.storage.session` (mesmo armazenamento do acu
 
 Esse fluxo é deliberadamente manual, vaga por vaga: não existe coleta automática de contatos, porque a página de contato fica atrás de login e de um limite de consultas do próprio APinfo — automatizar esse passo específico esbarraria nos dois.
 
+### Capturar o contato direto do painel do Radar
+
+[#capturar-o-contato-direto-do-painel-do-radar](#capturar-o-contato-direto-do-painel-do-radar)
+
+Desde a versão **1.4.0**, existe um segundo jeito de capturar o contato, sem precisar abrir o painel da extensão: um botão **Capturar e-mail** na própria tela de detalhe da vaga no Radar de Carreira (visível só em vagas do APinfo).
+
+Como usar:
+
+1. Na tela da vaga, no Radar, clique em **Candidatar** — isso abre a página da vaga no APinfo em outra aba.
+2. Faça login normalmente na própria tela do APinfo, se solicitado, até ver **Empresa**, **Email** e **Assunto**.
+3. Volte à aba do Radar (a mesma tela da vaga) e clique em **Capturar e-mail**.
+4. O Radar pede à extensão para ler o que já está na tela do APinfo, salva o contato na vaga e mostra o e-mail capturado. O link **Contato:** no cabeçalho da vaga passa a abrir um e-mail com uma mensagem inicial já preenchida (assunto sugerido pelo próprio APinfo, corpo citando as skills do seu perfil que bateram com a vaga) — sempre como rascunho para revisar, nunca enviado sozinho.
+
+Por baixo dos panos, isso funciona porque a extensão roda um pequeno script (`radar-bridge.js`) só nas páginas do próprio Radar, que repassa o clique do botão para a extensão. A extensão então localiza a aba do APinfo mais recente, confere que o código da vaga aberta lá bate com o código da vaga que você está vendo no Radar (evita salvar o contato errado se houver mais de uma aba do APinfo aberta) e só então lê o texto já visível. Continua valendo a mesma regra de sempre: nenhuma senha é vista, pedida ou preenchida pela extensão — só o texto já renderizado na tela, depois de você logar manualmente.
+
+Esse botão é um atalho para o mesmo resultado do fluxo manual descrito acima — o painel da extensão (**Capturar contato desta vaga**) continua funcionando normalmente e é útil quando você está navegando várias vagas do APinfo em sequência, sem passar pelo Radar a cada uma.
+
 ## Arquivos exportados
 
 [#arquivos-exportados](#arquivos-exportados)
@@ -215,7 +232,7 @@ O arquivo `manifest.json` declara:
 | `storage`                                                          | Salvar stacks, destinos, pasta, endpoint, chave e o acumulado da sessão       |
 | `downloads`                                                        | Gravar CSV e JSON na subpasta configurada sem perguntar a cada execução       |
 | `https://www.apinfo.com/*`                                        | Ler somente páginas do APinfo necessárias à coleta                            |
-| `https://radar-carreira-platform.al-ramos.workers.dev/*`         | Enviar vagas ao portal somente quando essa opção estiver ativada              |
+| `https://radar-carreira-platform.al-ramos.workers.dev/*`         | Enviar vagas ao portal; e rodar `radar-bridge.js` nas páginas do Radar, para o botão **Capturar e-mail** (desde a 1.4.0) |
 
 Note que esta extensão **não pede a permissão `tabs`** (que permitiria listar e trocar entre todas as suas abas abertas) — ela só age na aba que está ativa no momento em que você clica em coletar.
 
@@ -250,6 +267,11 @@ flowchart LR
     C -->|mescla contato por código, filtra por stacks na exportação| G["Vagas compatíveis"]
     G -->|CSV e JSON| F["Downloads"]
     G -->|Bearer token| H["Radar de Carreira / Cloudflare D1"]
+    R["Botão Capturar e-mail — Dashboard.tsx"] -->|postMessage| J["radar-bridge.js"]
+    J -->|chrome.runtime.sendMessage| C
+    C -->|confere código da vaga, injeta| I
+    J -->|postMessage de volta| R
+    R -->|sessão logada, PATCH /api/jobs/:id/contact| H
 ```
 
     Loading
@@ -268,6 +290,7 @@ flowchart LR
 | `background.js`        | Orquestra coleta manual e automática, avanço de página, acumulação, deduplicação, contatos e exportação |
 | `page-collector.js`    | Lê os cartões de vaga da página atual do APinfo                             |
 | `contact-collector.js` | Lê empresa/e-mail/assunto já renderizados na página de contato de uma vaga, após login manual |
+| `radar-bridge.js`      | Content script nas páginas do Radar — repassa o clique de "Capturar e-mail" para `background.js` |
 | `popup.html`           | Interface do popup da extensão                                              |
 | `popup.js`             | Ações rápidas do popup (coletar a página atual sem abrir o painel)          |
 | `popup.css`            | Estilos do popup                                                             |
@@ -310,6 +333,7 @@ Validações rápidas:
 node --check background.js
 node --check page-collector.js
 node --check contact-collector.js
+node --check radar-bridge.js
 node --check dashboard.js
 node --check popup.js
 node --check stacks.js

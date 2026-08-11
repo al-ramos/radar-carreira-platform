@@ -411,6 +411,12 @@ export default function Dashboard() {
   const [analysisOpen, setAnalysisOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [detailActionsOpen, setDetailActionsOpen] = useState(false);
+  // Captura de contato do APinfo pedida à extensão a partir do próprio
+  // Radar — ver captureApinfoContact/buildContactMailto e o useEffect que
+  // escuta a resposta da extensão (RADAR_CAPTURE_CONTACT_RESULT).
+  const [contactCapturing, setContactCapturing] = useState(false);
+  const [contactCaptureMsg, setContactCaptureMsg] = useState<{ text: string; error: boolean } | null>(null);
+  const contactRequestRef = useRef<{ requestId: string; jobId: string } | null>(null);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [profileChoices, setProfileChoices] =
     useState<ProfileChoices>(emptyProfileChoices);
@@ -1116,6 +1122,103 @@ export default function Dashboard() {
       whatsapp: `https://wa.me/?text=${waText}`,
     };
   }
+  /**
+   * Monta o mailto: de contato com a vaga (usado no bloco "Contato:" do
+   * cabeçalho). Diferente de buildShareLinks (que encaminha a vaga para
+   * outra pessoa), este é endereçado à própria empresa — por isso já inclui
+   * um corpo padrão citando as skills que bateram com o perfil, como ponto
+   * de partida. Nunca é enviado sozinho: só abre o cliente de e-mail da
+   * pessoa para ela revisar e completar antes de mandar.
+   */
+  function buildContactMailto(job: Job) {
+    if (!job.contactEmail) return null;
+    const matchReasonRaw = (job.reasons ?? []).find((r) => r.startsWith("✅ Skills:"));
+    const matchedSkills = matchReasonRaw
+      ? matchReasonRaw.replace(/✅ Skills:\s*/, "").replace(/\s*\(\+\d+\)$/, "").split(",").map((s) => s.trim()).filter(Boolean)
+      : [];
+    const signOff = currentUser?.fullName || currentUser?.displayName || "";
+    const skillsLine = matchedSkills.length
+      ? `Tenho experiência com ${matchedSkills.join(", ")}, que aparecem entre os requisitos da vaga.\n\n`
+      : "";
+    const body =
+      `Olá,\n\n` +
+      `Tenho interesse na vaga de ${job.title} na ${job.company}${job.externalId ? ` (código ${job.externalId})` : ""}.\n\n` +
+      skillsLine +
+      `Segue meu contato para conversarmos.` +
+      (signOff ? `\n\n${signOff}` : "");
+    const query = [
+      job.contactSubject ? `subject=${encodeURIComponent(job.contactSubject)}` : null,
+      `body=${encodeURIComponent(body)}`,
+    ].filter(Boolean).join("&");
+    return `mailto:${job.contactEmail}?${query}`;
+  }
+  /**
+   * Pede à extensão do APinfo (via radar-bridge.js, content script rodando
+   * nesta mesma página) para ler o contato já visível numa aba do APinfo
+   * aberta em outra aba — normalmente a que o botão Candidatar acabou de
+   * abrir, depois de a pessoa logar manualmente lá. O Radar não tem acesso
+   * a outras abas do navegador sozinho; só a extensão consegue.
+   */
+  function captureApinfoContact(job: Job) {
+    if (!job.externalId) {
+      setContactCaptureMsg({ text: "Esta vaga não tem código do APinfo identificado.", error: true });
+      return;
+    }
+    const requestId = crypto.randomUUID();
+    contactRequestRef.current = { requestId, jobId: job.id };
+    setContactCapturing(true);
+    setContactCaptureMsg({ text: "Lendo a aba do APinfo…", error: false });
+    window.postMessage(
+      { source: "radar-dashboard", type: "RADAR_CAPTURE_CONTACT", externalId: job.externalId, requestId },
+      window.location.origin,
+    );
+  }
+  // Escuta a resposta da extensão (repassada pelo radar-bridge.js). Registra
+  // uma única vez (dependências vazias) e lê contactRequestRef.current no
+  // momento da mensagem — não fecha sobre "selected"/"job", porque a pessoa
+  // pode trocar de vaga selecionada enquanto a extensão ainda está lendo a
+  // aba do APinfo, e o resultado precisa continuar valendo para a vaga
+  // certa (a que foi pedida), não para a que estiver em foco quando chegar.
+  useEffect(() => {
+    function handleExtensionMessage(event: MessageEvent) {
+      if (event.source !== window) return;
+      if (event.origin !== window.location.origin) return;
+      const data = event.data as
+        | { source?: string; type?: string; requestId?: string; ok?: boolean; email?: string; assunto?: string; error?: string }
+        | null;
+      if (!data || data.source !== "radar-extension" || data.type !== "RADAR_CAPTURE_CONTACT_RESULT") return;
+      const pending = contactRequestRef.current;
+      if (!pending || data.requestId !== pending.requestId) return;
+
+      contactRequestRef.current = null;
+      setContactCapturing(false);
+
+      if (!data.ok) {
+        setContactCaptureMsg({ text: data.error || "Não foi possível capturar o contato.", error: true });
+        return;
+      }
+
+      void (async () => {
+        const r = await fetch(`/api/jobs/${pending.jobId}/contact`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ contactEmail: data.email, contactSubject: data.assunto }),
+        });
+        if (!r.ok) {
+          setContactCaptureMsg({ text: "E-mail capturado, mas não foi possível salvar no Radar. Tente de novo.", error: true });
+          return;
+        }
+        setItems((current) =>
+          current.map((item) =>
+            item.id === pending.jobId ? { ...item, contactEmail: data.email, contactSubject: data.assunto } : item,
+          ),
+        );
+        setContactCaptureMsg({ text: `E-mail capturado: ${data.email}`, error: false });
+      })();
+    }
+    window.addEventListener("message", handleExtensionMessage);
+    return () => window.removeEventListener("message", handleExtensionMessage);
+  }, []);
   useEffect(() => {
     if (!shareMenuJobId) return;
     function handleOutsideClick(e: MouseEvent) {
@@ -1662,15 +1765,9 @@ export default function Dashboard() {
                     </p>
                   )}
                   {selectedJob.contactEmail && (
-                    <p className="list-head-dim job-detail-source" title="Capturado manualmente na tela de contato — não é gerado nem enviado por nós">
+                    <p className="list-head-dim job-detail-source" title="Capturado manualmente na tela de contato — abre um e-mail com mensagem padrão, pronta para revisar antes de enviar">
                       Contato:{" "}
-                      <a
-                        href={`mailto:${selectedJob.contactEmail}${
-                          selectedJob.contactSubject
-                            ? `?subject=${encodeURIComponent(selectedJob.contactSubject)}`
-                            : ""
-                        }`}
-                      >
+                      <a href={buildContactMailto(selectedJob) ?? `mailto:${selectedJob.contactEmail}`}>
                         {selectedJob.contactEmail}
                       </a>
                     </p>
@@ -1780,6 +1877,24 @@ export default function Dashboard() {
                 >
                   Candidatar
                 </button>
+                {isApinfoJob(selectedJob) && (
+                  <button
+                    className="analysis-toggle-btn"
+                    disabled={contactCapturing}
+                    title={
+                      selectedJob.contactEmail
+                        ? "Capturar de novo — substitui o e-mail salvo pelo que estiver na aba do APinfo agora"
+                        : "Clique em Candidatar, faça login no APinfo até ver Empresa/Email na tela, e clique aqui"
+                    }
+                    onClick={() => captureApinfoContact(selectedJob)}
+                  >
+                    {contactCapturing
+                      ? "Capturando…"
+                      : selectedJob.contactEmail
+                        ? "Recapturar e-mail"
+                        : "Capturar e-mail"}
+                  </button>
+                )}
                 <div className="share-wrap detail-more-actions">
                   <button
                     className="more-actions-trigger"
@@ -1806,6 +1921,14 @@ export default function Dashboard() {
                   })()}
                 </div>
               </div>
+              {contactCaptureMsg && (
+                <p
+                  className="list-head-dim"
+                  style={{ color: contactCaptureMsg.error ? "#b04a1a" : "#2e6b3e", margin: "-4px 0 10px" }}
+                >
+                  {contactCaptureMsg.text}
+                </p>
+              )}
               {profileMasteredSkills.length > 0 && (() => {
                 const missingImprove = selectedJob.stack
                   .filter((skill) => !profileMasteredSkills.some((s) => s.toLowerCase() === skill.toLowerCase()))

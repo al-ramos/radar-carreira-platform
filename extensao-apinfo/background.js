@@ -280,7 +280,53 @@ async function setContacts(map) {
   await chrome.storage.session.set({ apinfoContacts: map });
 }
 
+/**
+ * Acha a aba do APinfo mais recentemente usada. Usada pela ponte com o
+ * Radar (radar-bridge.js → background.js), onde não há um tabId explícito
+ * vindo de quem clicou — diferente do painel da própria extensão, que já
+ * roda na aba/janela certa e identifica o tabId antes de pedir a captura.
+ * Por isso CAPTURE_CONTACT_FOR_RADAR sempre confere o código da vaga
+ * capturada contra o código pedido, depois de achar a aba por aqui.
+ */
+async function findMostRecentApinfoTab() {
+  const tabs = await chrome.tabs.query({ url: 'https://www.apinfo.com/*' });
+  if (!tabs.length) return null;
+  tabs.sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0));
+  return tabs[0];
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.type === 'CAPTURE_CONTACT_FOR_RADAR') {
+    (async () => {
+      try {
+        const tab = await findMostRecentApinfoTab();
+        if (!tab) {
+          throw new Error('Nenhuma aba do APinfo encontrada. Clique em "Candidatar" para abrir a vaga, faça login e volte aqui.');
+        }
+        const contact = await collectContact(tab.id);
+
+        // Segurança: confirma que a aba do APinfo aberta é da MESMA vaga
+        // que o Radar pediu — evita salvar o contato errado numa vaga
+        // diferente se houver mais de uma aba do APinfo aberta ao mesmo
+        // tempo (ex.: a pessoa navegando duas vagas em paralelo).
+        if (message.externalId && contact.codigo !== String(message.externalId)) {
+          throw new Error(
+            `A aba aberta do APinfo mostra a vaga ${contact.codigo}, mas esta é a vaga ${message.externalId}. Abra a vaga certa (botão Candidatar) e tente de novo.`,
+          );
+        }
+
+        const contacts = await getContacts();
+        contacts[contact.codigo] = contact;
+        await setContacts(contacts);
+
+        sendResponse({ ok: true, email: contact.email, assunto: contact.assunto, empresa: contact.empresa });
+      } catch (error) {
+        sendResponse({ ok: false, error: error.message || 'Falha ao capturar o contato desta vaga.' });
+      }
+    })();
+    return true;
+  }
+
   if (message?.type === 'COLLECT_CURRENT_PAGE') {
     (async () => {
       try {
