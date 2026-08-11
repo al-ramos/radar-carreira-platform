@@ -1148,7 +1148,6 @@ export default function Dashboard() {
     const seniorityIntro = profileChoices.seniority.length
       ? `Atuo como profissional de TI nível ${profileChoices.seniority.join("/")}. `
       : "";
-    const signOff = currentUser?.fullName || currentUser?.displayName || "";
     const skillsLine = matchedSkills.length
       ? `${seniorityIntro}Tenho experiência com ${matchedSkills.join(", ")}, que ${matchedSkills.length === 1 ? "aparece" : "aparecem"} entre os requisitos da vaga${
           extraSkills.length ? `, além de ${extraSkills.join(", ")}` : ""
@@ -1160,8 +1159,7 @@ export default function Dashboard() {
       `Olá,\n\n` +
       `Tenho interesse na vaga de ${job.title} na ${job.company}${job.externalId ? ` (código ${job.externalId})` : ""}.\n\n` +
       skillsLine +
-      `Segue meu contato para conversarmos.` +
-      (signOff ? `\n\n${signOff}` : "");
+      `Segue meu contato para conversarmos.`;
     const query = [
       job.contactSubject ? `subject=${encodeURIComponent(job.contactSubject)}` : null,
       `body=${encodeURIComponent(body)}`,
