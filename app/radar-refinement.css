@@ -700,3 +700,31 @@
   .radar-filter-panel .fit-filter-profile-chip { justify-self: start; }
   .detail-more-actions { margin-left: 0; }
 }
+
+/* Lista mais estreita, painel de detalhe mais largo — o toolbar de ações
+   (Candidatar, Recapturar e-mail, Enviar e-mail, Encaminhar, etc.) cresceu
+   e precisa de mais espaço horizontal para não transbordar. */
+.workspace {
+  grid-template-columns: minmax(280px, .55fr) minmax(560px, 1.45fr) !important;
+}
+.detail {
+  padding: 20px 16px !important;
+}
+/* O toolbar sempre pode quebrar linha, não só no mobile — com 9 botões,
+   uma única linha não cabe nem em telas largas comuns. Botões menores
+   (padding/fonte reduzidos) fazem mais caberem por linha antes de quebrar. */
+.radar-job-actions {
+  flex-wrap: wrap !important;
+  row-gap: 8px !important;
+}
+.radar-job-actions button,
+.detail-actions button {
+  padding: 7px 10px !important;
+  font-size: 10px !important;
+  min-height: 34px !important;
+}
+@media (max-width: 1300px) {
+  .workspace {
+    grid-template-columns: minmax(260px, .5fr) minmax(480px, 1.5fr) !important;
+  }
+}
