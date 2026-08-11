@@ -1124,11 +1124,17 @@ export default function Dashboard() {
   }
   /**
    * Monta o mailto: de contato com a vaga (usado no bloco "Contato:" do
-   * cabeçalho). Diferente de buildShareLinks (que encaminha a vaga para
-   * outra pessoa), este é endereçado à própria empresa — por isso já inclui
-   * um corpo padrão citando as skills que bateram com o perfil, como ponto
-   * de partida. Nunca é enviado sozinho: só abre o cliente de e-mail da
-   * pessoa para ela revisar e completar antes de mandar.
+   * cabeçalho e no botão "Capturar e-mail"). Diferente de buildShareLinks
+   * (que encaminha a vaga para outra pessoa), este é endereçado à própria
+   * empresa — por isso já inclui um corpo padrão citando as skills que
+   * bateram com o perfil (o mesmo dado do painel "Analisar candidatura") e,
+   * quando disponível, a senioridade e outras skills dominadas do perfil
+   * salvo. Nunca é enviado sozinho: só abre o cliente de e-mail da pessoa
+   * para ela revisar e completar antes de mandar.
+   *
+   * Deliberadamente NÃO usa o score nem as skills que faltam (❌ do painel
+   * de análise) — isso é um diagnóstico para a própria pessoa decidir se
+   * vale se candidatar, não algo a se contar para a empresa.
    */
   function buildContactMailto(job: Job) {
     if (!job.contactEmail) return null;
@@ -1136,10 +1142,20 @@ export default function Dashboard() {
     const matchedSkills = matchReasonRaw
       ? matchReasonRaw.replace(/✅ Skills:\s*/, "").replace(/\s*\(\+\d+\)$/, "").split(",").map((s) => s.trim()).filter(Boolean)
       : [];
+    const extraSkills = profileMasteredSkills
+      .filter((skill) => !matchedSkills.some((m) => m.toLowerCase() === skill.toLowerCase()))
+      .slice(0, 3);
+    const seniorityIntro = profileChoices.seniority.length
+      ? `Atuo como profissional de TI nível ${profileChoices.seniority.join("/")}. `
+      : "";
     const signOff = currentUser?.fullName || currentUser?.displayName || "";
     const skillsLine = matchedSkills.length
-      ? `Tenho experiência com ${matchedSkills.join(", ")}, que aparecem entre os requisitos da vaga.\n\n`
-      : "";
+      ? `${seniorityIntro}Tenho experiência com ${matchedSkills.join(", ")}, que ${matchedSkills.length === 1 ? "aparece" : "aparecem"} entre os requisitos da vaga${
+          extraSkills.length ? `, além de ${extraSkills.join(", ")}` : ""
+        }.\n\n`
+      : seniorityIntro
+        ? `${seniorityIntro}\n\n`
+        : "";
     const body =
       `Olá,\n\n` +
       `Tenho interesse na vaga de ${job.title} na ${job.company}${job.externalId ? ` (código ${job.externalId})` : ""}.\n\n` +
