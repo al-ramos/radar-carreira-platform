@@ -1120,9 +1120,9 @@ export default function Dashboard() {
     if (!job.contactEmail) return;
     const to = encodeURIComponent(job.contactEmail);
     const subject = encodeURIComponent(job.contactSubject || `Vaga: ${job.title}`);
-    // Abrir o compositor do Gmail é mais confiável do que depender de um
-    // programa de e-mail padrão configurado no Windows/navegador.
-    window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${to}&su=${subject}`, "_blank", "noopener,noreferrer");
+    // `mailto:` delega ao aplicativo padrão do Windows. Assim, quem usa o
+    // Outlook instalado abre uma nova mensagem nele, sem depender do Gmail.
+    window.location.href = `mailto:${to}?subject=${subject}`;
   }
   useEffect(() => {
     if (!shareMenuJobId) return;
