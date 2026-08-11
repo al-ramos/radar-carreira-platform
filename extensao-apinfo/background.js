@@ -273,11 +273,33 @@ async function setAccumulated(items) {
 
 /** Contatos capturados manualmente, um por código de vaga (chave = codigo_apinfo). */
 async function getContacts() {
-  const { apinfoContacts } = await chrome.storage.session.get('apinfoContacts');
-  return apinfoContacts || {};
+  const local = await chrome.storage.local.get('apinfoContacts');
+  if (local.apinfoContacts) return local.apinfoContacts;
+  const legacy = await chrome.storage.session.get('apinfoContacts');
+  if (legacy.apinfoContacts) await chrome.storage.local.set({ apinfoContacts: legacy.apinfoContacts });
+  return legacy.apinfoContacts || {};
 }
 async function setContacts(map) {
-  await chrome.storage.session.set({ apinfoContacts: map });
+  await chrome.storage.local.set({ apinfoContacts: map });
+}
+
+/** Fila local: abrir uma referência por vez não captura nada automaticamente. */
+async function getContactQueue() {
+  const { apinfoContactQueue } = await chrome.storage.local.get('apinfoContactQueue');
+  return apinfoContactQueue && Array.isArray(apinfoContactQueue.items) ? apinfoContactQueue : { items: [] };
+}
+async function setContactQueue(queue) {
+  await chrome.storage.local.set({ apinfoContactQueue: queue });
+}
+function nextPending(queue) {
+  return queue.items.find(item => item.status === 'pending');
+}
+async function openContactQueueItem(item) {
+  const url = `https://www.apinfo.com/apinfo/inc/list4.cfm?keyw=${encodeURIComponent(item.codigo)}`;
+  const tabs = await chrome.tabs.query({ url: 'https://www.apinfo.com/*' });
+  const existing = tabs.sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0))[0];
+  if (existing?.id) await chrome.tabs.update(existing.id, { url, active: true });
+  else await chrome.tabs.create({ url, active: true });
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -341,6 +363,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         contacts[contact.codigo] = contact;
         await setContacts(contacts);
 
+        const queue = await getContactQueue();
+        const queued = queue.items.find(item => item.codigo === contact.codigo);
+        if (queued) {
+          queued.status = 'captured';
+          queued.capturedAt = contact.capturado_em;
+          await setContactQueue(queue);
+        }
+
         sendResponse({ ok: true, contact, totalContacts: Object.keys(contacts).length });
       } catch (error) {
         sendResponse({ ok: false, error: error.message || 'Falha ao capturar o contato desta vaga.' });
@@ -360,6 +390,67 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === 'CLEAR_CONTACTS') {
     (async () => {
       await setContacts({});
+      sendResponse({ ok: true });
+    })();
+    return true;
+  }
+
+  if (message?.type === 'GET_CONTACT_QUEUE') {
+    (async () => sendResponse({ ok: true, queue: await getContactQueue() }))();
+    return true;
+  }
+
+  if (message?.type === 'CREATE_CONTACT_QUEUE') {
+    (async () => {
+      const requested = new Set((message.codes || []).map(value => String(value).trim()).filter(Boolean));
+      const [accumulated, contacts] = await Promise.all([getAccumulated(), getContacts()]);
+      const jobsByCode = new Map(accumulated.map(job => [String(job.codigo_apinfo), job]));
+      const candidates = requested.size
+        ? [...requested].map(codigo => jobsByCode.get(codigo) || { codigo_apinfo: codigo, titulo: 'Vaga APinfo', empresa: '' })
+        : accumulated;
+      const items = candidates
+        .filter(job => !contacts[job.codigo_apinfo])
+        .map(job => ({ codigo: String(job.codigo_apinfo), titulo: job.titulo || 'Vaga APinfo', empresa: job.empresa || '', status: 'pending' }));
+      if (!items.length) {
+        sendResponse({ ok: false, error: requested.size ? 'Todos os códigos informados já têm contato capturado.' : 'Colete ao menos uma página ou informe códigos que ainda não tenham contato.' });
+        return;
+      }
+      await setContactQueue({ items, createdAt: new Date().toISOString() });
+      sendResponse({ ok: true, total: items.length });
+    })().catch(error => sendResponse({ ok: false, error: error.message || 'Não foi possível criar a fila.' }));
+    return true;
+  }
+
+  if (message?.type === 'OPEN_NEXT_CONTACT') {
+    (async () => {
+      const queue = await getContactQueue();
+      const item = nextPending(queue);
+      if (!item) throw new Error('Não há vaga pendente na fila.');
+      await openContactQueueItem(item);
+      const position = queue.items.indexOf(item) + 1;
+      sendResponse({ ok: true, item, position, total: queue.items.length });
+    })().catch(error => sendResponse({ ok: false, error: error.message || 'Não foi possível abrir a próxima vaga.' }));
+    return true;
+  }
+
+  if (message?.type === 'SKIP_CONTACT_QUEUE_ITEM') {
+    (async () => {
+      const queue = await getContactQueue();
+      const skipped = nextPending(queue);
+      if (!skipped) throw new Error('Não há vaga pendente na fila.');
+      skipped.status = 'skipped';
+      skipped.skippedAt = new Date().toISOString();
+      await setContactQueue(queue);
+      const next = nextPending(queue);
+      if (next) await openContactQueueItem(next);
+      sendResponse({ ok: true, skipped, next: next || null });
+    })().catch(error => sendResponse({ ok: false, error: error.message || 'Não foi possível pular a vaga.' }));
+    return true;
+  }
+
+  if (message?.type === 'CLEAR_CONTACT_QUEUE') {
+    (async () => {
+      await setContactQueue({ items: [] });
       sendResponse({ ok: true });
     })();
     return true;

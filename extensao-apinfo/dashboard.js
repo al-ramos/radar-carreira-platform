@@ -175,8 +175,57 @@ async function collectContact() {
       return;
     }
     await refreshContactCount();
+    await refreshContactQueue();
     showContactStatus(`Contato salvo: vaga ${response.contact.codigo} — ${response.contact.email}.`);
   });
+}
+
+const queueCodesInput = document.querySelector('#queue-codes');
+const contactQueueSummary = document.querySelector('#contact-queue-summary');
+
+function queueCodes() {
+  return queueCodesInput.value.split(',').map(value => value.trim()).filter(Boolean);
+}
+
+async function refreshContactQueue() {
+  const response = await chrome.runtime.sendMessage({ type: 'GET_CONTACT_QUEUE' });
+  const queue = response?.queue || { items: [] };
+  const pending = queue.items.filter(item => item.status === 'pending').length;
+  const captured = queue.items.filter(item => item.status === 'captured').length;
+  const skipped = queue.items.filter(item => item.status === 'skipped').length;
+  contactQueueSummary.textContent = queue.items.length
+    ? `Fila: ${pending} pendente${pending === 1 ? '' : 's'}, ${captured} capturado${captured === 1 ? '' : 's'}${skipped ? `, ${skipped} pulada${skipped === 1 ? '' : 's'}` : ''}.`
+    : 'Nenhuma fila criada.';
+}
+
+async function createContactQueue() {
+  const response = await chrome.runtime.sendMessage({ type: 'CREATE_CONTACT_QUEUE', codes: queueCodes() });
+  if (!response?.ok) {
+    showContactStatus(response?.error || 'Não foi possível criar a fila.', true);
+    return;
+  }
+  await refreshContactQueue();
+  showContactStatus(`Fila criada com ${response.total} vaga${response.total === 1 ? '' : 's'} sem contato.`);
+}
+
+async function openNextContact() {
+  const response = await chrome.runtime.sendMessage({ type: 'OPEN_NEXT_CONTACT' });
+  if (!response?.ok) {
+    showContactStatus(response?.error || 'Não há próxima vaga na fila.', true);
+    return;
+  }
+  await refreshContactQueue();
+  showContactStatus(`Vaga ${response.item.codigo} aberta (${response.position} de ${response.total}). Faça login/navegue até o contato e clique em Capturar contato desta vaga.`);
+}
+
+async function skipContact() {
+  const response = await chrome.runtime.sendMessage({ type: 'SKIP_CONTACT_QUEUE_ITEM' });
+  if (!response?.ok) {
+    showContactStatus(response?.error || 'Não há vaga pendente para pular.', true);
+    return;
+  }
+  await refreshContactQueue();
+  showContactStatus(`Vaga ${response.skipped.codigo} pulada. A próxima foi aberta.`);
 }
 
 const autoDelayInput = document.querySelector('#auto-delay');
@@ -307,6 +356,14 @@ async function exportAccumulated() {
 
 document.querySelector('#collect-page').addEventListener('click', collectCurrentPage);
 document.querySelector('#collect-contact').addEventListener('click', collectContact);
+document.querySelector('#create-contact-queue').addEventListener('click', createContactQueue);
+document.querySelector('#open-next-contact').addEventListener('click', openNextContact);
+document.querySelector('#skip-contact').addEventListener('click', skipContact);
+document.querySelector('#clear-contact-queue').addEventListener('click', async () => {
+  await chrome.runtime.sendMessage({ type: 'CLEAR_CONTACT_QUEUE' });
+  await refreshContactQueue();
+  showContactStatus('Fila de contatos limpa.');
+});
 document.querySelector('#clear-contacts').addEventListener('click', async () => {
   await chrome.runtime.sendMessage({ type: 'CLEAR_CONTACTS' });
   await refreshContactCount();
@@ -323,3 +380,4 @@ document.querySelector('#export').addEventListener('click', exportAccumulated);
 loadSettings();
 refreshProgress();
 refreshContactCount();
+refreshContactQueue();

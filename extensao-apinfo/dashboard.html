@@ -40,6 +40,21 @@
       </div>
       <div class="status" id="contact-status" aria-live="polite"></div>
       <small id="contact-count">Nenhum contato capturado ainda.</small>
+
+      <div class="contact-queue">
+        <h3>Fila semiassistida</h3>
+        <p>Crie uma fila com as vagas já acumuladas. A extensão abre uma vaga por vez; você faz login, navega até a tela de contato e confirma a captura manualmente.</p>
+        <label>Códigos específicos (opcional, separados por vírgula)
+          <input id="queue-codes" type="text" placeholder="85654, 85655">
+        </label>
+        <div class="actions">
+          <button class="secondary" id="create-contact-queue" type="button">Criar fila</button>
+          <button class="primary" id="open-next-contact" type="button">Abrir próxima vaga</button>
+          <button class="secondary" id="skip-contact" type="button">Pular vaga</button>
+          <button class="secondary" id="clear-contact-queue" type="button">Limpar fila</button>
+        </div>
+        <small id="contact-queue-summary">Nenhuma fila criada.</small>
+      </div>
     </section>
 
     <section class="settings">
