@@ -119,6 +119,10 @@ export async function GET(request: Request) {
       publishedAt: jobs.publishedAt,
       url: jobs.url,
       applyUrl: jobs.applyUrl,
+      // O painel precisa receber o contato já na listagem para exibir as
+      // ações de e-mail sem exigir que a pessoa abra outra tela da vaga.
+      contactEmail: jobs.contactEmail,
+      contactSubject: jobs.contactSubject,
       description: degradedMode
         ? sql<string>`''`
         : requiresPostFiltering
