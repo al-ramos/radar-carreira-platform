@@ -114,6 +114,11 @@
   padding: 14px;
   position: sticky;
   top: 0;
+  /* Mantém o painel inteiro acessível em telas baixas ou com fonte ampliada. */
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 /* Score bar */
 .analysis-score-bar {
