@@ -15,6 +15,9 @@ test("a listagem pagina no D1 antes de enriquecer o fluxo normal", async () => {
   assert.match(route, /substr\(\$\{jobs\.description\}/);
   assert.match(route, /const \[rows, eligibleTotals, sourceTotals\]/);
   assert.match(route, /verdictFilter !== "all" && masteredSkills\.length/);
+  assert.match(route, /isTechnologyJob/);
+  assert.match(route, /profileHasScoringSignals \? requestedMinScore : 0/);
+  assert.match(route, /Vaga fora do escopo de TI — sem pontuação/);
 });
 
 test("a coleta agendada processa apenas uma fonte por chamada", async () => {
@@ -30,6 +33,8 @@ test("falha da API não exibe as quatro vagas demonstrativas", async () => {
   assert.match(dashboard, /searchParams\.set\("degraded", "1"\)/);
   assert.match(dashboard, /modo simplificado/);
   assert.match(dashboard, /Mantendo a última lista carregada/);
+  assert.match(dashboard, /sem score/);
+  assert.doesNotMatch(dashboard, /score: j\.score \?\? 70/);
   assert.doesNotMatch(dashboard, /\.catch\(\(\) => \{\s*setItems\(\[\]\)/);
 });
 

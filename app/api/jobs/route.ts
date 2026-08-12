@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../chatgpt-auth";
 import { getDb } from "../../../db/index";
 import { jobs, platformSettings, profiles, userJobStatus } from "../../../db/schema";
-import { scoreJob } from "../../../lib/scoring";
+import { isTechnologyJob, scoreJob } from "../../../lib/scoring";
 import { inferTechnologyStack } from "../../../lib/technology-stack";
 import { allowedWorkModes, listFromStored } from "../../../lib/profile-options";
 import { computeVerdict, type VerdictEmoji } from "../../../lib/verdict";
@@ -53,7 +53,7 @@ user
 
 const searchQuery = (url.searchParams.get("q") ?? "").trim().toLowerCase();
 const minScoreParam = degradedMode ? null : url.searchParams.get("minScore");
-const minScore = minScoreParam !== null && Number.isFinite(Number(minScoreParam))
+const requestedMinScore = minScoreParam !== null && Number.isFinite(Number(minScoreParam))
 ? Math.max(0, Math.min(100, Number(minScoreParam)))
 : 0;
 const pipelineFilter = degradedMode ? "all" : url.searchParams.get("pipeline") ?? "all";
@@ -83,6 +83,18 @@ const sourceCondition = sourceType === "linkedin"
 : baseCondition;
 
 const selectedSeniority = profile ? listFromStored(profile.seniority) : [];
+const masteredSkills = profile ? listFromStored(profile.masteredSkills) : [];
+const desiredAreas = profile ? listFromStored(profile.desiredAreas) : [];
+const preferredMode = profile ? allowedWorkModes(profile.preferredMode) : [];
+const profileHasScoringSignals = Boolean(profile) && [
+masteredSkills,
+desiredAreas,
+selectedSeniority,
+preferredMode,
+].some((values) => values.length > 0);
+// Um filtro de aderência só é válido quando há perfil para calcular a aderência.
+// Sem isso, mantemos as vagas visíveis com "sem score".
+const minScore = profileHasScoringSignals ? requestedMinScore : 0;
 const seniorityCondition = selectedSeniority.length
 ? or(isNull(jobs.seniority), ...selectedSeniority.map((level) => like(jobs.seniority, `%${level}%`)))
 : undefined;
@@ -140,10 +152,12 @@ sources: sql<number>`count(distinct ${jobs.sourceId})`,
 }).from(jobs).where(baseCondition),
 ]);
 
-const masteredSkills = profile ? listFromStored(profile.masteredSkills) : [];
 const enriched = rows.map((job) => {
 const stack = inferTechnologyStack(`${job.title} ${job.description}`, parse(job.stack));
-const match = profile
+const isTechJob = isTechnologyJob({ title: job.title, description: job.description, stack });
+const match = !isTechJob
+? { score: 0, reasons: ["Vaga fora do escopo de TI — sem pontuação"], scored: false }
+: profileHasScoringSignals
 ? scoreJob(
 {
 title: job.title,
@@ -156,13 +170,13 @@ publishedAt: job.publishedAt,
 },
 {
 masteredSkills,
-desiredAreas: listFromStored(profile.desiredAreas),
+desiredAreas,
 avoidTerms: listFromStored(profile.avoidTerms),
 seniority: selectedSeniority,
-preferredMode: allowedWorkModes(profile.preferredMode),
+preferredMode,
 },
 )
-: { score: 70, reasons: ["Complete seu perfil para personalizar"] };
+: { score: 0, reasons: ["Complete seu perfil para calcular a aderência"], scored: false };
 const verdict = verdictFilter !== "all" && masteredSkills.length
 ? computeVerdict(
 {
@@ -175,7 +189,7 @@ workMode: job.workMode,
 masteredSkills,
 )
 : null;
-return { job, stack, score: match.score, reasons: match.reasons, verdict };
+return { job, stack, score: match.score, reasons: match.reasons, scored: "scored" in match ? match.scored : true, verdict };
 });
 
 const filtered = requiresPostFiltering
@@ -189,12 +203,13 @@ const totalCount = requiresPostFiltering
 ? filtered.length
 : Number(eligibleTotals[0]?.total ?? 0);
 const pageRows = requiresPostFiltering ? filtered.slice(offset, offset + limit) : filtered;
-const result = pageRows.map(({ job, stack, score, reasons }) => ({
+const result = pageRows.map(({ job, stack, score, reasons, scored }) => ({
 ...job,
 description: "",
 stack,
 score,
 reasons,
+scored,
 }));
 
 const totalLinkedIn = Number(sourceTotals[0]?.linkedIn ?? 0);
@@ -212,7 +227,7 @@ limit,
 hasMore: offset + limit < totalCount,
 limited: requiresPostFiltering && Number(eligibleTotals[0]?.total ?? 0) > MAX_FILTER_CANDIDATES,
 mode: "database",
-personalized: Boolean(profile),
+personalized: profileHasScoringSignals,
 degraded: degradedMode,
 period: period === "all" ? "all" : hours,
 });

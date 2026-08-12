@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { allowedWorkModes, listFromStored, normalizeMinScore } from "../lib/profile-options.ts";
-import { matchesSelectedSeniority, scoreJob } from "../lib/scoring.ts";
+import { isTechnologyJob, matchesSelectedSeniority, scoreJob } from "../lib/scoring.ts";
 import { analyzeStackFit } from "../lib/verdict.ts";
 
 test("preserva preferências novas e legadas como listas", () => {
@@ -22,7 +22,7 @@ test("preserva score mínimo zero e limita valores ao intervalo permitido", () =
 
 test("calcula aderência para mais de uma senioridade e modalidade", () => {
   const result = scoreJob(
-    { title: "Engenheira", description: "", stack: [], seniority: "Sênior", workMode: "Remoto" },
+    { title: "Engenheira de Software", description: "", stack: [], seniority: "Sênior", workMode: "Remoto" },
     { masteredSkills: [], desiredAreas: [], avoidTerms: [], seniority: ["Pleno", "Sênior"], preferredMode: ["Remoto"] },
   );
   assert.equal(result.score, 20);
@@ -41,6 +41,13 @@ test("pontua stacks de forma proporcional e não confunde nomes parciais", () =>
   const result = scoreJob({ title: "Pessoa desenvolvedora React", description: "Experiência com React.", stack: ["React"] }, profile);
   assert.equal(result.score, 20);
   assert.deepEqual(result.reasons, ["✅ Skills: React (+20)", "❌ Não menciona: Node.js, R"]);
+});
+
+test("não pontua vaga fora do escopo de TI", () => {
+  const job = { title: "Analista de Departamento Pessoal Sênior", description: "Rotinas de admissão e folha de pagamento.", stack: [] };
+  const profile = { masteredSkills: ["React"], desiredAreas: ["Tecnologia"], avoidTerms: [], seniority: ["Sênior"], preferredMode: ["Remoto"] };
+  assert.equal(isTechnologyJob(job), false);
+  assert.deepEqual(scoreJob(job, profile), { score: 0, reasons: ["Vaga fora do escopo de TI — sem pontuação"] });
 });
 
 test("mostra como impedimento as stacks exigidas pela vaga que faltam no perfil", () => {

@@ -23,6 +23,7 @@ import { analyzeStackFit, computeVerdict, VerdictResult } from "../lib/verdict";
 type Job = {
   id: string;
   score: number;
+  scored: boolean;
   title: string;
   company: string;
   location: string;
@@ -44,6 +45,7 @@ type Job = {
 type ApiJob = {
   id: string;
   score?: number;
+  scored?: boolean;
   title: string;
   company: string;
   location?: string;
@@ -198,6 +200,7 @@ const demo: Job[] = [
   {
     id: "demo-1",
     score: 94,
+    scored: true,
     title: "Senior Cloud Security Engineer",
     company: "Nubank",
     location: "Brasil",
@@ -210,6 +213,7 @@ const demo: Job[] = [
   {
     id: "demo-2",
     score: 89,
+    scored: true,
     title: "Security Operations Lead",
     company: "CloudWalk",
     location: "São Paulo",
@@ -222,6 +226,7 @@ const demo: Job[] = [
   {
     id: "demo-3",
     score: 84,
+    scored: true,
     title: "DevSecOps Engineer",
     company: "Stone",
     location: "Brasil",
@@ -234,6 +239,7 @@ const demo: Job[] = [
   {
     id: "demo-4",
     score: 78,
+    scored: true,
     title: "Cybersecurity Specialist",
     company: "Mercado Livre",
     location: "Osasco",
@@ -322,7 +328,8 @@ function jobProviderLabel(job: Job): string {
 }
 const adapt = (j: ApiJob): Job => ({
   id: j.id,
-  score: j.score ?? 70,
+  score: j.score ?? 0,
+  scored: j.scored ?? false,
   title: j.title,
   company: j.company,
   location: j.location ?? "Não informado",
@@ -1643,7 +1650,7 @@ export default function Dashboard() {
                 key={j.id}
                 role="button"
                 tabIndex={0}
-                className={`job-card ${selectedJob?.id === j.id ? "selected" : ""} ${currentUser ? "job-card-scored" : ""}`}
+                className={`job-card ${selectedJob?.id === j.id ? "selected" : ""} ${currentUser && j.scored ? "job-card-scored" : ""}`}
                 onClick={() => selectJob(j)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
@@ -1654,10 +1661,17 @@ export default function Dashboard() {
               >
                 <div className="score">
                   {currentUser ? (
-                    <>
-                      {j.score}
-                      <small>match</small>
-                    </>
+                    j.scored ? (
+                      <>
+                        {j.score}
+                        <small>match</small>
+                      </>
+                    ) : (
+                      <span title={j.reasons[0] ?? "Sem dados suficientes para calcular a aderência"}>
+                        —
+                        <small>sem score</small>
+                      </span>
+                    )
                   ) : (
                     <span
                       className="score-locked"
@@ -1816,19 +1830,26 @@ export default function Dashboard() {
                 </div>
                 <span className="fit-inline">
                   {currentUser ? (
-                    <>
-                      <strong>{selectedJob.score}%</strong>
-                      <small>match</small>
-                      <div className="fit-inline-bar">
-                        <div
-                          className="fit-inline-bar-fill"
-                          style={{
-                            width: `${selectedJob.score}%`,
-                            background: selectedJob.score >= 80 ? "#2e6b3e" : selectedJob.score >= 60 ? "#7a6200" : "#b04a1a",
-                          }}
-                        />
-                      </div>
-                    </>
+                    selectedJob.scored ? (
+                      <>
+                        <strong>{selectedJob.score}%</strong>
+                        <small>match</small>
+                        <div className="fit-inline-bar">
+                          <div
+                            className="fit-inline-bar-fill"
+                            style={{
+                              width: `${selectedJob.score}%`,
+                              background: selectedJob.score >= 80 ? "#2e6b3e" : selectedJob.score >= 60 ? "#7a6200" : "#b04a1a",
+                            }}
+                          />
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <strong title={selectedJob.reasons[0]}>—</strong>
+                        <small>sem score</small>
+                      </>
+                    )
                   ) : (
                     <span
                       className="fit-inline-locked"
@@ -2028,17 +2049,19 @@ export default function Dashboard() {
                   return (
                     <aside className="job-analysis-panel">
                       <div className="analysis-score-bar">
-                        <span className="analysis-score-num">{selectedJob.score}%</span>
+                        <span className="analysis-score-num">{selectedJob.scored ? `${selectedJob.score}%` : "—"}</span>
                         <div className="analysis-score-track">
-                          <div className="analysis-score-fill" style={{ width: `${selectedJob.score}%`, background: selectedJob.score >= 80 ? "#2e6b3e" : selectedJob.score >= 60 ? "#4a7a35" : "#b04a1a" }} />
+                          <div className="analysis-score-fill" style={{ width: `${selectedJob.scored ? selectedJob.score : 0}%`, background: selectedJob.score >= 80 ? "#2e6b3e" : selectedJob.score >= 60 ? "#4a7a35" : "#b04a1a" }} />
                         </div>
                         <span className="analysis-score-label" style={{ color: verdictColor }}>
-                          {verdict.emoji} {verdict.label}
-                          {verdict.blocker && <><br /><span style={{ fontSize: "8px", fontWeight: 400 }}>{verdict.blocker}</span></>}
+                          {selectedJob.scored ? <>
+                            {verdict.emoji} {verdict.label}
+                            {verdict.blocker && <><br /><span style={{ fontSize: "8px", fontWeight: 400 }}>{verdict.blocker}</span></>}
+                          </> : selectedJob.reasons[0]}
                         </span>
                       </div>
 
-                      <table className="verdict-table">
+                      {selectedJob.scored && <table className="verdict-table">
                         <tbody>
                           {verdict.rows.map((row) => (
                             <tr key={row.criterion} className={row.ok === false ? "verdict-row-bad" : row.ok === true ? "verdict-row-ok" : ""}>
@@ -2047,9 +2070,9 @@ export default function Dashboard() {
                             </tr>
                           ))}
                         </tbody>
-                      </table>
+                      </table>}
 
-                      {(() => {
+                      {selectedJob.scored && (() => {
                         const stackFit = analyzeStackFit(analysisStack, profileMasteredSkills);
                         return (
                           <>
@@ -2103,8 +2126,8 @@ export default function Dashboard() {
             </button>
             <div className="job-detail-heading">
               <div className="fit-badge">
-                <strong>{detailJob.score}</strong>
-                <small>FIT</small>
+                <strong>{detailJob.scored ? detailJob.score : "—"}</strong>
+                <small>{detailJob.scored ? "FIT" : "SEM SCORE"}</small>
               </div>
               <div>
                 <p className="eyebrow">ANÁLISE DE ADERÊNCIA</p>

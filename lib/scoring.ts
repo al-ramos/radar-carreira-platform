@@ -25,6 +25,15 @@ const REMOTE_TERMS = ["remoto", "remote", "home office"];
 const ONSITE_TERMS = ["presencial", "on-site", "onsite", "in-office"];
 const HYBRID_TERMS = ["híbrido", "hibrido", "hybrid", "flexível", "flexivel"];
 
+/** Sinais suficientes para separar vagas de TI de funções administrativas ou comerciais. */
+const TECHNOLOGY_JOB_RE = /\b(?:desenvolv(?:edor|edora|imento)|developer|software|programa(?:dor|dora|ção)|engenheir[oa]\s+(?:de\s+)?(?:software|dados|data|cloud)|analista\s+(?:de\s+)?(?:sistemas|dados|data|infra(?:estrutura)?|segurança|security|qa)|(?:full[ -]?stack|front[ -]?end|back[ -]?end|devops|sre|devsecops|cybersecurity|cibersegurança|cloud|infraestrutura|tecnologia(?:s)?\s+(?:da\s+)?informa(?:ç|c)ão|\bti\b|ci[eê]ncia\s+de\s+dados|data\s+(?:engineer|scientist|analyst)|machine\s+learning|ia\b|qa\b|test(?:er|es)|arquitet[oa]\s+(?:de\s+)?software))\b/i;
+
+/** Só vagas técnicas recebem pontos; vagas fora de TI continuam visíveis, mas sem aderência calculada. */
+export function isTechnologyJob(job: Pick<ScoreInput, "title" | "description" | "stack">): boolean {
+ const text=`${job.title} ${job.description}`;
+ return TECHNOLOGY_JOB_RE.test(text)||job.stack.some(skill=>Boolean(skill.trim()));
+}
+
 // Cidades aceitas para presencial/híbrido
 const ACCEPTED_CITIES = [
   "são paulo", "sao paulo", "sp", "mogi das cruzes", "mogi", "grande são paulo", "grande sp", "abc paulista",
@@ -54,6 +63,7 @@ export function matchesSelectedSeniority(jobSeniority:string|null|undefined,sele
 }
 
 export function scoreJob(job:ScoreInput,profile:ScoreProfile){
+ if(!isTechnologyJob(job))return{score:0,reasons:["Vaga fora do escopo de TI — sem pontuação"]};
  const text=`${job.title} ${job.description} ${job.stack.join(" ")}`;
  if(has(text,profile.avoidTerms))return{score:0,reasons:["Contém termo bloqueado"]};
  let score=0;const reasons:string[]=[];
