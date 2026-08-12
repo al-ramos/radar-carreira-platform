@@ -66,7 +66,7 @@ export function scoreJob(job:ScoreInput,profile:ScoreProfile){
  if(!isTechnologyJob(job))return{score:0,reasons:["Vaga fora do escopo de TI — sem pontuação"]};
  const text=`${job.title} ${job.description} ${job.stack.join(" ")}`;
  if(has(text,profile.avoidTerms))return{score:0,reasons:["Contém termo bloqueado"]};
- let score=0;const reasons:string[]=[];
+ let score=5;const reasons:string[]=["Vaga de TI (+5)"];
 
  // --- Skills (até 60 pts) ---
  const selectedSkills=[...new Map(profile.masteredSkills.filter(Boolean).map(skill=>[normalize(skill),skill.trim()])).values()];

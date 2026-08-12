@@ -25,8 +25,8 @@ test("calcula aderência para mais de uma senioridade e modalidade", () => {
     { title: "Engenheira de Software", description: "", stack: [], seniority: "Sênior", workMode: "Remoto" },
     { masteredSkills: [], desiredAreas: [], avoidTerms: [], seniority: ["Pleno", "Sênior"], preferredMode: ["Remoto"] },
   );
-  assert.equal(result.score, 20);
-  assert.deepEqual(result.reasons, ["Senioridade compatível (+10)", "Modalidade preferida (+10)"]);
+  assert.equal(result.score, 25);
+  assert.deepEqual(result.reasons, ["Vaga de TI (+5)", "Senioridade compatível (+10)", "Modalidade preferida (+10)"]);
 });
 
 test("senioridades aceitas excluem vagas de outro nível e vagas sem nível", () => {
@@ -39,8 +39,8 @@ test("senioridades aceitas excluem vagas de outro nível e vagas sem nível", ()
 test("pontua stacks de forma proporcional e não confunde nomes parciais", () => {
   const profile = { masteredSkills: ["React", "Node.js", "R"], desiredAreas: [], avoidTerms: [], seniority: [], preferredMode: [] };
   const result = scoreJob({ title: "Pessoa desenvolvedora React", description: "Experiência com React.", stack: ["React"] }, profile);
-  assert.equal(result.score, 20);
-  assert.deepEqual(result.reasons, ["✅ Skills: React (+20)", "❌ Não menciona: Node.js, R"]);
+  assert.equal(result.score, 25);
+  assert.deepEqual(result.reasons, ["Vaga de TI (+5)", "✅ Skills: React (+20)", "❌ Não menciona: Node.js, R"]);
 });
 
 test("não pontua vaga fora do escopo de TI", () => {
