@@ -6,6 +6,7 @@ export const profiles = sqliteTable("profiles", {
   preferredMode: text("preferred_mode"), cities: text("cities").notNull().default("[]"),
   masteredSkills: text("mastered_skills").notNull().default("[]"), desiredAreas: text("desired_areas").notNull().default("[]"),
   avoidTerms: text("avoid_terms").notNull().default("[]"), minScore: integer("min_score").notNull().default(60),
+  careerRules: text("career_rules").notNull().default("{}"),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
 });
 
@@ -45,6 +46,48 @@ export const userJobStatus = sqliteTable("user_job_status", {
   stage: text("stage", { enum: ["viewed", "saved", "applied", "interview", "rejected", "archived"] }).notNull().default("viewed"),
   note: text("note"), updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
 }, t => [primaryKey({ columns: [t.userId, t.jobId] })]);
+
+export const userJobAnalyses = sqliteTable("user_job_analyses", {
+  userId: text("user_id").notNull(),
+  jobId: text("job_id").notNull().references(() => jobs.id),
+  profileVersion: integer("profile_version", { mode: "timestamp_ms" }).notNull(),
+  verdict: text("verdict", { enum: ["✅", "🟡", "🔴", "❌"] }).notNull(),
+  label: text("label").notNull(),
+  blocker: text("blocker"),
+  rows: text("rows").notNull().default("[]"),
+  matchingSkills: text("matching_skills").notNull().default("[]"),
+  missingSkills: text("missing_skills").notNull().default("[]"),
+  source: text("source", { enum: ["rules", "ai"] }).notNull().default("rules"),
+  confidence: integer("confidence").notNull().default(100),
+  explanation: text("explanation"),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+}, t => [primaryKey({ columns: [t.userId, t.jobId] })]);
+
+export const jobAiFacts = sqliteTable("job_ai_facts", {
+  jobId: text("job_id").primaryKey().references(() => jobs.id),
+  descriptionHash: text("description_hash").notNull(),
+  analyzerVersion: text("analyzer_version").notNull(),
+  facts: text("facts").notNull(),
+  provider: text("provider").notNull(),
+  model: text("model").notNull(),
+  inputTokens: integer("input_tokens").notNull().default(0),
+  outputTokens: integer("output_tokens").notNull().default(0),
+  analyzedAt: integer("analyzed_at", { mode: "timestamp_ms" }).notNull(),
+});
+
+export const aiUsageEvents = sqliteTable("ai_usage_events", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  jobId: text("job_id").references(() => jobs.id),
+  operation: text("operation", { enum: ["extract_job", "resolve_ambiguity", "generate_email"] }).notNull(),
+  provider: text("provider").notNull(),
+  model: text("model").notNull(),
+  inputTokens: integer("input_tokens").notNull().default(0),
+  outputTokens: integer("output_tokens").notNull().default(0),
+  status: text("status", { enum: ["completed", "failed", "blocked_budget"] }).notNull(),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+});
 
 export const jobEvents = sqliteTable("job_events", {
   id: integer("id").primaryKey({ autoIncrement: true }), jobId: text("job_id").notNull().references(() => jobs.id),

@@ -2,7 +2,8 @@
 
 import { KeyboardEvent, useState } from "react";
 import {
-  AREA_OPTIONS, AVOID_TERM_OPTIONS, ProfileChoices, SENIORITY_OPTIONS, SKILL_GROUPS, SKILL_OPTIONS, WORK_MODE_OPTIONS,
+  AREA_OPTIONS, AVOID_TERM_OPTIONS, BLOCKED_WORK_TYPE_OPTIONS, CONTRACT_OPTIONS, DAILY_LANGUAGE_OPTIONS,
+  ProfileChoices, REGION_OPTIONS, SENIORITY_OPTIONS, SKILL_GROUPS, SKILL_OPTIONS, WORK_MODE_OPTIONS,
 } from "../lib/profile-options";
 import AdminSettings from "./AdminSettings";
 
@@ -14,6 +15,7 @@ type Props = {
   message: string;
   isAdmin: boolean;
   isOwner: boolean;
+  aiStatus?: { provider: { configured: boolean; provider: string | null; model: string | null }; usage: { usedTokens: number; limit: number; remainingTokens: number; period: string } } | null;
 };
 
 type ChoiceFieldProps = {
@@ -66,19 +68,46 @@ function ChoiceField({ label, hint, options, groups, value, onChange, customPlac
   </details>;
 }
 
-export default function ProfilePreferences({ value, onChange, onSave, onClose, message, isAdmin, isOwner }: Props) {
+export default function ProfilePreferences({ value, onChange, onSave, onClose, message, isAdmin, isOwner, aiStatus }: Props) {
   const update = <K extends keyof ProfileChoices>(key: K, next: ProfileChoices[K]) => onChange({ ...value, [key]: next });
+  const updateCareerRule = <K extends keyof ProfileChoices["careerRules"]>(key: K, next: ProfileChoices["careerRules"][K]) =>
+    update("careerRules", { ...value.careerRules, [key]: next });
   return <div className="modal-backdrop" onClick={onClose}>
     <section className="modal profile-choice-modal" onClick={event => event.stopPropagation()}>
       <button className="modal-close" onClick={onClose} aria-label="Fechar preferências">×</button>
       <p className="eyebrow">MEU PERFIL</p><h2>Preferências do radar</h2>
       <p>Selecione o que procura. Você também pode incluir qualquer opção personalizada.</p>
+      <section className="career-profile-section" aria-labelledby="career-positioning-title">
+        <div className="career-profile-heading">
+          <div><span>PERSONALIZAÇÃO</span><h3 id="career-positioning-title">Como o Radar deve representar você</h3></div>
+          <small>Estas informações afetam o veredito e a candidatura de cada vaga.</small>
+        </div>
+        <div className="career-profile-grid">
+          <label>Título de apresentação<input value={value.careerRules.professionalTitle} onChange={event => updateCareerRule("professionalTitle", event.target.value)} placeholder="Ex.: Desenvolvedor .NET Pleno" /></label>
+          <label>Localização-base<input value={value.careerRules.baseLocation} onChange={event => updateCareerRule("baseLocation", event.target.value)} placeholder="Ex.: Mogi das Cruzes, SP" /></label>
+          <label>Dias presenciais por semana<input type="number" min="0" max="7" value={value.careerRules.maxHybridDays} onChange={event => updateCareerRule("maxHybridDays", Math.max(0, Math.min(7, Number(event.target.value) || 0)))} /></label>
+          <label>Limite mensal de tokens<input type="number" min="0" max="10000000" step="1000" value={value.careerRules.aiMonthlyTokenLimit} onChange={event => updateCareerRule("aiMonthlyTokenLimit", Math.max(0, Math.min(10000000, Number(event.target.value) || 0)))} /></label>
+        </div>
+        <label className="career-profile-wide">Resumo profissional<textarea value={value.careerRules.professionalSummary} onChange={event => updateCareerRule("professionalSummary", event.target.value)} placeholder="Experiência, diferenciais e posicionamento que podem ser usados nas análises e candidaturas." /></label>
+        <label className="career-profile-wide">Projeto ou experiência-âncora<textarea value={value.careerRules.anchorProject} onChange={event => updateCareerRule("anchorProject", event.target.value)} placeholder="Projeto relevante que comprova suas competências sem exagerar capacidades." /></label>
+        <label className="career-disclosure"><input type="checkbox" checked={value.careerRules.discloseGapsInEmail} onChange={event => updateCareerRule("discloseGapsInEmail", event.target.checked)} /><span><strong>Mencionar gaps no e-mail</strong><small>Quando ativado, a candidatura informa honestamente requisitos da vaga que não constam no perfil.</small></span></label>
+        <div className="ai-profile-status" role="status">
+          <span className={aiStatus?.provider.configured ? "configured" : "pending"} aria-hidden="true" />
+          <div><strong>{aiStatus?.provider.configured ? `IA configurada · ${aiStatus.provider.model}` : "IA ainda não configurada"}</strong><small>{aiStatus ? `${aiStatus.usage.usedTokens.toLocaleString("pt-BR")} de ${aiStatus.usage.limit.toLocaleString("pt-BR")} tokens usados em ${aiStatus.usage.period}` : "As regras personalizadas funcionam normalmente sem IA."}</small></div>
+        </div>
+      </section>
       <div className="profile-score-row"><label>Score mínimo<input type="number" min="0" max="100" value={value.minScore} onChange={event => update("minScore", Math.max(0, Math.min(100, Number(event.target.value) || 0)))} /></label><small>Exiba apenas oportunidades com score a partir deste valor.</small></div>
       <ChoiceField label="Senioridades aceitas" hint="Pode marcar mais de uma." options={SENIORITY_OPTIONS} value={value.seniority} onChange={next => update("seniority", next)} customPlaceholder="Outra senioridade" />
       <ChoiceField label="Formato de trabalho" hint="Escolha remoto, presencial ou os dois. Sem seleção, todas as vagas continuam visíveis." options={WORK_MODE_OPTIONS} value={value.preferredMode} onChange={next => update("preferredMode", next)} customPlaceholder="" allowCustom={false} />
       <ChoiceField label="Competências dominadas" hint="Elas valem até 60 pontos: o score cresce proporcionalmente ao número de stacks selecionadas que a vaga atende." options={SKILL_OPTIONS} groups={SKILL_GROUPS} value={value.masteredSkills} onChange={next => update("masteredSkills", next)} customPlaceholder="Adicionar tecnologia" />
       <ChoiceField label="Áreas desejadas" hint="Usadas para destacar oportunidades do seu foco." options={AREA_OPTIONS} value={value.desiredAreas} onChange={next => update("desiredAreas", next)} customPlaceholder="Adicionar área" />
       <ChoiceField label="Termos a evitar" hint="Vagas que contêm estes termos ficam com score zero." options={AVOID_TERM_OPTIONS} value={value.avoidTerms} onChange={next => update("avoidTerms", next)} customPlaceholder="Adicionar termo" />
+      <ChoiceField label="Regiões aceitas" hint="Usadas para avaliar vagas híbridas ou presenciais." options={REGION_OPTIONS} value={value.careerRules.acceptedRegions} onChange={next => updateCareerRule("acceptedRegions", next)} customPlaceholder="Adicionar cidade ou região" />
+      <ChoiceField label="Contratos preferidos" hint="A ordem selecionada não bloqueia automaticamente outros regimes." options={CONTRACT_OPTIONS} value={value.careerRules.preferredContracts} onChange={next => updateCareerRule("preferredContracts", next)} customPlaceholder="" allowCustom={false} />
+      <ChoiceField label="Idiomas para comunicação diária" hint="Uma vaga que exigir outro idioma pode ser bloqueada." options={DAILY_LANGUAGE_OPTIONS} value={value.careerRules.dailyCommunicationLanguages} onChange={next => updateCareerRule("dailyCommunicationLanguages", next)} customPlaceholder="Adicionar idioma" />
+      <ChoiceField label="Senioridades bloqueadas" hint="Têm poder de veto, diferentemente das senioridades apenas menos desejadas." options={SENIORITY_OPTIONS} value={value.careerRules.blockedSeniorities} onChange={next => updateCareerRule("blockedSeniorities", next)} customPlaceholder="Outra senioridade" />
+      <ChoiceField label="Tipos de atuação bloqueados" hint="Use apenas para atividades que você realmente não aceita." options={BLOCKED_WORK_TYPE_OPTIONS} value={value.careerRules.blockedWorkTypes} onChange={next => updateCareerRule("blockedWorkTypes", next)} customPlaceholder="Adicionar tipo de atuação" />
+      <ChoiceField label="Exceções de stack" hint="Combinações ou domínios aceitos mesmo fora da stack principal." options={[]} value={value.careerRules.stackExceptions} onChange={next => updateCareerRule("stackExceptions", next)} customPlaceholder="Ex.: VBA + Access + SQL Server, QA .NET" />
       {message && <div className="notice">{message}</div>}<div className="source-actions"><button className="primary" onClick={onSave}>Salvar preferências</button></div>
       {isAdmin && <AdminSettings isOwner={isOwner} />}
     </section>

@@ -105,3 +105,28 @@ test("resumo diário envia vagas pelo Gmail sem duplicação", async () => {
   assert.match(connector, /GmailApp\.sendEmail/);
   assert.match(connector, /action:'confirm'/);
 });
+
+test("análise personalizada persiste regras do perfil e prepara orçamento de IA", async () => {
+  const [profile, dashboard, schema, analysisRoute, aiStatusRoute, careerMigration, analysisMigration, accountingMigration] = await Promise.all([
+    read("../app/ProfilePreferences.tsx"),
+    read("../app/Dashboard.tsx"),
+    read("../db/schema.ts"),
+    read("../app/api/jobs/[id]/analysis/route.ts"),
+    read("../app/api/ai/status/route.ts"),
+    read("../drizzle/0015_personalized_career_rules.sql"),
+    read("../drizzle/0016_user_job_analyses.sql"),
+    read("../drizzle/0017_ai_analysis_accounting.sql"),
+  ]);
+  assert.match(profile, /Como o Radar deve representar você/);
+  assert.match(profile, /Limite mensal de tokens/);
+  assert.match(dashboard, /persistJobAnalysis/);
+  assert.match(dashboard, /Abrir no Outlook/);
+  assert.doesNotMatch(dashboard, /updateStage\(selectedJob\.id, "applied"/);
+  assert.match(schema, /userJobAnalyses/);
+  assert.match(schema, /aiUsageEvents/);
+  assert.match(analysisRoute, /onConflictDoUpdate/);
+  assert.match(aiStatusRoute, /remainingTokens/);
+  assert.match(careerMigration, /career_rules/);
+  assert.match(analysisMigration, /user_job_analyses/);
+  assert.match(accountingMigration, /ai_usage_events/);
+});

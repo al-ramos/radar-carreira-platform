@@ -12,6 +12,7 @@ import ApinfoExtension from "./ApinfoExtension";
 import ProfilePreferences from "./ProfilePreferences";
 import {
   emptyProfileChoices,
+  normalizeCareerRules,
   ProfileChoices,
   SENIORITY_OPTIONS,
   SKILL_OPTIONS,
@@ -440,6 +441,11 @@ export default function Dashboard() {
   const [descriptionCopied, setDescriptionCopied] = useState(false);
   const [shareMenuJobId, setShareMenuJobId] = useState<string | null>(null);
   const [analysisOpen, setAnalysisOpen] = useState(false);
+  const [analysisSaving, setAnalysisSaving] = useState(false);
+  const [aiStatus, setAiStatus] = useState<{
+    provider: { configured: boolean; provider: string | null; model: string | null };
+    usage: { usedTokens: number; limit: number; remainingTokens: number; period: string };
+  } | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
   // Captura de contato do APinfo pedida à extensão a partir do próprio
   // Radar — ver captureApinfoContact/buildContactMailto e o useEffect que
@@ -641,6 +647,17 @@ export default function Dashboard() {
         if (Array.isArray(data.profile?.masteredSkills)) {
           setProfileMasteredSkills(data.profile.masteredSkills as string[]);
         }
+        if (data.profile) {
+          setProfileChoices({
+            seniority: Array.isArray(data.profile.seniority) ? data.profile.seniority : [],
+            preferredMode: Array.isArray(data.profile.preferredMode) ? data.profile.preferredMode.filter((mode: string) => WORK_MODE_OPTIONS.includes(mode)) : [],
+            masteredSkills: Array.isArray(data.profile.masteredSkills) ? data.profile.masteredSkills : [],
+            desiredAreas: Array.isArray(data.profile.desiredAreas) ? data.profile.desiredAreas : [],
+            avoidTerms: Array.isArray(data.profile.avoidTerms) ? data.profile.avoidTerms : [],
+            minScore: Number(data.profile.minScore ?? 60),
+            careerRules: normalizeCareerRules(data.profile.careerRules),
+          });
+        }
         // Carrega pipeline automaticamente ao confirmar usuário autenticado
         if (data.user) {
           fetch("/api/pipeline")
@@ -702,10 +719,11 @@ export default function Dashboard() {
         stack: job.stack,
         seniority: job.seniority,
         workMode: job.workMode,
-      }, profileMasteredSkills));
+        location: job.location,
+      }, profileMasteredSkills, profileChoices.careerRules));
     });
     return map;
-  }, [items, profileMasteredSkills]);
+  }, [items, profileMasteredSkills, profileChoices.careerRules]);
   /** Cor do trilho do slider — mesmos limiares usados no score das vagas. */
   const fitFilterColor =
     effectiveMinScore >= 80 ? "#2e6b3e" : effectiveMinScore >= 60 ? "#7a6200" : effectiveMinScore > 0 ? "#b04a1a" : "#173f32";
@@ -836,7 +854,8 @@ export default function Dashboard() {
                 stack: job.stack,
                 seniority: job.seniority,
                 workMode: job.workMode,
-              }, profileMasteredSkills)
+                location: job.location,
+              }, profileMasteredSkills, profileChoices.careerRules)
             : undefined
         );
         return {
@@ -872,6 +891,18 @@ export default function Dashboard() {
   }
   const selectedJob =
     filtered.find((job) => job.id === selected.id) ?? orderedJobs[0] ?? null;
+  const selectedJobVerdict = selectedJob && selectedJob.scored && profileMasteredSkills.length
+    ? computeVerdict({
+        title: selectedJob.title,
+        description: (!detailLoading && jobDetail?.description) || selectedJob.description || "",
+        stack: (!detailLoading && jobDetail?.stack?.length) ? jobDetail.stack : selectedJob.stack,
+        seniority: selectedJob.seniority,
+        workMode: selectedJob.workMode,
+        location: selectedJob.location,
+      }, profileMasteredSkills, profileChoices.careerRules)
+    : null;
+  const selectedJobEligible = selectedJobVerdict?.emoji === "✅" || selectedJobVerdict?.emoji === "🟡";
+  const selectedJobRejected = Boolean(selectedJobVerdict && !selectedJobEligible);
   function clearRadarFilters() {
     setQuery("");
     setFitFilter(0);
@@ -1053,7 +1084,8 @@ export default function Dashboard() {
   }
   async function openProfile() {
     setPreferencesOpen(true);
-    const r = await fetch("/api/profile");
+    const [r, aiResponse] = await Promise.all([fetch("/api/profile"), fetch("/api/ai/status")]);
+    if (aiResponse.ok) setAiStatus(await aiResponse.json());
     if (r.ok) {
       const d = await r.json(),
         p = d.profile;
@@ -1068,6 +1100,7 @@ export default function Dashboard() {
         desiredAreas: Array.isArray(p.desiredAreas) ? p.desiredAreas : [],
         avoidTerms: Array.isArray(p.avoidTerms) ? p.avoidTerms : [],
         minScore: p.minScore ?? 60,
+        careerRules: normalizeCareerRules(p.careerRules),
       });
     }
   }
@@ -1127,6 +1160,24 @@ export default function Dashboard() {
       setMessage("Entre com sua conta para atualizar o pipeline.");
     }
     return r.ok;
+  }
+  async function persistJobAnalysis(job: Job) {
+    if (job.id.startsWith("demo") || !currentUser || !selectedJobVerdict) return;
+    setAnalysisSaving(true);
+    const analysisStack = (!detailLoading && jobDetail?.stack?.length) ? jobDetail.stack : job.stack;
+    const stackFit = analyzeStackFit(analysisStack, profileMasteredSkills);
+    try {
+      const response = await fetch(`/api/jobs/${encodeURIComponent(job.id)}/analysis`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ...selectedJobVerdict, matchingSkills: stackFit.matchingSkills, missingSkills: stackFit.missingSkills }),
+      });
+      if (!response.ok) setMessage("A análise foi exibida, mas não pôde ser registrada agora.");
+    } catch {
+      setMessage("A análise foi exibida, mas não pôde ser registrada agora.");
+    } finally {
+      setAnalysisSaving(false);
+    }
   }
   async function save(job: Job) {
     if (job.id.startsWith("demo")) {
@@ -1261,17 +1312,19 @@ export default function Dashboard() {
    */
   function buildContactMailto(job: Job) {
     if (!job.contactEmail) return null;
-    const body = isApinfoJob(job)
-      ? buildApinfoApplicationEmail({
-          title: job.title,
-          company: job.company,
-          externalId: job.externalId,
-          matchingSkills: analyzeStackFit(job.stack, profileMasteredSkills).matchingSkills,
-          seniority: profileChoices.seniority,
-        })
-      : `Olá,\n\nTenho interesse na vaga de ${job.title} na ${job.company}.\n\nSegue meu contato para conversarmos.`;
+    const stackFit = analyzeStackFit(job.stack, profileMasteredSkills);
+    const body = buildApinfoApplicationEmail({
+      title: job.title,
+      company: job.company,
+      externalId: isApinfoJob(job) ? job.externalId : undefined,
+      matchingSkills: stackFit.matchingSkills,
+      missingSkills: stackFit.missingSkills,
+      seniority: profileChoices.seniority,
+      careerRules: profileChoices.careerRules,
+      contractSpecified: /\b(PJ|CLT|pessoa jurídica|carteira assinada)\b/i.test(job.description ?? ""),
+    });
     const query = [
-      job.contactSubject ? `subject=${encodeURIComponent(job.contactSubject)}` : null,
+      `subject=${encodeURIComponent(job.contactSubject || `Candidatura — ${job.title}`)}`,
       `body=${encodeURIComponent(body)}`,
     ].filter(Boolean).join("&");
     return `mailto:${job.contactEmail}?${query}`;
@@ -2058,14 +2111,25 @@ export default function Dashboard() {
                 })()}
                 <button
                   className={`analysis-toggle-btn${analysisOpen ? " active" : ""}`}
-                  onClick={() => setAnalysisOpen((v) => !v)}
+                  disabled={analysisSaving}
+                  onClick={() => {
+                    const opening = !analysisOpen;
+                    setAnalysisOpen(opening);
+                    if (opening) void persistJobAnalysis(selectedJob);
+                  }}
                   title="Análise de candidatura com base no seu perfil"
                 >
-                  {analysisOpen ? "✕ Fechar análise" : "🔍 Analisar candidatura"}
+                  {analysisSaving ? "Registrando análise…" : analysisOpen ? "✕ Fechar análise" : "🔍 Analisar candidatura"}
                 </button>
                 <button
                   className="primary-job-action"
+                  disabled={selectedJobRejected}
+                  title={selectedJobRejected ? `${selectedJobVerdict?.emoji} ${selectedJobVerdict?.label}: candidatura não recomendada pelas regras do seu perfil` : "Abrir candidatura"}
                   onClick={async () => {
+                    if (selectedJobRejected) {
+                      setMessage("Esta vaga não está elegível para candidatura segundo as regras do seu perfil.");
+                      return;
+                    }
                     // applyUrl (quando presente) é o link que de fato abre a
                     // vaga/candidatura — url pode ser só uma referência
                     // estável (ex.: busca por código no APinfo), usada para
@@ -2080,13 +2144,7 @@ export default function Dashboard() {
                     } else if (selectedJob.url) {
                       open(selectedJob.url, "_blank");
                     }
-                    if (!selectedJob.id.startsWith("demo")) {
-                      const current = pipelineStageMap.get(selectedJob.id);
-                      // Avança para Candidatura se ainda não passou desse estágio
-                      if (!current || current === "viewed" || current === "saved") {
-                        await updateStage(selectedJob.id, "applied", "Registrado como candidatura ✓");
-                      }
-                    }
+                    setMessage("Página da vaga aberta. Depois de concluir o envio, confirme a etapa no pipeline.");
                   }}
                 >
                   Candidatar
@@ -2112,13 +2170,14 @@ export default function Dashboard() {
                 {selectedJob.contactEmail && (
                   <button
                     className="primary-job-action"
-                    title={`Abre seu cliente de e-mail com mensagem pronta para ${selectedJob.contactEmail}`}
+                    disabled={selectedJobRejected}
+                    title={selectedJobRejected ? "E-mail indisponível para vagas com veredito Não bate ou Bloqueador" : `Abre seu cliente de e-mail com mensagem pronta para ${selectedJob.contactEmail}`}
                     onClick={() => {
                       const mailto = buildContactMailto(selectedJob);
                       if (mailto) open(mailto, "_blank");
                     }}
                   >
-                    ✉ Enviar e-mail
+                    ✉ Abrir no Outlook
                   </button>
                 )}
                 {(() => {
@@ -2196,7 +2255,8 @@ export default function Dashboard() {
                     stack: analysisStack,
                     seniority: selectedJob.seniority,
                     workMode: selectedJob.workMode,
-                  }, profileMasteredSkills);
+                    location: selectedJob.location,
+                  }, profileMasteredSkills, profileChoices.careerRules);
                   const verdictColor = verdict.emoji === "✅" ? "#2e6b3e" : verdict.emoji === "🟡" ? "#7a6200" : verdict.emoji === "🔴" ? "#b04a1a" : "#8a1a1a";
                   return (
                     <aside className="job-analysis-panel">
@@ -2688,6 +2748,7 @@ export default function Dashboard() {
           message={message}
           isAdmin={isAdmin}
           isOwner={isOwner}
+          aiStatus={aiStatus}
         />
       )}
       {gmailOpen && (

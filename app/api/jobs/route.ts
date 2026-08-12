@@ -5,7 +5,7 @@ import { getDb } from "../../../db/index";
 import { jobs, platformSettings, profiles, userJobStatus } from "../../../db/schema";
 import { isTechnologyJob, scoreJob } from "../../../lib/scoring";
 import { inferTechnologyStack } from "../../../lib/technology-stack";
-import { allowedWorkModes, listFromStored } from "../../../lib/profile-options";
+import { allowedWorkModes, listFromStored, normalizeCareerRules } from "../../../lib/profile-options";
 import { computeVerdict, type VerdictEmoji } from "../../../lib/verdict";
 
 export const dynamic = "force-dynamic";
@@ -91,6 +91,7 @@ const selectedSeniority = profile ? listFromStored(profile.seniority) : [];
 const masteredSkills = profile ? listFromStored(profile.masteredSkills) : [];
 const desiredAreas = profile ? listFromStored(profile.desiredAreas) : [];
 const preferredMode = profile ? allowedWorkModes(profile.preferredMode) : [];
+const careerRules = normalizeCareerRules(profile?.careerRules);
 const profileHasScoringSignals = Boolean(profile) && [
 masteredSkills,
 desiredAreas,
@@ -196,8 +197,10 @@ description: job.description,
 stack,
 seniority: job.seniority,
 workMode: job.workMode,
+location: job.location,
 },
 masteredSkills,
+careerRules,
 )
 : null;
 return { job, stack, score: match.score, reasons: match.reasons, scored: "scored" in match ? match.scored : true, verdict };

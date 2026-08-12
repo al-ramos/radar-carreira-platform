@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { allowedWorkModes, listFromStored, normalizeMinScore } from "../lib/profile-options.ts";
+import { allowedWorkModes, listFromStored, normalizeCareerRules, normalizeMinScore } from "../lib/profile-options.ts";
 import { isTechnologyJob, matchesSelectedSeniority, scoreJob } from "../lib/scoring.ts";
-import { analyzeStackFit } from "../lib/verdict.ts";
+import { analyzeStackFit, computeVerdict } from "../lib/verdict.ts";
 
 test("preserva preferências novas e legadas como listas", () => {
   assert.deepEqual(listFromStored('["C#", "SQL"]'), ["C#", "SQL"]);
@@ -41,6 +41,44 @@ test("pontua stacks de forma proporcional e não confunde nomes parciais", () =>
   const result = scoreJob({ title: "Pessoa desenvolvedora React", description: "Experiência com React.", stack: ["React"] }, profile);
   assert.equal(result.score, 25);
   assert.deepEqual(result.reasons, ["Vaga de TI (+5)", "✅ Competências encontradas (1 de 3): React (+20)", "❌ Não menciona: Node.js, R"]);
+});
+
+test("normaliza as regras estratégicas e protege o orçamento mensal de IA", () => {
+  const rules = normalizeCareerRules({
+    professionalTitle: "  Arquiteto de Soluções  ",
+    maxHybridDays: 12,
+    preferredContracts: ["PJ", "Freelancer"],
+    dailyCommunicationLanguages: ["Português", "Espanhol"],
+    aiMonthlyTokenLimit: -20,
+  });
+  assert.equal(rules.professionalTitle, "Arquiteto de Soluções");
+  assert.equal(rules.maxHybridDays, 7);
+  assert.deepEqual(rules.preferredContracts, ["PJ"]);
+  assert.deepEqual(rules.dailyCommunicationLanguages, ["Português", "Espanhol"]);
+  assert.equal(rules.aiMonthlyTokenLimit, 0);
+});
+
+test("aplica bloqueadores do perfil e respeita exceções de stack e idioma", () => {
+  const baseRules = normalizeCareerRules({
+    blockedWorkTypes: ["Sustentação"],
+    stackExceptions: ["Arquitetura"],
+    dailyCommunicationLanguages: ["Português", "Espanhol"],
+  });
+  const blocked = computeVerdict(
+    { title: "Analista de Sustentação", description: "Rotina de sustentação", stack: ["Java"] },
+    ["C#"],
+    baseRules,
+  );
+  assert.equal(blocked.emoji, "❌");
+  assert.match(blocked.blocker ?? "", /Sustentação/);
+
+  const exception = computeVerdict(
+    { title: "Arquiteto LATAM", description: "Desarrollador em processo de postulación para projetos de arquitetura.", stack: ["Java"] },
+    ["C#"],
+    baseRules,
+  );
+  assert.notEqual(exception.blocker, "Vaga em espanhol (LATAM)");
+  assert.notEqual(exception.blocker, "Stack incompatível com o perfil");
 });
 
 test("calcula recência quando o banco devolve a data como texto", () => {

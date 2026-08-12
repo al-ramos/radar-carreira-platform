@@ -5,6 +5,11 @@ export const SENIORITY_OPTIONS = [
 
 export const WORK_MODE_OPTIONS = ["Remoto", "Presencial"];
 
+export const CONTRACT_OPTIONS = ["PJ", "CLT"];
+export const DAILY_LANGUAGE_OPTIONS = ["Português", "Inglês", "Espanhol"];
+export const REGION_OPTIONS = ["Grande São Paulo", "São Paulo - Capital", "Alto Tietê", "Interior de São Paulo", "Brasil"];
+export const BLOCKED_WORK_TYPE_OPTIONS = ["Sustentação", "Suporte", "Help desk", "Atendimento", "Vendas"];
+
 export const SKILL_GROUPS = [
   { label: "Front-end e mobile", options: ["HTML", "CSS", "JavaScript", "TypeScript", "React", "Next.js", "Angular", "Vue.js", "Svelte", "React Native", "Flutter", "Dart", "Android", "iOS", "Swift", "Kotlin"] },
   { label: "Back-end e linguagens", options: ["Node.js", "Deno", "Bun", "Java", "Spring", "Quarkus", "C#", ".NET", "ASP.NET", "Python", "Django", "FastAPI", "Flask", "PHP", "Laravel", "Symfony", "Ruby", "Rails", "Go", "Rust", "C++", "Scala", "Elixir"] },
@@ -42,11 +47,73 @@ export type ProfileChoices = {
   desiredAreas: string[];
   avoidTerms: string[];
   minScore: number;
+  careerRules: CareerRules;
 };
+
+export type CareerRules = {
+  professionalTitle: string;
+  professionalSummary: string;
+  baseLocation: string;
+  acceptedRegions: string[];
+  maxHybridDays: number;
+  preferredContracts: string[];
+  dailyCommunicationLanguages: string[];
+  blockedSeniorities: string[];
+  blockedWorkTypes: string[];
+  stackExceptions: string[];
+  anchorProject: string;
+  discloseGapsInEmail: boolean;
+  aiMonthlyTokenLimit: number;
+};
+
+export const emptyCareerRules = (): CareerRules => ({
+  professionalTitle: "",
+  professionalSummary: "",
+  baseLocation: "",
+  acceptedRegions: [],
+  maxHybridDays: 2,
+  preferredContracts: [],
+  dailyCommunicationLanguages: ["Português"],
+  blockedSeniorities: [],
+  blockedWorkTypes: [],
+  stackExceptions: [],
+  anchorProject: "",
+  discloseGapsInEmail: true,
+  aiMonthlyTokenLimit: 100_000,
+});
 
 export const emptyProfileChoices = (): ProfileChoices => ({
   seniority: [], preferredMode: [], masteredSkills: [], desiredAreas: [], avoidTerms: [], minScore: 60,
+  careerRules: emptyCareerRules(),
 });
+
+export function normalizeCareerRules(value: unknown): CareerRules {
+  let candidate: Record<string, unknown> = {};
+  if (typeof value === "string" && value.trim()) {
+    try { candidate = JSON.parse(value) as Record<string, unknown>; } catch { candidate = {}; }
+  } else if (value && typeof value === "object" && !Array.isArray(value)) {
+    candidate = value as Record<string, unknown>;
+  }
+  const defaults = emptyCareerRules();
+  const text = (key: keyof CareerRules) => typeof candidate[key] === "string" ? String(candidate[key]).trim().slice(0, 4000) : String(defaults[key] ?? "");
+  const list = (key: keyof CareerRules) => listFromStored(candidate[key]).slice(0, 100);
+  const hybridDays = Number(candidate.maxHybridDays);
+  return {
+    professionalTitle: text("professionalTitle").slice(0, 120),
+    professionalSummary: text("professionalSummary"),
+    baseLocation: text("baseLocation").slice(0, 160),
+    acceptedRegions: list("acceptedRegions"),
+    maxHybridDays: Number.isFinite(hybridDays) ? Math.max(0, Math.min(7, Math.round(hybridDays))) : defaults.maxHybridDays,
+    preferredContracts: list("preferredContracts").filter(item => CONTRACT_OPTIONS.includes(item)),
+    dailyCommunicationLanguages: list("dailyCommunicationLanguages"),
+    blockedSeniorities: list("blockedSeniorities"),
+    blockedWorkTypes: list("blockedWorkTypes"),
+    stackExceptions: list("stackExceptions"),
+    anchorProject: text("anchorProject"),
+    discloseGapsInEmail: typeof candidate.discloseGapsInEmail === "boolean" ? candidate.discloseGapsInEmail : defaults.discloseGapsInEmail,
+    aiMonthlyTokenLimit: Number.isFinite(Number(candidate.aiMonthlyTokenLimit)) ? Math.max(0, Math.min(10_000_000, Math.round(Number(candidate.aiMonthlyTokenLimit)))) : defaults.aiMonthlyTokenLimit,
+  };
+}
 
 export function listFromStored(value: unknown): string[] {
   if (Array.isArray(value)) return value.filter((item): item is string => typeof item === "string" && Boolean(item.trim())).map(item => item.trim());
