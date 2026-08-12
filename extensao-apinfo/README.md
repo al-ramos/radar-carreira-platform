@@ -2,7 +2,7 @@
 
 Extensão para Google Chrome com painel próprio que coleta vagas visíveis nas páginas de resultados do APinfo, uma página por vez, remove duplicidades e exporta os resultados consolidados em CSV e JSON — ou envia direto ao Radar de Carreira.
 
-Versão atual da extensão: **1.4.0**.
+Versão atual da extensão: **1.4.2**.
 > Este é um projeto independente. Não é afiliado, patrocinado nem mantido pela APinfo.
 
 ## Dois modos de coleta
@@ -71,7 +71,7 @@ Também é possível usar **Code → Download ZIP** no GitHub e extrair o arquiv
 2. Ative **Modo do desenvolvedor**, no canto superior direito.
 3. Clique em **Carregar sem compactação**.
 4. Selecione a pasta `extensao-apinfo` (ou a raiz deste projeto, se você não separou em subpasta).
-5. Confirme que aparece **Coletor de Vagas do APinfo 1.4.0**.
+5. Confirme que aparece **Coletor de Vagas do APinfo 1.4.2**.
 6. Opcionalmente, fixe a extensão no menu de extensões do Chrome.
 
 ### 3. Abrir o painel
@@ -232,7 +232,7 @@ O arquivo `manifest.json` declara:
 | `storage`                                                          | Salvar stacks, destinos, pasta, endpoint, chave e o acumulado da sessão       |
 | `downloads`                                                        | Gravar CSV e JSON na subpasta configurada sem perguntar a cada execução       |
 | `https://www.apinfo.com/*`                                        | Ler somente páginas do APinfo necessárias à coleta                            |
-| `https://radar-carreira-platform.al-ramos.workers.dev/*`         | Enviar vagas ao portal; e rodar `radar-bridge.js` nas páginas do Radar, para o botão **Capturar e-mail** (desde a 1.4.0) |
+| URLs de produção do Radar (`workers.dev` e `chatgpt.site`)       | Enviar vagas ao portal; e rodar `radar-bridge.js` nas páginas do Radar, para o botão **Capturar e-mail** |
 
 Note que esta extensão **não pede a permissão `tabs`** (que permitiria listar e trocar entre todas as suas abas abertas) — ela só age na aba que está ativa no momento em que você clica em coletar.
 
