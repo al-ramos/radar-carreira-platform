@@ -13,6 +13,10 @@ export const dynamic = "force-dynamic";
 const MAX_FILTER_CANDIDATES = 150;
 const LIST_DESCRIPTION_CHARS = 2_000;
 const FILTER_DESCRIPTION_CHARS = 1_000;
+// Toda vaga técnica começa com 5 pontos. Portanto, esse corte não precisa de
+// uma varredura especial: a página normal já traz os scores necessários para
+// esconder as vagas sem aderência no cliente.
+const BASE_TECH_SCORE = 5;
 const parse = (value: string) => {
 try {
 return JSON.parse(value) as string[];
@@ -116,7 +120,7 @@ const pipelineCondition = pipelineFilter === "all"
 ? pipelineIds.length ? notInArray(jobs.id, pipelineIds) : undefined
 : stageIds.length ? inArray(jobs.id, stageIds) : eq(jobs.id, "__nenhuma_vaga__");
 const condition = and(sourceCondition, seniorityCondition, searchCondition, pipelineCondition);
-const requiresPostFiltering = minScore > 0 || verdictFilter !== "all";
+const requiresPostFiltering = minScore > BASE_TECH_SCORE || verdictFilter !== "all";
 
 const rowsQuery = getDb().select({
 id: jobs.id,

@@ -12,6 +12,8 @@ test("a listagem pagina no D1 antes de enriquecer o fluxo normal", async () => {
   assert.match(route, /or\(isNull\(jobs\.seniority\)/);
   assert.match(route, /LIST_DESCRIPTION_CHARS = 2_000/);
   assert.match(route, /FILTER_DESCRIPTION_CHARS = 1_000/);
+  assert.match(route, /BASE_TECH_SCORE = 5/);
+  assert.match(route, /minScore > BASE_TECH_SCORE/);
   assert.match(route, /substr\(\$\{jobs\.description\}/);
   assert.match(route, /const \[rows, eligibleTotals, sourceTotals\]/);
   assert.match(route, /verdictFilter !== "all" && masteredSkills\.length/);
@@ -42,6 +44,8 @@ test("falha da API não exibe as quatro vagas demonstrativas", async () => {
   assert.match(dashboard, /fetchJobsWithRetry\(`\/api\/jobs\?\$\{buildJobsParams\(page\)\}/);
   assert.match(dashboard, /if \(!profileReady\) return;/);
   assert.match(dashboard, /finally\(\(\) => setProfileReady\(true\)\)/);
+  assert.match(dashboard, /const profileLoading = !profileReady \|\| mode === "loading"/);
+  assert.match(dashboard, /Seu perfil está salvo\. A lista está temporariamente sem aderência/);
   assert.doesNotMatch(dashboard, /\.catch\(\(\) => \{\s*setItems\(\[\]\)/);
 });
 

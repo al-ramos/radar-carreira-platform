@@ -445,7 +445,9 @@ export default function Dashboard() {
   // A resposta de contingência não possui perfil nem score. Não deixamos que
   // o corte salvo esconda toda a lista enquanto a personalização se recupera.
   const visibleMinScore = simplifiedList ? 0 : effectiveMinScore;
-  const personalizationPending = !profileReady || mode === "loading" || simplifiedList;
+  const profileLoading = !profileReady || mode === "loading";
+  const personalizationUnavailable = !profileLoading && simplifiedList;
+  const personalizationPending = profileLoading || simplifiedList;
   // ── Persistência de estado UI no sessionStorage (sobrevive ao F5) ──────────
   const jobListRef = useRef<HTMLDivElement>(null);
   const simplifiedRetryCountRef = useRef(0);
@@ -1433,9 +1435,13 @@ export default function Dashboard() {
             )}
           </div>
         </header>
-        {personalizationPending ? (
+        {profileLoading ? (
           <div className="notice" role="status">
             Carregando seu perfil e calculando a aderência das vagas…
+          </div>
+        ) : personalizationUnavailable ? (
+          <div className="notice" role="status">
+            Seu perfil está salvo. A lista está temporariamente sem aderência enquanto a consulta é recuperada.
           </div>
         ) : message ? (
           <div className="notice">{message}</div>
@@ -1526,7 +1532,9 @@ export default function Dashboard() {
             <div className="compact-filter-group" role="status">
               <span className="compact-filter-label">Personalização</span>
               <span className="list-head-dim">
-                Aderência e veredito serão aplicados quando seu perfil terminar de carregar.
+                {profileLoading
+                  ? "Aderência e veredito serão aplicados quando seu perfil terminar de carregar."
+                  : "Seu perfil está salvo; a aderência será retomada assim que a consulta temporária for recuperada."}
               </span>
             </div>
           ) : currentUser && profileMasteredSkills.length > 0 && (
