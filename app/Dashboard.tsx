@@ -371,6 +371,7 @@ export default function Dashboard() {
     [items, setItems] = useState<Job[]>([]),
     [selected, setSelected] = useState<Job>(demo[0]),
     [fitFilter, setFitFilter] = useState<"profile" | number>(0),
+    [sortOrder, setSortOrder] = useState<"score" | "recent">("score"),
     [simplifiedList, setSimplifiedList] = useState(false),
     [period, setPeriod] = useState<string | null>(null),
     [mode, setMode] = useState("loading"),
@@ -726,15 +727,24 @@ export default function Dashboard() {
       personalizationPending,
     ],
   );
+  const orderedJobs = useMemo(
+    () => [...filtered].sort((left, right) => {
+      if (sortOrder === "recent") {
+        return new Date(right.publishedAt ?? 0).getTime() - new Date(left.publishedAt ?? 0).getTime();
+      }
+      return right.score - left.score || new Date(right.publishedAt ?? 0).getTime() - new Date(left.publishedAt ?? 0).getTime();
+    }),
+    [filtered, sortOrder],
+  );
   /** Baixa o relatório em Excel/CSV com exatamente as vagas visíveis na tela
-   *  (mesma lista de `filtered`, na mesma ordem) — score e veredito são os
+   *  (mesma lista e ordem exibidas) — score e veredito são os
    *  já calculados no client, para não haver divergência com o que a pessoa
    *  está vendo no momento do clique. */
   async function downloadReport() {
     if (reportLoading || filtered.length === 0) return;
     setReportLoading(true);
     try {
-      const rows = filtered.map((job) => ({
+    const rows = orderedJobs.map((job) => ({
         id: job.id,
         score: job.score,
         verdict: verdictMap.get(job.id)
@@ -766,7 +776,7 @@ export default function Dashboard() {
     }
   }
   const selectedJob =
-    filtered.find((job) => job.id === selected.id) ?? filtered[0] ?? null;
+    filtered.find((job) => job.id === selected.id) ?? orderedJobs[0] ?? null;
   function clearRadarFilters() {
     setQuery("");
     setFitFilter(0);
@@ -1154,9 +1164,9 @@ export default function Dashboard() {
    */
   function buildContactMailto(job: Job) {
     if (!job.contactEmail) return null;
-    const matchReasonRaw = (job.reasons ?? []).find((r) => r.startsWith("✅ Skills:"));
+    const matchReasonRaw = (job.reasons ?? []).find((r) => r.startsWith("✅ Competências encontradas"));
     const matchedSkills = matchReasonRaw
-      ? matchReasonRaw.replace(/✅ Skills:\s*/, "").replace(/\s*\(\+\d+\)$/, "").split(",").map((s) => s.trim()).filter(Boolean)
+      ? matchReasonRaw.replace(/^✅ Competências encontradas \(\d+ de \d+\):\s*/, "").replace(/\s*\(\+\d+\)$/, "").split(",").map((s) => s.trim()).filter(Boolean)
       : [];
     const extraSkills = profileMasteredSkills
       .filter((skill) => !matchedSkills.some((m) => m.toLowerCase() === skill.toLowerCase()))
@@ -1496,6 +1506,44 @@ export default function Dashboard() {
             </button>
           </div>
         </div>
+        {!personalizationPending && (
+          <div className="score-controls" aria-label="Controles de aderência">
+            <div className="score-controls-copy">
+              <span className="compact-filter-label">Aderência mínima</span>
+              <strong style={{ color: fitFilterColor }}>
+                {effectiveMinScore === 0 ? "Todas as vagas · 0 pontos" : `${effectiveMinScore} pontos ou mais`}
+              </strong>
+            </div>
+            <input
+              type="range"
+              className="fit-filter-slider score-controls-slider"
+              aria-label="Escolher aderência mínima ao seu perfil"
+              min={0}
+              max={100}
+              step={5}
+              list="fit-filter-ticks"
+              value={fitFilterSliderValue}
+              onChange={(event) => setFitFilter(Number(event.target.value))}
+              style={{ "--fit-fill": `${fitFilterSliderValue}%`, "--fit-color": fitFilterColor } as CSSProperties}
+            />
+            <div className="score-controls-foot">
+              <span>0</span><span>50</span><span>100 pontos</span>
+            </div>
+            <button type="button" className={`fit-filter-profile-chip${fitFilter === "profile" ? " active" : ""}`} onClick={() => setFitFilter("profile")}>
+              Meu perfil ({profileMinScore} pontos)
+            </button>
+            <label className="score-sort">
+              <span>Ordenar</span>
+              <select value={sortOrder} onChange={(event) => setSortOrder(event.target.value as "score" | "recent")} aria-label="Ordenar vagas">
+                <option value="score">Maior pontuação</option>
+                <option value="recent">Mais recentes</option>
+              </select>
+            </label>
+            <datalist id="fit-filter-ticks">
+              {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((tick) => <option key={tick} value={tick} />)}
+            </datalist>
+          </div>
+        )}
         <div id="radar-filter-panel" className="radar-filter-panel" hidden={!filtersOpen} aria-label="Filtros de vagas">
           <div className="compact-filter-group">
             <span className="compact-filter-label">Pipeline</span>
@@ -1561,34 +1609,6 @@ export default function Dashboard() {
                 </div>
               </div>
             </>
-          )}
-          {!personalizationPending && (
-            <div className="compact-filter-group fit-filter">
-              <div className="fit-filter-head">
-                <span className="compact-filter-label">Aderência mínima</span>
-                <strong style={{ color: fitFilterColor }}>
-                  {effectiveMinScore === 0 ? "Todas as vagas" : `${effectiveMinScore}% ou mais`}
-                </strong>
-              </div>
-              <input
-                type="range"
-                className="fit-filter-slider"
-                aria-label="Aderência mínima ao seu perfil"
-                min={0}
-                max={100}
-                step={10}
-                list="fit-filter-ticks"
-                value={fitFilterSliderValue}
-                onChange={(event) => setFitFilter(Number(event.target.value))}
-                style={{ "--fit-fill": `${fitFilterSliderValue}%`, "--fit-color": fitFilterColor } as CSSProperties}
-              />
-              <datalist id="fit-filter-ticks">
-                {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((tick) => <option key={tick} value={tick} />)}
-              </datalist>
-              <button type="button" className={`fit-filter-profile-chip${fitFilter === "profile" ? " active" : ""}`} onClick={() => setFitFilter("profile")}>
-                Meu perfil ({profileMinScore}% ou mais)
-              </button>
-            </div>
           )}
           {activeFilterCount > 0 && (
             <button type="button" className="clear-radar-filters" onClick={clearRadarFilters}>
@@ -1665,7 +1685,7 @@ export default function Dashboard() {
         )}
         <div className="workspace">
           <div className="job-list" ref={jobListRef} onScroll={handleJobListScroll}>
-            {filtered.map((j) => (
+            {orderedJobs.map((j) => (
               <div
                 key={j.id}
                 role="button"
@@ -1683,8 +1703,11 @@ export default function Dashboard() {
                   {currentUser ? (
                     j.scored ? (
                       <>
-                        {j.score}
-                        <small>match</small>
+                        <strong>{j.score}</strong>
+                        <small>pontos</small>
+                        <span className="score-bar" aria-label={`${j.score} pontos de aderência`}>
+                          <span className="score-bar-fill" style={{ width: `${j.score}%`, background: j.score >= 80 ? "#2e6b3e" : j.score >= 60 ? "#7a6200" : "#b04a1a" }} />
+                        </span>
                       </>
                     ) : (
                       <span title={j.reasons[0] ?? "Sem dados suficientes para calcular a aderência"}>
@@ -2098,8 +2121,14 @@ export default function Dashboard() {
                           <>
                             {stackFit.matchingSkills.length > 0 && (
                               <div className="analysis-skill-group">
-                                <p className="analysis-label analysis-match">✅ Requisitos já no seu perfil</p>
+                                <p className="analysis-label analysis-match">✅ {stackFit.matchingSkills.length} de {stackFit.requiredSkills.length} requisitos já estão no seu perfil</p>
                                 <div className="tags">{stackFit.matchingSkills.map((s) => <span key={s} className="tag-match">{s}</span>)}</div>
+                              </div>
+                            )}
+                            {stackFit.requiredSkills.length > 0 && stackFit.matchingSkills.length === 0 && (
+                              <div className="analysis-skill-group analysis-zero-match">
+                                <p className="analysis-label analysis-gap">0 de {stackFit.requiredSkills.length} requisitos técnicos identificados nesta vaga aparecem no seu perfil</p>
+                                <span>Isso compara apenas o que a vaga declarou; não conclui que você não tenha experiência.</span>
                               </div>
                             )}
                             {stackFit.missingSkills.length > 0 && (

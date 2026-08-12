@@ -565,6 +565,67 @@
   color: #fff;
 }
 
+/* Controle sempre visível: a pessoa pode medir a aderência e definir o corte
+   sem abrir o painel de filtros avançados. */
+.score-controls {
+  display: grid;
+  grid-template-columns: minmax(150px, auto) minmax(220px, 1fr) auto auto;
+  align-items: center;
+  gap: 6px 16px;
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border: 1px solid #dddfea;
+  border-radius: 12px;
+  background: linear-gradient(100deg, #f7f6ff 0%, #fff 58%);
+}
+.score-controls-copy { display: grid; gap: 2px; }
+.score-controls-copy .compact-filter-label { color: #69718b; }
+.score-controls-copy strong { font-size: 13px; }
+.score-controls-slider { margin: 0; }
+.score-controls-foot {
+  grid-column: 2;
+  display: flex;
+  justify-content: space-between;
+  color: #7b8299;
+  font-size: 9px;
+  font-weight: 700;
+}
+.score-controls .fit-filter-profile-chip { margin: 0; }
+.score-sort {
+  display: grid;
+  gap: 3px;
+  color: #69718b;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: .5px;
+  text-transform: uppercase;
+}
+.score-sort select {
+  min-height: 32px;
+  border: 1px solid #d8dbe7;
+  border-radius: 7px;
+  background: #fff;
+  color: #303a57;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 5px 8px;
+  text-transform: none;
+}
+.score .score-bar { min-width: 36px; }
+.score > strong { font-size: 14px; line-height: 1; }
+.analysis-zero-match {
+  border: 1px solid #f0d3b4;
+  border-radius: 7px;
+  background: #fff8ef;
+  padding: 8px;
+}
+.analysis-zero-match > span {
+  display: block;
+  color: #746558;
+  font-size: 9px;
+  line-height: 1.4;
+}
+
 /* Radar mais direto: filtros sob demanda e uma hierarquia de ação clara. */
 .radar-controls {
   display: flex;
@@ -706,6 +767,9 @@
 @media (max-width: 850px) {
   .radar-controls { align-items: stretch; }
   .radar-filter-panel { grid-template-columns: 1fr; }
+  .score-controls { grid-template-columns: 1fr 1fr; }
+  .score-controls-slider, .score-controls-foot { grid-column: 1 / -1; }
+  .score-controls .fit-filter-profile-chip { justify-self: start; }
 }
 @media (max-width: 650px) {
   .radar-controls { display: grid; gap: 12px; }
@@ -713,6 +777,8 @@
   .radar-controls .search { min-width: 100%; }
   .radar-source-select { flex: 1; }
   .radar-filter-panel { padding: 14px; }
+  .score-controls { grid-template-columns: 1fr; gap: 8px; }
+  .score-controls-slider, .score-controls-foot { grid-column: 1; }
   .radar-filter-panel .fit-filter { grid-template-columns: 1fr; }
   .radar-filter-panel .fit-filter-profile-chip { justify-self: start; }
   .detail-more-actions { margin-left: 0; }

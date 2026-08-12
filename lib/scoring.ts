@@ -77,13 +77,13 @@ export function scoreJob(job:ScoreInput,profile:ScoreProfile){
    score+=points;
    if(matchedSkills.length){
      const shown=matchedSkills.slice(0,5).join(", ")+(matchedSkills.length>5?` +${matchedSkills.length-5}`:"");
-     reasons.push(`✅ Skills: ${shown} (+${points})`);
+     reasons.push(`✅ Competências encontradas (${matchedSkills.length} de ${selectedSkills.length}): ${shown} (+${points})`);
      // Mostra faltantes apenas quando houve match parcial (não quando nenhuma bateu)
      if(unmatchedSkills.length > 0 && unmatchedSkills.length <= 4){
        reasons.push(`❌ Não menciona: ${unmatchedSkills.join(", ")}`);
      }
    } else {
-     reasons.push(`Nenhuma das ${selectedSkills.length} skills foi encontrada`);
+     reasons.push(`0 de ${selectedSkills.length} competências do seu perfil foram citadas nesta vaga (+0)`);
    }
  }
 

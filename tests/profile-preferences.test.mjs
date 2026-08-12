@@ -40,7 +40,15 @@ test("pontua stacks de forma proporcional e não confunde nomes parciais", () =>
   const profile = { masteredSkills: ["React", "Node.js", "R"], desiredAreas: [], avoidTerms: [], seniority: [], preferredMode: [] };
   const result = scoreJob({ title: "Pessoa desenvolvedora React", description: "Experiência com React.", stack: ["React"] }, profile);
   assert.equal(result.score, 25);
-  assert.deepEqual(result.reasons, ["Vaga de TI (+5)", "✅ Skills: React (+20)", "❌ Não menciona: Node.js, R"]);
+  assert.deepEqual(result.reasons, ["Vaga de TI (+5)", "✅ Competências encontradas (1 de 3): React (+20)", "❌ Não menciona: Node.js, R"]);
+});
+
+test("explica com números quando a vaga não cita competências do perfil", () => {
+  const result = scoreJob(
+    { title: "Pessoa desenvolvedora Java", description: "Experiência com Spring.", stack: ["Java", "Spring"] },
+    { masteredSkills: ["C#", ".NET"], desiredAreas: [], avoidTerms: [], seniority: [], preferredMode: [] },
+  );
+  assert.ok(result.reasons.includes("0 de 2 competências do seu perfil foram citadas nesta vaga (+0)"));
 });
 
 test("não pontua vaga fora do escopo de TI", () => {
