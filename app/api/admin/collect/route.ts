@@ -4,7 +4,7 @@ import { getChatGPTUser } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db/index";
 import { importRuns, jobSources, jobs } from "../../../../db/schema";
 import { collect, isPullProvider } from "../../../../lib/connectors";
-import { fingerprint } from "../../../../lib/jobs";
+import { fingerprint, recordedJobDate } from "../../../../lib/jobs";
 import { findCuratedSource } from "../../../../lib/curated-sources";
 import { can } from "../../../../lib/rbac";
 
@@ -72,7 +72,7 @@ export async function POST(request: Request) {
           externalId: job.externalId ?? null, company: job.company, title: job.title,
           seniority: job.seniority ?? null, workMode: job.workMode ?? null,
           location: job.location ?? null, stack: JSON.stringify(job.stack ?? []),
-          publishedAt: job.publishedAt ? new Date(job.publishedAt) : null,
+          publishedAt: recordedJobDate(job.publishedAt, now),
           url: job.url, description: job.description ?? "", firstSeenAt: now,
           lastSeenAt: now, status: "active" as const, createdAt: now, updatedAt: now,
         };

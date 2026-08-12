@@ -43,7 +43,15 @@ test("dashboard oferece radar, perfil e pipeline persistente", async () => {
   assert.match(dashboard, /Tecnologias da vaga/);
   assert.match(dashboard, /Stack não informada/);
   assert.match(dashboard, /Impedimentos: requisitos da vaga fora do seu perfil/);
+  assert.match(dashboard, /const formatJobDate/);
+  assert.match(dashboard, /📅 \{formatJobDate\(j\.publishedAt\)\}/);
   assert.match(dashboard, /LinkedInExtension/);
+  const [jobsRoute, dateMigration] = await Promise.all([
+    read("../app/api/jobs/route.ts"),
+    read("../drizzle/0014_backfill_job_dates.sql"),
+  ]);
+  assert.match(jobsRoute, /coalesce\(\$\{jobs\.publishedAt\}, \$\{jobs\.firstSeenAt\}\)/);
+  assert.match(dateMigration, /SET published_at = first_seen_at/);
   const linkedInExtension = await read("../app/LinkedInExtension.tsx");
   assert.match(linkedInExtension, /Importar arquivo do LinkedIn/);
   assert.match(linkedInExtension, /JSON ou CSV/);

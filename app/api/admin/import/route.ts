@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db/index";
 import { importRuns, jobs } from "../../../../db/schema";
-import { fingerprint, type ImportedJob } from "../../../../lib/jobs";
+import { fingerprint, recordedJobDate, type ImportedJob } from "../../../../lib/jobs";
 import { parseCsvJobs } from "../../../../lib/csv-jobs";
 import { normalizeImportedJobs } from "../../../../lib/import-jobs";
 import { can } from "../../../../lib/rbac";
@@ -37,7 +37,7 @@ function valuesFor(job: ImportedJob, now: Date) {
     workMode: job.workMode ?? null,
     location: job.location ?? null,
     stack: JSON.stringify(job.stack ?? []),
-    publishedAt: job.publishedAt ? new Date(job.publishedAt) : null,
+    publishedAt: recordedJobDate(job.publishedAt, now),
     url: job.url,
     applyUrl: job.applyUrl ?? null,
     contactEmail: job.contactEmail ?? null,

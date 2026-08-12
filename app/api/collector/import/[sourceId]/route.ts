@@ -2,7 +2,7 @@ import { eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "../../../../../db/index";
 import { importRuns, jobSources, jobs } from "../../../../../db/schema";
 import { normalizeImportedJobs } from "../../../../../lib/import-jobs";
-import { fingerprint, type ImportedJob } from "../../../../../lib/jobs";
+import { fingerprint, recordedJobDate, type ImportedJob } from "../../../../../lib/jobs";
 
 export const dynamic = "force-dynamic";
 
@@ -51,7 +51,7 @@ function valuesFor(sourceId: string, job: ImportedJob, now: Date) {
     workMode: job.workMode ?? null,
     location: job.location ?? null,
     stack: JSON.stringify(job.stack ?? []),
-    publishedAt: job.publishedAt ? new Date(job.publishedAt) : null,
+    publishedAt: recordedJobDate(job.publishedAt, now),
     url: job.url,
     applyUrl: job.applyUrl ?? null,
     contactEmail: job.contactEmail ?? null,

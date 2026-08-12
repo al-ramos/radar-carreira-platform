@@ -348,8 +348,16 @@ const adapt = (j: ApiJob): Job => ({
   contactEmail: j.contactEmail,
   contactSubject: j.contactSubject,
   externalId: j.externalId,
+  publishedAt: j.publishedAt,
   description: j.description,
 });
+
+const formatJobDate = (value?: string) =>
+  value
+    ? new Intl.DateTimeFormat("pt-BR", { dateStyle: "short" }).format(
+        new Date(value),
+      )
+    : "Não informada";
 export default function Dashboard() {
   const [active, setActive] = useState("Radar"),
     [query, setQuery] = useState(""),
@@ -1673,7 +1681,7 @@ export default function Dashboard() {
                   <small>{j.company.toUpperCase()}</small>
                   <h3>{j.title}</h3>
                   <p>
-                    ⌖ {j.location} · {j.mode} · {j.age}
+                    ⌖ {j.location} · {j.mode} · {j.age} · 📅 {formatJobDate(j.publishedAt)}
                   </p>
                   <div
                     className="tags job-stack"
@@ -1755,7 +1763,7 @@ export default function Dashboard() {
                   <h2>{selectedJob.title}</h2>
                   <p>
                     ⌖ {selectedJob.location} · {selectedJob.mode} ·{" "}
-                    {selectedJob.age}
+                    {selectedJob.age} · 📅 {formatJobDate(selectedJob.publishedAt)}
                   </p>
                   {(selectedJob.externalId || selectedJob.url) && (
                     <p className="list-head-dim job-detail-source">

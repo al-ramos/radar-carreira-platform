@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { getDb } from "../../../../db/index";
 import { importRuns, jobSources, jobs, platformSettings } from "../../../../db/schema";
 import { collect, isPullProvider } from "../../../../lib/connectors";
-import { fingerprint } from "../../../../lib/jobs";
+import { fingerprint, recordedJobDate } from "../../../../lib/jobs";
 
 export const dynamic = "force-dynamic";
 
@@ -48,7 +48,7 @@ export async function POST(request: Request) {
           id: existing?.id ?? crypto.randomUUID(), fingerprint: jobFingerprint, sourceId: source.id,
           externalId: job.externalId ?? null, company: job.company, title: job.title, seniority: job.seniority ?? null,
           workMode: job.workMode ?? null, location: job.location ?? null, stack: JSON.stringify(job.stack ?? []),
-          publishedAt: job.publishedAt ? new Date(job.publishedAt) : null, url: job.url, description: job.description ?? "",
+          publishedAt: recordedJobDate(job.publishedAt, now), url: job.url, description: job.description ?? "",
           firstSeenAt: now, lastSeenAt: now, status: "active" as const, createdAt: now, updatedAt: now,
         };
         await getDb().insert(jobs).values(values).onConflictDoUpdate({
