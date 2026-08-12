@@ -35,6 +35,8 @@ test("falha da API não exibe as quatro vagas demonstrativas", async () => {
   assert.match(dashboard, /Mantendo a última lista carregada/);
   assert.match(dashboard, /sem score/);
   assert.doesNotMatch(dashboard, /score: j\.score \?\? 70/);
+  assert.match(dashboard, /const visibleMinScore = simplifiedList \? 0 : effectiveMinScore/);
+  assert.match(dashboard, /j\.score >= visibleMinScore/);
   assert.doesNotMatch(dashboard, /\.catch\(\(\) => \{\s*setItems\(\[\]\)/);
 });
 

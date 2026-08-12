@@ -371,6 +371,7 @@ export default function Dashboard() {
     [items, setItems] = useState<Job[]>([]),
     [selected, setSelected] = useState<Job>(demo[0]),
     [fitFilter, setFitFilter] = useState<"profile" | number>(0),
+    [simplifiedList, setSimplifiedList] = useState(false),
     [period, setPeriod] = useState<string | null>(null),
     [mode, setMode] = useState("loading"),
     [importing, setImporting] = useState(false),
@@ -445,6 +446,9 @@ export default function Dashboard() {
    *  pedir ao servidor só as vagas que batem (mantém a paginação correta). */
   const effectiveMinScore =
     fitFilter === "profile" ? profileMinScore : fitFilter;
+  // A resposta de contingência não possui perfil nem score. Não deixamos que
+  // o corte salvo esconda toda a lista enquanto a personalização se recupera.
+  const visibleMinScore = simplifiedList ? 0 : effectiveMinScore;
   // ── Persistência de estado UI no sessionStorage (sobrevive ao F5) ──────────
   const jobListRef = useRef<HTMLDivElement>(null);
   useEffect(() => { try { sessionStorage.setItem("radar_pipelineFilter", pipelineFilter); } catch {} }, [pipelineFilter]);
@@ -572,6 +576,7 @@ export default function Dashboard() {
         );
         setSourcesCount(typeof data.sourcesCount === "number" ? data.sourcesCount : null);
         setPeriod((current) => current ?? data.period ?? "24");
+        setSimplifiedList(Boolean(data.degraded));
         setMode("database");
         setMessage((current) => {
           if (data.degraded) {
@@ -690,7 +695,7 @@ export default function Dashboard() {
           (sourceFilter === "apinfo" && isApinfoJob(j)) ||
           (sourceFilter === "other" && !isLinkedInJob(j) && !isApinfoJob(j));
         return (
-          j.score >= effectiveMinScore &&
+          j.score >= visibleMinScore &&
           (!searchQuery || text.includes(searchQuery)) &&
           matchesSource &&
           (pipelineFilter === "all" ||
@@ -703,7 +708,7 @@ export default function Dashboard() {
     [
       items,
       query,
-      effectiveMinScore,
+      visibleMinScore,
       sourceFilter,
       pipelineFilter,
       pipelineStageMap,
@@ -1551,7 +1556,7 @@ export default function Dashboard() {
             <div className="fit-filter-head">
               <span className="compact-filter-label">Aderência mínima</span>
               <strong style={{ color: fitFilterColor }}>
-                {effectiveMinScore === 0 ? "Todas as vagas" : `${effectiveMinScore}% ou mais`}
+                {simplifiedList ? "Temporariamente sem corte" : effectiveMinScore === 0 ? "Todas as vagas" : `${effectiveMinScore}% ou mais`}
               </strong>
             </div>
             <input
@@ -1564,12 +1569,13 @@ export default function Dashboard() {
               list="fit-filter-ticks"
               value={fitFilterSliderValue}
               onChange={(event) => setFitFilter(Number(event.target.value))}
+              disabled={simplifiedList}
               style={{ "--fit-fill": `${fitFilterSliderValue}%`, "--fit-color": fitFilterColor } as CSSProperties}
             />
             <datalist id="fit-filter-ticks">
               {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((tick) => <option key={tick} value={tick} />)}
             </datalist>
-            <button type="button" className={`fit-filter-profile-chip${fitFilter === "profile" ? " active" : ""}`} onClick={() => setFitFilter("profile")}>
+            <button type="button" className={`fit-filter-profile-chip${fitFilter === "profile" ? " active" : ""}`} onClick={() => setFitFilter("profile")} disabled={simplifiedList}>
               Meu perfil ({profileMinScore}% ou mais)
             </button>
           </div>
