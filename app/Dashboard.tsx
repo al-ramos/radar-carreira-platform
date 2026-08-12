@@ -416,6 +416,7 @@ export default function Dashboard() {
   const [contactCapturing, setContactCapturing] = useState(false);
   const [contactCaptureMsg, setContactCaptureMsg] = useState<{ text: string; error: boolean } | null>(null);
   const contactRequestRef = useRef<{ requestId: string; jobId: string } | null>(null);
+  const contactRequestTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [profileChoices, setProfileChoices] =
     useState<ProfileChoices>(emptyProfileChoices);
@@ -1172,6 +1173,10 @@ export default function Dashboard() {
    * a outras abas do navegador sozinho; só a extensão consegue.
    */
   function captureApinfoContact(job: Job) {
+    if (job.contactEmail) {
+      setContactCaptureMsg({ text: `Contato já cadastrado: ${job.contactEmail}`, error: false });
+      return;
+    }
     if (!job.externalId) {
       setContactCaptureMsg({ text: "Esta vaga não tem código do APinfo identificado.", error: true });
       return;
@@ -1180,6 +1185,17 @@ export default function Dashboard() {
     contactRequestRef.current = { requestId, jobId: job.id };
     setContactCapturing(true);
     setContactCaptureMsg({ text: "Lendo a aba do APinfo…", error: false });
+    if (contactRequestTimerRef.current) clearTimeout(contactRequestTimerRef.current);
+    contactRequestTimerRef.current = setTimeout(() => {
+      if (contactRequestRef.current?.requestId !== requestId) return;
+      contactRequestRef.current = null;
+      contactRequestTimerRef.current = null;
+      setContactCapturing(false);
+      setContactCaptureMsg({
+        text: "A extensão não respondeu. Recarregue a extensão do APinfo e atualize esta página.",
+        error: true,
+      });
+    }, 12_000);
     window.postMessage(
       { source: "radar-dashboard", type: "RADAR_CAPTURE_CONTACT", externalId: job.externalId, requestId },
       window.location.origin,
@@ -1203,6 +1219,8 @@ export default function Dashboard() {
       if (!pending || data.requestId !== pending.requestId) return;
 
       contactRequestRef.current = null;
+      if (contactRequestTimerRef.current) clearTimeout(contactRequestTimerRef.current);
+      contactRequestTimerRef.current = null;
       setContactCapturing(false);
 
       if (!data.ok) {
@@ -1229,7 +1247,10 @@ export default function Dashboard() {
       })();
     }
     window.addEventListener("message", handleExtensionMessage);
-    return () => window.removeEventListener("message", handleExtensionMessage);
+    return () => {
+      window.removeEventListener("message", handleExtensionMessage);
+      if (contactRequestTimerRef.current) clearTimeout(contactRequestTimerRef.current);
+    };
   }, []);
   useEffect(() => {
     if (!shareMenuJobId) return;
@@ -1892,18 +1913,18 @@ export default function Dashboard() {
                 {isApinfoJob(selectedJob) && (
                   <button
                     className="analysis-toggle-btn"
-                    disabled={contactCapturing}
+                    disabled={contactCapturing || Boolean(selectedJob.contactEmail)}
                     title={
                       selectedJob.contactEmail
-                        ? "Capturar de novo — substitui o e-mail salvo pelo que estiver na aba do APinfo agora"
+                        ? `Contato já cadastrado: ${selectedJob.contactEmail}`
                         : "Clique em Candidatar, faça login no APinfo até ver Empresa/Email na tela, e clique aqui"
                     }
                     onClick={() => captureApinfoContact(selectedJob)}
                   >
-                    {contactCapturing
-                      ? "Capturando…"
-                      : selectedJob.contactEmail
-                        ? "Recapturar e-mail"
+                    {selectedJob.contactEmail
+                      ? "E-mail cadastrado"
+                      : contactCapturing
+                        ? "Capturando…"
                         : "Capturar e-mail"}
                   </button>
                 )}

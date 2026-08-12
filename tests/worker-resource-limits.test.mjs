@@ -42,3 +42,19 @@ test("a página autenticada não renderiza o dashboard pesado no Worker", async 
   assert.match(page, /<DashboardShell \/>/);
   assert.match(shell, /ssr: false/);
 });
+
+test("contato existente bloqueia nova captura e a espera possui timeout", async () => {
+  const [dashboard, route, bridge] = await Promise.all([
+    read("../app/Dashboard.tsx"),
+    read("../app/api/jobs/[id]/contact/route.ts"),
+    read("../extensao-apinfo/radar-bridge.js"),
+  ]);
+  assert.match(dashboard, /if \(job\.contactEmail\)/);
+  assert.match(dashboard, /contactCapturing \|\| Boolean\(selectedJob\.contactEmail\)/);
+  assert.match(dashboard, /E-mail cadastrado/);
+  assert.doesNotMatch(dashboard, /Recapturar e-mail/);
+  assert.match(dashboard, /12_000/);
+  assert.match(route, /isNull\(jobs\.contactEmail\)/);
+  assert.match(route, /status: 409/);
+  assert.match(bridge, /chrome\.runtime\.lastError/);
+});

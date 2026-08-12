@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../../chatgpt-auth";
 import { getDb } from "../../../../../db/index";
@@ -24,13 +24,24 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (!contactEmail) return NextResponse.json({ error: "E-mail de contato ausente" }, { status: 400 });
 
   const db = getDb();
-  const job = (await db.select({ id: jobs.id }).from(jobs).where(eq(jobs.id, id)).limit(1))[0];
+  const job = (await db.select({ id: jobs.id, contactEmail: jobs.contactEmail }).from(jobs).where(eq(jobs.id, id)).limit(1))[0];
   if (!job) return NextResponse.json({ error: "Vaga não encontrada" }, { status: 404 });
+  if (job.contactEmail) {
+    return NextResponse.json(
+      { error: "Esta vaga já possui e-mail de contato cadastrado", contactEmail: job.contactEmail },
+      { status: 409 },
+    );
+  }
 
-  await db
+  const updated = await db
     .update(jobs)
     .set({ contactEmail, contactSubject: body?.contactSubject?.trim() || null, updatedAt: new Date() })
-    .where(eq(jobs.id, id));
+    .where(and(eq(jobs.id, id), isNull(jobs.contactEmail)))
+    .returning({ id: jobs.id });
+
+  if (!updated.length) {
+    return NextResponse.json({ error: "Esta vaga já possui e-mail de contato cadastrado" }, { status: 409 });
+  }
 
   return NextResponse.json({ ok: true, contactEmail, contactSubject: body?.contactSubject?.trim() || null });
 }

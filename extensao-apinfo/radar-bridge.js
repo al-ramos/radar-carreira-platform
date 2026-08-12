@@ -19,12 +19,15 @@ window.addEventListener('message', (event) => {
   if (!data || data.source !== 'radar-dashboard' || data.type !== 'RADAR_CAPTURE_CONTACT') return;
 
   chrome.runtime.sendMessage({ type: 'CAPTURE_CONTACT_FOR_RADAR', externalId: data.externalId }, (response) => {
+    const runtimeError = chrome.runtime.lastError;
     window.postMessage(
       {
         source: 'radar-extension',
         type: 'RADAR_CAPTURE_CONTACT_RESULT',
         requestId: data.requestId,
-        ...(response || { ok: false, error: 'A extensão não respondeu. Recarregue a página e tente de novo.' }),
+        ...(runtimeError
+          ? { ok: false, error: 'A extensão do APinfo precisa ser recarregada antes de capturar o contato.' }
+          : response || { ok: false, error: 'A extensão não respondeu. Recarregue a página e tente de novo.' }),
       },
       location.origin,
     );
