@@ -40,6 +40,7 @@ test("dashboard oferece radar, perfil e pipeline persistente", async () => {
   assert.match(dashboard, /pagination-ellipsis/);
   assert.match(dashboard, /Página \{currentPage\} de/);
   assert.match(dashboard, /Usar meu perfil/);
+  assert.match(dashboard, /score-controls-result/);
   assert.match(dashboard, /selectedJob\s*=\s*filtered\.find/);
   assert.match(dashboard, /Abrir descrição em tela ampliada/);
   assert.match(dashboard, /Candidatar via LinkedIn/);

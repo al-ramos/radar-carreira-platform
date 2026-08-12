@@ -1526,6 +1526,10 @@ export default function Dashboard() {
               <strong style={{ color: fitFilterColor }}>
                 {effectiveMinScore === 0 ? "Sem corte" : `${effectiveMinScore}+ pontos`}
               </strong>
+              <span className="score-controls-result">
+                <b>{filtered.length} {filtered.length === 1 ? "vaga" : "vagas"}</b>
+                {totalJobs != null && totalJobs > items.length && <small>de {totalJobs.toLocaleString("pt-BR")}</small>}
+              </span>
             </div>
             <div className="score-controls-range">
               <input
@@ -1632,30 +1636,6 @@ export default function Dashboard() {
               Limpar filtros
             </button>
           )}
-        </div>
-        <div className="list-status-bar">
-          <span>
-            {personalizationPending ? (
-              <><strong>Carregando vagas</strong><span className="list-head-dim"> · filtros de aderência em preparação</span></>
-            ) : (
-              <><strong>{filtered.length}</strong>{" "}{filtered.length === 1 ? "vaga" : "vagas"}</>
-            )}
-            {!personalizationPending && filtered.length < items.length && (
-              <>{" "}<span className="list-head-dim">({items.length} carregadas{totalJobs != null && totalJobs > items.length ? ` de ${totalJobs} disponíveis` : ""})</span></>
-            )}
-            {!personalizationPending && filtered.length === items.length && totalJobs != null && totalJobs > items.length && (
-              <>{" "}<span className="list-head-dim">({items.length} carregadas de {totalJobs} disponíveis)</span></>
-            )}
-            {sourceFilter === "linkedin" && <>{" "}<span className="list-head-badge">só LinkedIn</span></>}
-            {sourceFilter === "apinfo" && <>{" "}<span className="list-head-badge">só APinfo</span></>}
-            {sourceFilter === "other" && <>{" "}<span className="list-head-badge">só ATS</span></>}
-          </span>
-          {totalJobs != null && items.length < totalJobs && (
-            <span className="list-status-progress">
-              <span className="list-status-bar-fill" style={{ width: `${Math.round((items.length / totalJobs) * 100)}%` }} />
-            </span>
-          )}
-          <span className="list-head-dim">por aderência</span>
         </div>
         {totalJobs != null && totalJobs > 50 && (
           <div className="list-pagination">

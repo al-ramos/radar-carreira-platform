@@ -569,7 +569,7 @@
    sem abrir o painel de filtros avançados. */
 .score-controls {
   display: grid;
-  grid-template-columns: minmax(136px, auto) minmax(220px, 1fr) auto;
+  grid-template-columns: minmax(250px, auto) minmax(180px, 1fr) auto;
   align-items: center;
   gap: 10px 20px;
   margin: 0 0 14px;
@@ -581,6 +581,17 @@
 .score-controls-copy { display: flex; align-items: baseline; gap: 7px; white-space: nowrap; }
 .score-controls-copy .compact-filter-label { color: #69718b; font-size: 9px; }
 .score-controls-copy strong { font-size: 15px; line-height: 1.1; }
+.score-controls-result {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  color: #69718b;
+  font-size: 10px;
+  padding-left: 7px;
+  border-left: 1px solid #e1e3eb;
+}
+.score-controls-result b { color: #18264d; font-size: 11px; }
+.score-controls-result small { color: #8a91a8; font-size: 9px; }
 .score-controls-range {
   display: grid;
   grid-template-columns: 12px minmax(120px, 1fr) 24px;
@@ -806,6 +817,7 @@
   .radar-source-select { flex: 1; }
   .radar-filter-panel { padding: 14px; }
   .score-controls { grid-template-columns: 1fr; gap: 8px; }
+  .score-controls-copy { flex-wrap: wrap; white-space: normal; }
   .score-controls-range { grid-column: 1; }
   .score-controls-actions { align-items: start; flex-wrap: wrap; }
   .radar-filter-panel .fit-filter { grid-template-columns: 1fr; }
