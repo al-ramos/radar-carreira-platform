@@ -15,13 +15,9 @@ type ReportRow = {
 };
 
 /**
- * O relatório espelha exatamente o que está visível na tela no momento do
- * download: o Dashboard já aplicou período, fonte, busca, score mínimo,
- * etapa do pipeline e veredito no client (sobre as vagas já carregadas via
- * paginação) e manda aqui a lista final de IDs — junto com o score e
- * veredito já calculados — para não haver risco de o servidor recalcular
- * um resultado diferente do que a pessoa está vendo (ex.: filtrar contra
- * as 1042 vagas do período inteiro em vez das 42 carregadas na tela).
+ * O Dashboard envia os IDs, o score e o veredito já calculados para a página
+ * atual ou para todas as páginas filtradas. Isso mantém o relatório fiel ao
+ * que a pessoa escolheu exportar, sem recalcular resultados no servidor.
  */
 export async function POST(request: Request) {
   const user = await getChatGPTUser();
@@ -41,18 +37,20 @@ export async function POST(request: Request) {
 
   const db = getDb();
   const ids = requested.map((r) => r.id);
-  const [rows, pipeline] = await Promise.all([
-    db
+  const jobRows = await Promise.all(
+    Array.from({ length: Math.ceil(ids.length / 200) }, (_, index) =>
+      db
       .select({ job: jobs, source: jobSources.name })
       .from(jobs)
       .leftJoin(jobSources, eq(jobs.sourceId, jobSources.id))
-      .where(inArray(jobs.id, ids)),
-    db
-      .select()
-      .from(userJobStatus)
-      .where(eq(userJobStatus.userId, user.userId)),
-  ]);
-  const byJob = new Map(rows.map((r) => [r.job.id, r]));
+      .where(inArray(jobs.id, ids.slice(index * 200, (index + 1) * 200))),
+    ),
+  );
+  const pipeline = await db
+    .select()
+    .from(userJobStatus)
+    .where(eq(userJobStatus.userId, user.userId));
+  const byJob = new Map(jobRows.flat().map((r) => [r.job.id, r]));
   const byStatus = new Map(pipeline.map((item) => [item.jobId, item]));
 
   const header = [

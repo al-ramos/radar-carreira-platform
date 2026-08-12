@@ -432,6 +432,7 @@ export default function Dashboard() {
   const [detailJob, setDetailJob] = useState<Job | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [reportLoading, setReportLoading] = useState(false);
+  const [reportOptionsOpen, setReportOptionsOpen] = useState(false);
   const [descriptionCopied, setDescriptionCopied] = useState(false);
   const [shareMenuJobId, setShareMenuJobId] = useState<string | null>(null);
   const [analysisOpen, setAnalysisOpen] = useState(false);
@@ -499,6 +500,7 @@ export default function Dashboard() {
     setApinfoOpen(false);
     setDetailJob(null);
     setPreferencesOpen(false);
+    setReportOptionsOpen(false);
   };
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -749,21 +751,63 @@ export default function Dashboard() {
     }),
     [filtered, sortOrder],
   );
-  /** Baixa o relatório em Excel/CSV com exatamente as vagas visíveis na tela
-   *  (mesma lista e ordem exibidas) — score e veredito são os
-   *  já calculados no client, para não haver divergência com o que a pessoa
-   *  está vendo no momento do clique. */
-  async function downloadReport() {
-    if (reportLoading || filtered.length === 0) return;
+  const sortReportJobs = useCallback((jobs: Job[]) =>
+    [...jobs].sort((left, right) => {
+      if (sortOrder === "recent") {
+        return new Date(right.publishedAt ?? 0).getTime() - new Date(left.publishedAt ?? 0).getTime();
+      }
+      return right.score - left.score || new Date(right.publishedAt ?? 0).getTime() - new Date(left.publishedAt ?? 0).getTime();
+    }),
+  [sortOrder]);
+
+  /** Busca todas as páginas com os filtros em vigor antes de exportar. */
+  async function getAllReportJobs(): Promise<Job[]> {
+    const pageSize = 250;
+    const loadPage = async (page: number) => {
+      const params = new URLSearchParams(buildJobsParams(page));
+      params.set("limit", String(pageSize));
+      const data = await fetchJobsWithRetry(`/api/jobs?${params.toString()}`, new AbortController().signal);
+      return { jobs: (data.jobs ?? []).map(adapt) as Job[], total: Number(data.total ?? 0) };
+    };
+    const firstPage = await loadPage(1);
+    const pages = Math.ceil(firstPage.total / pageSize);
+    const allJobs = [...firstPage.jobs];
+    for (let page = 2; page <= pages; page += 1) {
+      const result = await loadPage(page);
+      allJobs.push(...result.jobs);
+    }
+    return sortReportJobs(allJobs);
+  }
+
+  /** Baixa a página atual ou todas as páginas que correspondem aos filtros. */
+  async function downloadReport(scope: "page" | "all") {
+    if (reportLoading || (scope === "page" && orderedJobs.length === 0)) return;
+    setReportOptionsOpen(false);
     setReportLoading(true);
     try {
-    const rows = orderedJobs.map((job) => ({
-        id: job.id,
-        score: job.score,
-        verdict: verdictMap.get(job.id)
-          ? `${verdictMap.get(job.id)!.emoji} ${verdictMap.get(job.id)!.label}`
-          : undefined,
-      }));
+      const jobsToExport = scope === "page" ? orderedJobs : await getAllReportJobs();
+      if (jobsToExport.length === 0) {
+        setMessage("Não há vagas para exportar com os filtros atuais.");
+        return;
+      }
+      const rows = jobsToExport.map((job) => {
+        const verdict = verdictMap.get(job.id) ?? (
+          job.scored && profileMasteredSkills.length
+            ? computeVerdict({
+                title: job.title,
+                description: job.description ?? "",
+                stack: job.stack,
+                seniority: job.seniority,
+                workMode: job.workMode,
+              }, profileMasteredSkills)
+            : undefined
+        );
+        return {
+          id: job.id,
+          score: job.score,
+          verdict: verdict ? `${verdict.emoji} ${verdict.label}` : undefined,
+        };
+      });
       const response = await fetch("/api/admin/report", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -1445,7 +1489,7 @@ export default function Dashboard() {
               <button
                 type="button"
                 className="icon-btn"
-                onClick={downloadReport}
+                onClick={() => setReportOptionsOpen(true)}
                 disabled={personalizationPending || reportLoading || filtered.length === 0}
               >
                 {reportLoading ? "Gerando…" : "↓ Relatório Excel"}
@@ -1637,6 +1681,38 @@ export default function Dashboard() {
             </button>
           )}
         </div>
+        {reportOptionsOpen && (
+          <div className="modal-backdrop" onClick={() => setReportOptionsOpen(false)}>
+            <section
+              className="modal report-options-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="report-options-title"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <button
+                type="button"
+                className="modal-close"
+                onClick={() => setReportOptionsOpen(false)}
+                aria-label="Fechar"
+              >
+                ×
+              </button>
+              <h2 id="report-options-title">Exportar relatório</h2>
+              <p>Escolha o que deseja incluir no arquivo. Os filtros atuais serão mantidos.</p>
+              <div className="report-options">
+                <button type="button" onClick={() => void downloadReport("page")}>
+                  <strong>Página atual</strong>
+                  <span>{orderedJobs.length} vaga{orderedJobs.length !== 1 ? "s" : ""} exibida{orderedJobs.length !== 1 ? "s" : ""}</span>
+                </button>
+                <button type="button" onClick={() => void downloadReport("all")}>
+                  <strong>Todas as páginas</strong>
+                  <span>Exporta todas as vagas encontradas pelos filtros atuais</span>
+                </button>
+              </div>
+            </section>
+          </div>
+        )}
         {totalJobs != null && totalJobs > 50 && (
           <div className="list-pagination">
             <span className="pagination-summary">Página {currentPage} de {Math.ceil(totalJobs / 50)}</span>
