@@ -48,7 +48,7 @@ test("falha da API não exibe as quatro vagas demonstrativas", async () => {
   assert.match(dashboard, /finally\(\(\) => setProfileReady\(true\)\)/);
   assert.match(dashboard, /const profileLoading = !profileReady \|\| mode === "loading"/);
   assert.match(dashboard, /Seu perfil está salvo\. A lista está temporariamente sem aderência/);
-  assert.match(dashboard, /Maior pontuação/);
+  assert.match(dashboard, /Pontuação/);
   assert.match(dashboard, /Escolher aderência mínima ao seu perfil/);
   assert.match(dashboard, /const orderedJobs = useMemo/);
   assert.doesNotMatch(dashboard, /\.catch\(\(\) => \{\s*setItems\(\[\]\)/);

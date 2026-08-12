@@ -1472,7 +1472,7 @@ export default function Dashboard() {
         <div className="radar-controls">
           <div className="radar-result-summary">
             <span>
-              <strong>{totalJobs ?? items.length}</strong> vagas no período selecionado
+              <strong>{(totalJobs ?? items.length).toLocaleString("pt-BR")}</strong> vagas encontradas
               {totalJobs !== null && totalJobs > items.length && (
                 <span className="list-head-dim"> · {items.length} carregadas</span>
               )}
@@ -1524,34 +1524,38 @@ export default function Dashboard() {
             <div className="score-controls-copy">
               <span className="compact-filter-label">Aderência mínima</span>
               <strong style={{ color: fitFilterColor }}>
-                {effectiveMinScore === 0 ? "Todas as vagas · 0 pontos" : `${effectiveMinScore} pontos ou mais`}
+                {effectiveMinScore === 0 ? "Sem corte" : `${effectiveMinScore}+ pontos`}
               </strong>
             </div>
-            <input
-              type="range"
-              className="fit-filter-slider score-controls-slider"
-              aria-label="Escolher aderência mínima ao seu perfil"
-              min={0}
-              max={100}
-              step={5}
-              list="fit-filter-ticks"
-              value={fitFilterSliderValue}
-              onChange={(event) => setFitFilter(Number(event.target.value))}
-              style={{ "--fit-fill": `${fitFilterSliderValue}%`, "--fit-color": fitFilterColor } as CSSProperties}
-            />
-            <div className="score-controls-foot">
-              <span>0</span><span>50</span><span>100 pontos</span>
+            <div className="score-controls-range">
+              <input
+                type="range"
+                className="fit-filter-slider score-controls-slider"
+                aria-label="Escolher aderência mínima ao seu perfil"
+                min={0}
+                max={100}
+                step={5}
+                list="fit-filter-ticks"
+                value={fitFilterSliderValue}
+                onChange={(event) => setFitFilter(Number(event.target.value))}
+                style={{ "--fit-fill": `${fitFilterSliderValue}%`, "--fit-color": fitFilterColor } as CSSProperties}
+              />
+              <div className="score-controls-foot" aria-hidden="true">
+                <span>0</span><span>100</span>
+              </div>
             </div>
-            <button type="button" className={`fit-filter-profile-chip${fitFilter === "profile" ? " active" : ""}`} onClick={() => setFitFilter("profile")}>
-              Meu perfil ({profileMinScore} pontos)
-            </button>
-            <label className="score-sort">
-              <span>Ordenar</span>
-              <select value={sortOrder} onChange={(event) => setSortOrder(event.target.value as "score" | "recent")} aria-label="Ordenar vagas">
-                <option value="score">Maior pontuação</option>
-                <option value="recent">Mais recentes</option>
-              </select>
-            </label>
+            <div className="score-controls-actions">
+              <button type="button" className={`fit-filter-profile-chip${fitFilter === "profile" ? " active" : ""}`} onClick={() => setFitFilter("profile")}>
+                Usar meu perfil ({profileMinScore})
+              </button>
+              <label className="score-sort">
+                <span>Ordenar por</span>
+                <select value={sortOrder} onChange={(event) => setSortOrder(event.target.value as "score" | "recent")} aria-label="Ordenar vagas">
+                  <option value="score">Pontuação</option>
+                  <option value="recent">Recentes</option>
+                </select>
+              </label>
+            </div>
             <datalist id="fit-filter-ticks">
               {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((tick) => <option key={tick} value={tick} />)}
             </datalist>
@@ -1655,6 +1659,7 @@ export default function Dashboard() {
         </div>
         {totalJobs != null && totalJobs > 50 && (
           <div className="list-pagination">
+            <span className="pagination-summary">Página {currentPage} de {Math.ceil(totalJobs / 50)}</span>
             <button
               type="button"
               className="pagination-arrow"

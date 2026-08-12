@@ -19,8 +19,8 @@ test("dashboard oferece radar, perfil e pipeline persistente", async () => {
   assert.match(dashboard, /fetchJobsWithRetry\(`\/api\/jobs\?\$\{buildJobsParams\(page\)\}/);
   assert.match(dashboard, /Últimas 24h/);
   assert.match(dashboard, /Últimos 7 dias/);
-  assert.match(dashboard, /Todas as vagas/);
-  assert.match(dashboard, /Meu perfil \(/);
+  assert.match(dashboard, /Sem corte/);
+  assert.match(dashboard, /Usar meu perfil \(/);
   assert.match(dashboard, /80% ou mais/);
   assert.match(dashboard, /fetch\("\/api\/pipeline"\)/);
   assert.match(dashboard, /fetch\("\/api\/profile"\)/);
@@ -38,6 +38,8 @@ test("dashboard oferece radar, perfil e pipeline persistente", async () => {
   assert.match(dashboard, /function compactPagination/);
   assert.match(dashboard, /start-ellipsis/);
   assert.match(dashboard, /pagination-ellipsis/);
+  assert.match(dashboard, /Página \{currentPage\} de/);
+  assert.match(dashboard, /Usar meu perfil/);
   assert.match(dashboard, /selectedJob\s*=\s*filtered\.find/);
   assert.match(dashboard, /Abrir descrição em tela ampliada/);
   assert.match(dashboard, /Candidatar via LinkedIn/);
