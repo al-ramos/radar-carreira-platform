@@ -393,11 +393,6 @@ export default function Dashboard() {
     CollectionOutcome[]
   >([]);
   const [totalJobs, setTotalJobs] = useState<number | null>(null);
-  const [totalLinkedIn, setTotalLinkedIn] = useState<number | null>(null);
-  const [totalApinfo, setTotalApinfo] = useState<number | null>(null);
-  const [totalOtherSources, setTotalOtherSources] = useState<number | null>(
-    null,
-  );
   const [sourcesCount, setSourcesCount] = useState<number | null>(null);
   const loadedJobsRef = useRef<Job[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
@@ -579,17 +574,6 @@ export default function Dashboard() {
           }
         }
         setTotalJobs(typeof data.total === "number" ? data.total : next.length);
-        setTotalLinkedIn(
-          typeof data.totalLinkedIn === "number" ? data.totalLinkedIn : null,
-        );
-        setTotalApinfo(
-          typeof data.totalApinfo === "number" ? data.totalApinfo : null,
-        );
-        setTotalOtherSources(
-          typeof data.totalOtherSources === "number"
-            ? data.totalOtherSources
-            : null,
-        );
         setSourcesCount(typeof data.sourcesCount === "number" ? data.sourcesCount : null);
         setPeriod((current) => current ?? data.period ?? "24");
         setSimplifiedList(Boolean(data.degraded));
@@ -776,18 +760,6 @@ export default function Dashboard() {
       setReportLoading(false);
     }
   }
-  // Contagem das vagas atualmente carregadas (até 250, dentro do período
-  // selecionado), usada para o detalhamento por fonte no resumo do topo
-  // quando a API ainda não respondeu com os totais reais do banco.
-  const loadedLinkedIn = useMemo(
-    () => items.filter(isLinkedInJob).length,
-    [items],
-  );
-  const loadedApinfo = useMemo(
-    () => items.filter(isApinfoJob).length,
-    [items],
-  );
-  const loadedOtherSources = items.length - loadedLinkedIn - loadedApinfo;
   const selectedJob =
     filtered.find((job) => job.id === selected.id) ?? filtered[0] ?? null;
   function clearRadarFilters() {
@@ -953,9 +925,6 @@ export default function Dashboard() {
       setTotalJobs(
         typeof jobsData.total === "number" ? jobsData.total : next.length,
       );
-      setTotalLinkedIn(typeof jobsData.totalLinkedIn === "number" ? jobsData.totalLinkedIn : null);
-      setTotalApinfo(typeof jobsData.totalApinfo === "number" ? jobsData.totalApinfo : null);
-      setTotalOtherSources(typeof jobsData.totalOtherSources === "number" ? jobsData.totalOtherSources : null);
       setSourcesCount(typeof jobsData.sourcesCount === "number" ? jobsData.sourcesCount : null);
     }
   }
@@ -1487,6 +1456,17 @@ export default function Dashboard() {
               />
             </div>
             <select
+              className="radar-source-select"
+              aria-label="Origem das vagas"
+              value={sourceFilter}
+              onChange={(e) => setSourceFilter(e.target.value as typeof sourceFilter)}
+            >
+              <option value="all">Todas as origens</option>
+              <option value="linkedin">LinkedIn</option>
+              <option value="apinfo">APinfo</option>
+              <option value="other">Outras fontes</option>
+            </select>
+            <select
               aria-label="Período das vagas"
               onChange={(e) => setPeriod(e.target.value)}
               value={period ?? "24"}
@@ -1508,23 +1488,6 @@ export default function Dashboard() {
           </div>
         </div>
         <div id="radar-filter-panel" className="radar-filter-panel" hidden={!filtersOpen} aria-label="Filtros de vagas">
-          <div className="compact-filter-group filter-source-group">
-            <span className="compact-filter-label">Origem</span>
-            <div className="compact-pills" role="group" aria-label="Filtrar por origem da vaga">
-              {(
-                [
-                  { id: "all", label: "Todas", count: totalJobs ?? items.length },
-                  { id: "linkedin", label: "LinkedIn", count: totalLinkedIn ?? loadedLinkedIn },
-                  { id: "apinfo", label: "APinfo", count: totalApinfo ?? loadedApinfo },
-                  { id: "other", label: "Outras fontes", count: totalOtherSources ?? loadedOtherSources },
-                ] as const
-              ).map(({ id, label, count }) => (
-                <button key={id} type="button" className={sourceFilter === id ? "active" : ""} onClick={() => setSourceFilter(id)} aria-pressed={sourceFilter === id}>
-                  {label}{count > 0 && <span>{count}</span>}
-                </button>
-              ))}
-            </div>
-          </div>
           <div className="compact-filter-group">
             <span className="compact-filter-label">Pipeline</span>
             <div className="compact-pills" role="group" aria-label="Filtrar por estágio do pipeline">
@@ -1588,34 +1551,34 @@ export default function Dashboard() {
               </div>
             </>
           )}
-          <div className="compact-filter-group fit-filter">
-            <div className="fit-filter-head">
-              <span className="compact-filter-label">Aderência mínima</span>
-              <strong style={{ color: fitFilterColor }}>
-                {personalizationPending
-                  ? `${effectiveMinScore}% — aplica ao concluir o cálculo`
-                  : effectiveMinScore === 0 ? "Todas as vagas" : `${effectiveMinScore}% ou mais`}
-              </strong>
+          {!personalizationPending && (
+            <div className="compact-filter-group fit-filter">
+              <div className="fit-filter-head">
+                <span className="compact-filter-label">Aderência mínima</span>
+                <strong style={{ color: fitFilterColor }}>
+                  {effectiveMinScore === 0 ? "Todas as vagas" : `${effectiveMinScore}% ou mais`}
+                </strong>
+              </div>
+              <input
+                type="range"
+                className="fit-filter-slider"
+                aria-label="Aderência mínima ao seu perfil"
+                min={0}
+                max={100}
+                step={10}
+                list="fit-filter-ticks"
+                value={fitFilterSliderValue}
+                onChange={(event) => setFitFilter(Number(event.target.value))}
+                style={{ "--fit-fill": `${fitFilterSliderValue}%`, "--fit-color": fitFilterColor } as CSSProperties}
+              />
+              <datalist id="fit-filter-ticks">
+                {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((tick) => <option key={tick} value={tick} />)}
+              </datalist>
+              <button type="button" className={`fit-filter-profile-chip${fitFilter === "profile" ? " active" : ""}`} onClick={() => setFitFilter("profile")}>
+                Meu perfil ({profileMinScore}% ou mais)
+              </button>
             </div>
-            <input
-              type="range"
-              className="fit-filter-slider"
-              aria-label="Aderência mínima ao seu perfil"
-              min={0}
-              max={100}
-              step={10}
-              list="fit-filter-ticks"
-              value={fitFilterSliderValue}
-              onChange={(event) => setFitFilter(Number(event.target.value))}
-              style={{ "--fit-fill": `${fitFilterSliderValue}%`, "--fit-color": fitFilterColor } as CSSProperties}
-            />
-            <datalist id="fit-filter-ticks">
-              {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((tick) => <option key={tick} value={tick} />)}
-            </datalist>
-            <button type="button" className={`fit-filter-profile-chip${fitFilter === "profile" ? " active" : ""}`} onClick={() => setFitFilter("profile")}>
-              Meu perfil ({profileMinScore}% ou mais)
-            </button>
-          </div>
+          )}
           {activeFilterCount > 0 && (
             <button type="button" className="clear-radar-filters" onClick={clearRadarFilters}>
               Limpar filtros

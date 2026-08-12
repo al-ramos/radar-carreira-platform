@@ -576,6 +576,9 @@
   flex: 1;
   min-width: 0;
 }
+.radar-source-select {
+  min-width: 144px;
+}
 .filter-trigger,
 .more-actions-trigger {
   display: inline-flex;
@@ -708,6 +711,7 @@
   .radar-controls { display: grid; gap: 12px; }
   .radar-controls .toolbar { flex-wrap: wrap; }
   .radar-controls .search { min-width: 100%; }
+  .radar-source-select { flex: 1; }
   .radar-filter-panel { padding: 14px; }
   .radar-filter-panel .fit-filter { grid-template-columns: 1fr; }
   .radar-filter-panel .fit-filter-profile-chip { justify-self: start; }
