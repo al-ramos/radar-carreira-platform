@@ -32,7 +32,6 @@ type Job = {
   workMode?: string;
   age: string;
   publishedAt?: string;
-  firstSeenAt?: string;
   url?: string;
   applyUrl?: string;
   contactEmail?: string;
@@ -53,7 +52,6 @@ type ApiJob = {
   workMode?: string;
   seniority?: string;
   publishedAt?: string;
-  firstSeenAt?: string;
   url?: string;
   applyUrl?: string;
   contactEmail?: string;
@@ -358,7 +356,6 @@ const adapt = (j: ApiJob): Job => ({
   contactSubject: j.contactSubject,
   externalId: j.externalId,
   publishedAt: j.publishedAt,
-  firstSeenAt: j.firstSeenAt,
   description: j.description,
 });
 
@@ -569,10 +566,9 @@ export default function Dashboard() {
       if (!simplifiedList && effectiveMinScore > 0) params.set("minScore", String(effectiveMinScore));
       if (pipelineFilter !== "all") params.set("pipeline", pipelineFilter);
       if (!simplifiedList && verdictFilter !== "all") params.set("verdict", verdictFilter);
-      if (sortOrder === "recent") params.set("sort", "imported");
       return params.toString();
     },
-    [period, sourceFilter, debouncedQuery, effectiveMinScore, pipelineFilter, verdictFilter, simplifiedList, sortOrder],
+    [period, sourceFilter, debouncedQuery, effectiveMinScore, pipelineFilter, verdictFilter, simplifiedList],
   );
   useEffect(() => {
     if (!profileReady) return;
@@ -581,9 +577,7 @@ export default function Dashboard() {
       .then((data) => {
         const next = (data.jobs ?? [])
           .map(adapt)
-          .sort((a: Job, b: Job) => sortOrder === "recent"
-            ? new Date(b.firstSeenAt ?? 0).getTime() - new Date(a.firstSeenAt ?? 0).getTime()
-            : b.score - a.score);
+          .sort((a: Job, b: Job) => b.score - a.score);
         loadedJobsRef.current = next;
         setItems(next);
         setCurrentPage(1);
@@ -751,7 +745,7 @@ export default function Dashboard() {
   const orderedJobs = useMemo(
     () => [...filtered].sort((left, right) => {
       if (sortOrder === "recent") {
-        return new Date(right.firstSeenAt ?? 0).getTime() - new Date(left.firstSeenAt ?? 0).getTime();
+        return new Date(right.publishedAt ?? 0).getTime() - new Date(left.publishedAt ?? 0).getTime();
       }
       return right.score - left.score || new Date(right.publishedAt ?? 0).getTime() - new Date(left.publishedAt ?? 0).getTime();
     }),
@@ -854,9 +848,7 @@ export default function Dashboard() {
     try {
       const controller = new AbortController();
       const data = await fetchJobsWithRetry(`/api/jobs?${buildJobsParams(page)}`, controller.signal);
-      const next: Job[] = (data.jobs ?? []).map(adapt).sort((a: Job, b: Job) => sortOrder === "recent"
-        ? new Date(b.firstSeenAt ?? 0).getTime() - new Date(a.firstSeenAt ?? 0).getTime()
-        : b.score - a.score);
+      const next: Job[] = (data.jobs ?? []).map(adapt).sort((a: Job, b: Job) => b.score - a.score);
       setItems(next);
       setCurrentPage(page);
       setSimplifiedList(Boolean(data.degraded));
@@ -1608,7 +1600,7 @@ export default function Dashboard() {
                 <span>Ordenar por</span>
                 <select value={sortOrder} onChange={(event) => setSortOrder(event.target.value as "score" | "recent")} aria-label="Ordenar vagas">
                   <option value="score">Pontuação</option>
-                  <option value="recent">Importadas recentemente</option>
+                  <option value="recent">Recentes</option>
                 </select>
               </label>
             </div>
