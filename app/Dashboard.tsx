@@ -903,6 +903,8 @@ export default function Dashboard() {
     : null;
   const selectedJobEligible = selectedJobVerdict?.emoji === "✅" || selectedJobVerdict?.emoji === "🟡";
   const selectedJobRejected = Boolean(selectedJobVerdict && !selectedJobEligible);
+  const detailJobVerdict = detailJob ? verdictMap.get(detailJob.id) : null;
+  const detailJobEligible = detailJobVerdict?.emoji === "✅" || detailJobVerdict?.emoji === "🟡";
   function clearRadarFilters() {
     setQuery("");
     setFitFilter(0);
@@ -1129,7 +1131,9 @@ export default function Dashboard() {
     setSelected(job);
     setAnalysisOpen(false);
     void loadJobDetail(job);
-    if (!job.id.startsWith("demo") && currentUser) {
+    const verdict = verdictMap.get(job.id);
+    const eligible = verdict?.emoji === "✅" || verdict?.emoji === "🟡";
+    if (!job.id.startsWith("demo") && currentUser && eligible) {
       // Optimistic update: marca como viewed localmente sem rebaixar estágio existente
       setPipelineItems((prev) => {
         if (prev.some((p) => p.id === job.id)) return prev;
@@ -1157,22 +1161,23 @@ export default function Dashboard() {
         return [...prev, { id: jobId, stage } as PipelineJob];
       });
     } else {
-      setMessage("Entre com sua conta para atualizar o pipeline.");
+      const data = await r.json().catch(() => null);
+      setMessage(data?.error ?? "Não foi possível atualizar o acompanhamento.");
     }
     return r.ok;
   }
   async function persistJobAnalysis(job: Job) {
-    if (job.id.startsWith("demo") || !currentUser || !selectedJobVerdict) return;
+    if (job.id.startsWith("demo") || !currentUser || !selectedJobVerdict || !selectedJobEligible) return;
     setAnalysisSaving(true);
-    const analysisStack = (!detailLoading && jobDetail?.stack?.length) ? jobDetail.stack : job.stack;
-    const stackFit = analyzeStackFit(analysisStack, profileMasteredSkills);
     try {
       const response = await fetch(`/api/jobs/${encodeURIComponent(job.id)}/analysis`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ...selectedJobVerdict, matchingSkills: stackFit.matchingSkills, missingSkills: stackFit.missingSkills }),
       });
-      if (!response.ok) setMessage("A análise foi exibida, mas não pôde ser registrada agora.");
+      if (response.ok) setMessage("Análise elegível registrada no acompanhamento.");
+      else {
+        const data = await response.json().catch(() => null);
+        setMessage(data?.error ?? "A análise foi exibida, mas não pôde ser registrada agora.");
+      }
     } catch {
       setMessage("A análise foi exibida, mas não pôde ser registrada agora.");
     } finally {
@@ -1182,6 +1187,11 @@ export default function Dashboard() {
   async function save(job: Job) {
     if (job.id.startsWith("demo")) {
       setMessage("Entre na versão publicada para salvar vagas reais.");
+      return;
+    }
+    const verdict = verdictMap.get(job.id);
+    if (verdict?.emoji !== "✅" && verdict?.emoji !== "🟡") {
+      setMessage("Apenas vagas com veredito Bate ou Provável podem ser salvas no acompanhamento.");
       return;
     }
     await updateStage(job.id, "saved", "Vaga salva no seu pipeline.");
@@ -2088,8 +2098,10 @@ export default function Dashboard() {
                     <div className="stage-selector-wrap">
                       <select
                         className="stage-selector"
+                        disabled={!selectedJobEligible}
                         value={currentStage === "unseen" ? "" : currentStage}
                         aria-label="Estágio no pipeline"
+                        title={!selectedJobEligible ? "Somente vagas com veredito Bate ou Provável entram no acompanhamento" : "Atualizar estágio no acompanhamento"}
                         onChange={async (e) => {
                           const stage = e.target.value;
                           if (!stage) return;
@@ -2115,7 +2127,7 @@ export default function Dashboard() {
                   onClick={() => {
                     const opening = !analysisOpen;
                     setAnalysisOpen(opening);
-                    if (opening) void persistJobAnalysis(selectedJob);
+                    if (opening && selectedJobEligible) void persistJobAnalysis(selectedJob);
                   }}
                   title="Análise de candidatura com base no seu perfil"
                 >
@@ -2284,6 +2296,14 @@ export default function Dashboard() {
                         </tbody>
                       </table>}
 
+                      {selectedJob.scored && (
+                        <p className={`analysis-persistence-note ${selectedJobEligible ? "eligible" : "discarded"}`}>
+                          {selectedJobEligible
+                            ? "Esta oportunidade é elegível e foi adicionada ao histórico de análises."
+                            : "Esta análise é apenas explicativa e não foi adicionada ao acompanhamento."}
+                        </p>
+                      )}
+
                       {selectedJob.scored && (() => {
                         const stackFit = analyzeStackFit(analysisStack, profileMasteredSkills);
                         return (
@@ -2387,7 +2407,10 @@ export default function Dashboard() {
             <div className="job-detail-buttons">
               <button
                 className="linkedin-action"
+                disabled={!detailJobEligible}
+                title={!detailJobEligible ? "Candidatura indisponível para vagas Não bate ou Bloqueador" : "Abrir candidatura"}
                 onClick={() => {
+                  if (!detailJobEligible) return;
                   if (detailJob.applyUrl) {
                     open(detailJob.applyUrl, "_blank");
                   } else if (isApinfoJob(detailJob) && detailJob.externalId) {
@@ -2399,7 +2422,7 @@ export default function Dashboard() {
               >
                 {jobProviderLabel(detailJob)}
               </button>
-              <button className="primary" onClick={() => save(detailJob)}>
+              <button className="primary" disabled={!detailJobEligible} onClick={() => save(detailJob)}>
                 Salvar oportunidade
               </button>
             </div>

@@ -106,29 +106,36 @@ test("resumo diário envia vagas pelo Gmail sem duplicação", async () => {
   assert.match(connector, /action:'confirm'/);
 });
 
-test("análise personalizada persiste regras do perfil e prepara orçamento de IA", async () => {
-  const [profile, dashboard, schema, analysisRoute, aiStatusRoute, careerMigration, analysisMigration, accountingMigration] = await Promise.all([
+test("análise personalizada persiste somente vagas elegíveis e prepara orçamento de IA", async () => {
+  const [profile, dashboard, schema, analysisRoute, pipelineRoute, aiStatusRoute, careerMigration, analysisMigration, accountingMigration, cleanupMigration] = await Promise.all([
     read("../app/ProfilePreferences.tsx"),
     read("../app/Dashboard.tsx"),
     read("../db/schema.ts"),
     read("../app/api/jobs/[id]/analysis/route.ts"),
+    read("../app/api/pipeline/route.ts"),
     read("../app/api/ai/status/route.ts"),
     read("../drizzle/0015_personalized_career_rules.sql"),
     read("../drizzle/0016_user_job_analyses.sql"),
     read("../drizzle/0017_ai_analysis_accounting.sql"),
+    read("../drizzle/0018_remove_ineligible_analyses.sql"),
   ]);
   assert.match(profile, /Como o Radar deve representar você/);
   assert.match(profile, /Limite mensal de tokens/);
   assert.match(dashboard, /persistJobAnalysis/);
   assert.match(dashboard, /Abrir no Outlook/);
+  assert.match(dashboard, /Esta análise é apenas explicativa e não foi adicionada ao acompanhamento/);
   assert.doesNotMatch(dashboard, /updateStage\(selectedJob\.id, "applied"/);
   assert.match(schema, /userJobAnalyses/);
   assert.match(schema, /aiUsageEvents/);
   assert.match(analysisRoute, /onConflictDoUpdate/);
+  assert.match(analysisRoute, /if \(!result\.eligible\)/);
+  assert.match(analysisRoute, /Apenas vagas com veredito Bate ou Provável são registradas/);
+  assert.match(pipelineRoute, /if \(!analysis\.eligible\)/);
   assert.match(aiStatusRoute, /remainingTokens/);
   assert.match(careerMigration, /career_rules/);
   assert.match(analysisMigration, /user_job_analyses/);
   assert.match(accountingMigration, /ai_usage_events/);
+  assert.match(cleanupMigration, /WHERE `verdict` IN \('🔴', '❌'\)/);
 });
 
 test("rota de login oferece acesso local em vez de página não encontrada", async () => {
