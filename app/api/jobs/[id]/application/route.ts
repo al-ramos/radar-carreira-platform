@@ -1,0 +1,51 @@
+import { and, eq } from "drizzle-orm";
+import { NextResponse } from "next/server";
+import { getChatGPTUser } from "../../../../chatgpt-auth";
+import { getDb } from "../../../../../db/index";
+import { jobs, profiles, userJobStatus } from "../../../../../db/schema";
+import { analyzeStoredJobForProfile } from "../../../../../lib/personalized-analysis";
+
+export const dynamic = "force-dynamic";
+const STATUSES = ["generated", "sent", "responded"] as const;
+type ApplicationStatus = typeof STATUSES[number];
+
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const user = await getChatGPTUser();
+  if (!user) return NextResponse.json({ error: "Autenticação necessária" }, { status: 401 });
+  const body = await request.json().catch(() => null) as { status?: ApplicationStatus } | null;
+  if (!body?.status || !STATUSES.includes(body.status)) return NextResponse.json({ error: "Status inválido" }, { status: 400 });
+  const { id } = await params;
+  const db = getDb();
+  const [job, profile, existing] = await Promise.all([
+    db.select().from(jobs).where(eq(jobs.id, id)).limit(1).then(rows => rows[0]),
+    db.select().from(profiles).where(eq(profiles.userId, user.userId)).limit(1).then(rows => rows[0]),
+    db.select().from(userJobStatus).where(and(eq(userJobStatus.userId, user.userId), eq(userJobStatus.jobId, id))).limit(1).then(rows => rows[0]),
+  ]);
+  if (!job) return NextResponse.json({ error: "Vaga não encontrada" }, { status: 404 });
+  if (!profile) return NextResponse.json({ error: "Complete seu perfil antes de acompanhar candidaturas" }, { status: 412 });
+  const analysis = analyzeStoredJobForProfile(job, profile);
+  if (!analysis?.eligible) return NextResponse.json({ error: "A candidatura só pode ser acompanhada para vagas Bate ou Provável" }, { status: 422 });
+
+  const requestedRank = STATUSES.indexOf(body.status);
+  const currentRank = existing?.applicationStatus ? STATUSES.indexOf(existing.applicationStatus) : -1;
+  const status = (requestedRank >= currentRank ? body.status : existing?.applicationStatus) as ApplicationStatus;
+  const now = new Date();
+  const advancedStage = existing?.stage && ["interview", "rejected", "archived"].includes(existing.stage);
+  const stage = advancedStage ? existing.stage : status === "generated" ? "saved" : "applied";
+  const values = {
+    userId: user.userId,
+    jobId: id,
+    stage,
+    note: existing?.note ?? null,
+    applicationStatus: status,
+    generatedAt: existing?.generatedAt ?? now,
+    sentAt: status === "sent" || status === "responded" ? existing?.sentAt ?? now : existing?.sentAt ?? null,
+    respondedAt: status === "responded" ? existing?.respondedAt ?? now : existing?.respondedAt ?? null,
+    updatedAt: now,
+  };
+  await db.insert(userJobStatus).values(values).onConflictDoUpdate({
+    target: [userJobStatus.userId, userJobStatus.jobId],
+    set: { stage: values.stage, note: values.note, applicationStatus: values.applicationStatus, generatedAt: values.generatedAt, sentAt: values.sentAt, respondedAt: values.respondedAt, updatedAt: now },
+  });
+  return NextResponse.json({ ok: true, application: values });
+}

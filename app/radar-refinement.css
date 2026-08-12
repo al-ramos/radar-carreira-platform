@@ -993,4 +993,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .analysis-persistence-note { margin: 10px 0 0; padding: 9px 10px; border-radius: 7px; font-size: 9px; line-height: 1.45; }
 .analysis-persistence-note.eligible { background: #edf8f1; color: #276749; }
 .analysis-persistence-note.discarded { background: #f5f3f2; color: #6f625d; }
+.application-tracking { display: flex; align-items: center; gap: 8px; padding: 7px 9px; border: 1px solid #d6e7dc; border-radius: 8px; background: #f4faf6; }
+.application-tracking > span { display: grid; gap: 1px; color: #276749; font-size: 9px; font-weight: 800; }
+.application-tracking small { color: #66766c; font-size: 8px; font-weight: 500; }
+.application-tracking button { border: 1px solid #83ad91; border-radius: 6px; background: #fff; color: #276749; padding: 6px 8px; font-size: 8px; font-weight: 800; cursor: pointer; }
 @media(max-width:720px){.career-profile-heading{align-items:flex-start;display:grid}.career-preset-row{align-items:stretch;display:grid}.career-profile-grid{grid-template-columns:1fr}.career-profile-section{padding:13px}}

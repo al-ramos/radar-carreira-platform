@@ -146,3 +146,24 @@ test("rota de login oferece acesso local em vez de página não encontrada", asy
   assert.match(login, /safeReturnTo/);
   assert.doesNotMatch(login, /notFound\(/);
 });
+
+test("candidatura distingue mensagem gerada, envio e resposta com datas próprias", async () => {
+  const [dashboard, schema, applicationRoute, migration] = await Promise.all([
+    read("../app/Dashboard.tsx"),
+    read("../db/schema.ts"),
+    read("../app/api/jobs/[id]/application/route.ts"),
+    read("../drizzle/0019_application_tracking.sql"),
+  ]);
+  assert.match(dashboard, /Mensagem gerada/);
+  assert.match(dashboard, /Marcar como enviada/);
+  assert.match(dashboard, /Registrar resposta/);
+  assert.match(dashboard, /await updateApplicationStatus\(selectedJob, "generated"\)/);
+  assert.match(schema, /applicationStatus/);
+  assert.match(schema, /generatedAt/);
+  assert.match(schema, /sentAt/);
+  assert.match(schema, /respondedAt/);
+  assert.match(applicationRoute, /A candidatura só pode ser acompanhada para vagas Bate ou Provável/);
+  assert.match(applicationRoute, /requestedRank >= currentRank/);
+  assert.match(migration, /application_status/);
+  assert.match(migration, /responded_at/);
+});

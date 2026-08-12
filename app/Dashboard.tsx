@@ -65,7 +65,15 @@ type ApiJob = {
   stack?: string[];
   reasons?: string[];
 };
-type PipelineJob = ApiJob & { stage: string; note?: string };
+type ApplicationStatus = "generated" | "sent" | "responded";
+type PipelineJob = ApiJob & {
+  stage: string;
+  note?: string;
+  applicationStatus?: ApplicationStatus;
+  generatedAt?: string;
+  sentAt?: string;
+  respondedAt?: string;
+};
 type CurrentUser = {
   displayName: string;
   email: string;
@@ -764,10 +772,10 @@ export default function Dashboard() {
   const filtered = useMemo(
     () =>
       items.filter((j) => {
-        // A busca principal promete cargo, empresa ou tecnologia. Não usamos a
+        // A busca principal promete código, cargo, empresa ou tecnologia. Não usamos a
         // descrição aqui: palavras comuns no texto longo (como "squad") faziam
         // parecer que o campo não estava filtrando a lista.
-        const text = `${j.title} ${j.company} ${j.location} ${j.seniority ?? ""} ${j.stack.join(" ")}`.toLowerCase();
+        const text = `${j.externalId ?? ""} ${j.title} ${j.company} ${j.location} ${j.seniority ?? ""} ${j.stack.join(" ")}`.toLowerCase();
         const searchQuery = query.trim().toLowerCase();
         const matchesSource =
           sourceFilter === "all" ||
@@ -903,6 +911,7 @@ export default function Dashboard() {
     : null;
   const selectedJobEligible = selectedJobVerdict?.emoji === "✅" || selectedJobVerdict?.emoji === "🟡";
   const selectedJobRejected = Boolean(selectedJobVerdict && !selectedJobEligible);
+  const selectedApplication = selectedJob ? pipelineItems.find(item => item.id === selectedJob.id) : undefined;
   const detailJobVerdict = detailJob ? verdictMap.get(detailJob.id) : null;
   const detailJobEligible = detailJobVerdict?.emoji === "✅" || detailJobVerdict?.emoji === "🟡";
   function clearRadarFilters() {
@@ -1183,6 +1192,27 @@ export default function Dashboard() {
     } finally {
       setAnalysisSaving(false);
     }
+  }
+  async function updateApplicationStatus(job: Job, status: ApplicationStatus) {
+    const response = await fetch(`/api/jobs/${encodeURIComponent(job.id)}/application`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+    const data = await response.json().catch(() => null);
+    if (!response.ok) {
+      setMessage(data?.error ?? "Não foi possível atualizar o status da candidatura.");
+      return false;
+    }
+    const application = data.application as PipelineJob;
+    setPipelineItems(current => {
+      const exists = current.some(item => item.id === job.id);
+      if (exists) return current.map(item => item.id === job.id ? { ...item, ...application } : item);
+      return [...current, { ...job, ...application } as PipelineJob];
+    });
+    const labels: Record<ApplicationStatus, string> = { generated: "Mensagem registrada como gerada.", sent: "Candidatura marcada como enviada.", responded: "Resposta recebida registrada." };
+    setMessage(labels[status]);
+    return true;
   }
   async function save(job: Job) {
     if (job.id.startsWith("demo")) {
@@ -1642,7 +1672,7 @@ export default function Dashboard() {
                 id="radar-search"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Buscar cargo, empresa ou tecnologia"
+                placeholder="Buscar código, cargo, empresa ou tecnologia"
               />
             </div>
             <select
@@ -2184,13 +2214,28 @@ export default function Dashboard() {
                     className="primary-job-action"
                     disabled={selectedJobRejected}
                     title={selectedJobRejected ? "E-mail indisponível para vagas com veredito Não bate ou Bloqueador" : `Abre seu cliente de e-mail com mensagem pronta para ${selectedJob.contactEmail}`}
-                    onClick={() => {
+                    onClick={async () => {
                       const mailto = buildContactMailto(selectedJob);
-                      if (mailto) open(mailto, "_blank");
+                      if (mailto) {
+                        await updateApplicationStatus(selectedJob, "generated");
+                        open(mailto, "_blank");
+                      }
                     }}
                   >
                     ✉ Abrir no Outlook
                   </button>
+                )}
+                {selectedJobEligible && selectedApplication?.applicationStatus && (
+                  <div className="application-tracking" aria-label="Acompanhamento da candidatura">
+                    <span>
+                      {selectedApplication.applicationStatus === "generated" ? "Mensagem gerada" : selectedApplication.applicationStatus === "sent" ? "Candidatura enviada" : "Resposta recebida"}
+                      {selectedApplication.generatedAt && <small>Gerada em {formatJobDate(selectedApplication.generatedAt)}</small>}
+                      {selectedApplication.sentAt && <small>Enviada em {formatJobDate(selectedApplication.sentAt)}</small>}
+                      {selectedApplication.respondedAt && <small>Resposta em {formatJobDate(selectedApplication.respondedAt)}</small>}
+                    </span>
+                    {selectedApplication.applicationStatus === "generated" && <button type="button" onClick={() => updateApplicationStatus(selectedJob, "sent")}>Marcar como enviada</button>}
+                    {selectedApplication.applicationStatus === "sent" && <button type="button" onClick={() => updateApplicationStatus(selectedJob, "responded")}>Registrar resposta</button>}
+                  </div>
                 )}
                 {(() => {
                   const links = buildShareLinks(selectedJob);

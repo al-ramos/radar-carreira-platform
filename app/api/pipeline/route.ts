@@ -11,12 +11,12 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const user = await getChatGPTUser();
   if (!user) return NextResponse.json({ error: "Autenticação necessária" }, { status: 401 });
-  const rows = await getDb().select({ job: jobs, stage: userJobStatus.stage, note: userJobStatus.note, updatedAt: userJobStatus.updatedAt })
+  const rows = await getDb().select({ job: jobs, stage: userJobStatus.stage, note: userJobStatus.note, applicationStatus: userJobStatus.applicationStatus, generatedAt: userJobStatus.generatedAt, sentAt: userJobStatus.sentAt, respondedAt: userJobStatus.respondedAt, updatedAt: userJobStatus.updatedAt })
     .from(userJobStatus)
     .innerJoin(jobs, eq(jobs.id, userJobStatus.jobId))
     .where(eq(userJobStatus.userId, user.userId))
     .orderBy(desc(userJobStatus.updatedAt));
-  return NextResponse.json({ items: rows.map(row => ({ ...row.job, stack: JSON.parse(row.job.stack || "[]"), stage: row.stage, note: row.note, pipelineUpdatedAt: row.updatedAt })) });
+  return NextResponse.json({ items: rows.map(row => ({ ...row.job, stack: JSON.parse(row.job.stack || "[]"), stage: row.stage, note: row.note, applicationStatus: row.applicationStatus, generatedAt: row.generatedAt, sentAt: row.sentAt, respondedAt: row.respondedAt, pipelineUpdatedAt: row.updatedAt })) });
 }
 
 export async function POST(request: Request) {
