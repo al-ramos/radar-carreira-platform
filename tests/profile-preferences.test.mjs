@@ -1,14 +1,32 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { allowedWorkModes, listFromStored, normalizeCareerRules, normalizeMinScore } from "../lib/profile-options.ts";
+import { alexsandroProfilePreset, allowedWorkModes, listFromStored, normalizeCareerRules, normalizeMinScore } from "../lib/profile-options.ts";
 import { isTechnologyJob, matchesSelectedSeniority, scoreJob } from "../lib/scoring.ts";
 import { analyzeStackFit, computeVerdict } from "../lib/verdict.ts";
 
 test("preserva preferências novas e legadas como listas", () => {
   assert.deepEqual(listFromStored('["C#", "SQL"]'), ["C#", "SQL"]);
   assert.deepEqual(listFromStored("Sênior, Pleno"), ["Sênior", "Pleno"]);
-  assert.deepEqual(allowedWorkModes(["Remoto", "Híbrido", "Presencial"]), ["Remoto", "Presencial"]);
+  assert.deepEqual(allowedWorkModes(["Remoto", "Híbrido", "Presencial"]), ["Remoto", "Híbrido", "Presencial"]);
+});
+
+test("preset de Alexsandro preserva posicionamento, projeto AMR e regras pessoais", () => {
+  const preset = alexsandroProfilePreset();
+  assert.equal(preset.careerRules.professionalName, "Alexsandro Ramos");
+  assert.equal(preset.careerRules.professionalTitle, "Desenvolvedor .NET Pleno");
+  assert.equal(preset.careerRules.baseLocation, "Mogi das Cruzes, SP");
+  assert.deepEqual(preset.preferredMode, ["Remoto", "Híbrido"]);
+  assert.deepEqual(preset.careerRules.acceptedRegions, ["Grande São Paulo"]);
+  assert.equal(preset.careerRules.maxHybridDays, 2);
+  assert.deepEqual(preset.careerRules.preferredContracts, ["PJ", "CLT"]);
+  assert.deepEqual(preset.careerRules.dailyCommunicationLanguages, ["Português"]);
+  assert.deepEqual(preset.careerRules.blockedSeniorities, ["Júnior", "Analista"]);
+  assert.deepEqual(preset.careerRules.blockedWorkTypes, ["Sustentação", "Suporte"]);
+  assert.deepEqual(preset.careerRules.stackExceptions, ["VBA + Access + SQL Server", "QA .NET"]);
+  assert.match(preset.careerRules.anchorProject, /Sistema AMR/);
+  assert.match(preset.careerRules.anchorProject, /CP\/ACID/);
+  assert.match(preset.careerRules.anchorProject, /AP\/BASE/);
 });
 
 test("preserva score mínimo zero e limita valores ao intervalo permitido", () => {
@@ -141,7 +159,7 @@ test("perfil usa checkboxes e o radar expõe filtros de visualização", async (
   assert.doesNotMatch(dashboard, /j\.stack\.join\(" "\)\} \$\{j\.description/);
   assert.match(options, /Front-end e mobile/);
   assert.doesNotMatch(options, /Remoto - Brasil/);
-  assert.doesNotMatch(options, /"Híbrido"/);
+  assert.match(options, /"Híbrido"/);
   assert.match(options, /Cloud e DevOps/);
   assert.match(options, /IA, analytics e BI/);
   assert.match(options, /Segurança/);

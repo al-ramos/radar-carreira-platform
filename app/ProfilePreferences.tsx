@@ -2,7 +2,7 @@
 
 import { KeyboardEvent, useState } from "react";
 import {
-  AREA_OPTIONS, AVOID_TERM_OPTIONS, BLOCKED_WORK_TYPE_OPTIONS, CONTRACT_OPTIONS, DAILY_LANGUAGE_OPTIONS,
+  alexsandroProfilePreset, AREA_OPTIONS, AVOID_TERM_OPTIONS, BLOCKED_WORK_TYPE_OPTIONS, CONTRACT_OPTIONS, DAILY_LANGUAGE_OPTIONS,
   ProfileChoices, REGION_OPTIONS, SENIORITY_OPTIONS, SKILL_GROUPS, SKILL_OPTIONS, WORK_MODE_OPTIONS,
 } from "../lib/profile-options";
 import AdminSettings from "./AdminSettings";
@@ -69,6 +69,7 @@ function ChoiceField({ label, hint, options, groups, value, onChange, customPlac
 }
 
 export default function ProfilePreferences({ value, onChange, onSave, onClose, message, isAdmin, isOwner, aiStatus }: Props) {
+  const [presetLoaded, setPresetLoaded] = useState(false);
   const update = <K extends keyof ProfileChoices>(key: K, next: ProfileChoices[K]) => onChange({ ...value, [key]: next });
   const updateCareerRule = <K extends keyof ProfileChoices["careerRules"]>(key: K, next: ProfileChoices["careerRules"][K]) =>
     update("careerRules", { ...value.careerRules, [key]: next });
@@ -82,7 +83,13 @@ export default function ProfilePreferences({ value, onChange, onSave, onClose, m
           <div><span>PERSONALIZAÇÃO</span><h3 id="career-positioning-title">Como o Radar deve representar você</h3></div>
           <small>Estas informações afetam o veredito e a candidatura de cada vaga.</small>
         </div>
+        <div className="career-preset-row">
+          <div><strong>Perfil estratégico Alexsandro Ramos</strong><small>Carrega posicionamento, stack, projeto AMR, preferências e bloqueadores do documento.</small></div>
+          <button type="button" onClick={() => { onChange(alexsandroProfilePreset()); setPresetLoaded(true); }}>Carregar perfil completo</button>
+        </div>
+        {presetLoaded && <p className="career-preset-notice" role="status">Perfil carregado para revisão. Clique em “Salvar preferências” para aplicá-lo somente à sua conta.</p>}
         <div className="career-profile-grid">
+          <label>Nome profissional<input value={value.careerRules.professionalName} onChange={event => updateCareerRule("professionalName", event.target.value)} placeholder="Ex.: Alexsandro Ramos" /></label>
           <label>Título de apresentação<input value={value.careerRules.professionalTitle} onChange={event => updateCareerRule("professionalTitle", event.target.value)} placeholder="Ex.: Desenvolvedor .NET Pleno" /></label>
           <label>Localização-base<input value={value.careerRules.baseLocation} onChange={event => updateCareerRule("baseLocation", event.target.value)} placeholder="Ex.: Mogi das Cruzes, SP" /></label>
           <label>Dias presenciais por semana<input type="number" min="0" max="7" value={value.careerRules.maxHybridDays} onChange={event => updateCareerRule("maxHybridDays", Math.max(0, Math.min(7, Number(event.target.value) || 0)))} /></label>
@@ -98,7 +105,7 @@ export default function ProfilePreferences({ value, onChange, onSave, onClose, m
       </section>
       <div className="profile-score-row"><label>Score mínimo<input type="number" min="0" max="100" value={value.minScore} onChange={event => update("minScore", Math.max(0, Math.min(100, Number(event.target.value) || 0)))} /></label><small>Exiba apenas oportunidades com score a partir deste valor.</small></div>
       <ChoiceField label="Senioridades aceitas" hint="Pode marcar mais de uma." options={SENIORITY_OPTIONS} value={value.seniority} onChange={next => update("seniority", next)} customPlaceholder="Outra senioridade" />
-      <ChoiceField label="Formato de trabalho" hint="Escolha remoto, presencial ou os dois. Sem seleção, todas as vagas continuam visíveis." options={WORK_MODE_OPTIONS} value={value.preferredMode} onChange={next => update("preferredMode", next)} customPlaceholder="" allowCustom={false} />
+      <ChoiceField label="Formato de trabalho" hint="Escolha remoto, híbrido, presencial ou uma combinação. Sem seleção, todas as vagas continuam visíveis." options={WORK_MODE_OPTIONS} value={value.preferredMode} onChange={next => update("preferredMode", next)} customPlaceholder="" allowCustom={false} />
       <ChoiceField label="Competências dominadas" hint="Elas valem até 60 pontos: o score cresce proporcionalmente ao número de stacks selecionadas que a vaga atende." options={SKILL_OPTIONS} groups={SKILL_GROUPS} value={value.masteredSkills} onChange={next => update("masteredSkills", next)} customPlaceholder="Adicionar tecnologia" />
       <ChoiceField label="Áreas desejadas" hint="Usadas para destacar oportunidades do seu foco." options={AREA_OPTIONS} value={value.desiredAreas} onChange={next => update("desiredAreas", next)} customPlaceholder="Adicionar área" />
       <ChoiceField label="Termos a evitar" hint="Vagas que contêm estes termos ficam com score zero." options={AVOID_TERM_OPTIONS} value={value.avoidTerms} onChange={next => update("avoidTerms", next)} customPlaceholder="Adicionar termo" />

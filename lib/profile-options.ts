@@ -3,7 +3,7 @@ export const SENIORITY_OPTIONS = [
   "Tech Lead", "Coordenador", "Gerente", "Diretor",
 ];
 
-export const WORK_MODE_OPTIONS = ["Remoto", "Presencial"];
+export const WORK_MODE_OPTIONS = ["Remoto", "Híbrido", "Presencial"];
 
 export const CONTRACT_OPTIONS = ["PJ", "CLT"];
 export const DAILY_LANGUAGE_OPTIONS = ["Português", "Inglês", "Espanhol"];
@@ -51,6 +51,7 @@ export type ProfileChoices = {
 };
 
 export type CareerRules = {
+  professionalName: string;
   professionalTitle: string;
   professionalSummary: string;
   baseLocation: string;
@@ -67,6 +68,7 @@ export type CareerRules = {
 };
 
 export const emptyCareerRules = (): CareerRules => ({
+  professionalName: "",
   professionalTitle: "",
   professionalSummary: "",
   baseLocation: "",
@@ -87,6 +89,36 @@ export const emptyProfileChoices = (): ProfileChoices => ({
   careerRules: emptyCareerRules(),
 });
 
+export function alexsandroProfilePreset(): ProfileChoices {
+  return {
+    seniority: ["Sênior", "Arquiteto"],
+    preferredMode: ["Remoto", "Híbrido"],
+    masteredSkills: [
+      "C#", ".NET", "AWS", "RabbitMQ", "SQL Server", "React",
+      "GitHub Actions", "Terraform", "VB6", "WCF",
+    ],
+    desiredAreas: ["Desenvolvimento Back-end", "Arquitetura de Software", "Cloud", "Full Stack", "Qualidade / QA"],
+    avoidTerms: [],
+    minScore: 0,
+    careerRules: {
+      professionalName: "Alexsandro Ramos",
+      professionalTitle: "Desenvolvedor .NET Pleno",
+      professionalSummary: "Desenvolvedor .NET com experiência em C#, .NET 8/10, MediatR, Polly, AWS (ECS Fargate, ALB, SQS e S3), RabbitMQ com MassTransit, SQL Server, React, GitHub Actions e Terraform. Possui experiência profunda com sistemas legados em VB6, COM+, MTS, WebForms e WCF, especialmente em modernização de arquiteturas. Utiliza Claude Code diariamente como ferramenta de desenvolvimento assistido.",
+      baseLocation: "Mogi das Cruzes, SP",
+      acceptedRegions: ["Grande São Paulo"],
+      maxHybridDays: 2,
+      preferredContracts: ["PJ", "CLT"],
+      dailyCommunicationLanguages: ["Português"],
+      blockedSeniorities: ["Júnior", "Analista"],
+      blockedWorkTypes: ["Sustentação", "Suporte"],
+      stackExceptions: ["VBA + Access + SQL Server", "QA .NET"],
+      anchorProject: "o Sistema AMR: arquitetura multimodular com módulo Financeiro CP/ACID em SQL Server, módulo Fábrica AP/BASE em SQLite + EFS e infraestrutura na AWS com ECS Fargate e Application Load Balancer. O projeto demonstra decisões conscientes sobre consistência, disponibilidade, arquitetura poliglota de dados e modernização de sistemas legados.",
+      discloseGapsInEmail: true,
+      aiMonthlyTokenLimit: 100_000,
+    },
+  };
+}
+
 export function normalizeCareerRules(value: unknown): CareerRules {
   let candidate: Record<string, unknown> = {};
   if (typeof value === "string" && value.trim()) {
@@ -99,6 +131,7 @@ export function normalizeCareerRules(value: unknown): CareerRules {
   const list = (key: keyof CareerRules) => listFromStored(candidate[key]).slice(0, 100);
   const hybridDays = Number(candidate.maxHybridDays);
   return {
+    professionalName: text("professionalName").slice(0, 120),
     professionalTitle: text("professionalTitle").slice(0, 120),
     professionalSummary: text("professionalSummary"),
     baseLocation: text("baseLocation").slice(0, 160),
