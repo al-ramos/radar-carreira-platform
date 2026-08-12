@@ -181,6 +181,8 @@ async function collectContact() {
 
 const autoDelayInput = document.querySelector('#auto-delay');
 const autoMaxPagesInput = document.querySelector('#auto-max-pages');
+const autoAllPagesInput = document.querySelector('#auto-all-pages');
+const autoPageListInput = document.querySelector('#auto-page-list');
 const autoStartButton = document.querySelector('#auto-collect-start');
 const autoCancelButton = document.querySelector('#auto-collect-cancel');
 const autoStatusElement = document.querySelector('#auto-collect-status');
@@ -189,6 +191,24 @@ const autoProgressFill = document.querySelector('#auto-progress-fill');
 const autoProgressLabel = document.querySelector('#auto-progress-label');
 
 let autoCollectPort = null;
+
+function updateAutoPageSelection() {
+  autoPageListInput.disabled = autoAllPagesInput.checked;
+  document.querySelector('#auto-page-list-field').classList.toggle('disabled', autoAllPagesInput.checked);
+}
+
+function parsePageList(value) {
+  const pages = new Set();
+  for (const token of value.split(',').map((item) => item.trim()).filter(Boolean)) {
+    const match = token.match(/^(\d+)(?:\s*-\s*(\d+))?$/);
+    if (!match) return null;
+    const start = Number(match[1]);
+    const end = Number(match[2] || match[1]);
+    if (start < 1 || end < start || end - start > 500) return null;
+    for (let page = start; page <= end; page++) pages.add(page);
+  }
+  return [...pages].sort((a, b) => a - b);
+}
 
 const showAutoStatus = (text, error = false) => {
   autoStatusElement.textContent = text;
@@ -200,6 +220,8 @@ function setAutoCollectRunning(running) {
   autoCancelButton.disabled = !running;
   autoDelayInput.disabled = running;
   autoMaxPagesInput.disabled = running;
+  autoAllPagesInput.disabled = running;
+  autoPageListInput.disabled = running || autoAllPagesInput.checked;
   autoProgressBox.hidden = !running;
   if (!running) {
     autoProgressFill.style.width = '0%';
@@ -221,9 +243,16 @@ async function startAutoCollect() {
 
   const delayMs = Math.max(2, Number(autoDelayInput.value) || 4) * 1000;
   const maxPages = Math.max(1, Number(autoMaxPagesInput.value) || 200);
+  const selectedPages = autoAllPagesInput.checked || !autoPageListInput.value.trim()
+    ? null
+    : parsePageList(autoPageListInput.value.trim());
+  if (!autoAllPagesInput.checked && autoPageListInput.value.trim() && !selectedPages?.length) {
+    showAutoStatus('Informe páginas válidas, como 1, 3-5, 8.', true);
+    return;
+  }
 
   setAutoCollectRunning(true);
-  showAutoStatus('Iniciando coleta automática…');
+  showAutoStatus(selectedPages ? `Iniciando páginas ${selectedPages.join(', ')}…` : 'Iniciando coleta de todas as páginas…');
 
   autoCollectPort = chrome.runtime.connect({ name: 'apinfo-auto-collect' });
 
@@ -257,7 +286,7 @@ async function startAutoCollect() {
     setAutoCollectRunning(false);
   });
 
-  autoCollectPort.postMessage({ type: 'START', tabId: tab.id, delayMs, maxPages });
+  autoCollectPort.postMessage({ type: 'START', tabId: tab.id, delayMs, maxPages, selectedPages });
 }
 
 function cancelAutoCollect() {
@@ -313,6 +342,7 @@ document.querySelector('#clear-contacts').addEventListener('click', async () => 
   showContactStatus('Contatos capturados foram limpos.');
 });
 document.querySelector('#auto-collect-start').addEventListener('click', startAutoCollect);
+document.querySelector('#auto-all-pages').addEventListener('change', updateAutoPageSelection);
 document.querySelector('#auto-collect-cancel').addEventListener('click', cancelAutoCollect);
 document.querySelector('#clear-accumulated').addEventListener('click', clearAccumulated);
 document.querySelector('#open-apinfo').addEventListener('click', () => chrome.tabs.create({ url: 'https://www.apinfo.com/apinfo/inc/list4.cfm' }));
@@ -320,6 +350,7 @@ document.querySelector('#save-settings').addEventListener('click', () => saveSet
 document.querySelector('#test-radar').addEventListener('click', testRadar);
 document.querySelector('#export').addEventListener('click', exportAccumulated);
 
+updateAutoPageSelection();
 loadSettings();
 refreshProgress();
 refreshContactCount();

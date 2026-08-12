@@ -43,8 +43,16 @@
     </section>
 
     <section class="settings">
-      <h2>Coleta automática (todas as páginas, sem filtro)</h2>
-      <p>Avança sozinho por todas as páginas do resultado. Só funciona com <strong>nenhum filtro marcado</strong> na busca do APinfo — filtro de estado, cidade ou cargo faz o avanço automático quebrar a busca. Para trazer um recorte filtrado, use a coleta manual acima.</p>
+      <h2>Coleta automática (sem filtro)</h2>
+      <p>Escolha páginas específicas ou deixe a opção padrão para trazer tudo. Só funciona com <strong>nenhum filtro marcado</strong> na busca do APinfo — filtro de estado, cidade ou cargo faz o avanço automático quebrar a busca.</p>
+      <fieldset class="page-selection">
+        <legend>Páginas para processar</legend>
+        <label class="check"><input id="auto-all-pages" type="checkbox" checked> Processar todas as páginas</label>
+        <label id="auto-page-list-field">Páginas ou intervalos
+          <input id="auto-page-list" type="text" inputmode="numeric" autocomplete="off" placeholder="Ex.: 1, 3-5, 8">
+          <small>Sem escolha, todas as páginas serão processadas.</small>
+        </label>
+      </fieldset>
       <label>Intervalo entre páginas (segundos)
         <input id="auto-delay" type="number" min="2" max="30" step="1" value="4">
       </label>
@@ -52,7 +60,7 @@
         <input id="auto-max-pages" type="number" min="1" max="500" step="1" value="200">
       </label>
       <div class="actions">
-        <button class="primary" id="auto-collect-start" type="button">Coletar todas as páginas</button>
+        <button class="primary" id="auto-collect-start" type="button">Iniciar coleta automática</button>
         <button class="secondary" id="auto-collect-cancel" type="button" disabled>Cancelar</button>
       </div>
       <div class="auto-progress" id="auto-progress" hidden>

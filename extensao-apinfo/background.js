@@ -219,25 +219,33 @@ function looksRateLimited(pageText) {
  * Progresso é reportado incrementalmente via `onProgress` para a UI poder
  * atualizar "coletando página N de M…" em tempo real.
  */
-async function autoCollectAllPages(tabId, { delayMs = 4000, maxPages = 200 } = {}, onProgress = () => {}) {
+async function autoCollectAllPages(tabId, { delayMs = 4000, maxPages = 200, selectedPages = null } = {}, onProgress = () => {}) {
   let current = await collectActiveTab(tabId);
   let byCode = new Map();
-  for (const job of current.jobs) byCode.set(job.codigo_apinfo, job);
 
   const totalPages = current.totalPages || 1;
   const lastPage = Math.min(totalPages, maxPages);
-  onProgress({ currentPage: current.currentPage, totalPages, totalResults: current.totalResults, collected: byCode.size, stopped: false });
+  const requestedPages = selectedPages?.length
+    ? [...new Set(selectedPages)].filter((page) => page >= 1 && page <= lastPage).sort((a, b) => a - b)
+    : null;
+  const pagesToCollect = requestedPages || Array.from(
+    { length: Math.max(0, lastPage - (current.currentPage || 1) + 1) },
+    (_, index) => (current.currentPage || 1) + index,
+  );
+  if (!pagesToCollect.length) throw new Error(`Nenhuma página selecionada existe nesta busca, que possui ${totalPages} página(s).`);
 
   let stoppedReason = null;
-  for (let page = (current.currentPage || 1) + 1; page <= lastPage; page++) {
-    await sleep(delayMs);
-
-    await advanceToPage(tabId, page);
-    await waitForTabLoad(tabId).catch(() => {});
-    await sleep(800); // pequena folga extra após 'complete' para o DOM assentar
+  for (let index = 0; index < pagesToCollect.length; index++) {
+    const page = pagesToCollect[index];
+    if (current.currentPage !== page) {
+      if (index > 0 || byCode.size) await sleep(delayMs);
+      await advanceToPage(tabId, page);
+      await waitForTabLoad(tabId).catch(() => {});
+      await sleep(800); // pequena folga extra após 'complete' para o DOM assentar
+      current = await collectActiveTab(tabId);
+    }
 
     const tab = await chrome.tabs.get(tabId).catch(() => null);
-    const pageResult = await chrome.scripting.executeScript({ target: { tabId }, files: ['page-collector.js'] }).catch(() => null);
     const bodyText = await chrome.scripting
       .executeScript({ target: { tabId }, func: () => document.body?.innerText || '' })
       .then((r) => r[0]?.result || '')
@@ -248,18 +256,17 @@ async function autoCollectAllPages(tabId, { delayMs = 4000, maxPages = 200 } = {
       break;
     }
 
-    const jobs = pageResult?.[0]?.result?.jobs || [];
+    const jobs = current.jobs || [];
     if (!jobs.length && !tab) {
       stoppedReason = 'A aba do APinfo foi fechada ou navegou para outro lugar.';
       break;
     }
     for (const job of jobs) byCode.set(job.codigo_apinfo, job);
 
-    current = pageResult?.[0]?.result || current;
     onProgress({ currentPage: page, totalPages, totalResults: current.totalResults, collected: byCode.size, stopped: false });
   }
 
-  return { jobs: [...byCode.values()], stoppedReason, lastPageReached: Math.min(lastPage, current.currentPage || lastPage) };
+  return { jobs: [...byCode.values()], stoppedReason, lastPageReached: current.currentPage || pagesToCollect.at(-1) };
 }
 
 /** Acumula vagas coletadas entre chamadas, deduplicadas por código da vaga. */
@@ -477,7 +484,7 @@ chrome.runtime.onConnect.addListener((port) => {
 
         const result = await autoCollectAllPages(
           tabId,
-          { delayMs: message.delayMs || 4000, maxPages: message.maxPages || 200 },
+          { delayMs: message.delayMs || 4000, maxPages: message.maxPages || 200, selectedPages: message.selectedPages || null },
           (progress) => {
             if (cancelled) return;
             try {
