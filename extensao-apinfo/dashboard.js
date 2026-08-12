@@ -189,6 +189,7 @@ const autoStatusElement = document.querySelector('#auto-collect-status');
 const autoProgressBox = document.querySelector('#auto-progress');
 const autoProgressFill = document.querySelector('#auto-progress-fill');
 const autoProgressLabel = document.querySelector('#auto-progress-label');
+const exportButton = document.querySelector('#export');
 
 let autoCollectPort = null;
 
@@ -222,6 +223,7 @@ function setAutoCollectRunning(running) {
   autoMaxPagesInput.disabled = running;
   autoAllPagesInput.disabled = running;
   autoPageListInput.disabled = running || autoAllPagesInput.checked;
+  exportButton.disabled = running;
   autoProgressBox.hidden = !running;
   if (!running) {
     autoProgressFill.style.width = '0%';
@@ -270,6 +272,7 @@ async function startAutoCollect() {
         `Total acumulado: ${message.totalAccumulated}.`,
       ];
       if (message.stoppedReason) parts.push(message.stoppedReason);
+      if (!message.stoppedReason) parts.push('Agora clique em “Exportar acumulado” para baixar os arquivos e enviar ao Radar.');
       showAutoStatus(parts.join(' '), Boolean(message.stoppedReason));
       autoCollectPort = null;
       return;
