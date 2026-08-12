@@ -844,8 +844,12 @@ export default function Dashboard() {
 
   /** Baixa a página atual ou todas as páginas que correspondem aos filtros. */
   async function downloadReport(scope: "page" | "all") {
-    if (reportLoading || (scope === "page" && orderedJobs.length === 0)) return;
+    if (reportLoading) return;
     setReportOptionsOpen(false);
+    if (scope === "page" && orderedJobs.length === 0) {
+      setMessage("A página atual não possui vagas para exportar. Ajuste ou limpe os filtros e tente novamente.");
+      return;
+    }
     setReportLoading(true);
     try {
       const jobsToExport = scope === "page" ? orderedJobs : await getAllReportJobs();
@@ -1611,7 +1615,7 @@ export default function Dashboard() {
                   type="button"
                   className="icon-btn report-trigger"
                   onClick={() => setReportOptionsOpen((open) => !open)}
-                  disabled={personalizationPending || reportLoading || filtered.length === 0}
+                  disabled={personalizationPending || reportLoading}
                   aria-expanded={reportOptionsOpen}
                   aria-haspopup="menu"
                   title="Exporta as vagas respeitando todos os filtros ativos"
@@ -1622,7 +1626,7 @@ export default function Dashboard() {
                   <div className="report-dropdown" role="menu" aria-label="Opções de exportação">
                     <button type="button" role="menuitem" onClick={() => void downloadReport("page")}>
                       <span aria-hidden="true">📄</span>
-                      <span><strong>Exportar página atual</strong><small>{orderedJobs.length} vaga{orderedJobs.length !== 1 ? "s" : ""}</small></span>
+                      <span><strong>Exportar página atual</strong><small>{orderedJobs.length > 0 ? `${orderedJobs.length} vaga${orderedJobs.length !== 1 ? "s" : ""}` : "Nenhuma vaga nesta página"}</small></span>
                     </button>
                     <button type="button" role="menuitem" onClick={() => void downloadReport("all")}>
                       <span aria-hidden="true">📊</span>
