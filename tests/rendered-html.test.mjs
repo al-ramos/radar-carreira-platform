@@ -58,6 +58,7 @@ test("dashboard oferece radar, perfil e pipeline persistente", async () => {
     read("../drizzle/0014_backfill_job_dates.sql"),
   ]);
   assert.match(jobsRoute, /coalesce\(\$\{jobs\.publishedAt\}, \$\{jobs\.firstSeenAt\}\)/);
+  assert.match(jobsRoute, /sort === "imported" \? desc\(jobs\.firstSeenAt\)/);
   assert.match(dateMigration, /SET published_at = first_seen_at/);
   const linkedInExtension = await read("../app/LinkedInExtension.tsx");
   assert.match(linkedInExtension, /Importar arquivo do LinkedIn/);

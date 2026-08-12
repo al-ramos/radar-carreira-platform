@@ -33,6 +33,7 @@ type Job = {
   workMode?: string;
   age: string;
   publishedAt?: string;
+  firstSeenAt?: string;
   url?: string;
   applyUrl?: string;
   contactEmail?: string;
@@ -53,6 +54,7 @@ type ApiJob = {
   workMode?: string;
   seniority?: string;
   publishedAt?: string;
+  firstSeenAt?: string;
   url?: string;
   applyUrl?: string;
   contactEmail?: string;
@@ -357,6 +359,7 @@ const adapt = (j: ApiJob): Job => ({
   contactSubject: j.contactSubject,
   externalId: j.externalId,
   publishedAt: j.publishedAt,
+  firstSeenAt: j.firstSeenAt,
   description: j.description,
 });
 
@@ -464,6 +467,11 @@ export default function Dashboard() {
   const profileLoading = !profileReady || mode === "loading";
   const personalizationUnavailable = !profileLoading && simplifiedList;
   const personalizationPending = profileLoading || simplifiedList;
+  useEffect(() => {
+    if (!message) return;
+    const timer = window.setTimeout(() => setMessage(""), 4500);
+    return () => window.clearTimeout(timer);
+  }, [message]);
   // ── Persistência de estado UI no sessionStorage (sobrevive ao F5) ──────────
   const jobListRef = useRef<HTMLDivElement>(null);
   const simplifiedRetryCountRef = useRef(0);
@@ -567,9 +575,10 @@ export default function Dashboard() {
       if (!simplifiedList && effectiveMinScore > 0) params.set("minScore", String(effectiveMinScore));
       if (pipelineFilter !== "all") params.set("pipeline", pipelineFilter);
       if (!simplifiedList && verdictFilter !== "all") params.set("verdict", verdictFilter);
+      if (sortOrder === "recent") params.set("sort", "imported");
       return params.toString();
     },
-    [period, sourceFilter, debouncedQuery, effectiveMinScore, pipelineFilter, verdictFilter, simplifiedList],
+    [period, sourceFilter, debouncedQuery, effectiveMinScore, pipelineFilter, verdictFilter, simplifiedList, sortOrder],
   );
   useEffect(() => {
     if (!profileReady) return;
@@ -578,7 +587,9 @@ export default function Dashboard() {
       .then((data) => {
         const next = (data.jobs ?? [])
           .map(adapt)
-          .sort((a: Job, b: Job) => b.score - a.score);
+          .sort((a: Job, b: Job) => sortOrder === "recent"
+            ? new Date(b.firstSeenAt ?? 0).getTime() - new Date(a.firstSeenAt ?? 0).getTime()
+            : b.score - a.score);
         loadedJobsRef.current = next;
         setItems(next);
         setCurrentPage(1);
@@ -596,7 +607,7 @@ export default function Dashboard() {
         }
         setTotalJobs(typeof data.total === "number" ? data.total : next.length);
         setSourcesCount(typeof data.sourcesCount === "number" ? data.sourcesCount : null);
-        setPeriod((current) => current ?? data.period ?? "24");
+        setPeriod((current) => current ?? String(data.period ?? "24"));
         setSimplifiedList(Boolean(data.degraded));
         setMode("database");
         setMessage((current) => {
@@ -701,12 +712,37 @@ export default function Dashboard() {
   /** Posição do polegar do slider nativo (múltiplo de 10; "profile" arredonda). */
   const fitFilterSliderValue =
     fitFilter === "profile" ? Math.round(profileMinScore / 10) * 10 : fitFilter;
-  const activeFilterCount = [
-    sourceFilter !== "all",
-    pipelineFilter !== "all",
-    !personalizationPending && verdictFilter !== "all",
-    !personalizationPending && fitFilter !== 0,
-  ].filter(Boolean).length;
+  const activeFilterChips: Array<{ id: string; label: string; remove: () => void }> = [];
+  if (sourceFilter !== "all") {
+    activeFilterChips.push({
+      id: "source",
+      label: sourceFilter === "linkedin" ? "LinkedIn" : sourceFilter === "apinfo" ? "APinfo" : "Outras fontes",
+      remove: () => setSourceFilter("all"),
+    });
+  }
+  if (period && period !== "all") {
+    activeFilterChips.push({
+      id: "period",
+      label: period === "24" ? "Últimas 24h" : period === "72" ? "Últimos 3 dias" : "Últimos 7 dias",
+      remove: () => setPeriod("all"),
+    });
+  }
+  if (pipelineFilter !== "all") {
+    const pipelineLabels = { unseen: "Não vistas", viewed: "Vistas", saved: "Salvas", applied: "Candidaturas", interview: "Entrevistas", rejected: "Encerradas" } as const;
+    activeFilterChips.push({ id: "pipeline", label: pipelineLabels[pipelineFilter], remove: () => setPipelineFilter("all") });
+  }
+  if (!personalizationPending && verdictFilter !== "all") {
+    const verdictLabels = { "✅": "Bate", "🟡": "Provável", "🔴": "Não bate", "❌": "Bloqueado" } as const;
+    activeFilterChips.push({ id: "verdict", label: `${verdictFilter} ${verdictLabels[verdictFilter]}`, remove: () => setVerdictFilter("all") });
+  }
+  if (!personalizationPending && fitFilter !== 0) {
+    activeFilterChips.push({
+      id: "fit",
+      label: fitFilter === "profile" ? `Meu perfil (${profileMinScore}%)` : `Aderência ${fitFilter}%+`,
+      remove: () => setFitFilter(0),
+    });
+  }
+  const activeFilterCount = activeFilterChips.length;
   const filtered = useMemo(
     () =>
       items.filter((j) => {
@@ -746,7 +782,7 @@ export default function Dashboard() {
   const orderedJobs = useMemo(
     () => [...filtered].sort((left, right) => {
       if (sortOrder === "recent") {
-        return new Date(right.publishedAt ?? 0).getTime() - new Date(left.publishedAt ?? 0).getTime();
+        return new Date(right.firstSeenAt ?? 0).getTime() - new Date(left.firstSeenAt ?? 0).getTime();
       }
       return right.score - left.score || new Date(right.publishedAt ?? 0).getTime() - new Date(left.publishedAt ?? 0).getTime();
     }),
@@ -827,6 +863,7 @@ export default function Dashboard() {
       link.click();
       link.remove();
       URL.revokeObjectURL(objectUrl);
+      setMessage(`${jobsToExport.length} vaga${jobsToExport.length !== 1 ? "s" : ""} exportada${jobsToExport.length !== 1 ? "s" : ""} com sucesso.`);
     } catch {
       setMessage("Não foi possível gerar o relatório. Tente novamente.");
     } finally {
@@ -849,7 +886,9 @@ export default function Dashboard() {
     try {
       const controller = new AbortController();
       const data = await fetchJobsWithRetry(`/api/jobs?${buildJobsParams(page)}`, controller.signal);
-      const next: Job[] = (data.jobs ?? []).map(adapt).sort((a: Job, b: Job) => b.score - a.score);
+      const next: Job[] = (data.jobs ?? []).map(adapt).sort((a: Job, b: Job) => sortOrder === "recent"
+        ? new Date(b.firstSeenAt ?? 0).getTime() - new Date(a.firstSeenAt ?? 0).getTime()
+        : b.score - a.score);
       setItems(next);
       setCurrentPage(page);
       setSimplifiedList(Boolean(data.degraded));
@@ -1463,7 +1502,7 @@ export default function Dashboard() {
             </p>
             <h1>
               {active === "Radar"
-                ? `Seu radar de hoje${currentUser ? `, ${userName.split(" ")[0]}` : ""}`
+                ? `Oportunidades para você${currentUser ? `, ${userName.split(" ")[0]}` : ""}`
                 : active}
             </h1>
           </div>
@@ -1474,14 +1513,31 @@ export default function Dashboard() {
               </a>
             )}
             {currentUser && (
-              <button
-                type="button"
-                className="icon-btn"
-                onClick={() => setReportOptionsOpen(true)}
-                disabled={personalizationPending || reportLoading || filtered.length === 0}
-              >
-                {reportLoading ? "Gerando…" : "↓ Relatório Excel"}
-              </button>
+              <div className="report-menu-wrap">
+                <button
+                  type="button"
+                  className="icon-btn report-trigger"
+                  onClick={() => setReportOptionsOpen((open) => !open)}
+                  disabled={personalizationPending || reportLoading || filtered.length === 0}
+                  aria-expanded={reportOptionsOpen}
+                  aria-haspopup="menu"
+                  title="Exporta as vagas respeitando todos os filtros ativos"
+                >
+                  {reportLoading ? <><span className="button-spinner" aria-hidden="true" /> Exportando…</> : "↓ Exportar Excel"}
+                </button>
+                {reportOptionsOpen && (
+                  <div className="report-dropdown" role="menu" aria-label="Opções de exportação">
+                    <button type="button" role="menuitem" onClick={() => void downloadReport("page")}>
+                      <span aria-hidden="true">📄</span>
+                      <span><strong>Exportar página atual</strong><small>{orderedJobs.length} vaga{orderedJobs.length !== 1 ? "s" : ""}</small></span>
+                    </button>
+                    <button type="button" role="menuitem" onClick={() => void downloadReport("all")}>
+                      <span aria-hidden="true">📊</span>
+                      <span><strong>Exportar todas</strong><small>{(totalJobs ?? orderedJobs.length).toLocaleString("pt-BR")} vagas correspondentes</small></span>
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
             {canManageSources && (
               <button className="primary" onClick={() => setImporting(true)}>
@@ -1490,6 +1546,15 @@ export default function Dashboard() {
             )}
           </div>
         </header>
+        <div className="toast-region" aria-live="polite" aria-atomic="true">
+          {message && (
+            <div className="radar-toast" role="status">
+              <span className="toast-mark" aria-hidden="true">✓</span>
+              <span>{message}</span>
+              <button type="button" onClick={() => setMessage("")} aria-label="Dispensar notificação">×</button>
+            </div>
+          )}
+        </div>
         {profileLoading ? (
           <div className="notice" role="status">
             Carregando seu perfil e calculando a aderência das vagas…
@@ -1498,22 +1563,20 @@ export default function Dashboard() {
           <div className="notice" role="status">
             Seu perfil está salvo. A lista está temporariamente sem aderência enquanto a consulta é recuperada.
           </div>
-        ) : message ? (
-          <div className="notice">{message}</div>
         ) : null}
         <div className="radar-controls">
           <div className="radar-result-summary">
-            <span>
-              <strong>{(totalJobs ?? items.length).toLocaleString("pt-BR")}</strong> vagas encontradas
-              {totalJobs !== null && totalJobs > items.length && (
-                <span className="list-head-dim"> · {items.length} carregadas</span>
-              )}
+            <span aria-live="polite">
+              <strong>{(totalJobs ?? orderedJobs.length).toLocaleString("pt-BR")}</strong> vagas encontradas
+              <span className="list-head-dim"> · {orderedJobs.length} exibida{orderedJobs.length !== 1 ? "s" : ""}</span>
             </span>
           </div>
           <div className="toolbar">
             <div className="search">
-              ⌕
+              <span aria-hidden="true">⌕</span>
+              <label className="sr-only" htmlFor="radar-search">Buscar vagas</label>
               <input
+                id="radar-search"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Buscar cargo, empresa ou tecnologia"
@@ -1551,12 +1614,25 @@ export default function Dashboard() {
             </button>
           </div>
         </div>
+        {activeFilterChips.length > 0 && (
+          <div className="active-filter-row" aria-label="Filtros ativos">
+            <span>Filtros ativos</span>
+            <div className="active-filter-chips">
+              {activeFilterChips.map((chip) => (
+                <button key={chip.id} type="button" onClick={chip.remove} aria-label={`Remover filtro ${chip.label}`}>
+                  {chip.label}<span aria-hidden="true">×</span>
+                </button>
+              ))}
+            </div>
+            {activeFilterChips.length > 1 && <button type="button" className="clear-all-chips" onClick={clearRadarFilters}>Limpar todos</button>}
+          </div>
+        )}
         {!personalizationPending && (
           <div className="score-controls" aria-label="Controles de aderência">
             <div className="score-controls-copy">
               <span className="compact-filter-label">Aderência mínima</span>
               <strong style={{ color: fitFilterColor }}>
-                {effectiveMinScore === 0 ? "Sem corte" : `${effectiveMinScore}+ pontos`}
+                {effectiveMinScore === 0 ? "Sem corte" : `${effectiveMinScore}%`}
               </strong>
               <span className="score-controls-result">
                 <b>{filtered.length} {filtered.length === 1 ? "vaga" : "vagas"}</b>
@@ -1581,16 +1657,26 @@ export default function Dashboard() {
               </div>
             </div>
             <div className="score-controls-actions">
-              <button type="button" className={`fit-filter-profile-chip${fitFilter === "profile" ? " active" : ""}`} onClick={() => setFitFilter("profile")}>
-                Usar meu perfil ({profileMinScore})
-              </button>
+              <label className={`fit-filter-profile-chip${fitFilter === "profile" ? " active" : ""}`}>
+                <input
+                  type="checkbox"
+                  checked={fitFilter === "profile"}
+                  onChange={(event) => setFitFilter(event.target.checked ? "profile" : profileMinScore)}
+                />
+                Usar meu perfil ({profileMinScore}%)
+              </label>
               <label className="score-sort">
                 <span>Ordenar por</span>
                 <select value={sortOrder} onChange={(event) => setSortOrder(event.target.value as "score" | "recent")} aria-label="Ordenar vagas">
                   <option value="score">Pontuação</option>
-                  <option value="recent">Recentes</option>
+                  <option value="recent">Importadas recentemente</option>
                 </select>
               </label>
+              {typeof fitFilter === "number" && fitFilter < 80 && (
+                <button type="button" className="fit-tip" onClick={() => setFitFilter(80)}>
+                  <span aria-hidden="true">💡</span> Dica: tente 80% ou mais para melhores resultados
+                </button>
+              )}
             </div>
             <datalist id="fit-filter-ticks">
               {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((tick) => <option key={tick} value={tick} />)}
@@ -1599,10 +1685,16 @@ export default function Dashboard() {
         )}
         <div id="radar-filter-panel" className="radar-filter-panel" hidden={!filtersOpen} aria-label="Filtros de vagas">
           <div className="compact-filter-group">
-            <span className="compact-filter-label">Pipeline</span>
+            <span className="compact-filter-label">Status</span>
             <div className="compact-pills" role="group" aria-label="Filtrar por estágio do pipeline">
+              <select
+                className="pipeline-filter-select"
+                value={pipelineFilter}
+                onChange={(event) => setPipelineFilter(event.target.value as typeof pipelineFilter)}
+                aria-label="Filtrar por estágio do pipeline"
+              >
               {([
-                { id: "all", label: "Todas" },
+                { id: "all", label: "Todas as vagas" },
                 { id: "unseen", label: "Não vistas" },
                 { id: "viewed", label: "Vistas" },
                 { id: "saved", label: "Salvas" },
@@ -1615,18 +1707,9 @@ export default function Dashboard() {
                   : id === "unseen"
                     ? items.filter((j) => !pipelineStageMap.has(j.id)).length
                     : items.filter((j) => pipelineStageMap.get(j.id) === id).length;
-                return (
-                  <button
-                    key={id}
-                    type="button"
-                    className={pipelineFilter === id ? "active" : ""}
-                    onClick={() => setPipelineFilter(id)}
-                    aria-pressed={pipelineFilter === id}
-                  >
-                    {label}{count > 0 && <span>{count}</span>}
-                  </button>
-                );
+                return <option key={id} value={id}>{count > 0 ? `${label} (${count})` : label}</option>;
               })}
+              </select>
             </div>
           </div>
           {personalizationPending ? (
@@ -1669,41 +1752,8 @@ export default function Dashboard() {
             </button>
           )}
         </div>
-        {reportOptionsOpen && (
-          <div className="modal-backdrop" onClick={() => setReportOptionsOpen(false)}>
-            <section
-              className="modal report-options-modal"
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="report-options-title"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <button
-                type="button"
-                className="modal-close"
-                onClick={() => setReportOptionsOpen(false)}
-                aria-label="Fechar"
-              >
-                ×
-              </button>
-              <h2 id="report-options-title">Exportar relatório</h2>
-              <p>Escolha o que deseja incluir no arquivo. Os filtros atuais serão mantidos.</p>
-              <div className="report-options">
-                <button type="button" onClick={() => void downloadReport("page")}>
-                  <strong>Página atual</strong>
-                  <span>{orderedJobs.length} vaga{orderedJobs.length !== 1 ? "s" : ""} exibida{orderedJobs.length !== 1 ? "s" : ""}</span>
-                </button>
-                <button type="button" onClick={() => void downloadReport("all")}>
-                  <strong>Todas as páginas</strong>
-                  <span>Exporta todas as vagas encontradas pelos filtros atuais</span>
-                </button>
-              </div>
-            </section>
-          </div>
-        )}
         {totalJobs != null && totalJobs > 50 && (
-          <div className="list-pagination">
-            <span className="pagination-summary">Página {currentPage} de {Math.ceil(totalJobs / 50)}</span>
+          <nav className="list-pagination" aria-label="Paginação de vagas">
             <button
               type="button"
               className="pagination-arrow"
@@ -1711,7 +1761,7 @@ export default function Dashboard() {
               disabled={loadingMore || currentPage <= 1}
               aria-label="Página anterior"
             >
-              ‹
+              <span aria-hidden="true">←</span> <span className="pagination-button-label">Anterior</span>
             </button>
             {compactPagination(currentPage, Math.ceil(totalJobs / 50)).map((item) =>
               typeof item === "number" ? (
@@ -1722,6 +1772,7 @@ export default function Dashboard() {
                   onClick={() => void goToJobsPage(item)}
                   disabled={loadingMore}
                   aria-current={item === currentPage ? "page" : undefined}
+                  data-page-distance={Math.abs(item - currentPage)}
                 >
                   {item}
                 </button>
@@ -1736,18 +1787,10 @@ export default function Dashboard() {
               disabled={loadingMore || currentPage >= Math.ceil(totalJobs / 50)}
               aria-label="Próxima página"
             >
-              ›
+              <span className="pagination-button-label">Próxima</span> <span aria-hidden="true">→</span>
             </button>
-            {typeof fitFilter === "number" && fitFilter < 80 && (
-              <button
-                type="button"
-                className="load-more-refine"
-                onClick={() => setFitFilter(80)}
-              >
-                Ou filtre para aderência de 80% ou mais
-              </button>
-            )}
-          </div>
+            <span className="pagination-summary">Página {currentPage} de {Math.ceil(totalJobs / 50)}</span>
+          </nav>
         )}
         <div className="workspace">
           <div className="job-list" ref={jobListRef} onScroll={handleJobListScroll}>

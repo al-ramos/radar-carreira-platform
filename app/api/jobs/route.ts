@@ -62,6 +62,7 @@ const requestedMinScore = minScoreParam !== null && Number.isFinite(Number(minSc
 : 0;
 const pipelineFilter = degradedMode ? "all" : url.searchParams.get("pipeline") ?? "all";
 const verdictFilter = degradedMode ? "all" : url.searchParams.get("verdict") ?? "all";
+const sort = url.searchParams.get("sort") === "imported" ? "imported" : "published";
 const sourceType = url.searchParams.get("sourceType") ?? "all";
 const cutoff = hours ? new Date(Date.now() - hours * 36e5) : null;
 const baseCondition = cutoff
@@ -133,6 +134,7 @@ workMode: jobs.workMode,
 location: jobs.location,
 stack: jobs.stack,
 publishedAt: sql<Date>`coalesce(${jobs.publishedAt}, ${jobs.firstSeenAt})`,
+firstSeenAt: jobs.firstSeenAt,
 url: jobs.url,
 applyUrl: jobs.applyUrl,
 contactEmail: jobs.contactEmail,
@@ -142,7 +144,10 @@ description: degradedMode
 : requiresPostFiltering
 ? sql<string>`substr(${jobs.description}, 1, ${FILTER_DESCRIPTION_CHARS})`
 : sql<string>`substr(${jobs.description}, 1, ${LIST_DESCRIPTION_CHARS})`,
-}).from(jobs).where(condition).orderBy(desc(jobs.publishedAt), desc(jobs.createdAt));
+}).from(jobs).where(condition).orderBy(
+sort === "imported" ? desc(jobs.firstSeenAt) : desc(jobs.publishedAt),
+desc(jobs.createdAt),
+);
 const [rows, eligibleTotals, sourceTotals] = await Promise.all([
 requiresPostFiltering
 ? rowsQuery.limit(MAX_FILTER_CANDIDATES)
@@ -204,7 +209,7 @@ item.score >= minScore &&
 (verdictFilter === "all" || item.verdict?.emoji === (verdictFilter as VerdictEmoji)),
 )
 : enriched;
-filtered.sort((a, b) => b.score - a.score);
+if (sort !== "imported") filtered.sort((a, b) => b.score - a.score);
 const totalCount = requiresPostFiltering
 ? filtered.length
 : Number(eligibleTotals[0]?.total ?? 0);
