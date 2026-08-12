@@ -170,6 +170,9 @@ function submitPagingForm(targetPage) {
 }
 
 async function advanceToPage(tabId, targetPage) {
+  // Começa a observar ANTES do form.submit(): a resposta do APinfo é rápida
+  // e o evento de carregamento podia acontecer entre submit e waitForTabLoad.
+  const loading = waitForTabLoad(tabId);
   const result = await chrome.scripting.executeScript({
     target: { tabId },
     func: submitPagingForm,
@@ -177,7 +180,18 @@ async function advanceToPage(tabId, targetPage) {
   });
   const outcome = result[0]?.result;
   if (!outcome?.ok) throw new Error(outcome?.error || 'Falha ao avançar de página.');
+  await loading;
   return outcome;
+}
+
+async function waitForExpectedPage(tabId, targetPage, timeoutMs = 10000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const current = await collectActiveTab(tabId).catch(() => null);
+    if (current?.currentPage === targetPage) return current;
+    await sleep(400);
+  }
+  throw new Error(`A APinfo não abriu a página ${targetPage}. A coleta foi interrompida para não exportar dados incompletos.`);
 }
 
 /** Espera a aba terminar de carregar (status 'complete') após um form.submit(). */
@@ -240,9 +254,8 @@ async function autoCollectAllPages(tabId, { delayMs = 4000, maxPages = 200, sele
     if (current.currentPage !== page) {
       if (index > 0 || byCode.size) await sleep(delayMs);
       await advanceToPage(tabId, page);
-      await waitForTabLoad(tabId).catch(() => {});
       await sleep(800); // pequena folga extra após 'complete' para o DOM assentar
-      current = await collectActiveTab(tabId);
+      current = await waitForExpectedPage(tabId, page);
     }
 
     const tab = await chrome.tabs.get(tabId).catch(() => null);
