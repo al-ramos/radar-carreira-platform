@@ -66,9 +66,9 @@ const ONSITE_RE = /\b(presencial|on-?site|escritório)\b/i;
 const PJ_RE = /\b(pj|pessoa\s+jurídica|cnpj|nota\s+fiscal)\b/i;
 const CLT_RE = /\b(clt|carteira\s+assinada|regime\s+clt|contrato\s+clt)\b/i;
 
-const SUSTENTACAO_RE = /\b(sustentação|sustentacao|suporte\s+técnico|analista\s+de\s+suporte|n[123]\s+suporte|helpdesk|service\s*desk)\b/i;
-
-const SENIOR_RE = /\b(sênior|senior|sr\.?\s|pleno|pl\.?\s|staff|principal|lead\s+dev|tech\s+lead|architect)\b/i;
+const ARCHITECT_RE = /\b(arquiteto|arquiteta|architect|architecture)\b/i;
+const SENIOR_RE = /\b(sênior|senior|sr\.?|staff|principal|lead\s+dev|tech\s+lead)\b/i;
+const PLENO_RE = /\b(pleno|pl\.?)\b/i;
 const JUNIOR_RE = /\b(júnior|junior|jr\.?\s|estagiário|trainee)\b/i;
 
 const CONSULTORIA_RE = /\b(consultoria|consulting|bodyshop|alocação|alocacao|outsourcing|terceirizado)\b/i;
@@ -129,6 +129,17 @@ function matchesStackException(fullText: string, exceptions: string[]): string |
   }) ?? null;
 }
 
+function matchesBuiltInStackException(fullText: string): string | null {
+  const text = normalizeText(fullText);
+  if (/\bvba\b/.test(text) && /\baccess\b/.test(text) && /\b(sql server|mssql)\b/.test(text)) {
+    return "VBA + Access + SQL Server";
+  }
+  const qaDotNetSenior = /\b(qa|quality assurance|qualidade|tester|testes?)\b/.test(text)
+    && /(?:\.net|\bdotnet\b|\bc#\b|\bcsharp\b)/.test(text)
+    && /\b(senior|sr\.?|sênior)\b/.test(fullText.toLocaleLowerCase("pt-BR"));
+  return qaDotNetSenior ? "QA .NET Sênior" : null;
+}
+
 function requiredHybridDays(text: string): number | null {
   const match = normalizeText(text).match(/(?:hibrid\w*[^.\n]{0,60})?(\d)\s*(?:x|vez(?:es)?|dias?)\s*(?:por|na)?\s*semana/);
   return match ? Number(match[1]) : null;
@@ -150,6 +161,10 @@ function skillsAreEquivalent(left: string, right: string): boolean {
   return STACK_EQUIVALENCE_GROUPS.some((group) =>
     group.includes(normalizedLeft as never) && group.includes(normalizedRight as never),
   );
+}
+
+function hasEquivalentSkill(requiredSkills: string[], profileSkills: string[]): boolean {
+  return requiredSkills.some(required => profileSkills.some(profile => skillsAreEquivalent(required, profile)));
 }
 
 /**
@@ -180,10 +195,25 @@ function detectContratacao(text: string, rules?: CareerRules): { status: string;
   const hasPj = PJ_RE.test(text);
   const hasClt = CLT_RE.test(text);
   const preferred = rules?.preferredContracts ?? [];
-  if (hasPj && !hasClt) return { status: preferred.length && !preferred.includes("PJ") ? "PJ (fora da preferência)" : "PJ ✅", ok: preferred.length ? preferred.includes("PJ") : true };
-  if (hasClt && !hasPj) return { status: preferred.length && !preferred.includes("CLT") ? "CLT (fora da preferência)" : "CLT ✅", ok: preferred.length ? preferred.includes("CLT") : true };
+  const primary = preferred[0];
+  if (hasPj && !hasClt) return { status: preferred.length && !preferred.includes("PJ") ? "PJ (fora da preferência)" : primary === "PJ" ? "PJ ✅" : "PJ aceita", ok: preferred.length ? preferred.includes("PJ") : true };
+  if (hasClt && !hasPj) return { status: preferred.length && !preferred.includes("CLT") ? "CLT (fora da preferência)" : primary && primary !== "CLT" ? `CLT aceita · preferência principal: ${primary}` : "CLT ✅", ok: primary && primary !== "CLT" ? null : preferred.length ? preferred.includes("CLT") : true };
   if (hasPj && hasClt) return { status: "PJ ou CLT (a confirmar)", ok: null };
   return { status: "Não especificado — a confirmar", ok: null };
+}
+
+const GRANDE_SP_ALIASES = [
+  "sao paulo", "mogi das cruzes", "guarulhos", "osasco", "barueri", "carapicuiba", "cotia",
+  "taboao da serra", "embu das artes", "santo andre", "sao bernardo do campo", "sao caetano do sul",
+  "diadema", "maua", "ribeirao pires", "suzano", "poa", "itaquaquecetuba", "ferraz de vasconcelos", "aruja",
+];
+
+function locationMatchesRegion(location: string, region: string): boolean {
+  const normalizedLocation = normalizeText(location);
+  const normalizedRegion = normalizeText(region);
+  if (normalizedLocation.includes(normalizedRegion) || normalizedRegion.includes(normalizedLocation)) return true;
+  return ["grande sao paulo", "grande sp", "regiao metropolitana de sao paulo"].includes(normalizedRegion)
+    && GRANDE_SP_ALIASES.some(alias => normalizedLocation.includes(alias));
 }
 
 function detectWorkMode(text: string, location: string, rules?: CareerRules): { status: string; ok: boolean | null } {
@@ -192,25 +222,31 @@ function detectWorkMode(text: string, location: string, rules?: CareerRules): { 
   const onsite = ONSITE_RE.test(text);
   if (remote) return { status: "Remoto ✅", ok: true };
   const acceptedLocations = [...(rules?.acceptedRegions ?? []), rules?.baseLocation ?? ""].filter(Boolean);
-  const locationAccepted = !acceptedLocations.length || acceptedLocations.some(region => normalizeText(location).includes(normalizeText(region)) || normalizeText(region).includes(normalizeText(location)));
+  const locationAccepted = !acceptedLocations.length ? true : location.trim() ? acceptedLocations.some(region => locationMatchesRegion(location, region)) : null;
   const hybridDays = requiredHybridDays(text);
   if (hybrid) {
-    if (!locationAccepted) return { status: `Híbrido fora das regiões aceitas (${location || "local não informado"})`, ok: false };
+    if (locationAccepted === false) return { status: `Híbrido fora das regiões aceitas (${location})`, ok: false };
     if (hybridDays !== null && rules && hybridDays > rules.maxHybridDays) return { status: `Híbrido ${hybridDays}x/semana — limite do perfil: ${rules.maxHybridDays}x`, ok: false };
-    return { status: hybridDays === null ? "Híbrido — dias presenciais a confirmar" : `Híbrido ${hybridDays}x/semana ✅`, ok: hybridDays === null ? null : true };
+    if (locationAccepted === null) return { status: "Híbrido — localização a confirmar", ok: null };
+    return { status: hybridDays === null ? "Híbrido em região aceita — dias a confirmar" : `Híbrido ${hybridDays}x/semana em região aceita ✅`, ok: hybridDays === null ? null : true };
   }
-  if (onsite) return { status: locationAccepted ? "Presencial em região aceita" : `Presencial fora das regiões aceitas (${location || "local não informado"})`, ok: locationAccepted ? null : false };
+  if (onsite) return locationAccepted === false
+    ? { status: `Presencial fora das regiões aceitas (${location})`, ok: false }
+    : { status: locationAccepted === null ? "Presencial — localização a confirmar" : "Presencial em região aceita — fora da preferência", ok: null };
   return { status: "Não especificado — a confirmar", ok: null };
 }
 
-function detectSeniority(title: string, text: string, rules?: CareerRules): { status: string; ok: boolean | null } {
-  const isSustentacao = SUSTENTACAO_RE.test(title + " " + text.slice(0, 300));
-  const isSenior = SENIOR_RE.test(title);
+function detectSeniority(title: string, declaredSeniority: string, rules?: CareerRules): { status: string; ok: boolean | null } {
+  const seniorityText = `${title} ${declaredSeniority}`;
+  const isArchitect = ARCHITECT_RE.test(seniorityText);
+  const isSenior = SENIOR_RE.test(seniorityText);
+  const isPleno = PLENO_RE.test(seniorityText);
   const isJunior = JUNIOR_RE.test(title);
-  const blocked = includesConfiguredTerm(`${title} ${text.slice(0, 240)}`, rules?.blockedSeniorities ?? []);
+  const blocked = includesConfiguredTerm(seniorityText, rules?.blockedSeniorities ?? []);
   if (blocked) return { status: `${blocked} — bloqueada pelo perfil`, ok: false };
-  if (isSustentacao) return { status: "Sustentação/Suporte — rebaixa veredito", ok: false };
+  if (isArchitect) return { status: "Arquitetura — nível aceito ✅", ok: true };
   if (isSenior) return { status: "Sênior / equivalente ✅", ok: true };
+  if (isPleno) return { status: "Pleno — abaixo do alvo principal", ok: null };
   if (isJunior) return { status: "Júnior — abaixo do esperado", ok: false };
   return { status: "Não especificado — provável Pleno/Sênior", ok: null };
 }
@@ -221,6 +257,10 @@ function detectStack(text: string, jobStack: string[], userSkills?: string[]): {
   if (!requiredSkills.length) return { status: "Stack não identificada na vaga — confirmar", ok: null };
   if (!missingSkills.length) return { status: `${matchingSkills.join(", ")} ✅`, ok: true };
   if (!matchingSkills.length) return { status: `Impedimentos: ${missingSkills.join(", ")}`, ok: false };
+  if (matchingSkills.length / requiredSkills.length < 0.34) return {
+    status: `Baixa aderência: ${matchingSkills.join(", ")} — faltam: ${missingSkills.join(", ")}`,
+    ok: false,
+  };
   return {
     status: `${matchingSkills.join(", ")} — faltam: ${missingSkills.join(", ")}`,
     ok: null,
@@ -232,10 +272,12 @@ function detectLanguageReq(text: string, rules?: CareerRules): { status: string;
   const spaBlocker = testAny(text, SPANISH_BLOCKER_RE);
   const engMentioned = /inglês|english/i.test(text);
   const spaMentioned = /espanhol|spanish|español/i.test(text);
+  const spanishDescription = countMatches(text, LATAM_SPANISH_RE) >= 2;
   if (engBlocker) return languageAllowed(rules, "Inglês") ? { status: "Inglês avançado exigido — aceito pelo perfil ✅", ok: true } : { status: "Inglês avançado exigido ❌", ok: false };
   if (spaBlocker) return languageAllowed(rules, "Espanhol") ? { status: "Espanhol avançado exigido — aceito pelo perfil ✅", ok: true } : { status: "Espanhol avançado exigido ❌", ok: false };
   if (engMentioned && !engBlocker) return { status: "Inglês mencionado mas não exigido", ok: null };
   if (spaMentioned && !spaBlocker) return { status: "Espanhol mencionado mas não exigido", ok: null };
+  if (spanishDescription) return { status: "Descrição em espanhol — confirmar idioma da comunicação diária", ok: null };
   return { status: "Não exigido ✅", ok: true };
 }
 
@@ -259,94 +301,65 @@ export function computeVerdict(job: {
 }, userSkills?: string[], rules?: CareerRules): VerdictResult {
   const fullText = `${job.title} ${job.description} ${job.workMode ?? ""} ${job.location ?? ""}`;
   const lc = fullText.toLowerCase();
-
-  // 1. Bloqueadores estruturais
-  const engBlocker = testAny(fullText, ENGLISH_BLOCKER_RE) && !languageAllowed(rules, "Inglês");
-  const spaBlocker = testAny(fullText, SPANISH_BLOCKER_RE) && !languageAllowed(rules, "Espanhol");
-  const latamSpanish = countMatches(fullText, LATAM_SPANISH_RE) >= 2 && !languageAllowed(rules, "Espanhol");
-  const blockedSeniority = includesConfiguredTerm(`${job.title} ${job.seniority ?? ""}`, rules?.blockedSeniorities ?? []);
-  const blockedWorkType = includesConfiguredTerm(fullText, rules?.blockedWorkTypes ?? []);
-  const stackException = matchesStackException(`${fullText} ${job.stack.join(" ")}`, rules?.stackExceptions ?? []);
+  const stackText = `${fullText} ${job.stack.join(" ")}`;
   const stackFit = analyzeStackFit(job.stack, userSkills);
-  const stackBlocked = stackFit.requiredSkills.length > 0 && stackFit.matchingSkills.length === 0 && !stackException;
-  const workEvaluation = detectWorkMode(lc, job.location ?? "", rules);
-  const locationBlocked = workEvaluation.ok === false && /fora das regioes aceitas|limite do perfil/i.test(normalizeText(workEvaluation.status));
+  const configuredException = matchesStackException(stackText, rules?.stackExceptions ?? []);
+  const stackException = matchesBuiltInStackException(stackText) ?? configuredException;
+  const coreStack = rules?.coreStack ?? [];
+  const coreMatch = coreStack.length ? hasEquivalentSkill(stackFit.requiredSkills, coreStack) : stackFit.matchingSkills.length > 0;
+  const stackGate = stackException
+    ? { status: `Exceção automática: ${stackException} ✅`, ok: true as const }
+    : !stackFit.requiredSkills.length
+      ? { status: "Stack não identificada — continuar com ressalva", ok: null }
+      : coreMatch
+        ? { status: coreStack.length ? `Ecossistema principal identificado: ${stackFit.requiredSkills.filter(skill => coreStack.some(core => skillsAreEquivalent(skill, core))).join(", ")} ✅` : "Stack compatível com o perfil ✅", ok: true as const }
+        : { status: coreStack.length ? `Fora da stack principal (${coreStack.join(" / ")})` : "Stack incompatível com o perfil", ok: false as const };
 
-  if (engBlocker || spaBlocker || latamSpanish || blockedSeniority || blockedWorkType || stackBlocked || locationBlocked) {
-    const blocker = engBlocker
-      ? "Inglês avançado exigido"
-      : spaBlocker
-        ? "Espanhol avançado exigido"
-        : latamSpanish
-          ? "Vaga em espanhol (LATAM)"
-          : blockedSeniority
-            ? `Senioridade bloqueada: ${blockedSeniority}`
-            : blockedWorkType
-              ? `Tipo de atuação bloqueado: ${blockedWorkType}`
-              : stackBlocked
-                ? "Stack incompatível com o perfil"
-                : workEvaluation.status;
+  const structuralRows: VerdictRow[] = [{ criterion: "Fase 1 · Stack", ...stackGate }];
+  const blocked = (blocker: string): VerdictResult => ({ emoji: "❌", label: "Bloqueador estrutural", blocker, rows: structuralRows });
 
-    const langRow = detectLanguageReq(fullText, rules);
-    const stackRow = detectStack(lc, job.stack, userSkills);
-    const workRow = workEvaluation;
-    const contrRow = detectContratacao(lc, rules);
-    const seniorRow = detectSeniority(job.title, lc, rules);
-    const companyRow = detectCompanyType(lc);
+  // Fase 1: os bloqueadores são avaliados e interrompem a triagem nesta ordem.
+  if (stackGate.ok === false) return blocked("Stack incompatível com o perfil");
 
-    return {
-      emoji: "❌",
-      label: "Bloqueador estrutural",
-      blocker,
-      rows: [
-        { criterion: "Stack", ...stackRow },
-        { criterion: "Trabalho", ...workRow },
-        { criterion: "Contratação", ...contrRow },
-        { criterion: "Senioridade", ...seniorRow },
-        { criterion: "Inglês / Espanhol", ...langRow },
-        { criterion: "Empresa (tipo)", ...companyRow },
-      ],
-    };
+  const languageRow = detectLanguageReq(fullText, rules);
+  structuralRows.push({ criterion: "Fase 1 · Idioma", ...languageRow });
+  if (languageRow.ok === false) {
+    return blocked(testAny(fullText, ENGLISH_BLOCKER_RE) ? "Inglês avançado exigido" : "Espanhol avançado exigido");
   }
 
-  // 2. Avalia critérios normais
-  const stackRow = detectStack(lc, job.stack, userSkills);
-  const workRow = workEvaluation;
-  const contrRow = detectContratacao(lc, rules);
-  const seniorRow = detectSeniority(job.title, lc, rules);
-  const langRow = detectLanguageReq(fullText, rules);
-  const companyRow = detectCompanyType(lc);
+  const seniorRow = detectSeniority(job.title, job.seniority ?? "", rules);
+  structuralRows.push({ criterion: "Fase 1 · Senioridade", ...seniorRow });
+  if (seniorRow.ok === false) return blocked(`Senioridade incompatível: ${seniorRow.status}`);
 
+  const blockedWorkType = includesConfiguredTerm(fullText, rules?.blockedWorkTypes ?? []);
+  const workTypeRow = blockedWorkType
+    ? { status: `${blockedWorkType} — bloqueado pelo perfil`, ok: false as const }
+    : { status: "Sem atuação bloqueada identificada ✅", ok: true as const };
+  structuralRows.push({ criterion: "Fase 1 · Atuação", ...workTypeRow });
+  if (blockedWorkType) return blocked(`Tipo de atuação bloqueado: ${blockedWorkType}`);
+
+  const workRow = detectWorkMode(lc, job.location ?? "", rules);
+  structuralRows.push({ criterion: "Fase 1 · Geografia", ...workRow });
+  const locationBlocked = workRow.ok === false && /fora das regioes aceitas|limite do perfil/i.test(normalizeText(workRow.status));
+  if (locationBlocked) return blocked(workRow.status);
+
+  // Fases 2 a 4 só são executadas depois que todos os vetos estruturais passam.
+  const contractRow = detectContratacao(lc, rules);
+  const technicalFitRow = stackException
+    ? { status: `Exceção técnica aceita: ${stackException} ✅`, ok: true as const }
+    : detectStack(lc, job.stack, userSkills);
+  const companyRow = detectCompanyType(lc);
   const rows: VerdictRow[] = [
-    { criterion: "Stack", ...(stackException ? { status: `Exceção do perfil: ${stackException} ✅`, ok: true } : stackRow) },
-    { criterion: "Trabalho", ...workRow },
-    { criterion: "Contratação", ...contrRow },
-    { criterion: "Senioridade", ...seniorRow },
-    { criterion: "Inglês / Espanhol", ...langRow },
-    { criterion: "Empresa (tipo)", ...companyRow },
+    ...structuralRows,
+    { criterion: "Fase 2 · Contratação", ...contractRow },
+    { criterion: "Fase 3 · Fit técnico", ...technicalFitRow },
+    { criterion: "Fase 4 · Empresa", ...companyRow },
   ];
 
-  // 3. Calcula veredito
-  const falseCount = rows.filter((r) => r.ok === false).length;
-  const okCount = rows.filter((r) => r.ok === true).length;
-  const isSustentacao = SUSTENTACAO_RE.test(job.title);
-
-  let emoji: VerdictEmoji;
-  let label: string;
-
-  if (falseCount === 0 && okCount >= 3) {
-    emoji = "✅";
-    label = "Bate";
-  } else if (falseCount <= 1 && !isSustentacao) {
-    emoji = "🟡";
-    label = "Provável";
-  } else if (falseCount >= 3 || isSustentacao) {
-    emoji = "🔴";
-    label = "Não bate";
-  } else {
-    emoji = "🟡";
-    label = "Provável — avaliar";
-  }
-
-  return { emoji, label, rows };
+  const decisionRows = [workRow, contractRow, seniorRow, technicalFitRow, companyRow];
+  const falseCount = decisionRows.filter(row => row.ok === false).length;
+  const reservationCount = decisionRows.filter(row => row.ok === null).length;
+  if (technicalFitRow.ok === false || falseCount >= 2) return { emoji: "🔴", label: "Não bate", rows };
+  if (falseCount === 0 && reservationCount === 0) return { emoji: "✅", label: "Bate", rows };
+  return { emoji: "🟡", label: "Provável com ressalvas", rows };
 }

@@ -23,6 +23,7 @@ test("preset de Alexsandro preserva posicionamento, projeto AMR e regras pessoai
   assert.deepEqual(preset.careerRules.dailyCommunicationLanguages, ["Português"]);
   assert.deepEqual(preset.careerRules.blockedSeniorities, ["Júnior", "Analista"]);
   assert.deepEqual(preset.careerRules.blockedWorkTypes, ["Sustentação", "Suporte"]);
+  assert.deepEqual(preset.careerRules.coreStack, ["C#", ".NET"]);
   assert.deepEqual(preset.careerRules.stackExceptions, ["VBA + Access + SQL Server", "QA .NET"]);
   assert.match(preset.careerRules.anchorProject, /Sistema AMR/);
   assert.match(preset.careerRules.anchorProject, /CP\/ACID/);
@@ -83,7 +84,7 @@ test("aplica bloqueadores do perfil e respeita exceções de stack e idioma", ()
     dailyCommunicationLanguages: ["Português", "Espanhol"],
   });
   const blocked = computeVerdict(
-    { title: "Analista de Sustentação", description: "Rotina de sustentação", stack: ["Java"] },
+    { title: "Analista de Sustentação", description: "Rotina de sustentação em .NET", stack: ["C#", ".NET"] },
     ["C#"],
     baseRules,
   );
@@ -97,6 +98,90 @@ test("aplica bloqueadores do perfil e respeita exceções de stack e idioma", ()
   );
   assert.notEqual(exception.blocker, "Vaga em espanhol (LATAM)");
   assert.notEqual(exception.blocker, "Stack incompatível com o perfil");
+});
+
+test("executa bloqueadores na ordem e não aceita vaga Java apenas porque também cita AWS", () => {
+  const preset = alexsandroProfilePreset();
+  const verdict = computeVerdict(
+    { title: "Desenvolvedor Java Sênior", description: "Java, Spring e AWS. Inglês fluente obrigatório.", stack: ["Java", "Spring", "AWS"], seniority: "Sênior", workMode: "Remoto" },
+    preset.masteredSkills,
+    preset.careerRules,
+  );
+  assert.equal(verdict.emoji, "❌");
+  assert.equal(verdict.blocker, "Stack incompatível com o perfil");
+  assert.deepEqual(verdict.rows.map(row => row.criterion), ["Fase 1 · Stack"]);
+});
+
+test("reconhece automaticamente as exceções VBA/Access e QA .NET Sênior", () => {
+  const preset = alexsandroProfilePreset();
+  const legacy = computeVerdict(
+    { title: "Desenvolvedor VBA", description: "Modernização com VBA, Microsoft Access e SQL Server.", stack: ["VBA", "Access", "SQL Server"], workMode: "Remoto" },
+    preset.masteredSkills,
+    preset.careerRules,
+  );
+  assert.notEqual(legacy.blocker, "Stack incompatível com o perfil");
+  assert.match(legacy.rows[0].status, /Exceção automática: VBA \+ Access \+ SQL Server/);
+
+  const qa = computeVerdict(
+    { title: "QA .NET Sênior", description: "Automação de testes com Selenium, Playwright e xUnit no ecossistema .NET.", stack: ["Selenium", "Playwright"], seniority: "Sênior", workMode: "Remoto" },
+    preset.masteredSkills,
+    preset.careerRules,
+  );
+  assert.notEqual(qa.blocker, "Stack incompatível com o perfil");
+  assert.match(qa.rows[0].status, /Exceção automática: QA \.NET Sênior/);
+});
+
+test("dá o mesmo poder de veto ao inglês e ao espanhol avançados", () => {
+  const preset = alexsandroProfilePreset();
+  for (const [requirement, expected] of [["Inglês fluente obrigatório para reuniões diárias", "Inglês avançado exigido"], ["Espanhol fluente obrigatório para reuniões diárias", "Espanhol avançado exigido"]]) {
+    const verdict = computeVerdict(
+      { title: "Desenvolvedor .NET Sênior", description: requirement, stack: ["C#", ".NET"], seniority: "Sênior", workMode: "Remoto" },
+      preset.masteredSkills,
+      preset.careerRules,
+    );
+    assert.equal(verdict.emoji, "❌");
+    assert.equal(verdict.blocker, expected);
+  }
+});
+
+test("entende Mogi como Grande São Paulo e aplica o limite do híbrido", () => {
+  const preset = alexsandroProfilePreset();
+  const light = computeVerdict(
+    { title: "Desenvolvedor .NET Sênior", description: "Híbrido 2 dias por semana", stack: ["C#", ".NET"], seniority: "Sênior", workMode: "Híbrido", location: "Mogi das Cruzes, SP" },
+    preset.masteredSkills,
+    preset.careerRules,
+  );
+  assert.notEqual(light.emoji, "❌");
+  assert.match(light.rows.find(row => row.criterion === "Fase 1 · Geografia")?.status ?? "", /região aceita/);
+
+  const intense = computeVerdict(
+    { title: "Desenvolvedor .NET Sênior", description: "Híbrido 3 dias por semana", stack: ["C#", ".NET"], seniority: "Sênior", workMode: "Híbrido", location: "Mogi das Cruzes, SP" },
+    preset.masteredSkills,
+    preset.careerRules,
+  );
+  assert.equal(intense.emoji, "❌");
+  assert.match(intense.blocker ?? "", /limite do perfil/);
+
+  const outside = computeVerdict(
+    { title: "Desenvolvedor .NET Sênior", description: "Híbrido 1 dia por semana", stack: ["C#", ".NET"], seniority: "Sênior", workMode: "Híbrido", location: "Campinas, SP" },
+    preset.masteredSkills,
+    preset.careerRules,
+  );
+  assert.equal(outside.emoji, "❌");
+  assert.match(outside.blocker ?? "", /fora das regiões aceitas/);
+});
+
+test("não confunde Pleno com Sênior na fase de preferências", () => {
+  const preset = alexsandroProfilePreset();
+  const verdict = computeVerdict(
+    { title: "Desenvolvedor .NET Pleno", description: "Desenvolvimento de APIs", stack: ["C#", ".NET"], seniority: "Pleno", workMode: "Remoto" },
+    preset.masteredSkills,
+    preset.careerRules,
+  );
+  assert.equal(verdict.emoji, "🟡");
+  assert.equal(verdict.label, "Provável com ressalvas");
+  assert.match(verdict.rows.find(row => row.criterion === "Fase 1 · Senioridade")?.status ?? "", /Pleno/);
+  assert.doesNotMatch(verdict.rows.find(row => row.criterion === "Fase 1 · Senioridade")?.status ?? "", /Sênior \/ equivalente/);
 });
 
 test("calcula recência quando o banco devolve a data como texto", () => {
