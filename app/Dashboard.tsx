@@ -365,6 +365,19 @@ const formatJobDate = (value?: string) =>
         new Date(value),
       )
     : "Não informada";
+
+/** Mantém a paginação navegável sem despejar dezenas de botões na tela. */
+function compactPagination(current: number, total: number): Array<number | "start-ellipsis" | "end-ellipsis"> {
+  if (total <= 5) return Array.from({ length: total }, (_, index) => index + 1);
+  const middleStart = Math.max(2, Math.min(current - 1, total - 3));
+  const middleEnd = Math.min(total - 1, middleStart + 2);
+  const pages: Array<number | "start-ellipsis" | "end-ellipsis"> = [1];
+  if (middleStart > 2) pages.push("start-ellipsis");
+  for (let page = middleStart; page <= middleEnd; page += 1) pages.push(page);
+  if (middleEnd < total - 1) pages.push("end-ellipsis");
+  pages.push(total);
+  return pages;
+}
 export default function Dashboard() {
   const [active, setActive] = useState("Radar"),
     [query, setQuery] = useState(""),
@@ -1651,18 +1664,22 @@ export default function Dashboard() {
             >
               ‹
             </button>
-            {Array.from({ length: Math.ceil(totalJobs / 50) }, (_, i) => i + 1).map((page) => (
-              <button
-                type="button"
-                key={page}
-                className={`pagination-page ${page === currentPage ? "active" : ""}`}
-                onClick={() => void goToJobsPage(page)}
-                disabled={loadingMore}
-                aria-current={page === currentPage ? "page" : undefined}
-              >
-                {page}
-              </button>
-            ))}
+            {compactPagination(currentPage, Math.ceil(totalJobs / 50)).map((item) =>
+              typeof item === "number" ? (
+                <button
+                  type="button"
+                  key={item}
+                  className={`pagination-page ${item === currentPage ? "active" : ""}`}
+                  onClick={() => void goToJobsPage(item)}
+                  disabled={loadingMore}
+                  aria-current={item === currentPage ? "page" : undefined}
+                >
+                  {item}
+                </button>
+              ) : (
+                <span key={item} className="pagination-ellipsis" aria-hidden="true">…</span>
+              ),
+            )}
             <button
               type="button"
               className="pagination-arrow"
