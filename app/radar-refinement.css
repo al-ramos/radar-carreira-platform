@@ -578,19 +578,25 @@
   border-radius: 12px;
   background: #fff;
 }
-.score-controls-copy { display: grid; gap: 2px; }
+.score-controls-copy { display: flex; align-items: baseline; gap: 7px; white-space: nowrap; }
 .score-controls-copy .compact-filter-label { color: #69718b; font-size: 9px; }
 .score-controls-copy strong { font-size: 15px; line-height: 1.1; }
-.score-controls-range { min-width: 0; }
-.score-controls-slider { margin: 0; }
+.score-controls-range {
+  display: grid;
+  grid-template-columns: 12px minmax(120px, 1fr) 24px;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+.score-controls-slider { grid-column: 2; margin: 0; }
 .score-controls-foot {
-  display: flex;
-  justify-content: space-between;
+  display: contents;
   color: #7b8299;
   font-size: 8px;
   font-weight: 700;
-  margin-top: 3px;
 }
+.score-controls-foot span:first-child { grid-column: 1; grid-row: 1; }
+.score-controls-foot span:last-child { grid-column: 3; grid-row: 1; }
 .score-controls-actions { display: flex; align-items: end; gap: 12px; }
 .score-controls .fit-filter-profile-chip { margin: 0; min-height: 32px; }
 .score-sort {
