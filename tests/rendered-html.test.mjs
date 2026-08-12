@@ -43,6 +43,7 @@ test("dashboard oferece radar, perfil e pipeline persistente", async () => {
   assert.match(dashboard, /Tecnologias da vaga/);
   assert.match(dashboard, /Stack não informada/);
   assert.match(dashboard, /Impedimentos: requisitos da vaga fora do seu perfil/);
+  assert.match(dashboard, /detail-analysis-open/);
   assert.match(dashboard, /const formatJobDate/);
   assert.match(dashboard, /📅 \{formatJobDate\(j\.publishedAt\)\}/);
   assert.match(dashboard, /LinkedInExtension/);

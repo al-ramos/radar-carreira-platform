@@ -1756,7 +1756,7 @@ export default function Dashboard() {
             )}
           </div>
           {selectedJob ? (
-            <aside className="detail">
+            <aside className={`detail${analysisOpen ? " detail-analysis-open" : ""}`}>
               <div className="detail-heading">
                 <div>
                   <small>{selectedJob.company.toUpperCase()}</small>

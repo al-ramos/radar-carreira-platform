@@ -81,6 +81,14 @@
   gap: 20px;
   align-items: start;
 }
+/* A análise pode ter mais conteúdo que a altura da janela. Nesse modo o card
+   deixa de ser um segundo scroll preso: a página inteira segue rolando e não
+   recorta o fim do parecer ou das tags de impedimento. */
+.detail.detail-analysis-open {
+  max-height: none;
+  overflow: visible;
+  position: static;
+}
 .selected-description-columns .selected-description {
   padding-top: 0;
   border-top: 0;
