@@ -2,7 +2,7 @@
 
 Extensão para Google Chrome com painel próprio que coleta vagas visíveis nas páginas de resultados do APinfo, uma página por vez, remove duplicidades e exporta os resultados consolidados em CSV e JSON — ou envia direto ao Radar de Carreira.
 
-Versão atual da extensão: **1.4.2**.
+Versão atual da extensão: **1.5.1**.
 > Este é um projeto independente. Não é afiliado, patrocinado nem mantido pela APinfo.
 
 ## Dois modos de coleta
@@ -71,7 +71,7 @@ Também é possível usar **Code → Download ZIP** no GitHub e extrair o arquiv
 2. Ative **Modo do desenvolvedor**, no canto superior direito.
 3. Clique em **Carregar sem compactação**.
 4. Selecione a pasta `extensao-apinfo` (ou a raiz deste projeto, se você não separou em subpasta).
-5. Confirme que aparece **Coletor de Vagas do APinfo 1.4.2**.
+5. Confirme que aparece **Coletor de Vagas do APinfo 1.5.1**.
 6. Opcionalmente, fixe a extensão no menu de extensões do Chrome.
 
 ### 3. Abrir o painel
