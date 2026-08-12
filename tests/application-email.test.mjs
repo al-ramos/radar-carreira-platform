@@ -9,14 +9,13 @@ test("personaliza a candidatura da APinfo somente com stacks confirmadas", () =>
     externalId: "85079",
     matchingSkills: ["SQL", "PostgreSQL", "SQL"],
     seniority: ["Pleno", "Sênior"],
-    candidateName: "Almir Ramos",
   });
 
   assert.match(body, /equipe de recrutamento da Artium Soluções/);
   assert.match(body, /Desenvolvedor \.NET \(código 85079\)/);
   assert.match(body, /especialmente em SQL, PostgreSQL/);
   assert.match(body, /Atuo em nível Pleno\/Sênior/);
-  assert.match(body, /Atenciosamente,\nAlmir Ramos$/);
+  assert.doesNotMatch(body, /Atenciosamente|Almir Ramos/);
   assert.doesNotMatch(body, /JavaScript|React|Docker/);
 });
 

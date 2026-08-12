@@ -4,7 +4,6 @@ type ApinfoApplicationEmailInput = {
   externalId?: string;
   matchingSkills: string[];
   seniority: string[];
-  candidateName?: string | null;
 };
 
 /**
@@ -18,7 +17,6 @@ export function buildApinfoApplicationEmail({
   externalId,
   matchingSkills,
   seniority,
-  candidateName,
 }: ApinfoApplicationEmailInput): string {
   const uniqueSkills = [...new Map(
     matchingSkills
@@ -34,14 +32,11 @@ export function buildApinfoApplicationEmail({
   const skillsLine = uniqueSkills.length
     ? `Ao analisar a descrição, identifiquei boa aderência técnica, especialmente em ${uniqueSkills.join(", ")}. Essas competências fazem parte do meu perfil e se relacionam diretamente aos requisitos apresentados.\n\n`
     : "A descrição da oportunidade está alinhada à minha experiência profissional e ao tipo de posição que estou buscando.\n\n";
-  const signature = candidateName?.trim() ? `\n\nAtenciosamente,\n${candidateName.trim()}` : "\n\nAtenciosamente,";
-
   return (
     `Olá, ${addressee}.\n\n` +
     `Gostaria de me candidatar à vaga de ${title}${jobReference}.\n\n` +
     seniorityLine +
     skillsLine +
-    "Tenho interesse em conversar para apresentar melhor minha experiência e entender os próximos passos do processo seletivo." +
-    signature
+    "Tenho interesse em conversar para apresentar melhor minha experiência e entender os próximos passos do processo seletivo."
   );
 }

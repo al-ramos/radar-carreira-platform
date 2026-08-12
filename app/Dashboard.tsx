@@ -1229,7 +1229,6 @@ export default function Dashboard() {
           externalId: job.externalId,
           matchingSkills: analyzeStackFit(job.stack, profileMasteredSkills).matchingSkills,
           seniority: profileChoices.seniority,
-          candidateName: currentUser?.fullName || currentUser?.displayName,
         })
       : `Olá,\n\nTenho interesse na vaga de ${job.title} na ${job.company}.\n\nSegue meu contato para conversarmos.`;
     const query = [
