@@ -19,7 +19,7 @@ import {
 } from "../lib/profile-options";
 import { parseCareerSource } from "../lib/career-source";
 import { isOwnerEmail } from "../lib/access";
-import { computeVerdict, VerdictResult } from "../lib/verdict";
+import { analyzeStackFit, computeVerdict, VerdictResult } from "../lib/verdict";
 type Job = {
   id: string;
   score: number;
@@ -2008,10 +2008,11 @@ export default function Dashboard() {
                 </section>
                 {analysisOpen && (() => {
                   // Usa a descrição enriquecida se disponível para maior precisão
+                  const analysisStack = jobDetail?.stack?.length ? jobDetail.stack : selectedJob.stack;
                   const verdict = computeVerdict({
                     title: selectedJob.title,
                     description: jobDetail?.description || selectedJob.description || "",
-                    stack: selectedJob.stack,
+                    stack: analysisStack,
                     seniority: selectedJob.seniority,
                     workMode: selectedJob.workMode,
                   }, profileMasteredSkills);
@@ -2041,26 +2042,19 @@ export default function Dashboard() {
                       </table>
 
                       {(() => {
-                        const matchReasonRaw = selectedJob.reasons.find((r) => r.startsWith("✅ Skills:"));
-                        const gapReasonRaw = selectedJob.reasons.find((r) => r.startsWith("❌ Não menciona:"));
-                        const matchedSkills = matchReasonRaw
-                          ? matchReasonRaw.replace(/✅ Skills:\s*/, "").replace(/\s*\(\+\d+\)$/, "").split(",").map((s) => s.trim()).filter(Boolean)
-                          : [];
-                        const missingSkills = gapReasonRaw
-                          ? gapReasonRaw.replace(/❌ Não menciona:\s*/, "").split(",").map((s) => s.trim()).filter(Boolean)
-                          : [];
+                        const stackFit = analyzeStackFit(analysisStack, profileMasteredSkills);
                         return (
                           <>
-                            {matchedSkills.length > 0 && (
+                            {stackFit.matchingSkills.length > 0 && (
                               <div className="analysis-skill-group">
-                                <p className="analysis-label analysis-match">✅ Skills do seu perfil</p>
-                                <div className="tags">{matchedSkills.map((s) => <span key={s} className="tag-match">{s}</span>)}</div>
+                                <p className="analysis-label analysis-match">✅ Requisitos já no seu perfil</p>
+                                <div className="tags">{stackFit.matchingSkills.map((s) => <span key={s} className="tag-match">{s}</span>)}</div>
                               </div>
                             )}
-                            {missingSkills.length > 0 && (
+                            {stackFit.missingSkills.length > 0 && (
                               <div className="analysis-skill-group">
-                                <p className="analysis-label analysis-gap">❌ Não estão no seu perfil</p>
-                                <div className="tags">{missingSkills.map((s) => <span key={s} className="tag-gap">{s}</span>)}</div>
+                                <p className="analysis-label analysis-gap">⚠️ Impedimentos: requisitos da vaga fora do seu perfil</p>
+                                <div className="tags">{stackFit.missingSkills.map((s) => <span key={s} className="tag-gap">{s}</span>)}</div>
                               </div>
                             )}
                           </>

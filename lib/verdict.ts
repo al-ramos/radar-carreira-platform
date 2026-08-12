@@ -20,6 +20,15 @@ export interface VerdictResult {
   rows: VerdictRow[];
 }
 
+export interface StackFit {
+  /** Tecnologias detectadas nos requisitos da vaga. */
+  requiredSkills: string[];
+  /** Requisitos da vaga para os quais há evidência no perfil. */
+  matchingSkills: string[];
+  /** Requisitos da vaga que não constam do perfil e merecem confirmação. */
+  missingSkills: string[];
+}
+
 // ── Padrões de bloqueadores estruturais ──────────────────────────────────────
 
 const ENGLISH_BLOCKER_RE = [
@@ -73,6 +82,25 @@ const CANDIDATE_STACK = [
   "entity framework", "ef core", "dapper", "azure", "azure devops",
 ];
 
+/**
+ * Variações que representam a mesma tecnologia no perfil e na vaga. A lista
+ * é propositalmente curta: uma equivalência errada seria pior que pedir uma
+ * confirmação ao candidato.
+ */
+const STACK_EQUIVALENCE_GROUPS = [
+  ["gcp", "google cloud", "google cloud platform"],
+  ["aws", "amazon web services"],
+  ["azure", "microsoft azure"],
+  ["c#", "csharp", ".net", "dotnet", "net core", ".net core", "asp.net", "asp net"],
+  ["sql", "sql server", "mssql"],
+  ["postgres", "postgresql"],
+  ["node", "node.js", "nodejs"],
+  ["react", "react.js", "reactjs"],
+  ["vue", "vue.js", "vuejs"],
+  ["next", "next.js", "nextjs"],
+  ["kubernetes", "k8s"],
+] as const;
+
 // ── Funções auxiliares ───────────────────────────────────────────────────────
 
 function testAny(text: string, patterns: RegExp[]): boolean {
@@ -81,6 +109,43 @@ function testAny(text: string, patterns: RegExp[]): boolean {
 
 function countMatches(text: string, patterns: RegExp[]): number {
   return patterns.filter((r) => r.test(text)).length;
+}
+
+function normalizeSkill(skill: string): string {
+  return skill.trim().toLocaleLowerCase("pt-BR").replace(/\s+/g, " ");
+}
+
+function skillsAreEquivalent(left: string, right: string): boolean {
+  const normalizedLeft = normalizeSkill(left);
+  const normalizedRight = normalizeSkill(right);
+  if (normalizedLeft === normalizedRight) return true;
+  return STACK_EQUIVALENCE_GROUPS.some((group) =>
+    group.includes(normalizedLeft as never) && group.includes(normalizedRight as never),
+  );
+}
+
+/**
+ * Compara requisitos técnicos da vaga com as competências cadastradas. Ao
+ * contrário do score geral, a lacuna é calculada na direção correta: o que a
+ * vaga pede e não está no perfil, não o que existe no perfil mas não foi
+ * citado na descrição.
+ */
+export function analyzeStackFit(jobStack: string[], userSkills?: string[]): StackFit {
+  const requiredSkills = [...new Map(
+    jobStack
+      .map((skill) => skill.trim())
+      .filter(Boolean)
+      .map((skill) => [normalizeSkill(skill), skill]),
+  ).values()];
+  const profileSkills = userSkills?.length ? userSkills : CANDIDATE_STACK;
+  const matchingSkills = requiredSkills.filter((required) =>
+    profileSkills.some((profileSkill) => skillsAreEquivalent(required, profileSkill)),
+  );
+  return {
+    requiredSkills,
+    matchingSkills,
+    missingSkills: requiredSkills.filter((required) => !matchingSkills.includes(required)),
+  };
 }
 
 function detectContratacao(text: string): { status: string; ok: boolean | null } {
@@ -113,16 +178,15 @@ function detectSeniority(title: string, text: string): { status: string; ok: boo
 }
 
 function detectStack(text: string, jobStack: string[], userSkills?: string[]): { status: string; ok: boolean | null } {
-  const combined = `${text} ${jobStack.join(" ")}`.toLowerCase();
-  // Usa skills do perfil do usuário quando disponíveis; caso contrário, usa a lista fixa
-  const skillList = (userSkills && userSkills.length > 0)
-    ? userSkills.map((s) => s.toLowerCase())
-    : CANDIDATE_STACK;
-  const hits = skillList.filter((s) => combined.includes(s));
-  const threshold = userSkills && userSkills.length > 0 ? Math.max(2, Math.ceil(userSkills.length * 0.25)) : 3;
-  if (hits.length >= threshold) return { status: `${hits.slice(0, 4).map((s) => s.toUpperCase()).join(", ")} ✅`, ok: true };
-  if (hits.length >= 1) return { status: `${hits.slice(0, 3).map((s) => s.toUpperCase()).join(", ")} — fit parcial`, ok: null };
-  return { status: "Sem aderência clara ao seu stack", ok: false };
+  void text; // A stack já foi inferida a partir da descrição antes desta análise.
+  const { requiredSkills, matchingSkills, missingSkills } = analyzeStackFit(jobStack, userSkills);
+  if (!requiredSkills.length) return { status: "Stack não identificada na vaga — confirmar", ok: null };
+  if (!missingSkills.length) return { status: `${matchingSkills.join(", ")} ✅`, ok: true };
+  if (!matchingSkills.length) return { status: `Impedimentos: ${missingSkills.join(", ")}`, ok: false };
+  return {
+    status: `${matchingSkills.join(", ")} — faltam: ${missingSkills.join(", ")}`,
+    ok: null,
+  };
 }
 
 function detectLanguageReq(text: string): { status: string; ok: boolean | null } {

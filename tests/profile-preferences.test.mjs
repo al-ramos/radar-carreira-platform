@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { allowedWorkModes, listFromStored, normalizeMinScore } from "../lib/profile-options.ts";
 import { matchesSelectedSeniority, scoreJob } from "../lib/scoring.ts";
+import { analyzeStackFit } from "../lib/verdict.ts";
 
 test("preserva preferências novas e legadas como listas", () => {
   assert.deepEqual(listFromStored('["C#", "SQL"]'), ["C#", "SQL"]);
@@ -40,6 +41,12 @@ test("pontua stacks de forma proporcional e não confunde nomes parciais", () =>
   const result = scoreJob({ title: "Pessoa desenvolvedora React", description: "Experiência com React.", stack: ["React"] }, profile);
   assert.equal(result.score, 20);
   assert.deepEqual(result.reasons, ["✅ Skills: React (+20)", "❌ Não menciona: Node.js, R"]);
+});
+
+test("mostra como impedimento as stacks exigidas pela vaga que faltam no perfil", () => {
+  const result = analyzeStackFit(["Python", "Google Cloud", "SQL"], ["C#", ".NET", "SQL Server"]);
+  assert.deepEqual(result.matchingSkills, ["SQL"]);
+  assert.deepEqual(result.missingSkills, ["Python", "Google Cloud"]);
 });
 
 test("perfil usa checkboxes e o radar expõe filtros de visualização", async () => {

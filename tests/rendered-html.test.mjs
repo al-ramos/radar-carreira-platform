@@ -42,6 +42,7 @@ test("dashboard oferece radar, perfil e pipeline persistente", async () => {
   assert.match(dashboard, /setDetailJob\(job\)/);
   assert.match(dashboard, /Tecnologias da vaga/);
   assert.match(dashboard, /Stack não informada/);
+  assert.match(dashboard, /Impedimentos: requisitos da vaga fora do seu perfil/);
   assert.match(dashboard, /LinkedInExtension/);
   const linkedInExtension = await read("../app/LinkedInExtension.tsx");
   assert.match(linkedInExtension, /Importar arquivo do LinkedIn/);
