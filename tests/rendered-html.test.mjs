@@ -16,7 +16,7 @@ test("dashboard oferece radar, perfil e pipeline persistente", async () => {
   assert.match(dashboard, /const buildJobsParams = useCallback\(/);
   assert.match(dashboard, /limit:\s*"50"/);
   assert.match(dashboard, /fetch\(`\/api\/jobs\?\$\{buildJobsParams\(1\)\}`\)/);
-  assert.match(dashboard, /fetch\(`\/api\/jobs\?\$\{buildJobsParams\(page\)\}`\)/);
+  assert.match(dashboard, /fetchJobsWithRetry\(`\/api\/jobs\?\$\{buildJobsParams\(page\)\}/);
   assert.match(dashboard, /Últimas 24h/);
   assert.match(dashboard, /Últimos 7 dias/);
   assert.match(dashboard, /Todas as vagas/);

@@ -38,6 +38,8 @@ test("falha da API não exibe as quatro vagas demonstrativas", async () => {
   assert.doesNotMatch(dashboard, /score: j\.score \?\? 70/);
   assert.match(dashboard, /const visibleMinScore = simplifiedList \? 0 : effectiveMinScore/);
   assert.match(dashboard, /j\.score >= visibleMinScore/);
+  assert.match(dashboard, /simplifiedRetryCountRef\.current >= 3/);
+  assert.match(dashboard, /fetchJobsWithRetry\(`\/api\/jobs\?\$\{buildJobsParams\(page\)\}/);
   assert.doesNotMatch(dashboard, /\.catch\(\(\) => \{\s*setItems\(\[\]\)/);
 });
 

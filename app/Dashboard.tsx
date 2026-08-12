@@ -449,8 +449,10 @@ export default function Dashboard() {
   // A resposta de contingência não possui perfil nem score. Não deixamos que
   // o corte salvo esconda toda a lista enquanto a personalização se recupera.
   const visibleMinScore = simplifiedList ? 0 : effectiveMinScore;
+  const personalizationPending = mode === "loading" || simplifiedList;
   // ── Persistência de estado UI no sessionStorage (sobrevive ao F5) ──────────
   const jobListRef = useRef<HTMLDivElement>(null);
+  const simplifiedRetryCountRef = useRef(0);
   useEffect(() => { try { sessionStorage.setItem("radar_pipelineFilter", pipelineFilter); } catch {} }, [pipelineFilter]);
   useEffect(() => { try { sessionStorage.setItem("radar_verdictFilter", verdictFilter); } catch {} }, [verdictFilter]);
   useEffect(() => {
@@ -493,6 +495,20 @@ export default function Dashboard() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
+  // A resposta simplificada é uma contingência breve. Tentamos recuperar a
+  // personalização algumas vezes sem exigir que a pessoa recarregue a página.
+  useEffect(() => {
+    if (!simplifiedList) {
+      simplifiedRetryCountRef.current = 0;
+      return;
+    }
+    if (simplifiedRetryCountRef.current >= 3) return;
+    const retryTimer = setTimeout(() => {
+      simplifiedRetryCountRef.current += 1;
+      setJobsRefreshVersion((version) => version + 1);
+    }, 3_000);
+    return () => clearTimeout(retryTimer);
+  }, [simplifiedList, jobsRefreshVersion]);
   // A extensão coleta as vagas em outra aba e grava direto na API. Como ela
   // não compartilha o estado React deste Dashboard, recarregamos os totais ao
   // voltar para o Radar para não deixar a quantidade exibida defasada.
@@ -533,12 +549,12 @@ export default function Dashboard() {
       if (period) params.set("period", period);
       if (sourceFilter !== "all") params.set("sourceType", sourceFilter);
       if (debouncedQuery) params.set("q", debouncedQuery);
-      if (effectiveMinScore > 0) params.set("minScore", String(effectiveMinScore));
+      if (!simplifiedList && effectiveMinScore > 0) params.set("minScore", String(effectiveMinScore));
       if (pipelineFilter !== "all") params.set("pipeline", pipelineFilter);
-      if (verdictFilter !== "all") params.set("verdict", verdictFilter);
+      if (!simplifiedList && verdictFilter !== "all") params.set("verdict", verdictFilter);
       return params.toString();
     },
-    [period, sourceFilter, debouncedQuery, effectiveMinScore, pipelineFilter, verdictFilter],
+    [period, sourceFilter, debouncedQuery, effectiveMinScore, pipelineFilter, verdictFilter, simplifiedList],
   );
   useEffect(() => {
     const controller = new AbortController();
@@ -682,8 +698,8 @@ export default function Dashboard() {
   const activeFilterCount = [
     sourceFilter !== "all",
     pipelineFilter !== "all",
-    verdictFilter !== "all",
-    fitFilter !== 0,
+    !personalizationPending && verdictFilter !== "all",
+    !personalizationPending && fitFilter !== 0,
   ].filter(Boolean).length;
   const filtered = useMemo(
     () =>
@@ -706,7 +722,7 @@ export default function Dashboard() {
             (pipelineFilter === "unseen"
               ? !pipelineStageMap.has(j.id)
               : pipelineStageMap.get(j.id) === pipelineFilter)) &&
-          (verdictFilter === "all" || verdictMap.get(j.id)?.emoji === verdictFilter)
+          (personalizationPending || verdictFilter === "all" || verdictMap.get(j.id)?.emoji === verdictFilter)
         );
       }),
     [
@@ -718,6 +734,7 @@ export default function Dashboard() {
       pipelineStageMap,
       verdictFilter,
       verdictMap,
+      personalizationPending,
     ],
   );
   /** Baixa o relatório em Excel/CSV com exatamente as vagas visíveis na tela
@@ -785,13 +802,15 @@ export default function Dashboard() {
     if (page === currentPage || page < 1) return;
     setLoadingMore(true);
     try {
-      const r = await fetch(`/api/jobs?${buildJobsParams(page)}`);
-      if (!r.ok) return;
-      const data = await r.json();
+      const controller = new AbortController();
+      const data = await fetchJobsWithRetry(`/api/jobs?${buildJobsParams(page)}`, controller.signal);
       const next: Job[] = (data.jobs ?? []).map(adapt).sort((a: Job, b: Job) => b.score - a.score);
       setItems(next);
       setCurrentPage(page);
+      setSimplifiedList(Boolean(data.degraded));
       jobListRef.current?.scrollTo({ top: 0 });
+    } catch {
+      setMessage("Não foi possível trocar de página agora. Tente novamente em instantes.");
     } finally {
       setLoadingMore(false);
     }
@@ -1430,7 +1449,7 @@ export default function Dashboard() {
                 type="button"
                 className="icon-btn"
                 onClick={downloadReport}
-                disabled={reportLoading || filtered.length === 0}
+                disabled={personalizationPending || reportLoading || filtered.length === 0}
               >
                 {reportLoading ? "Gerando…" : "↓ Relatório Excel"}
               </button>
@@ -1442,7 +1461,13 @@ export default function Dashboard() {
             )}
           </div>
         </header>
-        {message && <div className="notice">{message}</div>}
+        {personalizationPending ? (
+          <div className="notice" role="status">
+            Carregando seu perfil e calculando a aderência das vagas…
+          </div>
+        ) : message ? (
+          <div className="notice">{message}</div>
+        ) : null}
         <div className="radar-controls">
           <div className="radar-result-summary">
             <span>
@@ -1531,7 +1556,14 @@ export default function Dashboard() {
               })}
             </div>
           </div>
-          {currentUser && profileMasteredSkills.length > 0 && (
+          {personalizationPending ? (
+            <div className="compact-filter-group" role="status">
+              <span className="compact-filter-label">Personalização</span>
+              <span className="list-head-dim">
+                Aderência e veredito serão aplicados quando seu perfil terminar de carregar.
+              </span>
+            </div>
+          ) : currentUser && profileMasteredSkills.length > 0 && (
             <>
               <div className="compact-filter-divider" aria-hidden="true" />
               <div className="compact-filter-group">
@@ -1560,7 +1592,9 @@ export default function Dashboard() {
             <div className="fit-filter-head">
               <span className="compact-filter-label">Aderência mínima</span>
               <strong style={{ color: fitFilterColor }}>
-                {simplifiedList ? "Temporariamente sem corte" : effectiveMinScore === 0 ? "Todas as vagas" : `${effectiveMinScore}% ou mais`}
+                {personalizationPending
+                  ? `${effectiveMinScore}% — aplica ao concluir o cálculo`
+                  : effectiveMinScore === 0 ? "Todas as vagas" : `${effectiveMinScore}% ou mais`}
               </strong>
             </div>
             <input
@@ -1573,13 +1607,12 @@ export default function Dashboard() {
               list="fit-filter-ticks"
               value={fitFilterSliderValue}
               onChange={(event) => setFitFilter(Number(event.target.value))}
-              disabled={simplifiedList}
               style={{ "--fit-fill": `${fitFilterSliderValue}%`, "--fit-color": fitFilterColor } as CSSProperties}
             />
             <datalist id="fit-filter-ticks">
               {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((tick) => <option key={tick} value={tick} />)}
             </datalist>
-            <button type="button" className={`fit-filter-profile-chip${fitFilter === "profile" ? " active" : ""}`} onClick={() => setFitFilter("profile")} disabled={simplifiedList}>
+            <button type="button" className={`fit-filter-profile-chip${fitFilter === "profile" ? " active" : ""}`} onClick={() => setFitFilter("profile")}>
               Meu perfil ({profileMinScore}% ou mais)
             </button>
           </div>
@@ -1591,12 +1624,15 @@ export default function Dashboard() {
         </div>
         <div className="list-status-bar">
           <span>
-            <strong>{filtered.length}</strong>{" "}
-            {filtered.length === 1 ? "vaga" : "vagas"}
-            {filtered.length < items.length && (
+            {personalizationPending ? (
+              <><strong>Carregando vagas</strong><span className="list-head-dim"> · filtros de aderência em preparação</span></>
+            ) : (
+              <><strong>{filtered.length}</strong>{" "}{filtered.length === 1 ? "vaga" : "vagas"}</>
+            )}
+            {!personalizationPending && filtered.length < items.length && (
               <>{" "}<span className="list-head-dim">({items.length} carregadas{totalJobs != null && totalJobs > items.length ? ` de ${totalJobs} disponíveis` : ""})</span></>
             )}
-            {filtered.length === items.length && totalJobs != null && totalJobs > items.length && (
+            {!personalizationPending && filtered.length === items.length && totalJobs != null && totalJobs > items.length && (
               <>{" "}<span className="list-head-dim">({items.length} carregadas de {totalJobs} disponíveis)</span></>
             )}
             {sourceFilter === "linkedin" && <>{" "}<span className="list-head-badge">só LinkedIn</span></>}
@@ -1746,7 +1782,7 @@ export default function Dashboard() {
                 </div>
               </div>
             ))}
-            {filtered.length === 0 && (
+            {filtered.length === 0 && !personalizationPending && (
               <div className="radar-empty">
                 {mode === "unavailable" ? (
                   <>
