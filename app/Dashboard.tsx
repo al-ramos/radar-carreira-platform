@@ -659,6 +659,10 @@ export default function Dashboard() {
     if (profileMasteredSkills.length === 0) return new Map<string, VerdictResult>();
     const map = new Map<string, VerdictResult>();
     items.forEach((job) => {
+      // O veredito só complementa uma aderência calculada. Vagas fora do
+      // escopo técnico ficam sem score e não podem receber, por acidente,
+      // um "Bate" baseado apenas em modalidade, idioma ou senioridade.
+      if (!job.scored) return;
       map.set(job.id, computeVerdict({
         title: job.title,
         description: job.description ?? "",

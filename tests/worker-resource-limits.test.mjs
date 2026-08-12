@@ -18,6 +18,7 @@ test("a listagem pagina no D1 antes de enriquecer o fluxo normal", async () => {
   assert.match(route, /isTechnologyJob/);
   assert.match(route, /profileHasScoringSignals \? requestedMinScore : 0/);
   assert.match(route, /Vaga fora do escopo de TI — sem pontuação/);
+  assert.match(route, /isTechJob && verdictFilter !== "all"/);
 });
 
 test("a coleta agendada processa apenas uma fonte por chamada", async () => {
@@ -48,6 +49,12 @@ test("a página autenticada não renderiza o dashboard pesado no Worker", async 
   assert.match(page, /requireChatGPTUser/);
   assert.match(page, /<DashboardShell \/>/);
   assert.match(shell, /ssr: false/);
+});
+
+test("vaga sem score não recebe veredito de aderência na lista", async () => {
+  const dashboard = await read("../app/Dashboard.tsx");
+  assert.match(dashboard, /if \(!job\.scored\) return;/);
+  assert.match(dashboard, /O veredito só complementa uma aderência calculada/);
 });
 
 test("contato existente bloqueia nova captura e a espera possui timeout", async () => {

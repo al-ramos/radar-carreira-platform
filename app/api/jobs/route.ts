@@ -177,7 +177,9 @@ preferredMode,
 },
 )
 : { score: 0, reasons: ["Complete seu perfil para calcular a aderência"], scored: false };
-const verdict = verdictFilter !== "all" && masteredSkills.length
+// Vagas fora de TI ficam visíveis para transparência, mas não participam de
+// nenhum veredito de aderência — especialmente do filtro "Bate".
+const verdict = isTechJob && verdictFilter !== "all" && masteredSkills.length
 ? computeVerdict(
 {
 title: job.title,
