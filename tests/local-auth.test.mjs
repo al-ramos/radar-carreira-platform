@@ -4,7 +4,7 @@ import test from "node:test";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
-test("login local mantém a sessão protegida no Worker e não expõe a página", async () => {
+test("login local mantém a sessão protegida e oferece a tela de acesso", async () => {
   const [auth, login, logout, page, dashboard] = await Promise.all([
     read("../app/chatgpt-auth.ts"),
     read("../app/api/auth/login/route.ts"),
@@ -21,8 +21,10 @@ test("login local mantém a sessão protegida no Worker e não expõe a página"
   assert.doesNotMatch(login, /createLocalAdminSession/);
   assert.match(login, /localAccounts/);
   assert.match(logout, /maxAge: 0/);
-  assert.match(page, /notFound\(\)/);
-  assert.doesNotMatch(page, /api\/auth\/(?:login|register)/);
+  assert.doesNotMatch(page, /notFound\(\)/);
+  assert.match(page, /api\/auth\/(?:login|register)/);
+  assert.match(page, /safeReturnTo/);
+  assert.match(page, /Entrar no Radar/);
   assert.match(dashboard, /\/login\?return_to=\//);
   assert.match(dashboard, /\/api\/auth\/logout/);
 });

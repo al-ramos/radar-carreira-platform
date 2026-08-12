@@ -130,3 +130,12 @@ test("análise personalizada persiste regras do perfil e prepara orçamento de I
   assert.match(analysisMigration, /user_job_analyses/);
   assert.match(accountingMigration, /ai_usage_events/);
 });
+
+test("rota de login oferece acesso local em vez de página não encontrada", async () => {
+  const login = await read("../app/login/page.tsx");
+  assert.match(login, /Entrar no Radar/);
+  assert.match(login, /\/api\/auth\/login/);
+  assert.match(login, /\/api\/auth\/register/);
+  assert.match(login, /safeReturnTo/);
+  assert.doesNotMatch(login, /notFound\(/);
+});
