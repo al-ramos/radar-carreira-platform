@@ -1,4 +1,4 @@
-export type ScoreInput={title:string;description:string;stack:string[];seniority?:string|null;workMode?:string|null;location?:string|null;publishedAt?:Date|null};
+export type ScoreInput={title:string;description:string;stack:string[];seniority?:string|null;workMode?:string|null;location?:string|null;publishedAt?:Date|string|null};
 export type ScoreProfile={masteredSkills:string[];desiredAreas:string[];avoidTerms:string[];seniority:string[];preferredMode:string[]};
 const normalize=(value:string)=>value.trim().toLocaleLowerCase("pt-BR");
 const escapeRegex=(value:string)=>value.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
@@ -142,7 +142,10 @@ export function scoreJob(job:ScoreInput,profile:ScoreProfile){
  }
 
  // --- Recência (+5) ---
- const age=job.publishedAt?(Date.now()-job.publishedAt.getTime())/36e5:999;
+ // O D1 pode devolver a data como texto no Worker. Aceitamos os dois formatos
+ // para que uma data válida jamais interrompa o cálculo de aderência.
+ const publishedAt=job.publishedAt instanceof Date?job.publishedAt:job.publishedAt?new Date(job.publishedAt):null;
+ const age=publishedAt&&!Number.isNaN(publishedAt.getTime())?(Date.now()-publishedAt.getTime())/36e5:999;
  if(age<=24){score+=5;reasons.push("Publicada nas últimas 24h (+5)")}
 
  return{score:Math.max(0,Math.min(100,score)),reasons};

@@ -21,6 +21,8 @@ test("a listagem pagina no D1 antes de enriquecer o fluxo normal", async () => {
   assert.match(route, /profileHasScoringSignals \? requestedMinScore : 0/);
   assert.match(route, /Vaga fora do escopo de TI — sem pontuação/);
   assert.match(route, /isTechJob && verdictFilter !== "all"/);
+  const scoring = await read("../lib/scoring.ts");
+  assert.match(scoring, /job\.publishedAt instanceof Date/);
 });
 
 test("a coleta agendada processa apenas uma fonte por chamada", async () => {

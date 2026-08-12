@@ -43,6 +43,15 @@ test("pontua stacks de forma proporcional e não confunde nomes parciais", () =>
   assert.deepEqual(result.reasons, ["Vaga de TI (+5)", "✅ Competências encontradas (1 de 3): React (+20)", "❌ Não menciona: Node.js, R"]);
 });
 
+test("calcula recência quando o banco devolve a data como texto", () => {
+  const result = scoreJob(
+    { title: "Desenvolvedor de Software", description: "", stack: [], publishedAt: new Date().toISOString() },
+    { masteredSkills: [], desiredAreas: [], avoidTerms: [], seniority: [], preferredMode: [] },
+  );
+  assert.equal(result.score, 10);
+  assert.ok(result.reasons.includes("Publicada nas últimas 24h (+5)"));
+});
+
 test("explica com números quando a vaga não cita competências do perfil", () => {
   const result = scoreJob(
     { title: "Pessoa desenvolvedora Java", description: "Experiência com Spring.", stack: ["Java", "Spring"] },
