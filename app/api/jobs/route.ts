@@ -107,6 +107,7 @@ const seniorityCondition = selectedSeniority.length
 const searchPattern = `%${searchQuery}%`;
 const searchCondition = searchQuery
 ? or(
+like(jobs.externalId, searchPattern),
 like(jobs.title, searchPattern),
 like(jobs.company, searchPattern),
 like(jobs.location, searchPattern),
