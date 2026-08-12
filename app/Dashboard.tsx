@@ -20,6 +20,7 @@ import {
 import { parseCareerSource } from "../lib/career-source";
 import { isOwnerEmail } from "../lib/access";
 import { analyzeStackFit, computeVerdict, VerdictResult } from "../lib/verdict";
+import { buildApinfoApplicationEmail } from "../lib/application-email";
 type Job = {
   id: string;
   score: number;
@@ -1221,28 +1222,16 @@ export default function Dashboard() {
    */
   function buildContactMailto(job: Job) {
     if (!job.contactEmail) return null;
-    const matchReasonRaw = (job.reasons ?? []).find((r) => r.startsWith("✅ Competências encontradas"));
-    const matchedSkills = matchReasonRaw
-      ? matchReasonRaw.replace(/^✅ Competências encontradas \(\d+ de \d+\):\s*/, "").replace(/\s*\(\+\d+\)$/, "").split(",").map((s) => s.trim()).filter(Boolean)
-      : [];
-    const extraSkills = profileMasteredSkills
-      .filter((skill) => !matchedSkills.some((m) => m.toLowerCase() === skill.toLowerCase()))
-      .slice(0, 3);
-    const seniorityIntro = profileChoices.seniority.length
-      ? `Atuo como profissional de TI nível ${profileChoices.seniority.join("/")}. `
-      : "";
-    const skillsLine = matchedSkills.length
-      ? `${seniorityIntro}Tenho experiência com ${matchedSkills.join(", ")}, que ${matchedSkills.length === 1 ? "aparece" : "aparecem"} entre os requisitos da vaga${
-          extraSkills.length ? `, além de ${extraSkills.join(", ")}` : ""
-        }.\n\n`
-      : seniorityIntro
-        ? `${seniorityIntro}\n\n`
-        : "";
-    const body =
-      `Olá,\n\n` +
-      `Tenho interesse na vaga de ${job.title} na ${job.company}${job.externalId ? ` (código ${job.externalId})` : ""}.\n\n` +
-      skillsLine +
-      `Segue meu contato para conversarmos.`;
+    const body = isApinfoJob(job)
+      ? buildApinfoApplicationEmail({
+          title: job.title,
+          company: job.company,
+          externalId: job.externalId,
+          matchingSkills: analyzeStackFit(job.stack, profileMasteredSkills).matchingSkills,
+          seniority: profileChoices.seniority,
+          candidateName: currentUser?.fullName || currentUser?.displayName,
+        })
+      : `Olá,\n\nTenho interesse na vaga de ${job.title} na ${job.company}.\n\nSegue meu contato para conversarmos.`;
     const query = [
       job.contactSubject ? `subject=${encodeURIComponent(job.contactSubject)}` : null,
       `body=${encodeURIComponent(body)}`,
