@@ -397,6 +397,7 @@ export default function Dashboard() {
   const loadedJobsRef = useRef<Job[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [profileReady, setProfileReady] = useState(false);
   const [profileMasteredSkills, setProfileMasteredSkills] = useState<string[]>([]);
   const [sourceFilter, setSourceFilter] = useState<
     "all" | "linkedin" | "apinfo" | "other"
@@ -444,7 +445,7 @@ export default function Dashboard() {
   // A resposta de contingência não possui perfil nem score. Não deixamos que
   // o corte salvo esconda toda a lista enquanto a personalização se recupera.
   const visibleMinScore = simplifiedList ? 0 : effectiveMinScore;
-  const personalizationPending = mode === "loading" || simplifiedList;
+  const personalizationPending = !profileReady || mode === "loading" || simplifiedList;
   // ── Persistência de estado UI no sessionStorage (sobrevive ao F5) ──────────
   const jobListRef = useRef<HTMLDivElement>(null);
   const simplifiedRetryCountRef = useRef(0);
@@ -552,6 +553,7 @@ export default function Dashboard() {
     [period, sourceFilter, debouncedQuery, effectiveMinScore, pipelineFilter, verdictFilter, simplifiedList],
   );
   useEffect(() => {
+    if (!profileReady) return;
     const controller = new AbortController();
     fetchJobsWithRetry(`/api/jobs?${buildJobsParams(1)}`, controller.signal)
       .then((data) => {
@@ -599,7 +601,7 @@ export default function Dashboard() {
         setMessage("O Radar está temporariamente indisponível. Tentaremos novamente automaticamente.");
       });
     return () => controller.abort();
-  }, [period, sourceFilter, debouncedQuery, effectiveMinScore, pipelineFilter, verdictFilter, buildJobsParams, jobsRefreshVersion]);
+  }, [period, sourceFilter, debouncedQuery, effectiveMinScore, pipelineFilter, verdictFilter, buildJobsParams, jobsRefreshVersion, profileReady]);
   useEffect(() => {
     fetch("/api/profile")
       .then((r) => (r.ok ? r.json() : Promise.reject()))
@@ -622,7 +624,8 @@ export default function Dashboard() {
             });
         }
       })
-      .catch(() => setCurrentUser(null));
+      .catch(() => setCurrentUser(null))
+      .finally(() => setProfileReady(true));
   }, []);
   // Restaura scroll da lista após os jobs carregarem
   useEffect(() => {
