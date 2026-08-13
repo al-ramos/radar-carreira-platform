@@ -1250,6 +1250,11 @@ export default function Dashboard() {
       setMessage("Entre na versão publicada para salvar vagas reais.");
       return;
     }
+    const verdict = verdictMap.get(job.id);
+    if (verdict?.emoji !== "✅" && verdict?.emoji !== "🟡") {
+      setMessage("Apenas vagas com veredito Bate ou Provável podem ser salvas no acompanhamento.");
+      return;
+    }
     await updateStage(job.id, "saved", "Vaga salva no seu pipeline.");
   }
   async function signOut() {
@@ -2154,9 +2159,10 @@ export default function Dashboard() {
                     <div className="stage-selector-wrap">
                       <select
                         className="stage-selector"
+                        disabled={!selectedJobEligible}
                         value={currentStage === "unseen" ? "" : currentStage}
                         aria-label="Estágio no pipeline"
-                        title="Salvar ou atualizar esta vaga no acompanhamento"
+                        title={!selectedJobEligible ? "Somente vagas com veredito Bate ou Provável entram no acompanhamento" : "Atualizar estágio no acompanhamento"}
                         onChange={async (e) => {
                           const stage = e.target.value;
                           if (!stage) return;

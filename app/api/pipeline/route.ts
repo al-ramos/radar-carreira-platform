@@ -2,7 +2,8 @@ import { and, desc, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../chatgpt-auth";
 import { getDb } from "../../../db/index";
-import { jobs, userJobStatus } from "../../../db/schema";
+import { jobs, profiles, userJobStatus } from "../../../db/schema";
+import { analyzeStoredJobForProfile } from "../../../lib/personalized-analysis";
 
 const VALID_STAGES = new Set(["viewed", "saved", "applied", "interview", "rejected", "archived", "offer", "new"]);
 export const dynamic = "force-dynamic";
@@ -25,8 +26,15 @@ export async function POST(request: Request) {
   if (!body.jobId || !body.stage || !VALID_STAGES.has(body.stage)) return NextResponse.json({ error: "Dados inválidos" }, { status: 400 });
 
   const db = getDb();
-  const job = await db.select().from(jobs).where(eq(jobs.id, body.jobId)).limit(1).then(rows => rows[0]);
+  const [job, profile] = await Promise.all([
+    db.select().from(jobs).where(eq(jobs.id, body.jobId)).limit(1).then(rows => rows[0]),
+    db.select().from(profiles).where(eq(profiles.userId, user.userId)).limit(1).then(rows => rows[0]),
+  ]);
   if (!job) return NextResponse.json({ error: "Vaga não encontrada" }, { status: 404 });
+  if (!profile) return NextResponse.json({ error: "Complete seu perfil antes de acompanhar vagas" }, { status: 412 });
+  const analysis = analyzeStoredJobForProfile(job, profile);
+  if (!analysis) return NextResponse.json({ error: "Cadastre suas competências antes de acompanhar vagas" }, { status: 412 });
+  if (!analysis.eligible) return NextResponse.json({ error: "Apenas vagas com veredito Bate ou Provável podem entrar no acompanhamento", verdict: analysis.verdict }, { status: 422 });
 
   const stage = body.stage as "viewed" | "saved" | "applied" | "interview" | "rejected" | "archived";
   const values = { userId: user.userId, jobId: body.jobId, stage, note: body.note ?? null, updatedAt: new Date() };
