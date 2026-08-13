@@ -39,7 +39,9 @@ test("o agendamento tolera indisponibilidade transitória sem sobrecarregar o Wo
     read("../.github/workflows/collect.yml"),
     read("../lib/connectors.ts"),
   ]);
-  assert.match(workflow, /--retry 5 --retry-all-errors --retry-delay 5 --retry-max-time 90/);
+  assert.match(workflow, /start_offset/);
+  assert.match(workflow, /offset="\$\{\{ inputs\.start_offset \|\| '0' \}\}"/);
+  assert.match(workflow, /--retry 6 --retry-all-errors --retry-delay 15 --retry-max-time 120/);
   assert.match(workflow, /sleep 1/);
   assert.match(connectors, /MAX_JOB_DESCRIPTION_CHARS=12_000/);
   assert.match(connectors, /\.slice\(0,MAX_JOB_DESCRIPTION_CHARS\)/);
