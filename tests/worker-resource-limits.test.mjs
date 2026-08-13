@@ -34,6 +34,12 @@ test("a coleta agendada processa apenas uma fonte por chamada", async () => {
   assert.doesNotMatch(route, /await getDb\(\)\.select\(\{ id: jobs\.id \}\)/);
 });
 
+test("o agendamento tolera indisponibilidade transitória sem sobrecarregar o Worker", async () => {
+  const workflow = await read("../.github/workflows/collect.yml");
+  assert.match(workflow, /--retry 5 --retry-all-errors --retry-delay 5 --retry-max-time 90/);
+  assert.match(workflow, /sleep 1/);
+});
+
 test("falha da API não exibe as quatro vagas demonstrativas", async () => {
   const dashboard = await read("../app/Dashboard.tsx");
   assert.match(dashboard, /useState<Job\[]>\(\[\]\)/);
