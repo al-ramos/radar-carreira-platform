@@ -87,7 +87,7 @@ test("vaga sem score não recebe veredito de aderência na lista", async () => {
   assert.match(dashboard, /O veredito só complementa uma aderência calculada/);
 });
 
-test("contato existente vira ação de cópia e a espera da captura possui timeout", async () => {
+test("contato existente vira ação de cópia e captura oferece fallback pela área de transferência", async () => {
   const [dashboard, route, bridge] = await Promise.all([
     read("../app/Dashboard.tsx"),
     read("../app/api/jobs/[id]/contact/route.ts"),
@@ -98,7 +98,10 @@ test("contato existente vira ação de cópia e a espera da captura possui timeo
   assert.match(dashboard, /Copiar e-mail/);
   assert.match(dashboard, /navigator\.clipboard\.writeText\(selectedJob\.contactEmail\)/);
   assert.doesNotMatch(dashboard, /Recapturar e-mail/);
-  assert.match(dashboard, /12_000/);
+  assert.match(dashboard, /4_000/);
+  assert.match(dashboard, /navigator\.clipboard\.readText\(\)/);
+  assert.match(dashboard, /Colar e-mail/);
+  assert.match(dashboard, /`apinfo - \$\{job\.externalId\} - \$\{job\.title\}`/);
   assert.match(route, /isNull\(jobs\.contactEmail\)/);
   assert.match(route, /status: 409/);
   assert.match(bridge, /chrome\.runtime\.lastError/);

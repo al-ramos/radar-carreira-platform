@@ -469,6 +469,7 @@ export default function Dashboard() {
   // Radar — ver captureApinfoContact/buildContactMailto e o useEffect que
   // escuta a resposta da extensão (RADAR_CAPTURE_CONTACT_RESULT).
   const [contactCapturing, setContactCapturing] = useState(false);
+  const [contactPasteReady, setContactPasteReady] = useState(false);
   const [contactCaptureMsg, setContactCaptureMsg] = useState<{ text: string; error: boolean } | null>(null);
   const contactRequestRef = useRef<{ requestId: string; jobId: string } | null>(null);
   const contactRequestTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1400,6 +1401,50 @@ export default function Dashboard() {
     ].filter(Boolean).join("&");
     return `mailto:${job.contactEmail}?${query}`;
   }
+  async function saveApinfoContact(jobId: string, contactEmail: string, contactSubject?: string) {
+    const r = await fetch(`/api/jobs/${jobId}/contact`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ contactEmail, contactSubject }),
+    });
+    if (!r.ok) {
+      setContactCaptureMsg({ text: "E-mail encontrado, mas não foi possível salvar no Radar. Tente de novo.", error: true });
+      return false;
+    }
+    setItems((current) =>
+      current.map((item) =>
+        item.id === jobId ? { ...item, contactEmail, contactSubject } : item,
+      ),
+    );
+    setContactPasteReady(false);
+    setContactCaptureMsg({ text: `E-mail capturado: ${contactEmail}`, error: false });
+    return true;
+  }
+  async function pasteApinfoContact(job: Job) {
+    setContactCapturing(true);
+    try {
+      const clipboardText = await navigator.clipboard.readText();
+      const contactEmail = clipboardText.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0];
+      if (!contactEmail) {
+        setContactCaptureMsg({
+          text: "Nenhum e-mail foi encontrado. Copie o endereço exibido na página do APinfo e tente novamente.",
+          error: true,
+        });
+        return;
+      }
+      const contactSubject = job.externalId
+        ? `apinfo - ${job.externalId} - ${job.title}`
+        : `Candidatura — ${job.title}`;
+      await saveApinfoContact(job.id, contactEmail, contactSubject);
+    } catch {
+      setContactCaptureMsg({
+        text: "Não consegui ler a área de transferência. Copie o e-mail novamente e permita o acesso quando o navegador solicitar.",
+        error: true,
+      });
+    } finally {
+      setContactCapturing(false);
+    }
+  }
   /**
    * Pede à extensão do APinfo (via radar-bridge.js, content script rodando
    * nesta mesma página) para ler o contato já visível numa aba do APinfo
@@ -1419,6 +1464,7 @@ export default function Dashboard() {
     const requestId = crypto.randomUUID();
     contactRequestRef.current = { requestId, jobId: job.id };
     setContactCapturing(true);
+    setContactPasteReady(false);
     setContactCaptureMsg({ text: "Lendo a aba do APinfo…", error: false });
     if (contactRequestTimerRef.current) clearTimeout(contactRequestTimerRef.current);
     contactRequestTimerRef.current = setTimeout(() => {
@@ -1426,11 +1472,12 @@ export default function Dashboard() {
       contactRequestRef.current = null;
       contactRequestTimerRef.current = null;
       setContactCapturing(false);
+      setContactPasteReady(true);
       setContactCaptureMsg({
-        text: "A extensão não respondeu. Recarregue a extensão do APinfo e atualize esta página.",
+        text: "A extensão não respondeu. Copie o e-mail exibido no APinfo e clique em “Colar e-mail”.",
         error: true,
       });
-    }, 12_000);
+    }, 4_000);
     window.postMessage(
       { source: "radar-dashboard", type: "RADAR_CAPTURE_CONTACT", externalId: job.externalId, requestId },
       window.location.origin,
@@ -1463,23 +1510,7 @@ export default function Dashboard() {
         return;
       }
 
-      void (async () => {
-        const r = await fetch(`/api/jobs/${pending.jobId}/contact`, {
-          method: "PATCH",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ contactEmail: data.email, contactSubject: data.assunto }),
-        });
-        if (!r.ok) {
-          setContactCaptureMsg({ text: "E-mail capturado, mas não foi possível salvar no Radar. Tente de novo.", error: true });
-          return;
-        }
-        setItems((current) =>
-          current.map((item) =>
-            item.id === pending.jobId ? { ...item, contactEmail: data.email, contactSubject: data.assunto } : item,
-          ),
-        );
-        setContactCaptureMsg({ text: `E-mail capturado: ${data.email}`, error: false });
-      })();
+      if (data.email) void saveApinfoContact(pending.jobId, data.email, data.assunto);
     }
     window.addEventListener("message", handleExtensionMessage);
     return () => {
@@ -2226,6 +2257,8 @@ export default function Dashboard() {
                     title={
                       selectedJob.contactEmail
                         ? `Copiar ${selectedJob.contactEmail}`
+                        : contactPasteReady
+                          ? "Copie o e-mail mostrado na página do APinfo e clique aqui"
                         : "Clique em Candidatar, faça login no APinfo até ver Empresa/Email na tela, e clique aqui"
                     }
                     onClick={() => {
@@ -2236,6 +2269,10 @@ export default function Dashboard() {
                         );
                         return;
                       }
+                      if (contactPasteReady) {
+                        void pasteApinfoContact(selectedJob);
+                        return;
+                      }
                       captureApinfoContact(selectedJob);
                     }}
                   >
@@ -2243,6 +2280,8 @@ export default function Dashboard() {
                       ? "Copiar e-mail"
                       : contactCapturing
                         ? "Capturando…"
+                        : contactPasteReady
+                          ? "Colar e-mail"
                         : "Capturar e-mail"}
                   </button>
                 )}
