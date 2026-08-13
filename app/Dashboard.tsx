@@ -1615,7 +1615,7 @@ export default function Dashboard() {
                   type="button"
                   className="icon-btn report-trigger"
                   onClick={() => setReportOptionsOpen((open) => !open)}
-                  disabled={personalizationPending || reportLoading}
+                  disabled={reportLoading}
                   aria-expanded={reportOptionsOpen}
                   aria-haspopup="menu"
                   title="Exporta as vagas respeitando todos os filtros ativos"
