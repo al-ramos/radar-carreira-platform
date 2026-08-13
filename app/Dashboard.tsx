@@ -24,6 +24,7 @@ import { analyzeStackFit, computeVerdict, VerdictResult } from "../lib/verdict";
 import { buildApinfoApplicationEmail } from "../lib/application-email";
 import { jobAreaLabel } from "../lib/job-area";
 import { normalizeContactEmail } from "../lib/jobs";
+import { AUTOMATIC_ACTION_STAGE, resolveAutomaticStage } from "../lib/pipeline-stage";
 type Job = {
   id: string;
   score: number;
@@ -504,6 +505,8 @@ export default function Dashboard() {
   const [contactCaptureMsg, setContactCaptureMsg] = useState<{ text: string; error: boolean } | null>(null);
   const contactRequestRef = useRef<{ requestId: string; jobId: string } | null>(null);
   const contactRequestTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pipelineUpdateRequestsRef = useRef(new Map<string, Promise<boolean>>());
+  const applicationUpdateRequestsRef = useRef(new Map<string, Promise<boolean>>());
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [profileChoices, setProfileChoices] =
     useState<ProfileChoices>(emptyProfileChoices);
@@ -1248,34 +1251,58 @@ export default function Dashboard() {
       });
     }
   }
-  /** Helper centralizado: atualiza estágio no servidor e no estado local */
-  async function updateStage(jobId: string, stage: string, toast?: string) {
-    const r = await fetch("/api/pipeline", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ jobId, stage }),
+  /** Atualiza o dropdown imediatamente e consolida uma única gravação no servidor. */
+  function updateStage(jobId: string, stage: string, toast?: string, mode: "replace" | "advance" = "replace") {
+    const requestKey = `${jobId}:${stage}:${mode}`;
+    const pending = pipelineUpdateRequestsRef.current.get(requestKey);
+    if (pending) return pending;
+
+    const previous = pipelineItems.find((item) => item.id === jobId);
+    const optimisticStage = mode === "advance" && (stage === "saved" || stage === "applied")
+      ? resolveAutomaticStage(previous?.stage, stage)
+      : stage;
+    setPipelineItems((current) => {
+      const exists = current.some((item) => item.id === jobId);
+      if (exists) return current.map((item) => item.id === jobId ? { ...item, stage: optimisticStage } : item);
+      return [...current, { id: jobId, stage: optimisticStage } as PipelineJob];
     });
-    if (r.ok) {
-      if (toast) setMessage(toast);
-      setPipelineItems((prev) => {
-        const exists = prev.some((p) => p.id === jobId);
-        if (exists) return prev.map((p) => p.id === jobId ? { ...p, stage } : p);
-        return [...prev, { id: jobId, stage } as PipelineJob];
-      });
-    } else {
-      const data = await r.json().catch(() => null);
-      setMessage(data?.error ?? "Não foi possível atualizar o acompanhamento.");
-    }
-    return r.ok;
+
+    const request = (async () => {
+      try {
+        const response = await fetch("/api/pipeline", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ jobId, stage, mode }),
+        });
+        const data = await response.json().catch(() => null);
+        if (!response.ok) throw new Error(data?.error ?? "Não foi possível atualizar o acompanhamento.");
+        const persistedStage = data?.stage ?? optimisticStage;
+        setPipelineItems((current) => current.map((item) => item.id === jobId ? { ...item, stage: persistedStage } : item));
+        if (toast) setMessage(toast);
+        return true;
+      } catch (error) {
+        setPipelineItems((current) => {
+          const currentItem = current.find((item) => item.id === jobId);
+          if (currentItem?.stage !== optimisticStage) return current;
+          if (previous) return current.map((item) => item.id === jobId ? previous : item);
+          return current.filter((item) => item.id !== jobId);
+        });
+        setMessage(error instanceof Error ? error.message : "Não foi possível atualizar o acompanhamento.");
+        return false;
+      }
+    })().finally(() => pipelineUpdateRequestsRef.current.delete(requestKey));
+    pipelineUpdateRequestsRef.current.set(requestKey, request);
+    return request;
   }
   async function persistJobAnalysis(job: Job) {
     if (job.id.startsWith("demo") || !currentUser || !selectedJobVerdict || !selectedJobEligible) return;
     setAnalysisSaving(true);
     try {
-      const response = await fetch(`/api/jobs/${encodeURIComponent(job.id)}/analysis`, {
-        method: "POST",
-      });
-      if (response.ok) setMessage("Análise elegível registrada no acompanhamento.");
+      const [response, stageSaved] = await Promise.all([
+        fetch(`/api/jobs/${encodeURIComponent(job.id)}/analysis`, { method: "POST" }),
+        updateStage(job.id, AUTOMATIC_ACTION_STAGE.analyze, undefined, "advance"),
+      ]);
+      if (response.ok && stageSaved) setMessage("Análise registrada e vaga salva automaticamente.");
       else {
         const data = await response.json().catch(() => null);
         setMessage(data?.error ?? "A análise foi exibida, mas não pôde ser registrada agora.");
@@ -1286,26 +1313,58 @@ export default function Dashboard() {
       setAnalysisSaving(false);
     }
   }
-  async function updateApplicationStatus(job: Job, status: ApplicationStatus) {
-    const response = await fetch(`/api/jobs/${encodeURIComponent(job.id)}/application`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ status }),
-    });
-    const data = await response.json().catch(() => null);
-    if (!response.ok) {
-      setMessage(data?.error ?? "Não foi possível atualizar o status da candidatura.");
-      return false;
-    }
-    const application = data.application as PipelineJob;
+  function updateApplicationStatus(job: Job, status: ApplicationStatus, stage: "saved" | "applied", toast?: string) {
+    const requestKey = `${job.id}:${status}:${stage}`;
+    const pending = applicationUpdateRequestsRef.current.get(requestKey);
+    if (pending) return pending;
+
+    const previous = pipelineItems.find((item) => item.id === job.id);
+    const optimisticStage = resolveAutomaticStage(previous?.stage, stage);
+    const statusRank: Record<ApplicationStatus, number> = { generated: 0, sent: 1, responded: 2 };
+    const optimisticStatus = previous?.applicationStatus && statusRank[previous.applicationStatus] > statusRank[status]
+      ? previous.applicationStatus
+      : status;
+    const now = new Date().toISOString();
+    const optimisticApplication: Partial<PipelineJob> = {
+      stage: optimisticStage,
+      applicationStatus: optimisticStatus,
+      generatedAt: previous?.generatedAt ?? now,
+      sentAt: optimisticStatus === "sent" || optimisticStatus === "responded" ? previous?.sentAt ?? now : previous?.sentAt,
+      respondedAt: optimisticStatus === "responded" ? previous?.respondedAt ?? now : previous?.respondedAt,
+    };
     setPipelineItems(current => {
       const exists = current.some(item => item.id === job.id);
-      if (exists) return current.map(item => item.id === job.id ? { ...item, ...application } : item);
-      return [...current, { ...job, ...application } as PipelineJob];
+      if (exists) return current.map(item => item.id === job.id ? { ...item, ...optimisticApplication } : item);
+      return [...current, { ...job, ...optimisticApplication } as PipelineJob];
     });
-    const labels: Record<ApplicationStatus, string> = { generated: "Mensagem registrada como gerada.", sent: "Candidatura marcada como enviada.", responded: "Resposta recebida registrada." };
-    setMessage(labels[status]);
-    return true;
+
+    const request = (async () => {
+      try {
+        const response = await fetch(`/api/jobs/${encodeURIComponent(job.id)}/application`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ status, stage }),
+        });
+        const data = await response.json().catch(() => null);
+        if (!response.ok) throw new Error(data?.error ?? "Não foi possível atualizar o status da candidatura.");
+        const application = data.application as PipelineJob;
+        setPipelineItems(current => current.map(item => item.id === job.id ? { ...item, ...application } : item));
+        const labels: Record<ApplicationStatus, string> = { generated: "Mensagem registrada como gerada.", sent: "Candidatura marcada como enviada.", responded: "Resposta recebida registrada." };
+        setMessage(toast ?? labels[status]);
+        return true;
+      } catch (error) {
+        setPipelineItems(current => {
+          const currentItem = current.find(item => item.id === job.id);
+          if (currentItem?.stage !== optimisticStage || currentItem.applicationStatus !== optimisticStatus) return current;
+          if (previous) return current.map(item => item.id === job.id ? previous : item);
+          return current.filter(item => item.id !== job.id);
+        });
+        setMessage(error instanceof Error ? error.message : "Não foi possível atualizar o status da candidatura.");
+        return false;
+      }
+    })().finally(() => applicationUpdateRequestsRef.current.delete(requestKey));
+    applicationUpdateRequestsRef.current.set(requestKey, request);
+    return request;
   }
   async function deepenWithAi(job: Job) {
     if (job.id.startsWith("demo")) return setMessage("A análise com IA está disponível para vagas reais.");
@@ -2415,7 +2474,12 @@ export default function Dashboard() {
                     } else if (selectedJob.url) {
                       open(selectedJob.url, "_blank");
                     }
-                    setMessage("Página da vaga aberta. Depois de concluir o envio, confirme a etapa no pipeline.");
+                    void updateStage(
+                      selectedJob.id,
+                      AUTOMATIC_ACTION_STAGE.apply,
+                      "Página da vaga aberta e status salvo como Candidatura.",
+                      "advance",
+                    );
                   }}
                 >
                   Candidatar
@@ -2434,9 +2498,15 @@ export default function Dashboard() {
                     }
                     onClick={() => {
                       if (selectedJob.contactEmail) {
+                        void updateApplicationStatus(
+                          selectedJob,
+                          "generated",
+                          AUTOMATIC_ACTION_STAGE.copy_email,
+                          "E-mail copiado e vaga salva no acompanhamento.",
+                        );
                         void navigator.clipboard.writeText(selectedJob.contactEmail).then(
-                          () => setMessage(`E-mail copiado: ${selectedJob.contactEmail}`),
-                          () => setMessage(`E-mail cadastrado: ${selectedJob.contactEmail}`),
+                          () => undefined,
+                          () => setMessage(`E-mail cadastrado: ${selectedJob.contactEmail}. Não foi possível copiá-lo automaticamente.`),
                         );
                         return;
                       }
@@ -2468,7 +2538,12 @@ export default function Dashboard() {
                         // clique. Se aguardarmos a gravação no servidor, o
                         // navegador pode interpretar a abertura como popup.
                         window.location.href = mailto;
-                        void updateApplicationStatus(selectedJob, "generated");
+                        void updateApplicationStatus(
+                          selectedJob,
+                          "generated",
+                          AUTOMATIC_ACTION_STAGE.open_outlook,
+                          "Outlook aberto e status salvo como Candidatura.",
+                        );
                       }
                     }}
                   >
@@ -2483,18 +2558,24 @@ export default function Dashboard() {
                       {selectedApplication.sentAt && <small>Enviada em {formatJobDate(selectedApplication.sentAt)}</small>}
                       {selectedApplication.respondedAt && <small>Resposta em {formatJobDate(selectedApplication.respondedAt)}</small>}
                     </span>
-                    {selectedApplication.applicationStatus === "generated" && <button type="button" onClick={() => updateApplicationStatus(selectedJob, "sent")}>Marcar como enviada</button>}
-                    {selectedApplication.applicationStatus === "sent" && <button type="button" onClick={() => updateApplicationStatus(selectedJob, "responded")}>Registrar resposta</button>}
+                    {selectedApplication.applicationStatus === "generated" && <button type="button" onClick={() => updateApplicationStatus(selectedJob, "sent", AUTOMATIC_ACTION_STAGE.mark_sent)}>Marcar como enviada</button>}
+                    {selectedApplication.applicationStatus === "sent" && <button type="button" onClick={() => updateApplicationStatus(selectedJob, "responded", AUTOMATIC_ACTION_STAGE.mark_sent)}>Registrar resposta</button>}
                   </div>
                 )}
                 {(() => {
                   const links = buildShareLinks(selectedJob);
                   return (
                     <>
-                      <button className="analysis-toggle-btn" onClick={() => window.open(links.email, "_blank")}>
+                      <button className="analysis-toggle-btn" onClick={() => {
+                        window.open(links.email, "_blank");
+                        void updateStage(selectedJob.id, AUTOMATIC_ACTION_STAGE.forward, "Vaga encaminhada e salva no acompanhamento.", "advance");
+                      }}>
                         Encaminhar por e-mail
                       </button>
-                      <button className="analysis-toggle-btn" onClick={() => window.open(links.whatsapp, "_blank")}>
+                      <button className="analysis-toggle-btn" onClick={() => {
+                        window.open(links.whatsapp, "_blank");
+                        void updateStage(selectedJob.id, AUTOMATIC_ACTION_STAGE.forward, "Vaga encaminhada e salva no acompanhamento.", "advance");
+                      }}>
                         Encaminhar no WhatsApp
                       </button>
                       <button

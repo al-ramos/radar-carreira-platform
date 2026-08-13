@@ -127,7 +127,8 @@ test("análise personalizada persiste somente vagas elegíveis e prepara orçame
   assert.match(dashboard, /window\.location\.href = mailto/);
   assert.doesNotMatch(dashboard, /await updateApplicationStatus\(selectedJob, "generated"\)/);
   assert.match(dashboard, /Esta análise é apenas explicativa e não foi adicionada ao acompanhamento/);
-  assert.doesNotMatch(dashboard, /updateStage\(selectedJob\.id, "applied"/);
+  assert.match(dashboard, /AUTOMATIC_ACTION_STAGE\.apply/);
+  assert.match(dashboard, /AUTOMATIC_ACTION_STAGE\.analyze/);
   assert.match(schema, /userJobAnalyses/);
   assert.match(schema, /aiUsageEvents/);
   assert.match(analysisRoute, /onConflictDoUpdate/);
@@ -160,13 +161,17 @@ test("candidatura distingue mensagem gerada, envio e resposta com datas própria
   assert.match(dashboard, /Mensagem gerada/);
   assert.match(dashboard, /Marcar como enviada/);
   assert.match(dashboard, /Registrar resposta/);
-  assert.match(dashboard, /void updateApplicationStatus\(selectedJob, "generated"\)/);
+  assert.match(dashboard, /AUTOMATIC_ACTION_STAGE\.copy_email/);
+  assert.match(dashboard, /AUTOMATIC_ACTION_STAGE\.open_outlook/);
+  assert.match(dashboard, /AUTOMATIC_ACTION_STAGE\.mark_sent/);
+  assert.match(dashboard, /AUTOMATIC_ACTION_STAGE\.forward/);
   assert.match(schema, /applicationStatus/);
   assert.match(schema, /generatedAt/);
   assert.match(schema, /sentAt/);
   assert.match(schema, /respondedAt/);
   assert.match(applicationRoute, /A candidatura só pode ser acompanhada para vagas Bate ou Provável/);
   assert.match(applicationRoute, /requestedRank >= currentRank/);
+  assert.match(applicationRoute, /changed: false/);
   assert.match(migration, /application_status/);
   assert.match(migration, /responded_at/);
 });
