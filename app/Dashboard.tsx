@@ -1120,9 +1120,28 @@ export default function Dashboard() {
     if (!job.contactEmail) return;
     const to = encodeURIComponent(job.contactEmail);
     const subject = encodeURIComponent(job.contactSubject || `Vaga: ${job.title}`);
+    const matchingSkills = job.stack
+      .filter((skill) => profileMasteredSkills.some((own) => own.toLowerCase() === skill.toLowerCase()))
+      .slice(0, 4);
+    const skillsSentence = matchingSkills.length
+      ? `Minha experiência com ${matchingSkills.join(", ")} se conecta diretamente aos pontos destacados para esta oportunidade.`
+      : "A análise da vaga indicou aderência ao meu perfil profissional, e tenho interesse em entender melhor os desafios da posição.";
+    const greeting = job.company ? `Olá, equipe da ${job.company},` : "Olá,";
+    const candidateName = currentUser?.fullName || currentUser?.displayName || "";
+    const body = [
+      greeting,
+      "",
+      `Gostaria de me candidatar à oportunidade de ${job.title}.`,
+      skillsSentence,
+      "",
+      "Fico à disposição para conversar sobre como posso contribuir com a equipe. Encaminho meu currículo para avaliação.",
+      "",
+      "Atenciosamente,",
+      candidateName,
+    ].filter((line, index, lines) => line || index < lines.length - 1).join("\r\n");
     // `mailto:` delega ao aplicativo padrão do Windows. Assim, quem usa o
-    // Outlook instalado abre uma nova mensagem nele, sem depender do Gmail.
-    window.location.href = `mailto:${to}?subject=${subject}`;
+    // Outlook instalado abre uma nova mensagem já preenchida para revisão.
+    window.location.href = `mailto:${to}?subject=${subject}&body=${encodeURIComponent(body)}`;
   }
   useEffect(() => {
     if (!shareMenuJobId) return;
@@ -1792,7 +1811,7 @@ export default function Dashboard() {
                   <button
                     className="contact-email-action"
                     onClick={() => openCapturedEmail(selectedJob)}
-                    title={`Abrir o Gmail para escrever a ${selectedJob.contactEmail}`}
+                    title={`Abrir o e-mail para escrever a ${selectedJob.contactEmail}`}
                   >
                     ✉ Enviar e-mail
                   </button>

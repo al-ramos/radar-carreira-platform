@@ -40,6 +40,8 @@ test("dashboard oferece radar, perfil e pipeline persistente", async () => {
   assert.match(dashboard, /Candidatar via LinkedIn/);
   assert.match(dashboard, /Enviar e-mail/);
   assert.match(dashboard, /window\.location\.href = `mailto:/);
+  assert.match(dashboard, /matchingSkills/);
+  assert.match(dashboard, /body=\$\{encodeURIComponent\(body\)\}/);
   assert.match(dashboard, /role="dialog"/);
   assert.match(dashboard, /setDetailJob\(job\)/);
   assert.match(dashboard, /Tecnologias da vaga/);
