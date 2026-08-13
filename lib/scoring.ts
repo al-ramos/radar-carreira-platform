@@ -5,7 +5,94 @@ const escapeRegex=(value:string)=>value.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
 // A busca por limite evita, por exemplo, que a competência "R" seja contada em "React"
 // ou que "Go" seja encontrada dentro de outra palavra.
 const containsTerm=(text:string,term:string)=>new RegExp(`(^|[^a-z0-9+#.])${escapeRegex(term)}(?=$|[^a-z0-9+#.])`,"i").test(text);
-const has=(text:string,terms:string[])=>terms.some(term=>containsTerm(text,term));
+
+type SkillFamily = { key: string; label: string; aliases: string[] };
+
+// A aderência mede famílias tecnológicas, não a quantidade de checkboxes do
+// perfil. Assim, C# e .NET se reforçam sem punir quem também selecionou bancos.
+const SKILL_FAMILIES: SkillFamily[] = [
+  { key: "dotnet", label: ".NET", aliases: ["C#", ".NET", "dotnet", "ASP.NET", "ASP.NET Core", "ASPNet", "VB.NET"] },
+  { key: "relational-db", label: "Bancos relacionais", aliases: ["SQL", "SQL Server", "T-SQL", "MySQL", "PostgreSQL", "Postgres", "Oracle", "SQLite", "PL/SQL"] },
+  { key: "visual-basic", label: "Visual Basic", aliases: ["Visual Basic", "VB6", "VB.6", "VBA"] },
+  { key: "javascript", label: "JavaScript/TypeScript", aliases: ["JavaScript", "TypeScript", "ECMAScript"] },
+  { key: "node", label: "Node.js", aliases: ["Node.js", "NodeJS", "NestJS", "Express"] },
+  { key: "react", label: "React", aliases: ["React", "React.js", "Next.js", "NextJS"] },
+  { key: "angular", label: "Angular", aliases: ["Angular", "AngularJS"] },
+  { key: "java", label: "Java/JVM", aliases: ["Java", "Spring", "Spring Boot", "Quarkus", "Kotlin"] },
+  { key: "python", label: "Python", aliases: ["Python", "Django", "FastAPI", "Flask"] },
+  { key: "aws", label: "AWS", aliases: ["AWS", "Amazon Web Services"] },
+  { key: "azure", label: "Azure", aliases: ["Azure", "Microsoft Azure"] },
+  { key: "gcp", label: "Google Cloud", aliases: ["GCP", "Google Cloud"] },
+  { key: "devops", label: "DevOps", aliases: ["DevOps", "Docker", "Kubernetes", "Terraform", "CI/CD"] },
+];
+
+const AREA_FAMILIES: SkillFamily[] = [
+  { key: "backend", label: "Back-end", aliases: ["back-end", "backend", "back end", "desenvolvimento back-end", "desenvolvedor back-end", "backend developer", "API", "APIs"] },
+  { key: "fullstack", label: "Full Stack", aliases: ["full stack", "full-stack", "fullstack"] },
+  { key: "frontend", label: "Front-end", aliases: ["front-end", "frontend", "front end"] },
+  { key: "data", label: "Dados", aliases: ["engenharia de dados", "data engineer", "analista de dados", "data analyst", "banco de dados", "DBA"] },
+  { key: "architecture", label: "Arquitetura", aliases: ["arquitetura de software", "arquiteto de software", "software architect", "solution architect"] },
+  { key: "qa", label: "QA e testes", aliases: ["QA", "quality assurance", "automação de testes", "test automation"] },
+  { key: "integrations", label: "Integrações", aliases: ["integração", "integrações", "integration", "APIs"] },
+];
+
+const familyForSelection=(selection:string,families:SkillFamily[])=>{
+  const selected=normalize(selection);
+  return families.find(family=>family.aliases.some(alias=>normalize(alias)===selected));
+};
+
+function selectedSkillFamilies(skills:string[]): SkillFamily[] {
+  const families=new Map<string,SkillFamily>();
+  for(const skill of skills.filter(Boolean)){
+    const known=familyForSelection(skill,SKILL_FAMILIES);
+    const family=known ?? {key:`skill:${normalize(skill)}`,label:skill.trim(),aliases:[skill.trim()]};
+    families.set(family.key,family);
+  }
+  return [...families.values()];
+}
+
+function selectedAreaFamilies(areas:string[]): SkillFamily[] {
+  const families=new Map<string,SkillFamily>();
+  for(const area of areas.filter(Boolean)){
+    const known=familyForSelection(area,AREA_FAMILIES) ?? familyForSelection(area,SKILL_FAMILIES);
+    const family=known ?? {key:`area:${normalize(area)}`,label:area.trim(),aliases:[area.trim()]};
+    families.set(family.key,family);
+  }
+  return [...families.values()];
+}
+
+/** Termos ampliados usados para reduzir o conjunto consultado no banco. */
+export function profileAffinitySearchTerms(masteredSkills:string[],desiredAreas:string[]): string[] {
+  const terms=[
+    ...selectedSkillFamilies(masteredSkills).flatMap(family=>family.aliases),
+    ...selectedAreaFamilies(desiredAreas).flatMap(family=>family.aliases),
+  ];
+  return [...new Map(terms.map(term=>[normalize(term),term])).values()];
+}
+
+const LANGUAGE_REQUIREMENT: Record<string,RegExp> = {
+  ingles: /(?:\b(?:ingl[eê]s|english)\b.{0,60}\b(?:obrigat[oó]ri[oa]|exigid[oa]|fluente|avan[cç]ad[oa]|b2|c1|c2)\b|\b(?:obrigat[oó]ri[oa]|exigid[oa]|fluente|avan[cç]ad[oa]|b2|c1|c2)\b.{0,60}\b(?:ingl[eê]s|english)\b)/i,
+  espanhol: /(?:\b(?:espanhol|spanish)\b.{0,60}\b(?:obrigat[oó]ri[oa]|exigid[oa]|fluente|avan[cç]ad[oa]|b2|c1|c2)\b|\b(?:obrigat[oó]ri[oa]|exigid[oa]|fluente|avan[cç]ad[oa]|b2|c1|c2)\b.{0,60}\b(?:espanhol|spanish)\b)/i,
+};
+
+const normalizeLanguage=(value:string)=>normalize(value).normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+
+function blockedReason(text:string,avoidTerms:string[]): string|null {
+  for(const term of avoidTerms.filter(Boolean)){
+    const normalized=normalizeLanguage(term);
+    const language=normalized === "ingles" || normalized === "english"
+      ? "ingles"
+      : normalized === "espanhol" || normalized === "spanish"
+      ? "espanhol"
+      : null;
+    if(language){
+      if(LANGUAGE_REQUIREMENT[language].test(text)) return `Exige ${language === "ingles" ? "inglês" : "espanhol"} avançado ou obrigatório`;
+      continue;
+    }
+    if(containsTerm(text,term)) return `Contém termo bloqueado: ${term.trim()}`;
+  }
+  return null;
+}
 
 // Mapeia termos de senioridade no título para nível canônico
 const SENIORITY_SIGNALS: [RegExp, string][] = [
@@ -65,30 +152,27 @@ export function matchesSelectedSeniority(jobSeniority:string|null|undefined,sele
 export function scoreJob(job:ScoreInput,profile:ScoreProfile){
  if(!isTechnologyJob(job))return{score:0,reasons:["Vaga fora do escopo de TI — sem pontuação"]};
  const text=`${job.title} ${job.description} ${job.stack.join(" ")}`;
- if(has(text,profile.avoidTerms))return{score:0,reasons:["Contém termo bloqueado"]};
+ const blocker=blockedReason(`${job.title} ${job.description}`,profile.avoidTerms);
+ if(blocker)return{score:0,reasons:[blocker]};
  let score=5;const reasons:string[]=["Vaga de TI (+5)"];
 
  // --- Skills (até 60 pts) ---
- const selectedSkills=[...new Map(profile.masteredSkills.filter(Boolean).map(skill=>[normalize(skill),skill.trim()])).values()];
- const matchedSkills=selectedSkills.filter(skill=>containsTerm(text,skill));
- const unmatchedSkills=selectedSkills.filter(skill=>!containsTerm(text,skill));
- if(selectedSkills.length){
-   const points=Math.round(60*matchedSkills.length/selectedSkills.length);
+ const selectedFamilies=selectedSkillFamilies(profile.masteredSkills);
+ const matchedFamilies=selectedFamilies.filter(family=>family.aliases.some(alias=>containsTerm(text,alias)));
+ if(selectedFamilies.length){
+   const points=matchedFamilies.length === 0 ? 0 : Math.min(60,35+(matchedFamilies.length-1)*15);
    score+=points;
-   if(matchedSkills.length){
-     const shown=matchedSkills.slice(0,5).join(", ")+(matchedSkills.length>5?` +${matchedSkills.length-5}`:"");
-     reasons.push(`✅ Competências encontradas (${matchedSkills.length} de ${selectedSkills.length}): ${shown} (+${points})`);
-     // Mostra faltantes apenas quando houve match parcial (não quando nenhuma bateu)
-     if(unmatchedSkills.length > 0 && unmatchedSkills.length <= 4){
-       reasons.push(`❌ Não menciona: ${unmatchedSkills.join(", ")}`);
-     }
+   if(matchedFamilies.length){
+     const shown=matchedFamilies.slice(0,4).map(family=>family.label).join(", ")+(matchedFamilies.length>4?` +${matchedFamilies.length-4}`:"");
+     reasons.push(`✅ ${matchedFamilies.length === 1 ? "Stack compatível" : `${matchedFamilies.length} famílias de stack compatíveis`}: ${shown} (+${points})`);
    } else {
-     reasons.push(`0 de ${selectedSkills.length} competências do seu perfil foram citadas nesta vaga (+0)`);
+     reasons.push("Nenhuma stack do seu perfil foi citada nesta vaga (+0)");
    }
  }
 
  // --- Área desejada (+15) ---
- if(has(text,profile.desiredAreas)){score+=15;reasons.push("Área desejada (+15)")}
+ const matchedArea=selectedAreaFamilies(profile.desiredAreas).find(family=>family.aliases.some(alias=>containsTerm(text,alias)));
+ if(matchedArea){score+=15;reasons.push(`Área desejada: ${matchedArea.label} (+15)`)}
 
  // --- Senioridade: match do perfil (+10) ou mismatch no título (-10) ---
  const titleSeniority = detectTitleSeniority(job.title);

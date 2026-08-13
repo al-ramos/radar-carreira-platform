@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../chatgpt-auth";
 import { getDb } from "../../../db/index";
 import { importRuns, jobImportRuns, jobs, jobSources, platformSettings, profiles, userJobStatus } from "../../../db/schema";
-import { isTechnologyJob, scoreJob } from "../../../lib/scoring";
+import { isTechnologyJob, profileAffinitySearchTerms, scoreJob } from "../../../lib/scoring";
 import { inferTechnologyStack } from "../../../lib/technology-stack";
 import { allowedWorkModes, listFromStored, normalizeCareerRules } from "../../../lib/profile-options";
 import { computeVerdict, type VerdictEmoji } from "../../../lib/verdict";
@@ -11,7 +11,7 @@ import { JOB_AREAS } from "../../../lib/job-area";
 
 export const dynamic = "force-dynamic";
 
-const MAX_FILTER_CANDIDATES = 150;
+const FILTER_SCAN_BATCH_SIZE = 250;
 const LIST_DESCRIPTION_CHARS = 2_000;
 const FILTER_DESCRIPTION_CHARS = 1_000;
 // Toda vaga técnica começa com 5 pontos. Portanto, esse corte não precisa de
@@ -156,8 +156,31 @@ const pipelineCondition = pipelineFilter === "all"
 : pipelineFilter === "unseen"
 ? pipelineIds.length ? notInArray(jobs.id, pipelineIds) : undefined
 : stageIds.length ? inArray(jobs.id, stageIds) : eq(jobs.id, "__nenhuma_vaga__");
-const condition = and(exactSourceCondition, roleAreaCondition, channelCondition, importRunCondition, seniorityCondition, searchCondition, pipelineCondition);
 const requiresPostFiltering = minScore > BASE_TECH_SCORE || verdictFilter !== "all";
+// O score depende do perfil e não existe como coluna no banco. Antes de
+// calculá-lo, reduzimos o universo com todos os sinais capazes de somar pontos.
+// A condição é deliberadamente ampla: pode trazer falsos positivos, mas nunca
+// deve esconder uma vaga que alcançaria o corte após o cálculo completo.
+const affinityTerms = profileAffinitySearchTerms(masteredSkills, desiredAreas);
+const affinityTextConditions = affinityTerms.flatMap((term) => {
+  const pattern = `%${term}%`;
+  return [
+    like(jobs.title, pattern),
+    like(sql<string>`substr(${jobs.description}, 1, ${FILTER_DESCRIPTION_CHARS})`, pattern),
+    like(jobs.stack, pattern),
+  ];
+});
+const recentAffinityCutoff = new Date(Date.now() - 24 * 36e5);
+const affinityCandidateCondition = minScore > BASE_TECH_SCORE
+? or(
+  ...affinityTextConditions,
+  ...selectedSeniority.map((level) => like(jobs.seniority, `%${level}%`)),
+  ...preferredMode.map((mode) => like(jobs.workMode, `%${mode}%`)),
+  gte(jobs.publishedAt, recentAffinityCutoff),
+  gte(jobs.firstSeenAt, recentAffinityCutoff),
+)
+: undefined;
+const condition = and(exactSourceCondition, roleAreaCondition, channelCondition, importRunCondition, seniorityCondition, searchCondition, pipelineCondition, affinityCandidateCondition);
 
 const rowsQuery = getDb().select({
 id: jobs.id,
@@ -189,9 +212,9 @@ description: degradedMode
 sort === "imported" ? desc(jobs.firstSeenAt) : desc(jobs.publishedAt),
 desc(jobs.createdAt),
 );
-const [rows, eligibleTotals, sourceTotals, sourceOptionsRows, areaOptionsRows, channelOptionsRows, recentRuns] = await Promise.all([
+const [firstRows, eligibleTotals, sourceTotals, sourceOptionsRows, areaOptionsRows, channelOptionsRows, recentRuns] = await Promise.all([
 requiresPostFiltering
-? rowsQuery.limit(MAX_FILTER_CANDIDATES)
+? rowsQuery.limit(FILTER_SCAN_BATCH_SIZE)
 : rowsQuery.limit(limit).offset(offset),
 getDb().select({ total: sql<number>`count(*)` }).from(jobs).where(condition),
 getDb().select({
@@ -209,6 +232,20 @@ getDb().select({ id: importRuns.id, source: importRuns.source, sourceId: importR
   .from(importRuns).innerJoin(jobImportRuns, eq(jobImportRuns.runId, importRuns.id))
   .groupBy(importRuns.id).orderBy(desc(importRuns.startedAt)).limit(30),
 ]);
+
+// Percorre todos os candidatos em lotes pequenos. Isso elimina o antigo corte
+// silencioso nas 150 vagas mais recentes sem montar uma consulta/resposta
+// gigante no Worker de uma só vez.
+const rows = [...firstRows];
+if (requiresPostFiltering) {
+  let scanOffset = firstRows.length;
+  let batch = firstRows;
+  while (batch.length === FILTER_SCAN_BATCH_SIZE) {
+    batch = await rowsQuery.limit(FILTER_SCAN_BATCH_SIZE).offset(scanOffset);
+    rows.push(...batch);
+    scanOffset += batch.length;
+  }
+}
 
 const enriched = rows.map((job) => {
 const stack = inferTechnologyStack(`${job.title} ${job.description}`, parse(job.stack));
@@ -299,7 +336,7 @@ filterOptions: {
 page,
 limit,
 hasMore: offset + limit < totalCount,
-limited: requiresPostFiltering && Number(eligibleTotals[0]?.total ?? 0) > MAX_FILTER_CANDIDATES,
+limited: false,
 mode: "database",
 personalized: profileHasScoringSignals,
 degraded: degradedMode,

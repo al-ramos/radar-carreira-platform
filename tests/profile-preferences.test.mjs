@@ -55,11 +55,40 @@ test("senioridades aceitas excluem vagas de outro nível e vagas sem nível", ()
   assert.equal(matchesSelectedSeniority(null, []), true);
 });
 
-test("pontua stacks de forma proporcional e não confunde nomes parciais", () => {
+test("valoriza a primeira família de stack sem punir um perfil amplo", () => {
   const profile = { masteredSkills: ["React", "Node.js", "R"], desiredAreas: [], avoidTerms: [], seniority: [], preferredMode: [] };
   const result = scoreJob({ title: "Pessoa desenvolvedora React", description: "Experiência com React.", stack: ["React"] }, profile);
-  assert.equal(result.score, 25);
-  assert.deepEqual(result.reasons, ["Vaga de TI (+5)", "✅ Competências encontradas (1 de 3): React (+20)", "❌ Não menciona: Node.js, R"]);
+  assert.equal(result.score, 40);
+  assert.deepEqual(result.reasons, ["Vaga de TI (+5)", "✅ Stack compatível: React (+35)"]);
+});
+
+test("agrupa tecnologias equivalentes e aumenta o score ao encontrar outra família", () => {
+  const profile = { masteredSkills: ["C#", ".NET", "SQL", "SQL Server", "MySQL", "PostgreSQL", "Oracle", "SQLite"], desiredAreas: [], avoidTerms: [], seniority: [], preferredMode: [] };
+  const dotnet = scoreJob({ title: "Desenvolvedor .NET", description: "APIs em C#.", stack: ["C#", ".NET"] }, profile);
+  assert.equal(dotnet.score, 40);
+  assert.ok(dotnet.reasons.includes("✅ Stack compatível: .NET (+35)"));
+
+  const dotnetAndSql = scoreJob({ title: "Desenvolvedor .NET", description: "APIs em C# com PostgreSQL.", stack: ["C#", ".NET", "PostgreSQL"] }, profile);
+  assert.equal(dotnetAndSql.score, 55);
+  assert.ok(dotnetAndSql.reasons.includes("✅ 2 famílias de stack compatíveis: .NET, Bancos relacionais (+50)"));
+});
+
+test("menção genérica a idioma não zera a vaga, mas exigência avançada bloqueia", () => {
+  const profile = { masteredSkills: ["C#"], desiredAreas: [], avoidTerms: ["inglês", "espanhol"], seniority: [], preferredMode: [] };
+  const mention = scoreJob({ title: "Desenvolvedor .NET", description: "Inglês desejável para leitura.", stack: ["C#"] }, profile);
+  assert.equal(mention.score, 40);
+
+  const required = scoreJob({ title: "Desenvolvedor .NET", description: "Inglês avançado obrigatório.", stack: ["C#"] }, profile);
+  assert.deepEqual(required, { score: 0, reasons: ["Exige inglês avançado ou obrigatório"] });
+});
+
+test("reconhece variações semânticas da área de back-end", () => {
+  const result = scoreJob(
+    { title: "Backend Developer", description: "Construção de serviços.", stack: [] },
+    { masteredSkills: [], desiredAreas: ["Desenvolvimento Back-end"], avoidTerms: [], seniority: [], preferredMode: [] },
+  );
+  assert.equal(result.score, 20);
+  assert.ok(result.reasons.includes("Área desejada: Back-end (+15)"));
 });
 
 test("normaliza as regras estratégicas e protege o orçamento mensal de IA", () => {
@@ -198,7 +227,7 @@ test("explica com números quando a vaga não cita competências do perfil", () 
     { title: "Pessoa desenvolvedora Java", description: "Experiência com Spring.", stack: ["Java", "Spring"] },
     { masteredSkills: ["C#", ".NET"], desiredAreas: [], avoidTerms: [], seniority: [], preferredMode: [] },
   );
-  assert.ok(result.reasons.includes("0 de 2 competências do seu perfil foram citadas nesta vaga (+0)"));
+  assert.ok(result.reasons.includes("Nenhuma stack do seu perfil foi citada nesta vaga (+0)"));
 });
 
 test("não pontua vaga fora do escopo de TI", () => {
