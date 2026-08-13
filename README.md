@@ -1,6 +1,6 @@
 # Radar Carreira Platform
 
-Portal multiusuário para reunir vagas, calcular a aderência ao perfil profissional e acompanhar candidaturas em um único lugar.
+Portal multiusuário para reunir oportunidades, decidir quais vagas merecem atenção e acompanhar candidaturas em um único lugar. O produto combina coleta multicanal, aderência explicável, bloqueadores estratégicos, inteligência opcional por IA e operação administrativa.
 
 **Produção:** [radar-carreira-platform.al-ramos.workers.dev](https://radar-carreira-platform.al-ramos.workers.dev)
 
@@ -10,27 +10,32 @@ Portal multiusuário para reunir vagas, calcular a aderência ao perfil profissi
 
 ## O que o portal faz
 
-- reúne vagas recebidas por Gmail, importação JSON/CSV e páginas públicas de carreiras;
+- reúne vagas recebidas por Gmail, extensões LinkedIn/APinfo, importação JSON/CSV e páginas públicas de carreiras;
 - evita duplicações por `fingerprint` e identificador externo;
-- exibe vagas das últimas 24 horas, 3 dias, 7 dias ou de todo o histórico;
+- exibe vagas paginadas das últimas 24 horas, 3 dias, 7 dias ou de todo o histórico;
 - calcula um score explicável considerando competências, áreas, senioridade, modalidade, localização, atualidade e termos a evitar;
-- mostra a descrição dentro do próprio Radar e mantém um botão separado para o LinkedIn;
-- permite copiar a descrição para uso em outras ferramentas;
-- mantém um pipeline individual de vagas salvas, candidaturas, entrevistas, ofertas e encerramentos;
+- aplica um veredito estratégico em quatro fases, com bloqueadores de stack, idioma, senioridade, atuação e geografia;
+- oferece aprofundamento opcional por IA, com fatos verificáveis, cache, orçamento mensal e preparação para entrevista;
+- mostra a descrição dentro do Radar, infere tecnologias e mantém separadas a URL estável e a URL de candidatura;
+- permite copiar e compartilhar a descrição, exportar resultados e gerar uma mensagem de candidatura segura;
+- mantém um pipeline individual com notas, etapas e marcos de mensagem gerada, enviada e respondida;
 - envia um resumo diário por Gmail quando existem oportunidades acima do score mínimo;
-- registra importações, eventos, qualidade dos dados e ciclo de vida das vagas.
+- registra análises elegíveis, importações, eventos, consumo de IA, qualidade dos dados e ciclo de vida das vagas.
 
 ## Recursos disponíveis
 
 ### Para usuários
 
-- Radar com busca, filtros de período e score mínimo;
-- perfil profissional e preferências de aderência;
-- detalhe da vaga no portal;
-- acesso ao anúncio original;
-- pipeline Kanban com notas;
+- Radar com busca por código ou texto, paginação e filtros de período, origem, pipeline, veredito e score;
+- perfil profissional com competências, áreas, modalidades, senioridades e regras estratégicas de carreira;
+- detalhe da vaga, tecnologias inferidas, score explicado e veredito em quatro fases;
+- análise personalizada persistida somente para vagas elegíveis;
+- aprofundamento opcional por IA e briefing de entrevista;
+- acesso ao anúncio original, URL de candidatura e contato APinfo quando disponível;
+- pipeline Kanban com notas e acompanhamento da candidatura;
 - alertas e resumo diário;
-- métricas pessoais.
+- métricas pessoais de funil, conversão, empresas e tecnologias;
+- exportação CSV compatível com Excel.
 
 ### Para administradores
 
@@ -39,20 +44,34 @@ Portal multiusuário para reunir vagas, calcular a aderência ao perfil profissi
 - cadastro e ativação de fontes Greenhouse, Lever e Ashby;
 - coleta manual e agendada;
 - integração Gmail `RadarVagas`;
+- chaves protegidas para as extensões LinkedIn e APinfo;
 - configurações e parâmetros operacionais;
 - monitoramento de coletas;
 - auditoria e qualidade dos dados;
-- gestão de usuários e funções;
+- gestão de usuários, roles e permissões granulares;
 - backup administrativo;
 - relatório compatível com Excel.
+
+## Como o Radar decide
+
+O produto usa mecanismos complementares, cada um com uma finalidade:
+
+| Mecanismo | Resultado | Finalidade |
+|---|---|---|
+| Score numérico | `0` a `100` | ordenar e filtrar oportunidades por aderência |
+| Veredito estratégico | `✅`, `🟡`, `🔴` ou `❌` | aplicar preferências e bloqueadores pessoais em quatro fases |
+| IA opcional | fatos, evidências, ambiguidades e perguntas | aprofundar o contexto sem substituir as regras determinísticas |
+
+Vagas fora do escopo de TI continuam visíveis, mas não recebem aderência. Apenas vagas com veredito **Bate** ou **Provável com ressalvas** podem ser persistidas na análise e incluídas no acompanhamento. O estado da candidatura não regride: **mensagem gerada → enviada → respondida**.
 
 ## Fluxo dos dados
 
 ```text
-Gmail/RadarVagas ─┐
-JSON ou CSV ──────┼─> normalização e deduplicação ─> Cloudflare D1 ─> Radar e pipeline
-ATS públicos ─────┘                                  │
-                                                     └─> score, alertas e resumo diário
+Gmail/RadarVagas ─────┐
+Extensões do navegador ├─> normalização e deduplicação ─> Cloudflare D1 ─> Radar e pipeline
+JSON ou CSV ──────────┤                                  │
+ATS públicos ─────────┘                                  ├─> score e veredito
+                                                         └─> IA opcional, alertas e resumo diário
 ```
 
 As senhas do Gmail não são armazenadas. O conector do Google Apps Script envia apenas mensagens recentes da etiqueta `RadarVagas`, usando uma chave exclusiva cujo hash fica registrado no banco.
@@ -64,7 +83,8 @@ As senhas do Gmail não são armazenadas. O conector do Google Apps Script envia
 - vinext, Vite e Cloudflare Workers;
 - Drizzle ORM e Cloudflare D1;
 - Tailwind CSS e identidade visual em Geist;
-- OpenAI Sites para hospedagem e Sign in with ChatGPT;
+- autenticação local e, em domínios `*.chatgpt.site`, Sign in with ChatGPT;
+- provedor opcional compatível com OpenAI Chat Completions;
 - GitHub Actions e Google Apps Script para automações.
 
 ## Executar localmente
@@ -79,7 +99,7 @@ npm install
 npm run dev
 ```
 
-Use a URL exibida pelo servidor. Sem um binding D1 local, a interface pode usar dados demonstrativos para a visualização inicial.
+Use a URL exibida pelo servidor. As funcionalidades persistentes exigem o binding D1 `DB`; a aplicação não transforma falhas do banco em vagas demonstrativas.
 
 Comandos úteis:
 
@@ -91,7 +111,9 @@ npm run lint
 npm run db:generate
 ```
 
-`npm test` faz asserção estática sobre o código-fonte (regex), o padrão já usado no projeto inteiro. `npm run test:rbac-integration` é diferente: chama `can()` de `lib/access.ts` de verdade — sem modificação — contra um SQLite real em memória (`node:sqlite`, populado com as migrations `0010`/`0011` de verdade), e prova negação/concessão de acesso de fato. Roda separado do `npm test` porque depende de module loaders (`tests/helpers/*.mjs`) que mockam `cloudflare:workers` e o binding D1 — não é possível misturar no mesmo `node --test tests/*.test.mjs` sem esses loaders.
+`npm test` executa o build e a suíte regular, que combina testes de regras de negócio com verificações estruturais do código. `npm run test:rbac-integration` é separado: chama `can()` de `lib/rbac.ts` contra SQLite real em memória (`node:sqlite`), populado com as migrations `0010`/`0011`, usando loaders que simulam `cloudflare:workers` e o binding D1.
+
+No Windows com Node.js 24, os loaders atuais podem montar um caminho inválido no formato `C:\C:\...`; o fluxo oficialmente configurado usa Node.js 22.
 
 ## Banco de dados
 
@@ -99,16 +121,15 @@ O projeto usa Cloudflare D1. O schema principal está em `db/schema.ts` e as mig
 
 Principais tabelas:
 
-- `profiles`: perfil, preferências e função do usuário;
-- `job_sources`: fontes e configuração protegida do Gmail;
-- `jobs`: vagas, descrições, status e deduplicação;
-- `user_job_status`: pipeline individual e notas;
-- `job_events`: histórico de eventos;
-- `import_runs`: execução e resultado das importações;
-- `platform_settings`: parâmetros administrativos;
-- `alert_preferences`: preferências de alertas;
-- `alert_reads`: alertas visualizados;
-- `alert_deliveries`: controle de resumos enviados, evitando duplicação.
+- carreira e acesso: `profiles` e `local_accounts`;
+- vagas e operação: `job_sources`, `jobs`, `job_events` e `import_runs`;
+- acompanhamento: `user_job_status` e `user_job_analyses`;
+- inteligência: `job_ai_facts` e `ai_usage_events`;
+- alertas: `alert_preferences`, `alert_reads` e `alert_deliveries`;
+- administração: `platform_settings`;
+- RBAC: `roles`, `permissions`, `role_permissions`, `groups`, `group_roles`, `user_roles`, `user_groups` e `access_audit_log`.
+
+O schema possui 22 tabelas. Preferências e resultados estruturados são armazenados como JSON textual quando apropriado para D1/SQLite. As chaves compostas usuário + vaga isolam pipeline, análise e leitura por pessoa.
 
 Cada projeto publicado no Sites possui seu próprio banco D1. Publicar o mesmo código em um novo endereço não transfere automaticamente vagas, perfis, fontes ou configurações do banco anterior.
 
@@ -184,37 +205,46 @@ Uma execução HTTP bem-sucedida pode retornar `sources: 0` quando nenhuma fonte
 
 ## Autenticação e autorização
 
-- o Sites fornece a identidade autenticada por cabeçalhos protegidos;
-- o servidor cria ou atualiza o perfil no primeiro acesso;
+- contas locais usam PBKDF2-SHA-256 e sessão HMAC em cookie seguro, HTTP-only e com duração de 12 horas;
+- em `*.chatgpt.site`, a identidade é recebida por cabeçalhos protegidos;
+- o servidor cria o perfil no primeiro acesso quando necessário;
 - usuários comuns veem Radar, pipeline, alertas, métricas e preferências;
-- recursos administrativos são verificados novamente no servidor;
-- administradores principais são protegidos contra rebaixamento acidental.
+- recursos administrativos são verificados novamente no servidor por permissões RBAC;
+- roles podem chegar diretamente ao usuário ou por grupo;
+- o proprietário possui bypass explícito e não pode ser rebaixado;
+- chaves de Gmail e extensões são armazenadas somente como hash SHA-256.
 
 ## Situação atual
 
 Já implantado:
 
 - portal público e banco D1;
-- perfis e autorização administrativa;
+- contas locais, Sign in with ChatGPT, perfis e autorização RBAC;
 - vagas persistentes e deduplicação;
-- importação JSON/CSV;
+- importação JSON/CSV e extensões LinkedIn/APinfo;
 - integração Gmail RadarVagas validada;
 - conectores Greenhouse, Lever e Ashby;
-- pipeline, alertas, métricas, monitoramento, auditoria e qualidade;
+- score explicável, veredito estratégico e análise personalizada persistida;
+- IA opcional com cache, orçamento mensal e preparação para entrevista;
+- pipeline, acompanhamento de candidatura, alertas, métricas, monitoramento, auditoria e qualidade;
 - backup, relatório e gestão de usuários;
 - coleta agendada, enriquecimento e ciclo de vida;
-- testes de build, recursos e acesso administrativo.
+- build, testes de regras, limites de Worker e integração RBAC.
 
-Pendências conhecidas:
+Pontos de atenção confirmados no código atual:
 
-1. melhorar a interpretação de alguns assuntos de e-mail, evitando título e empresa invertidos;
-2. melhorar descrição, stack, modalidade e localização das vagas do LinkedIn;
-3. recalcular scores após o enriquecimento dos dados;
-4. criar uma importação paginada para o histórico completo da etiqueta `RadarVagas`;
-5. importar a planilha ou backup anterior, caso o arquivo seja recuperado;
-6. cadastrar fontes ATS reais no banco de produção;
-7. validar o próximo ciclo diário automático e o primeiro resumo com vagas acima do score mínimo;
-8. avaliar hospedagem externa caso seja necessário acesso sem conta ChatGPT.
+1. aplicar `report.export` à rota de relatório, que hoje exige autenticação, mas não essa permissão RBAC;
+2. alinhar a etapa `offer` entre API, métricas e enum principal do pipeline;
+3. garantir exclusão referencial de análises e fatos de IA ao remover vagas;
+4. concluir a administração de grupos, atribuições de roles e auditoria de acesso;
+5. fazer `emailImportEnabled`, `enrichmentEnabled`, `retentionDays` e `defaultMinScore` produzirem efeito integral;
+6. unificar a política mínima de senha entre cadastro, convite e bootstrap;
+7. eliminar o limite prático de 150 candidatas em filtros que exigem score/veredito;
+8. corrigir os loaders da integração RBAC no Windows/Node.js 24;
+9. atualizar a documentação da extensão APinfo da versão 1.5.1 para o manifesto 1.6.2;
+10. ampliar o backup, que hoje é operacional e não inclui perfis, pipeline, RBAC, análises ou consumo de IA.
+
+Consulte a [visão completa do projeto](docs/visao-completa-do-projeto.md) para o inventário das APIs, todas as regras, limitações e diagramas de arquitetura.
 
 ## Desenvolvimento
 
