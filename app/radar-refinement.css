@@ -756,6 +756,38 @@
   color: #fff;
 }
 .radar-filter-panel .compact-filter-divider { display: none; }
+.area-filter-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.area-filter-grid button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #dddfea;
+  border-radius: 999px;
+  background: #fff;
+  color: #4f5977;
+  padding: 7px 10px;
+  font-size: 10px;
+  font-weight: 700;
+}
+.area-filter-grid button span {
+  min-width: 18px;
+  border-radius: 999px;
+  background: #f0edff;
+  color: #685ab5;
+  padding: 1px 5px;
+  text-align: center;
+  font-size: 8px;
+}
+.area-filter-grid button.active {
+  border-color: #18264d;
+  background: #18264d;
+  color: #fff;
+}
+.area-filter-grid button.active span { background: #fff; color: #18264d; }
 .radar-filter-panel .ingestion-filter-group {
   grid-column: 1 / -1;
   display: grid;
@@ -767,7 +799,7 @@
 }
 .ingestion-filter-controls {
   display: grid;
-  grid-template-columns: minmax(180px, .85fr) repeat(2, minmax(190px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   gap: 10px;
 }
 .ingestion-filter-controls label {
@@ -797,6 +829,12 @@
   color: #685ab5;
   font-size: 8.5px;
   line-height: 1.4;
+}
+.tags .job-area-tag {
+  border-color: #c8bdf4;
+  background: #f0edff;
+  color: #55479f;
+  font-weight: 750;
 }
 .detail-heading .job-detail-ingestion-meta {
   margin-top: 5px;

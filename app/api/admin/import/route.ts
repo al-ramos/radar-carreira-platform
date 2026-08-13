@@ -7,6 +7,8 @@ import { fingerprint, recordedJobDate, sourcePublishedJobDate, type ImportedJob 
 import { parseCsvJobs } from "../../../../lib/csv-jobs";
 import { normalizeImportedJobs } from "../../../../lib/import-jobs";
 import { can } from "../../../../lib/rbac";
+import { inferJobArea } from "../../../../lib/job-area";
+import { recordImportRunJobs } from "../../../../lib/import-tracking";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +42,8 @@ function valuesFor(job: ImportedJob, now: Date) {
     publishedAt: recordedJobDate(job.publishedAt, now),
     sourcePublishedAt: sourcePublishedJobDate(job.publishedAt),
     ingestionMode: "manual" as const,
+    ingestionChannel: "file" as const,
+    roleArea: inferJobArea(job),
     url: job.url,
     applyUrl: job.applyUrl ?? null,
     contactEmail: job.contactEmail ?? null,
@@ -70,7 +74,7 @@ export async function POST(request: Request) {
   const runId = crypto.randomUUID();
   const startedAt = new Date();
   const source = request.headers.get("content-type")?.includes("text/csv") ? "csv" : "manual";
-  await db.insert(importRuns).values({ id: runId, source, status: "running", received: items.length, duplicates: duplicateRows, actorUserId: user.userId, startedAt });
+  await db.insert(importRuns).values({ id: runId, source, channel: "file", status: "running", received: items.length, duplicates: duplicateRows, actorUserId: user.userId, startedAt });
 
   let inserted = 0;
   let updated = 0;
@@ -96,6 +100,8 @@ export async function POST(request: Request) {
             workMode: values.workMode,
             location: values.location,
             stack: values.stack,
+            ingestionChannel: values.ingestionChannel,
+            roleArea: values.roleArea,
             publishedAt: values.publishedAt,
             sourcePublishedAt: sql`coalesce(${values.sourcePublishedAt}, ${jobs.sourcePublishedAt})`,
             url: values.url,
@@ -110,6 +116,7 @@ export async function POST(request: Request) {
         });
       });
       await db.batch(statements as [typeof statements[number], ...typeof statements[number][]]);
+      await recordImportRunJobs(db, runId, batch.map(entry => entry.fp), existing, now);
       batch.forEach(entry => existing.has(entry.fp) ? updated++ : inserted++);
       await db.update(importRuns).set({ inserted, updated, duplicates: duplicateRows }).where(eq(importRuns.id, runId));
     }

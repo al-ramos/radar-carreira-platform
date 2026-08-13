@@ -5,6 +5,8 @@ import { filterImportedJobsByProfile } from "../../../../../lib/collector-profil
 import { normalizeImportedJobs } from "../../../../../lib/import-jobs";
 import { fingerprint, recordedJobDate, sourcePublishedJobDate, type ImportedJob } from "../../../../../lib/jobs";
 import { normalizeCareerRules } from "../../../../../lib/profile-options";
+import { inferJobArea } from "../../../../../lib/job-area";
+import { recordImportRunJobs } from "../../../../../lib/import-tracking";
 
 export const dynamic = "force-dynamic";
 
@@ -77,6 +79,8 @@ async function recordCollectorStatus(
   const values = {
     id: runId,
     source: sourceName,
+    sourceId,
+    channel: "extension" as const,
     status,
     received: count(statusPayload.received),
     inserted: count(statusPayload.inserted),
@@ -124,6 +128,8 @@ function valuesFor(sourceId: string, job: ImportedJob, now: Date) {
     publishedAt: recordedJobDate(job.publishedAt, now),
     sourcePublishedAt: sourcePublishedJobDate(job.publishedAt),
     ingestionMode: "automatic" as const,
+    ingestionChannel: "extension" as const,
+    roleArea: inferJobArea(job),
     url: job.url,
     applyUrl: job.applyUrl ?? null,
     contactEmail: job.contactEmail ?? null,
@@ -187,6 +193,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ sou
   await db.insert(importRuns).values({
     id: runId,
     source: sourceName,
+    sourceId,
+    channel: "extension",
     status: "running",
     received: items.length,
     duplicates: duplicateRows,
@@ -227,6 +235,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ sou
             workMode: values.workMode,
             location: values.location,
             stack: values.stack,
+            ingestionChannel: values.ingestionChannel,
+            roleArea: values.roleArea,
             publishedAt: values.publishedAt,
             sourcePublishedAt: sql`coalesce(${values.sourcePublishedAt}, ${jobs.sourcePublishedAt})`,
             url: values.url,
@@ -244,6 +254,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ sou
         });
       });
       await db.batch(statements as [typeof statements[number], ...typeof statements[number][]]);
+      await recordImportRunJobs(db, runId, batch.map(entry => entry.fp), existing, now);
       batch.forEach((entry) => (existing.has(entry.fp) ? updated++ : inserted++));
       await db.update(importRuns).set({ inserted, updated, duplicates: duplicateRows }).where(eq(importRuns.id, runId));
     }

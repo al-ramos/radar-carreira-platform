@@ -2,11 +2,12 @@ import { and, desc, eq, gte, inArray, isNull, like, lte, notInArray, notLike, or
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../chatgpt-auth";
 import { getDb } from "../../../db/index";
-import { jobs, jobSources, platformSettings, profiles, userJobStatus } from "../../../db/schema";
+import { importRuns, jobImportRuns, jobs, jobSources, platformSettings, profiles, userJobStatus } from "../../../db/schema";
 import { isTechnologyJob, scoreJob } from "../../../lib/scoring";
 import { inferTechnologyStack } from "../../../lib/technology-stack";
 import { allowedWorkModes, listFromStored, normalizeCareerRules } from "../../../lib/profile-options";
 import { computeVerdict, type VerdictEmoji } from "../../../lib/verdict";
+import { JOB_AREAS } from "../../../lib/job-area";
 
 export const dynamic = "force-dynamic";
 
@@ -64,6 +65,10 @@ const pipelineFilter = degradedMode ? "all" : url.searchParams.get("pipeline") ?
 const verdictFilter = degradedMode ? "all" : url.searchParams.get("verdict") ?? "all";
 const sort = url.searchParams.get("sort") === "imported" ? "imported" : "published";
 const sourceType = url.searchParams.get("sourceType") ?? "all";
+const sourceId = (url.searchParams.get("sourceId") ?? "").trim();
+const roleArea = (url.searchParams.get("area") ?? "").trim();
+const ingestionChannel = (url.searchParams.get("channel") ?? "").trim();
+const importRunId = (url.searchParams.get("importRun") ?? "").trim();
 const ingestionMode = url.searchParams.get("ingestionMode") ?? "all";
 const parseDateParam = (name: string) => {
 const value = url.searchParams.get(name);
@@ -105,6 +110,16 @@ const sourceCondition = sourceType === "linkedin"
 : sourceType === "other"
 ? otherCondition
 : baseCondition;
+const exactSourceCondition = sourceId === "unidentified"
+? and(baseCondition, isNull(jobs.sourceId))
+: sourceId
+? and(baseCondition, eq(jobs.sourceId, sourceId))
+: sourceCondition;
+const roleAreaCondition = roleArea ? eq(jobs.roleArea, roleArea) : undefined;
+const channelCondition = ingestionChannel ? eq(jobs.ingestionChannel, ingestionChannel as "extension" | "email" | "connector" | "file" | "api") : undefined;
+const importRunCondition = importRunId
+? sql`exists (select 1 from ${jobImportRuns} where ${jobImportRuns.jobId} = ${jobs.id} and ${jobImportRuns.runId} = ${importRunId})`
+: undefined;
 
 const selectedSeniority = profile ? listFromStored(profile.seniority) : [];
 const masteredSkills = profile ? listFromStored(profile.masteredSkills) : [];
@@ -141,7 +156,7 @@ const pipelineCondition = pipelineFilter === "all"
 : pipelineFilter === "unseen"
 ? pipelineIds.length ? notInArray(jobs.id, pipelineIds) : undefined
 : stageIds.length ? inArray(jobs.id, stageIds) : eq(jobs.id, "__nenhuma_vaga__");
-const condition = and(sourceCondition, seniorityCondition, searchCondition, pipelineCondition);
+const condition = and(exactSourceCondition, roleAreaCondition, channelCondition, importRunCondition, seniorityCondition, searchCondition, pipelineCondition);
 const requiresPostFiltering = minScore > BASE_TECH_SCORE || verdictFilter !== "all";
 
 const rowsQuery = getDb().select({
@@ -158,6 +173,8 @@ publishedAt: sql<Date>`coalesce(${jobs.publishedAt}, ${jobs.firstSeenAt})`,
 sourcePublishedAt: jobs.sourcePublishedAt,
 firstSeenAt: jobs.firstSeenAt,
 ingestionMode: jobs.ingestionMode,
+ingestionChannel: jobs.ingestionChannel,
+roleArea: jobs.roleArea,
 sourceName: jobSources.name,
 url: jobs.url,
 applyUrl: jobs.applyUrl,
@@ -172,7 +189,7 @@ description: degradedMode
 sort === "imported" ? desc(jobs.firstSeenAt) : desc(jobs.publishedAt),
 desc(jobs.createdAt),
 );
-const [rows, eligibleTotals, sourceTotals] = await Promise.all([
+const [rows, eligibleTotals, sourceTotals, sourceOptionsRows, areaOptionsRows, channelOptionsRows, recentRuns] = await Promise.all([
 requiresPostFiltering
 ? rowsQuery.limit(MAX_FILTER_CANDIDATES)
 : rowsQuery.limit(limit).offset(offset),
@@ -183,6 +200,14 @@ linkedIn: sql<number>`sum(case when ${jobs.url} like ${"%linkedin.com%"} then 1 
 apinfo: sql<number>`sum(case when ${jobs.sourceId} = ${"apinfo-extension"} or ${jobs.url} like ${"%apinfo.com%"} then 1 else 0 end)`,
 sources: sql<number>`count(distinct ${jobs.sourceId})`,
 }).from(jobs).where(baseCondition),
+getDb().select({ id: jobs.sourceId, label: jobSources.name, count: sql<number>`count(*)` })
+  .from(jobs).leftJoin(jobSources, eq(jobs.sourceId, jobSources.id)).where(baseCondition)
+  .groupBy(jobs.sourceId, jobSources.name).orderBy(desc(sql`count(*)`)),
+getDb().select({ id: jobs.roleArea, count: sql<number>`count(*)` }).from(jobs).where(baseCondition).groupBy(jobs.roleArea),
+getDb().select({ id: jobs.ingestionChannel, count: sql<number>`count(*)` }).from(jobs).where(baseCondition).groupBy(jobs.ingestionChannel),
+getDb().select({ id: importRuns.id, source: importRuns.source, sourceId: importRuns.sourceId, channel: importRuns.channel, startedAt: importRuns.startedAt, received: importRuns.received, inserted: importRuns.inserted, updated: importRuns.updated, jobs: sql<number>`count(distinct ${jobImportRuns.jobId})` })
+  .from(importRuns).innerJoin(jobImportRuns, eq(jobImportRuns.runId, importRuns.id))
+  .groupBy(importRuns.id).orderBy(desc(importRuns.startedAt)).limit(30),
 ]);
 
 const enriched = rows.map((job) => {
@@ -259,6 +284,18 @@ totalLinkedIn,
 totalApinfo,
 totalOtherSources: Math.max(0, baseTotal - totalLinkedIn - totalApinfo),
 sourcesCount: Number(sourceTotals[0]?.sources ?? 0),
+filterOptions: {
+  sources: sourceOptionsRows.map(option => ({ id: option.id ?? "unidentified", label: option.label ?? "Sem fonte identificada", count: Number(option.count) || 0 })),
+  areas: JOB_AREAS.map(option => ({ ...option, count: Number(areaOptionsRows.find(row => row.id === option.id)?.count) || 0 })),
+  channels: [
+    { id: "extension", label: "Extensão", count: Number(channelOptionsRows.find(row => row.id === "extension")?.count) || 0 },
+    { id: "email", label: "E-mail", count: Number(channelOptionsRows.find(row => row.id === "email")?.count) || 0 },
+    { id: "connector", label: "Coleta agendada", count: Number(channelOptionsRows.find(row => row.id === "connector")?.count) || 0 },
+    { id: "file", label: "Arquivo CSV/JSON", count: Number(channelOptionsRows.find(row => row.id === "file")?.count) || 0 },
+    { id: "api", label: "API", count: Number(channelOptionsRows.find(row => row.id === "api")?.count) || 0 },
+  ],
+  importRuns: recentRuns.map(run => ({ ...run, jobs: Number(run.jobs) || 0 })),
+},
 page,
 limit,
 hasMore: offset + limit < totalCount,

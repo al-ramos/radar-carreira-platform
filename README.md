@@ -20,13 +20,13 @@ Portal multiusuário para reunir oportunidades, decidir quais vagas merecem aten
 - permite copiar e compartilhar a descrição, exportar resultados e gerar uma mensagem de candidatura segura;
 - mantém um pipeline individual com notas, etapas e marcos de mensagem gerada, enviada e respondida;
 - envia um resumo diário por Gmail quando existem oportunidades acima do score mínimo;
-- registra análises elegíveis, importações, eventos, consumo de IA, qualidade dos dados e ciclo de vida das vagas.
+- registra análises elegíveis, importações, as vagas de cada lote, eventos, consumo de IA, qualidade dos dados e ciclo de vida das vagas.
 
 ## Recursos disponíveis
 
 ### Para usuários
 
-- Radar com busca por código ou texto, paginação e filtros de período, origem, pipeline, veredito e score;
+- Radar com busca por código ou texto, paginação e filtros de período, fonte exata, área profissional, canal de entrada, importação específica, pipeline, veredito e score;
 - perfil profissional com competências, áreas, modalidades, senioridades e regras estratégicas de carreira;
 - detalhe da vaga, tecnologias inferidas, score explicado e veredito em quatro fases;
 - análise personalizada persistida somente para vagas elegíveis;

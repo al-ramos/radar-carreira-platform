@@ -2,8 +2,9 @@ import { inArray } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db/index";
-import { alertReads,jobEvents,jobs,userJobStatus } from "../../../../db/schema";
+import { jobs } from "../../../../db/schema";
 import { can } from "../../../../lib/rbac";
+import { deleteJobsAndRelated } from "../../../../lib/job-deletion";
 
 export const dynamic="force-dynamic";
 const ALL_CONFIRMATION="EXCLUIR TODAS AS VAGAS";
@@ -25,9 +26,6 @@ export async function DELETE(request:Request){
  const target=all?await db.select({id:jobs.id}).from(jobs):await db.select({id:jobs.id}).from(jobs).where(inArray(jobs.id,ids));
  if(!target.length)return NextResponse.json({ok:true,deleted:0});
  const targetIds=target.map(job=>job.id);
- await db.delete(alertReads).where(inArray(alertReads.jobId,targetIds));
- await db.delete(userJobStatus).where(inArray(userJobStatus.jobId,targetIds));
- await db.delete(jobEvents).where(inArray(jobEvents.jobId,targetIds));
- await db.delete(jobs).where(inArray(jobs.id,targetIds));
+ await deleteJobsAndRelated(targetIds);
  return NextResponse.json({ok:true,deleted:targetIds.length,scope:all?"all":"selected"});
 }

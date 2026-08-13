@@ -7,6 +7,8 @@ import { collect, isPullProvider } from "../../../../lib/connectors";
 import { fingerprint, recordedJobDate, sourcePublishedJobDate } from "../../../../lib/jobs";
 import { findCuratedSource } from "../../../../lib/curated-sources";
 import { can } from "../../../../lib/rbac";
+import { inferJobArea } from "../../../../lib/job-area";
+import { recordImportRunJobs } from "../../../../lib/import-tracking";
 
 export const dynamic = "force-dynamic";
 
@@ -56,7 +58,7 @@ export async function POST(request: Request) {
   for (const source of sources) {
     const runId = crypto.randomUUID();
     const startedAt = new Date();
-    await db.insert(importRuns).values({ id: runId, source: source.name, status: "running", received: 0, actorUserId: user.userId, startedAt });
+    await db.insert(importRuns).values({ id: runId, source: source.name, sourceId: source.id, channel: "connector", status: "running", received: 0, actorUserId: user.userId, startedAt });
     await db.update(jobSources).set({ lastAttemptAt: startedAt }).where(eq(jobSources.id, source.id));
     try {
       const found = await collect(source.provider, source.externalRef, source.name);
@@ -72,14 +74,15 @@ export async function POST(request: Request) {
           externalId: job.externalId ?? null, company: job.company, title: job.title,
           seniority: job.seniority ?? null, workMode: job.workMode ?? null,
           location: job.location ?? null, stack: JSON.stringify(job.stack ?? []),
-          publishedAt: recordedJobDate(job.publishedAt, now), sourcePublishedAt: sourcePublishedJobDate(job.publishedAt), ingestionMode: "automatic" as const,
+          publishedAt: recordedJobDate(job.publishedAt, now), sourcePublishedAt: sourcePublishedJobDate(job.publishedAt), ingestionMode: "automatic" as const, ingestionChannel: "connector" as const, roleArea: inferJobArea(job),
           url: job.url, description: job.description ?? "", firstSeenAt: now,
           lastSeenAt: now, status: "active" as const, createdAt: now, updatedAt: now,
         };
         await db.insert(jobs).values(values).onConflictDoUpdate({
           target: jobs.fingerprint,
-          set: { sourceId: source.id, title: values.title, location: values.location, workMode: values.workMode, publishedAt: values.publishedAt, sourcePublishedAt: sql`coalesce(${values.sourcePublishedAt}, ${jobs.sourcePublishedAt})`, url: values.url, description: values.description, lastSeenAt: now, status: "active", updatedAt: now },
+          set: { sourceId: source.id, title: values.title, location: values.location, workMode: values.workMode, ingestionChannel: values.ingestionChannel, roleArea: values.roleArea, publishedAt: values.publishedAt, sourcePublishedAt: sql`coalesce(${values.sourcePublishedAt}, ${jobs.sourcePublishedAt})`, url: values.url, description: values.description, lastSeenAt: now, status: "active", updatedAt: now },
         });
+        await recordImportRunJobs(db,runId,[fp],new Set(existing?[fp]:[]),now);
         existing ? sourceUpdated++ : sourceInserted++;
       }
       inserted += sourceInserted;

@@ -22,6 +22,7 @@ import { parseCareerSource } from "../lib/career-source";
 import { isOwnerEmail } from "../lib/access";
 import { analyzeStackFit, computeVerdict, VerdictResult } from "../lib/verdict";
 import { buildApinfoApplicationEmail } from "../lib/application-email";
+import { jobAreaLabel } from "../lib/job-area";
 type Job = {
   id: string;
   score: number;
@@ -37,6 +38,8 @@ type Job = {
   sourcePublishedAt?: string;
   firstSeenAt?: string;
   ingestionMode: "automatic" | "manual";
+  ingestionChannel: "extension" | "email" | "connector" | "file" | "api";
+  roleArea: string;
   sourceName?: string;
   url?: string;
   applyUrl?: string;
@@ -61,6 +64,8 @@ type ApiJob = {
   sourcePublishedAt?: string;
   firstSeenAt?: string;
   ingestionMode?: "automatic" | "manual";
+  ingestionChannel?: "extension" | "email" | "connector" | "file" | "api";
+  roleArea?: string;
   sourceName?: string;
   url?: string;
   applyUrl?: string;
@@ -108,6 +113,9 @@ type CollectionOutcome = {
   updated: number;
   error?: string;
 };
+type FilterOption = { id: string; label: string; count: number };
+type ImportRunOption = { id: string; source: string; sourceId?: string | null; channel: string; startedAt: string; received: number; inserted: number; updated: number; jobs: number };
+type JobFilterOptions = { sources: FilterOption[]; areas: FilterOption[]; channels: FilterOption[]; importRuns: ImportRunOption[] };
 const JOBS_FETCH_ATTEMPTS = 2;
 const JOBS_RETRY_BASE_DELAY_MS = 350;
 
@@ -292,13 +300,6 @@ const nav = [
   "Importações",
   "Configurações",
 ];
-// Mesmo critério usado no backend (app/api/jobs/route.ts) e na busca da
-// descrição oficial (app/api/jobs/detail/route.ts): a URL da vaga aponta
-// para o LinkedIn. Cobre tanto a extensão do LinkedIn quanto os alertas
-// importados por e-mail (Gmail RadarVagas).
-const isLinkedInJob = (job: Job) =>
-  Boolean(job.url && /linkedin\.com/i.test(job.url));
-
 // sourceId não chega ao client (ApiJob/Job não o expõem), então aqui a
 // checagem usa só a URL — o mesmo fallback que o backend usa quando
 // sourceId não está preenchido. O link sintético gerado pela extensão do
@@ -385,6 +386,8 @@ const adapt = (j: ApiJob): Job => ({
   sourcePublishedAt: j.sourcePublishedAt,
   firstSeenAt: j.firstSeenAt,
   ingestionMode: j.ingestionMode ?? "manual",
+  ingestionChannel: j.ingestionChannel ?? "file",
+  roleArea: j.roleArea ?? "other",
   sourceName: j.sourceName,
   description: j.description,
 });
@@ -403,6 +406,8 @@ const formatJobDateTime = (value?: string) =>
         timeStyle: "short",
       }).format(new Date(value))
     : "não informada";
+
+const channelLabel = (channel: Job["ingestionChannel"]) => ({ extension: "Extensão", email: "E-mail", connector: "Coleta agendada", file: "Arquivo", api: "API" }[channel]);
 
 /** Mantém a paginação navegável sem despejar dezenas de botões na tela. */
 function compactPagination(current: number, total: number): Array<number | "start-ellipsis" | "end-ellipsis"> {
@@ -451,9 +456,11 @@ export default function Dashboard() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [profileReady, setProfileReady] = useState(false);
   const [profileMasteredSkills, setProfileMasteredSkills] = useState<string[]>([]);
-  const [sourceFilter, setSourceFilter] = useState<
-    "all" | "linkedin" | "apinfo" | "other"
-  >("all");
+  const [sourceFilter, setSourceFilter] = useState("all");
+  const [areaFilter, setAreaFilter] = useState("all");
+  const [channelFilter, setChannelFilter] = useState("all");
+  const [importRunFilter, setImportRunFilter] = useState("all");
+  const [jobFilterOptions, setJobFilterOptions] = useState<JobFilterOptions>({ sources: [], areas: [], channels: [], importRuns: [] });
   const [ingestionMode, setIngestionMode] = useState<"all" | "automatic" | "manual">("all");
   const [receivedFrom, setReceivedFrom] = useState("");
   const [receivedTo, setReceivedTo] = useState("");
@@ -615,7 +622,10 @@ export default function Dashboard() {
     (page: number) => {
       const params = new URLSearchParams({ page: String(page), limit: "50" });
       if (period) params.set("period", period);
-      if (sourceFilter !== "all") params.set("sourceType", sourceFilter);
+      if (sourceFilter !== "all") params.set("sourceId", sourceFilter);
+      if (areaFilter !== "all") params.set("area", areaFilter);
+      if (channelFilter !== "all") params.set("channel", channelFilter);
+      if (importRunFilter !== "all") params.set("importRun", importRunFilter);
       if (ingestionMode !== "all") params.set("ingestionMode", ingestionMode);
       if (receivedFrom) params.set("receivedFrom", new Date(receivedFrom).toISOString());
       if (receivedTo) params.set("receivedTo", new Date(receivedTo).toISOString());
@@ -626,7 +636,7 @@ export default function Dashboard() {
       if (sortOrder === "recent") params.set("sort", "imported");
       return params.toString();
     },
-    [period, sourceFilter, ingestionMode, receivedFrom, receivedTo, debouncedQuery, effectiveMinScore, pipelineFilter, verdictFilter, simplifiedList, sortOrder],
+    [period, sourceFilter, areaFilter, channelFilter, importRunFilter, ingestionMode, receivedFrom, receivedTo, debouncedQuery, effectiveMinScore, pipelineFilter, verdictFilter, simplifiedList, sortOrder],
   );
   useEffect(() => {
     if (!profileReady) return;
@@ -655,6 +665,7 @@ export default function Dashboard() {
         }
         setTotalJobs(typeof data.total === "number" ? data.total : next.length);
         setSourcesCount(typeof data.sourcesCount === "number" ? data.sourcesCount : null);
+        if (data.filterOptions) setJobFilterOptions(data.filterOptions);
         setPeriod((current) => current ?? String(data.period ?? "24"));
         setSimplifiedList(Boolean(data.degraded));
         setMode("database");
@@ -679,7 +690,7 @@ export default function Dashboard() {
         setMessage("O Radar está temporariamente indisponível. Tentaremos novamente automaticamente.");
       });
     return () => controller.abort();
-  }, [period, sourceFilter, debouncedQuery, effectiveMinScore, pipelineFilter, verdictFilter, buildJobsParams, jobsRefreshVersion, profileReady]);
+  }, [period, sourceFilter, debouncedQuery, effectiveMinScore, pipelineFilter, verdictFilter, sortOrder, buildJobsParams, jobsRefreshVersion, profileReady]);
   useEffect(() => {
     fetch("/api/profile")
       .then((r) => (r.ok ? r.json() : Promise.reject()))
@@ -776,9 +787,15 @@ export default function Dashboard() {
   if (sourceFilter !== "all") {
     activeFilterChips.push({
       id: "source",
-      label: sourceFilter === "linkedin" ? "LinkedIn" : sourceFilter === "apinfo" ? "APinfo" : "Outras fontes",
+      label: jobFilterOptions.sources.find(option => option.id === sourceFilter)?.label ?? "Fonte selecionada",
       remove: () => setSourceFilter("all"),
     });
+  }
+  if (areaFilter !== "all") activeFilterChips.push({ id: "area", label: jobFilterOptions.areas.find(option => option.id === areaFilter)?.label ?? "Área selecionada", remove: () => setAreaFilter("all") });
+  if (channelFilter !== "all") activeFilterChips.push({ id: "channel", label: jobFilterOptions.channels.find(option => option.id === channelFilter)?.label ?? "Canal selecionado", remove: () => setChannelFilter("all") });
+  if (importRunFilter !== "all") {
+    const run = jobFilterOptions.importRuns.find(option => option.id === importRunFilter);
+    activeFilterChips.push({ id: "import-run", label: run ? `${run.source} · ${formatJobDateTime(run.startedAt)}` : "Importação selecionada", remove: () => setImportRunFilter("all") });
   }
   if (ingestionMode !== "all") {
     activeFilterChips.push({
@@ -832,15 +849,9 @@ export default function Dashboard() {
         // parecer que o campo não estava filtrando a lista.
         const text = `${j.externalId ?? ""} ${j.title} ${j.company} ${j.location} ${j.seniority ?? ""} ${j.stack.join(" ")}`.toLowerCase();
         const searchQuery = query.trim().toLowerCase();
-        const matchesSource =
-          sourceFilter === "all" ||
-          (sourceFilter === "linkedin" && isLinkedInJob(j)) ||
-          (sourceFilter === "apinfo" && isApinfoJob(j)) ||
-          (sourceFilter === "other" && !isLinkedInJob(j) && !isApinfoJob(j));
         return (
           j.score >= visibleMinScore &&
           (!searchQuery || text.includes(searchQuery)) &&
-          matchesSource &&
           (pipelineFilter === "all" ||
             (pipelineFilter === "unseen"
               ? !pipelineStageMap.has(j.id)
@@ -852,7 +863,6 @@ export default function Dashboard() {
       items,
       query,
       visibleMinScore,
-      sourceFilter,
       pipelineFilter,
       pipelineStageMap,
       verdictFilter,
@@ -978,6 +988,9 @@ export default function Dashboard() {
     setFitFilter(0);
     setPeriod("all");
     setSourceFilter("all");
+    setAreaFilter("all");
+    setChannelFilter("all");
+    setImportRunFilter("all");
     setIngestionMode("all");
     setReceivedFrom("");
     setReceivedTo("");
@@ -1142,6 +1155,7 @@ export default function Dashboard() {
         typeof jobsData.total === "number" ? jobsData.total : next.length,
       );
       setSourcesCount(typeof jobsData.sourcesCount === "number" ? jobsData.sourcesCount : null);
+      if (jobsData.filterOptions) setJobFilterOptions(jobsData.filterOptions);
     }
   }
   async function activateCatalog() {
@@ -1788,12 +1802,10 @@ export default function Dashboard() {
               className="radar-source-select"
               aria-label="Origem das vagas"
               value={sourceFilter}
-              onChange={(e) => setSourceFilter(e.target.value as typeof sourceFilter)}
+              onChange={(e) => setSourceFilter(e.target.value)}
             >
-              <option value="all">Todas as origens</option>
-              <option value="linkedin">LinkedIn</option>
-              <option value="apinfo">APinfo</option>
-              <option value="other">Outras fontes</option>
+              <option value="all">Todas as fontes</option>
+              {jobFilterOptions.sources.map(option => <option key={option.id} value={option.id}>{option.label} ({option.count})</option>)}
             </select>
             <select
               aria-label="Período das vagas"
@@ -1886,6 +1898,17 @@ export default function Dashboard() {
           </div>
         )}
         <div id="radar-filter-panel" className="radar-filter-panel" hidden={!filtersOpen} aria-label="Filtros de vagas">
+          <div className="compact-filter-group">
+            <span className="compact-filter-label">Área profissional</span>
+            <div className="area-filter-grid" role="group" aria-label="Filtrar por área profissional">
+              {jobFilterOptions.areas.filter(option => option.count > 0).map(option => (
+                <button key={option.id} type="button" className={areaFilter === option.id ? "active" : ""} onClick={() => setAreaFilter(areaFilter === option.id ? "all" : option.id)} aria-pressed={areaFilter === option.id}>
+                  {option.label}<span>{option.count}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="compact-filter-divider" aria-hidden="true" />
           <div className="compact-filter-group ingestion-filter-group">
             <span className="compact-filter-label">Importação e recebimento</span>
             <div className="ingestion-filter-controls">
@@ -1896,9 +1919,23 @@ export default function Dashboard() {
                   onChange={(event) => setIngestionMode(event.target.value as typeof ingestionMode)}
                   aria-label="Filtrar pelo tipo de importação"
                 >
-                  <option value="all">Automáticas e manuais</option>
+                  <option value="all">Qualquer forma de entrada</option>
                   <option value="automatic">Somente automáticas</option>
                   <option value="manual">Somente manuais</option>
+                </select>
+              </label>
+              <label>
+                <span>Canal de entrada</span>
+                <select value={channelFilter} onChange={(event) => setChannelFilter(event.target.value)} aria-label="Filtrar pelo canal de entrada">
+                  <option value="all">Todos os canais</option>
+                  {jobFilterOptions.channels.filter(option => option.count > 0).map(option => <option key={option.id} value={option.id}>{option.label} ({option.count})</option>)}
+                </select>
+              </label>
+              <label>
+                <span>Importação específica</span>
+                <select value={importRunFilter} onChange={(event) => { setImportRunFilter(event.target.value); setPeriod("all"); }} aria-label="Filtrar por uma importação específica">
+                  <option value="all">Todas as importações</option>
+                  {jobFilterOptions.importRuns.map(run => <option key={run.id} value={run.id}>{run.source} · {formatJobDateTime(run.startedAt)} · {run.jobs} vagas</option>)}
                 </select>
               </label>
               <label>
@@ -2100,12 +2137,14 @@ export default function Dashboard() {
                   <p className="job-ingestion-meta">
                     Publicada {formatJobDateTime(j.sourcePublishedAt)} · Recebida {formatJobDateTime(j.firstSeenAt)}
                     {` · ${j.ingestionMode === "automatic" ? "Automática" : "Manual"}`}
+                    {` · ${channelLabel(j.ingestionChannel)}`}
                     {j.sourceName ? ` · ${j.sourceName}` : ""}
                   </p>
                   <div
                     className="tags job-stack"
                     aria-label="Tecnologias da vaga"
                   >
+                    <span className="job-area-tag">{jobAreaLabel(j.roleArea)}</span>
                     {j.stack.length ? (
                       <>
                         {j.stack.slice(0, 3).map((t) => <span key={t}>{t}</span>)}
@@ -2187,6 +2226,7 @@ export default function Dashboard() {
                   <p className="job-ingestion-meta job-detail-ingestion-meta">
                     Publicada na fonte: {formatJobDateTime(selectedJob.sourcePublishedAt)} · Recebida pelo Radar: {formatJobDateTime(selectedJob.firstSeenAt)}
                     {` · ${selectedJob.ingestionMode === "automatic" ? "Automática" : "Manual"}`}
+                    {` · ${channelLabel(selectedJob.ingestionChannel)}`}
                     {selectedJob.sourceName ? ` · ${selectedJob.sourceName}` : ""}
                   </p>
                   {(selectedJob.externalId || selectedJob.url) && (
@@ -2253,6 +2293,7 @@ export default function Dashboard() {
                             }}
                           />
                         </div>
+                        disabled={!selectedJobEligible}
                       </>
                     ) : (
                       <>
@@ -2293,7 +2334,6 @@ export default function Dashboard() {
                     <div className="stage-selector-wrap">
                       <select
                         className="stage-selector"
-                        disabled={!selectedJobEligible}
                         value={currentStage === "unseen" ? "" : currentStage}
                         aria-label="Estágio no pipeline"
                         title={!selectedJobEligible ? "Somente vagas com veredito Bate ou Provável entram no acompanhamento" : "Atualizar estágio no acompanhamento"}

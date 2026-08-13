@@ -37,6 +37,8 @@ export const jobs = sqliteTable("jobs", {
   publishedAt: integer("published_at", { mode: "timestamp_ms" }),
   sourcePublishedAt: integer("source_published_at", { mode: "timestamp_ms" }),
   ingestionMode: text("ingestion_mode", { enum: ["automatic", "manual"] }).notNull().default("manual"),
+  ingestionChannel: text("ingestion_channel", { enum: ["extension", "email", "connector", "file", "api"] }).notNull().default("file"),
+  roleArea: text("role_area").notNull().default("other"),
   url: text("url").notNull(), applyUrl: text("apply_url"),
   contactEmail: text("contact_email"), contactSubject: text("contact_subject"), description: text("description").notNull().default(""),
   firstSeenAt: integer("first_seen_at", { mode: "timestamp_ms" }).notNull(), lastSeenAt: integer("last_seen_at", { mode: "timestamp_ms" }).notNull(),
@@ -104,10 +106,19 @@ export const jobEvents = sqliteTable("job_events", {
 
 export const importRuns = sqliteTable("import_runs", {
   id: text("id").primaryKey(), source: text("source").notNull(), status: text("status", { enum: ["running", "completed", "failed"] }).notNull(),
+  sourceId: text("source_id").references(() => jobSources.id),
+  channel: text("channel", { enum: ["extension", "email", "connector", "file", "api"] }).notNull().default("api"),
   received: integer("received").notNull().default(0), inserted: integer("inserted").notNull().default(0), updated: integer("updated").notNull().default(0),
   duplicates: integer("duplicates").notNull().default(0), errors: integer("errors").notNull().default(0), actorUserId: text("actor_user_id"),
   startedAt: integer("started_at", { mode: "timestamp_ms" }).notNull(), finishedAt: integer("finished_at", { mode: "timestamp_ms" }),
 });
+
+export const jobImportRuns = sqliteTable("job_import_runs", {
+  runId: text("run_id").notNull().references(() => importRuns.id),
+  jobId: text("job_id").notNull().references(() => jobs.id),
+  outcome: text("outcome", { enum: ["inserted", "updated", "duplicate"] }).notNull(),
+  receivedAt: integer("received_at", { mode: "timestamp_ms" }).notNull(),
+}, table => [primaryKey({ columns: [table.runId, table.jobId] })]);
 
 export const platformSettings = sqliteTable("platform_settings", {
   id: text("id").primaryKey().default("global"),

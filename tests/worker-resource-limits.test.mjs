@@ -15,7 +15,7 @@ test("a listagem pagina no D1 antes de enriquecer o fluxo normal", async () => {
   assert.match(route, /BASE_TECH_SCORE = 5/);
   assert.match(route, /minScore > BASE_TECH_SCORE/);
   assert.match(route, /substr\(\$\{jobs\.description\}/);
-  assert.match(route, /const \[rows, eligibleTotals, sourceTotals\]/);
+  assert.match(route, /const \[rows, eligibleTotals, sourceTotals,/);
   assert.match(route, /verdictFilter !== "all" && masteredSkills\.length/);
   assert.match(route, /isTechnologyJob/);
   assert.match(route, /profileHasScoringSignals \? requestedMinScore : 0/);
