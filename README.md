@@ -4,6 +4,8 @@ Portal multiusuário para reunir vagas, calcular a aderência ao perfil profissi
 
 **Produção:** [radar-carreira-platform.al-ramos.workers.dev](https://radar-carreira-platform.al-ramos.workers.dev)
 
+**Documentação completa:** [visão do produto, arquitetura, recursos, regras de negócio, dados, APIs, segurança e operação](docs/visao-completa-do-projeto.md)
+
 > O portal está público, mas o visitante precisa entrar (e-mail/senha ou, quando hospedado em `*.chatgpt.site`, Sign in with ChatGPT) para acessar as áreas identificadas.
 
 ## O que o portal faz
