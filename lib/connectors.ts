@@ -9,8 +9,13 @@ type AshbyResponse={jobs?:AshbyJob[];organization?:{name?:string}};
 
 export type CollectResult={status:"ok"|"empty"|"mismatch"|"error";jobsCount:number;foundName?:string};
 
+// Limite compatível com análises de vaga e com os limites de payload do D1.
+// Alguns quadros (como Capco) retornam centenas de descrições muito extensas
+// em uma única resposta; manter cada uma integralmente torna a gravação
+// indisponível para toda a coleta.
+const MAX_JOB_DESCRIPTION_CHARS=12_000;
 const safe=(value:string)=>{if(!/^[a-zA-Z0-9_-]+$/.test(value))throw new Error("Identificador da fonte inválido");return value};
-const clean=(html:string="")=>html.replace(/<[^>]+>/g," ").replace(/&nbsp;/g," ").replace(/&amp;/g,"&").replace(/\s+/g," ").trim();
+const clean=(html:string="")=>html.replace(/<[^>]+>/g," ").replace(/&nbsp;/g," ").replace(/&amp;/g,"&").replace(/\s+/g," ").trim().slice(0,MAX_JOB_DESCRIPTION_CHARS);
 const mode=(text:string)=>/remote|remoto/i.test(text)?"Remoto":/hybrid|híbrido|hibrido/i.test(text)?"Híbrido":"Presencial";
 const request=(url:string)=>fetch(url,{signal:AbortSignal.timeout(15_000)});
 

@@ -35,9 +35,14 @@ test("a coleta agendada processa apenas uma fonte por chamada", async () => {
 });
 
 test("o agendamento tolera indisponibilidade transitória sem sobrecarregar o Worker", async () => {
-  const workflow = await read("../.github/workflows/collect.yml");
+  const [workflow, connectors] = await Promise.all([
+    read("../.github/workflows/collect.yml"),
+    read("../lib/connectors.ts"),
+  ]);
   assert.match(workflow, /--retry 5 --retry-all-errors --retry-delay 5 --retry-max-time 90/);
   assert.match(workflow, /sleep 1/);
+  assert.match(connectors, /MAX_JOB_DESCRIPTION_CHARS=12_000/);
+  assert.match(connectors, /\.slice\(0,MAX_JOB_DESCRIPTION_CHARS\)/);
 });
 
 test("falha da API não exibe as quatro vagas demonstrativas", async () => {
