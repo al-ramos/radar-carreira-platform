@@ -132,7 +132,9 @@ test("análise personalizada persiste somente vagas elegíveis e prepara orçame
   assert.match(analysisRoute, /onConflictDoUpdate/);
   assert.match(analysisRoute, /if \(!result\.eligible\)/);
   assert.match(analysisRoute, /Apenas vagas com veredito Bate ou Provável são registradas/);
-  assert.match(pipelineRoute, /if \(!analysis\.eligible\)/);
+  assert.doesNotMatch(pipelineRoute, /if \(!analysis\.eligible\)/);
+  assert.doesNotMatch(dashboard, /disabled=\{!selectedJobEligible\}/);
+  assert.match(dashboard, /Salvar ou atualizar esta vaga no acompanhamento/);
   assert.match(aiStatusRoute, /remainingTokens/);
   assert.match(careerMigration, /career_rules/);
   assert.match(analysisMigration, /user_job_analyses/);
