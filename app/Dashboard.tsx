@@ -104,6 +104,9 @@ type JobDetail = {
   description: string;
   descriptionSource: string;
   stack?: string[];
+  score?: number;
+  reasons?: string[];
+  scored?: boolean;
 };
 type CollectionOutcome = {
   id: string;
@@ -528,6 +531,7 @@ export default function Dashboard() {
   // ── Persistência de estado UI no sessionStorage (sobrevive ao F5) ──────────
   const jobListRef = useRef<HTMLDivElement>(null);
   const simplifiedRetryCountRef = useRef(0);
+  const staleRetryCountRef = useRef(0);
   useEffect(() => { try { sessionStorage.setItem("radar_pipelineFilter", pipelineFilter); } catch {} }, [pipelineFilter]);
   useEffect(() => { try { sessionStorage.setItem("radar_verdictFilter", verdictFilter); } catch {} }, [verdictFilter]);
   useEffect(() => {
@@ -634,7 +638,7 @@ export default function Dashboard() {
       if (!simplifiedList && effectiveMinScore > 0) params.set("minScore", String(effectiveMinScore));
       if (pipelineFilter !== "all") params.set("pipeline", pipelineFilter);
       if (!simplifiedList && verdictFilter !== "all") params.set("verdict", verdictFilter);
-      if (sortOrder === "recent") params.set("sort", "imported");
+      params.set("sort", sortOrder === "recent" ? "imported" : "score");
       return params.toString();
     },
     [period, sourceFilter, areaFilter, channelFilter, importRunFilter, ingestionMode, receivedFrom, receivedTo, debouncedQuery, effectiveMinScore, pipelineFilter, verdictFilter, simplifiedList, sortOrder],
@@ -642,6 +646,7 @@ export default function Dashboard() {
   useEffect(() => {
     if (!profileReady) return;
     const controller = new AbortController();
+    let staleRetryTimer: ReturnType<typeof setTimeout> | null = null;
     fetchJobsWithRetry(`/api/jobs?${buildJobsParams(1)}`, controller.signal)
       .then((data) => {
         const next = (data.jobs ?? [])
@@ -670,12 +675,16 @@ export default function Dashboard() {
         setPeriod((current) => current ?? String(data.period ?? "24"));
         setSimplifiedList(Boolean(data.degraded));
         setMode("database");
+        staleRetryCountRef.current = 0;
         setMessage((current) => {
           if (data.degraded) {
             return "Exibindo a lista em modo simplificado enquanto a personalização se recupera.";
           }
+          if (data.limited) {
+            return "A pontuação considerou as 2.500 vagas candidatas mais recentes. Restrinja o período para ordenar todo o resultado.";
+          }
           return current.startsWith("O Radar está temporariamente indisponível.") ||
-            current === "Não foi possível atualizar agora. Mantendo a última lista carregada."
+            current.startsWith("Não foi possível atualizar agora.")
             ? ""
             : current;
         });
@@ -684,13 +693,20 @@ export default function Dashboard() {
         if (controller.signal.aborted || (error instanceof DOMException && error.name === "AbortError")) return;
         if (loadedJobsRef.current.length) {
           setMode("database");
-          setMessage("Não foi possível atualizar agora. Mantendo a última lista carregada.");
+          setMessage("Não foi possível atualizar agora. A lista anterior pode estar desatualizada; nova tentativa automática em instantes.");
+          if (staleRetryCountRef.current < 3) {
+            staleRetryCountRef.current += 1;
+            staleRetryTimer = setTimeout(() => setJobsRefreshVersion((version) => version + 1), 3_000);
+          }
           return;
         }
         setMode("unavailable");
         setMessage("O Radar está temporariamente indisponível. Tentaremos novamente automaticamente.");
       });
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      if (staleRetryTimer) clearTimeout(staleRetryTimer);
+    };
   }, [period, sourceFilter, debouncedQuery, effectiveMinScore, pipelineFilter, verdictFilter, sortOrder, buildJobsParams, jobsRefreshVersion, profileReady]);
   useEffect(() => {
     fetch("/api/profile")
@@ -1399,12 +1415,19 @@ export default function Dashboard() {
         data = await r.json();
       if (!r.ok) throw new Error(data.error);
       setJobDetail(data);
-      if (Array.isArray(data.stack) && data.stack.length)
-        setItems((current) =>
-          current.map((item) =>
-            item.id === job.id ? { ...item, stack: data.stack } : item,
-          ),
-        );
+      if (Array.isArray(data.stack) && data.stack.length) {
+        setItems((current) => {
+          const next = current.map((item) => item.id === job.id ? {
+            ...item,
+            stack: data.stack,
+            score: typeof data.score === "number" ? data.score : item.score,
+            reasons: Array.isArray(data.reasons) ? data.reasons : item.reasons,
+            scored: typeof data.scored === "boolean" ? data.scored : item.scored,
+          } : item);
+          loadedJobsRef.current = next;
+          return next;
+        });
+      }
     } catch {
       setJobDetail({
         description:
@@ -1876,7 +1899,7 @@ export default function Dashboard() {
                 <input
                   type="checkbox"
                   checked={fitFilter === "profile"}
-                  onChange={(event) => setFitFilter(event.target.checked ? "profile" : profileMinScore)}
+                  onChange={(event) => setFitFilter(event.target.checked ? "profile" : 0)}
                 />
                 Usar meu perfil ({profileMinScore}%)
               </label>
@@ -2687,14 +2710,7 @@ export default function Dashboard() {
               ))}
             </div>
             {profileMasteredSkills.length > 0 && (() => {
-              const missingSkills = detailJob.stack
-                .filter(
-                  (skill) =>
-                    !profileMasteredSkills.some(
-                      (s) => s.toLowerCase() === skill.toLowerCase(),
-                    ),
-                )
-                .slice(0, 2);
+              const missingSkills = analyzeStackFit(detailJob.stack, profileMasteredSkills).missingSkills.slice(0, 2);
               return missingSkills.length > 0 ? (
                 <div className="match-improve">
                   <h4>COMO MELHORAR</h4>

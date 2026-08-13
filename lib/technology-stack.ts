@@ -1,3 +1,5 @@
+import { skillsAreEquivalent } from "./skill-taxonomy.ts";
+
 type Technology={label:string;patterns:RegExp[]};
 
 const technologies:Technology[]=[
@@ -48,7 +50,7 @@ const technologies:Technology[]=[
 
 export function inferTechnologyStack(text:string,existing:string[]=[]){
   const result:string[]=[];
-  const add=(label:string)=>{if(label.trim()&&!result.some(item=>item.toLocaleLowerCase("pt-BR")===label.trim().toLocaleLowerCase("pt-BR")))result.push(label.trim())};
+  const add=(label:string)=>{if(label.trim()&&!result.some(item=>skillsAreEquivalent(item,label)))result.push(label.trim())};
   existing.forEach(add);
   for(const technology of technologies){if(technology.patterns.some(pattern=>pattern.test(text)))add(technology.label)}
   return result.slice(0,10);

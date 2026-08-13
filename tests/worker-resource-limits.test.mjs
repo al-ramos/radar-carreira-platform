@@ -16,7 +16,8 @@ test("a listagem pagina no D1 antes de enriquecer o fluxo normal", async () => {
   assert.match(route, /LIST_DESCRIPTION_CHARS = 2_000/);
   assert.match(route, /FILTER_DESCRIPTION_CHARS = 1_000/);
   assert.match(route, /BASE_TECH_SCORE = 5/);
-  assert.match(route, /minScore > BASE_TECH_SCORE/);
+  assert.match(route, /minScore > 0/);
+  assert.match(route, /sort === "score"/);
   assert.match(route, /substr\(\$\{jobs\.description\}/);
   assert.match(route, /const \[rows, eligibleTotals, sourceTotals,/);
   assert.match(route, /verdictFilter !== "all" && masteredSkills\.length/);
@@ -57,7 +58,8 @@ test("falha da API não exibe as quatro vagas demonstrativas", async () => {
   assert.match(dashboard, /fetchJobsWithRetry/);
   assert.match(dashboard, /searchParams\.set\("degraded", "1"\)/);
   assert.match(dashboard, /modo simplificado/);
-  assert.match(dashboard, /Mantendo a última lista carregada/);
+  assert.match(dashboard, /A lista anterior pode estar desatualizada/);
+  assert.match(dashboard, /staleRetryCountRef\.current < 3/);
   assert.match(dashboard, /sem score/);
   assert.doesNotMatch(dashboard, /score: j\.score \?\? 70/);
   assert.match(dashboard, /const visibleMinScore = simplifiedList \? 0 : effectiveMinScore/);

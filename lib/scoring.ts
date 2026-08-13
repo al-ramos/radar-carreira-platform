@@ -1,3 +1,5 @@
+import { scoreFamilyForSelection, type SkillFamily } from "./skill-taxonomy.ts";
+
 export type ScoreInput={title:string;description:string;stack:string[];seniority?:string|null;workMode?:string|null;location?:string|null;publishedAt?:Date|string|null};
 export type ScoreProfile={masteredSkills:string[];desiredAreas:string[];avoidTerms:string[];seniority:string[];preferredMode:string[]};
 const normalize=(value:string)=>value.trim().toLocaleLowerCase("pt-BR");
@@ -6,25 +8,8 @@ const escapeRegex=(value:string)=>value.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
 // ou que "Go" seja encontrada dentro de outra palavra.
 const containsTerm=(text:string,term:string)=>new RegExp(`(^|[^a-z0-9+#.])${escapeRegex(term)}(?=$|[^a-z0-9+#.])`,"i").test(text);
 
-type SkillFamily = { key: string; label: string; aliases: string[] };
-
 // A aderência mede famílias tecnológicas, não a quantidade de checkboxes do
 // perfil. Assim, C# e .NET se reforçam sem punir quem também selecionou bancos.
-const SKILL_FAMILIES: SkillFamily[] = [
-  { key: "dotnet", label: ".NET", aliases: ["C#", ".NET", "dotnet", "ASP.NET", "ASP.NET Core", "ASPNet", "VB.NET"] },
-  { key: "relational-db", label: "Bancos relacionais", aliases: ["SQL", "SQL Server", "T-SQL", "MySQL", "PostgreSQL", "Postgres", "Oracle", "SQLite", "PL/SQL"] },
-  { key: "visual-basic", label: "Visual Basic", aliases: ["Visual Basic", "VB6", "VB.6", "VBA"] },
-  { key: "javascript", label: "JavaScript/TypeScript", aliases: ["JavaScript", "TypeScript", "ECMAScript"] },
-  { key: "node", label: "Node.js", aliases: ["Node.js", "NodeJS", "NestJS", "Express"] },
-  { key: "react", label: "React", aliases: ["React", "React.js", "Next.js", "NextJS"] },
-  { key: "angular", label: "Angular", aliases: ["Angular", "AngularJS"] },
-  { key: "java", label: "Java/JVM", aliases: ["Java", "Spring", "Spring Boot", "Quarkus", "Kotlin"] },
-  { key: "python", label: "Python", aliases: ["Python", "Django", "FastAPI", "Flask"] },
-  { key: "aws", label: "AWS", aliases: ["AWS", "Amazon Web Services"] },
-  { key: "azure", label: "Azure", aliases: ["Azure", "Microsoft Azure"] },
-  { key: "gcp", label: "Google Cloud", aliases: ["GCP", "Google Cloud"] },
-  { key: "devops", label: "DevOps", aliases: ["DevOps", "Docker", "Kubernetes", "Terraform", "CI/CD"] },
-];
 
 const AREA_FAMILIES: SkillFamily[] = [
   { key: "backend", label: "Back-end", aliases: ["back-end", "backend", "back end", "desenvolvimento back-end", "desenvolvedor back-end", "backend developer", "API", "APIs"] },
@@ -44,7 +29,7 @@ const familyForSelection=(selection:string,families:SkillFamily[])=>{
 function selectedSkillFamilies(skills:string[]): SkillFamily[] {
   const families=new Map<string,SkillFamily>();
   for(const skill of skills.filter(Boolean)){
-    const known=familyForSelection(skill,SKILL_FAMILIES);
+    const known=scoreFamilyForSelection(skill);
     const family=known ?? {key:`skill:${normalize(skill)}`,label:skill.trim(),aliases:[skill.trim()]};
     families.set(family.key,family);
   }
@@ -54,7 +39,7 @@ function selectedSkillFamilies(skills:string[]): SkillFamily[] {
 function selectedAreaFamilies(areas:string[]): SkillFamily[] {
   const families=new Map<string,SkillFamily>();
   for(const area of areas.filter(Boolean)){
-    const known=familyForSelection(area,AREA_FAMILIES) ?? familyForSelection(area,SKILL_FAMILIES);
+    const known=familyForSelection(area,AREA_FAMILIES) ?? scoreFamilyForSelection(area);
     const family=known ?? {key:`area:${normalize(area)}`,label:area.trim(),aliases:[area.trim()]};
     families.set(family.key,family);
   }
@@ -166,7 +151,7 @@ export function scoreJob(job:ScoreInput,profile:ScoreProfile){
      const shown=matchedFamilies.slice(0,4).map(family=>family.label).join(", ")+(matchedFamilies.length>4?` +${matchedFamilies.length-4}`:"");
      reasons.push(`✅ ${matchedFamilies.length === 1 ? "Stack compatível" : `${matchedFamilies.length} famílias de stack compatíveis`}: ${shown} (+${points})`);
    } else {
-     reasons.push("Nenhuma stack do seu perfil foi citada nesta vaga (+0)");
+     reasons.push("Nenhuma competência da vaga também está cadastrada em Competências dominadas do seu perfil (+0)");
    }
  }
 

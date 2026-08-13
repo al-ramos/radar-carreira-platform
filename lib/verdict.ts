@@ -88,19 +88,7 @@ const CANDIDATE_STACK = [
  * confirmação ao candidato.
  */
 import type { CareerRules } from "./profile-options";
-const STACK_EQUIVALENCE_GROUPS = [
-  ["gcp", "google cloud", "google cloud platform"],
-  ["aws", "amazon web services"],
-  ["azure", "microsoft azure"],
-  ["c#", "csharp", ".net", "dotnet", "net core", ".net core", "asp.net", "asp net"],
-  ["sql", "sql server", "mssql"],
-  ["postgres", "postgresql"],
-  ["node", "node.js", "nodejs"],
-  ["react", "react.js", "reactjs"],
-  ["vue", "vue.js", "vuejs"],
-  ["next", "next.js", "nextjs"],
-  ["kubernetes", "k8s"],
-] as const;
+import { isTechnicalSkillTag, skillsAreEquivalent, uniqueEquivalentSkills } from "./skill-taxonomy.ts";
 
 // ── Funções auxiliares ───────────────────────────────────────────────────────
 
@@ -150,19 +138,6 @@ function languageAllowed(rules: CareerRules | undefined, language: string): bool
   return rules.dailyCommunicationLanguages.some(item => normalizeText(item) === normalizeText(language));
 }
 
-function normalizeSkill(skill: string): string {
-  return skill.trim().toLocaleLowerCase("pt-BR").replace(/\s+/g, " ");
-}
-
-function skillsAreEquivalent(left: string, right: string): boolean {
-  const normalizedLeft = normalizeSkill(left);
-  const normalizedRight = normalizeSkill(right);
-  if (normalizedLeft === normalizedRight) return true;
-  return STACK_EQUIVALENCE_GROUPS.some((group) =>
-    group.includes(normalizedLeft as never) && group.includes(normalizedRight as never),
-  );
-}
-
 function hasEquivalentSkill(requiredSkills: string[], profileSkills: string[]): boolean {
   return requiredSkills.some(required => profileSkills.some(profile => skillsAreEquivalent(required, profile)));
 }
@@ -174,12 +149,11 @@ function hasEquivalentSkill(requiredSkills: string[], profileSkills: string[]): 
  * citado na descrição.
  */
 export function analyzeStackFit(jobStack: string[], userSkills?: string[]): StackFit {
-  const requiredSkills = [...new Map(
+  const requiredSkills = uniqueEquivalentSkills(
     jobStack
       .map((skill) => skill.trim())
-      .filter(Boolean)
-      .map((skill) => [normalizeSkill(skill), skill]),
-  ).values()];
+      .filter(skill => Boolean(skill) && isTechnicalSkillTag(skill)),
+  );
   const profileSkills = userSkills?.length ? userSkills : CANDIDATE_STACK;
   const matchingSkills = requiredSkills.filter((required) =>
     profileSkills.some((profileSkill) => skillsAreEquivalent(required, profileSkill)),

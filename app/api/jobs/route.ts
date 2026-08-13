@@ -65,7 +65,7 @@ const requestedMinScore = minScoreParam !== null && Number.isFinite(Number(minSc
 : 0;
 const pipelineFilter = degradedMode ? "all" : url.searchParams.get("pipeline") ?? "all";
 const verdictFilter = degradedMode ? "all" : url.searchParams.get("verdict") ?? "all";
-const sort = url.searchParams.get("sort") === "imported" ? "imported" : "published";
+const sort = url.searchParams.get("sort") === "imported" ? "imported" : "score";
 const sourceType = url.searchParams.get("sourceType") ?? "all";
 const sourceId = (url.searchParams.get("sourceId") ?? "").trim();
 const roleArea = (url.searchParams.get("area") ?? "").trim();
@@ -158,7 +158,10 @@ const pipelineCondition = pipelineFilter === "all"
 : pipelineFilter === "unseen"
 ? pipelineIds.length ? notInArray(jobs.id, pipelineIds) : undefined
 : stageIds.length ? inArray(jobs.id, stageIds) : eq(jobs.id, "__nenhuma_vaga__");
-const requiresPostFiltering = minScore > BASE_TECH_SCORE || verdictFilter !== "all";
+// Corte, total, paginação e ordenação precisam partir do mesmo score. Mesmo
+// o corte de 5% exclui vagas não técnicas (score 0), e "Pontuação" deve ordenar
+// o conjunto candidato antes de paginar — não apenas os 50 itens da página.
+const requiresPostFiltering = minScore > 0 || verdictFilter !== "all" || sort === "score";
 // O score depende do perfil e não existe como coluna no banco. Antes de
 // calculá-lo, reduzimos o universo com todos os sinais capazes de somar pontos.
 // A condição é deliberadamente ampla: pode trazer falsos positivos, mas nunca

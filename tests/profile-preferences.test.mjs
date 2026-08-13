@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { alexsandroProfilePreset, allowedWorkModes, listFromStored, normalizeCareerRules, normalizeMinScore } from "../lib/profile-options.ts";
 import { isTechnologyJob, matchesSelectedSeniority, scoreJob } from "../lib/scoring.ts";
+import { inferTechnologyStack } from "../lib/technology-stack.ts";
 import { analyzeStackFit, computeVerdict } from "../lib/verdict.ts";
 
 test("preserva preferências novas e legadas como listas", () => {
@@ -227,7 +228,21 @@ test("explica com números quando a vaga não cita competências do perfil", () 
     { title: "Pessoa desenvolvedora Java", description: "Experiência com Spring.", stack: ["Java", "Spring"] },
     { masteredSkills: ["C#", ".NET"], desiredAreas: [], avoidTerms: [], seniority: [], preferredMode: [] },
   );
-  assert.ok(result.reasons.includes("Nenhuma stack do seu perfil foi citada nesta vaga (+0)"));
+  assert.ok(result.reasons.includes("Nenhuma competência da vaga também está cadastrada em Competências dominadas do seu perfil (+0)"));
+});
+
+test("reproduz a vaga GCP sem inflar o score e remove tags duplicadas ou categóricas", () => {
+  const stack = inferTechnologyStack("Engenheiro de Dados GCP Sênior", ["Google Cloud", "Dados / BI", "GCP"]);
+  assert.deepEqual(stack, ["Google Cloud", "Dados / BI"]);
+  const profile = {
+    masteredSkills: ["C#", ".NET", "SQL", "SQL Server", "MySQL", "PostgreSQL", "Oracle", "SQLite"],
+    desiredAreas: ["Visual Basic", "VB.Net", "vb.6", "Desenvolvimento Back-end"],
+    avoidTerms: ["inglês", "espanhol"], seniority: [], preferredMode: [],
+  };
+  const result = scoreJob({ title: "Engenheiro de Dados GCP Sênior", description: "", stack, seniority: null, workMode: "Remoto", publishedAt: new Date() }, profile);
+  assert.equal(result.score, 10);
+  assert.deepEqual(analyzeStackFit(stack, profile.masteredSkills).missingSkills, ["Google Cloud"]);
+  assert.deepEqual(analyzeStackFit(stack, ["GCP"]), { requiredSkills: ["Google Cloud"], matchingSkills: ["Google Cloud"], missingSkills: [] });
 });
 
 test("não pontua vaga fora do escopo de TI", () => {
@@ -268,7 +283,7 @@ test("perfil usa checkboxes e o radar expõe filtros de visualização", async (
   assert.match(dashboard, /aria-label="Filtrar por estágio do pipeline"/);
   assert.match(dashboard, /className="pipeline-filter-select"/);
   assert.match(dashboard, /Importadas recentemente/);
-  assert.match(dashboard, /params\.set\("sort", "imported"\)/);
+  assert.match(dashboard, /params\.set\("sort", sortOrder === "recent" \? "imported" : "score"\)/);
   assert.match(dashboard, /useState<string \| null>\(null\)/);
   assert.match(dashboard, /data\.period/);
   assert.match(dashboard, /SENIORITY_OPTIONS/);

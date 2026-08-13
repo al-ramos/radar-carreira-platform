@@ -2,8 +2,10 @@ import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db/index";
-import { jobEvents,jobs } from "../../../../db/schema";
+import { jobEvents,jobs,profiles } from "../../../../db/schema";
 import { inferTechnologyStack } from "../../../../lib/technology-stack";
+import { allowedWorkModes, listFromStored } from "../../../../lib/profile-options";
+import { isTechnologyJob, scoreJob } from "../../../../lib/scoring";
 
 export const dynamic="force-dynamic";
 
@@ -43,7 +45,11 @@ export async function POST(request:Request){
   if(!user)return NextResponse.json({error:"Autenticação necessária"},{status:401});
   const body=await request.json().catch(()=>({})) as {jobId?:string};
   if(!body.jobId)return NextResponse.json({error:"Vaga obrigatória"},{status:400});
-  const db=getDb(),job=(await db.select().from(jobs).where(eq(jobs.id,body.jobId)).limit(1))[0];
+  const db=getDb();
+  const [job,profile]=await Promise.all([
+    db.select().from(jobs).where(eq(jobs.id,body.jobId)).limit(1).then(rows=>rows[0]),
+    db.select().from(profiles).where(eq(profiles.userId,user.userId)).limit(1).then(rows=>rows[0]),
+  ]);
   if(!job)return NextResponse.json({error:"Vaga não encontrada"},{status:404});
   let description=job.description,source=description.length>80&&!description.startsWith("Importada do alerta RadarVagas:")?"stored":"alert";
   if(source==="alert"){
@@ -52,5 +58,13 @@ export async function POST(request:Request){
   }
   const inferredStack=inferTechnologyStack(`${job.title} ${description}`,parse(job.stack));
   if(JSON.stringify(inferredStack)!==JSON.stringify(parse(job.stack)))await db.update(jobs).set({stack:JSON.stringify(inferredStack),updatedAt:new Date()}).where(eq(jobs.id,job.id));
-  return NextResponse.json({description,descriptionSource:source,stack:inferredStack});
+  const masteredSkills=listFromStored(profile?.masteredSkills),desiredAreas=listFromStored(profile?.desiredAreas),seniority=listFromStored(profile?.seniority),preferredMode=allowedWorkModes(profile?.preferredMode);
+  const profileHasScoringSignals=Boolean(profile)&&[masteredSkills,desiredAreas,seniority,preferredMode].some(values=>values.length>0);
+  const isTechJob=isTechnologyJob({title:job.title,description,stack:inferredStack});
+  const match=!isTechJob
+    ? {score:0,reasons:["Vaga fora do escopo de TI — sem pontuação"],scored:false}
+    : profileHasScoringSignals
+      ? {...scoreJob({title:job.title,description,stack:inferredStack,seniority:job.seniority,workMode:job.workMode,location:job.location,publishedAt:job.publishedAt??job.firstSeenAt},{masteredSkills,desiredAreas,avoidTerms:listFromStored(profile?.avoidTerms),seniority,preferredMode}),scored:true}
+      : {score:0,reasons:["Complete seu perfil para calcular a aderência"],scored:false};
+  return NextResponse.json({description,descriptionSource:source,stack:inferredStack,...match});
 }
