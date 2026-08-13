@@ -62,6 +62,7 @@ export type CareerRules = {
   blockedSeniorities: string[];
   blockedWorkTypes: string[];
   coreStack: string[];
+  coreStackMatchMode: "all" | "any";
   stackExceptions: string[];
   anchorProject: string;
   discloseGapsInEmail: boolean;
@@ -80,6 +81,7 @@ export const emptyCareerRules = (): CareerRules => ({
   blockedSeniorities: [],
   blockedWorkTypes: [],
   coreStack: [],
+  coreStackMatchMode: "any",
   stackExceptions: [],
   anchorProject: "",
   discloseGapsInEmail: true,
@@ -114,6 +116,7 @@ export function alexsandroProfilePreset(): ProfileChoices {
       blockedSeniorities: ["Júnior", "Analista"],
       blockedWorkTypes: ["Sustentação", "Suporte"],
       coreStack: ["C#", ".NET"],
+      coreStackMatchMode: "any",
       stackExceptions: ["VBA + Access + SQL Server", "QA .NET"],
       anchorProject: "o Sistema AMR: arquitetura multimodular com módulo Financeiro CP/ACID em SQL Server, módulo Fábrica AP/BASE em SQLite + EFS e infraestrutura na AWS com ECS Fargate e Application Load Balancer. O projeto demonstra decisões conscientes sobre consistência, disponibilidade, arquitetura poliglota de dados e modernização de sistemas legados.",
       discloseGapsInEmail: true,
@@ -145,6 +148,7 @@ export function normalizeCareerRules(value: unknown): CareerRules {
     blockedSeniorities: list("blockedSeniorities"),
     blockedWorkTypes: list("blockedWorkTypes"),
     coreStack: list("coreStack"),
+    coreStackMatchMode: candidate.coreStackMatchMode === "all" ? "all" : "any",
     stackExceptions: list("stackExceptions"),
     anchorProject: text("anchorProject"),
     discloseGapsInEmail: typeof candidate.discloseGapsInEmail === "boolean" ? candidate.discloseGapsInEmail : defaults.discloseGapsInEmail,

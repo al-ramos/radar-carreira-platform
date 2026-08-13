@@ -1,8 +1,10 @@
 import { eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "../../../../../db/index";
-import { importRuns, jobSources, jobs } from "../../../../../db/schema";
+import { importRuns, jobSources, jobs, profiles } from "../../../../../db/schema";
+import { filterImportedJobsByProfile } from "../../../../../lib/collector-profile-filter";
 import { normalizeImportedJobs } from "../../../../../lib/import-jobs";
 import { fingerprint, recordedJobDate, type ImportedJob } from "../../../../../lib/jobs";
+import { normalizeCareerRules } from "../../../../../lib/profile-options";
 
 export const dynamic = "force-dynamic";
 
@@ -94,11 +96,19 @@ export async function POST(request: Request, { params }: { params: Promise<{ sou
   if (!items.length) return json({ error: "Nenhuma vaga válida recebida" }, { status: 400 });
   if (items.length > 2000) return json({ error: "O limite é de 2.000 vagas por envio" }, { status: 400 });
 
-  const entries = [...new Map(items.map((job) => [fingerprint(job), job])).entries()].map(([fp, job]) => ({
+  const profile = sourceId === "linkedin-extension" && config.userId
+    ? (await db.select({ careerRules: profiles.careerRules }).from(profiles).where(eq(profiles.userId, config.userId)).limit(1))[0]
+    : undefined;
+  const careerRules = normalizeCareerRules(profile?.careerRules);
+  const filtered = filterImportedJobsByProfile(items, {
+    requiredStacks: sourceId === "linkedin-extension" ? careerRules.coreStack : [],
+    stackMatchMode: careerRules.coreStackMatchMode,
+  });
+  const entries = [...new Map(filtered.accepted.map((job) => [fingerprint(job), job])).entries()].map(([fp, job]) => ({
     fp,
     job,
   }));
-  const duplicateRows = items.length - entries.length;
+  const duplicateRows = filtered.accepted.length - entries.length;
   const runId = crypto.randomUUID();
   const startedAt = new Date();
   await db.insert(importRuns).values({
@@ -114,6 +124,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ sou
   let inserted = 0;
   let updated = 0;
   try {
+    if (!entries.length) {
+      await db.update(importRuns).set({ status: "completed", finishedAt: new Date() }).where(eq(importRuns.id, runId));
+      await db.update(jobSources).set({ lastRunAt: new Date() }).where(eq(jobSources.id, sourceId));
+      return json({ ok: true, accepted: 0, received: items.length, duplicates: 0, rejected: filtered.rejected, inserted: 0, updated: 0, requiredStacks: filtered.requiredStacks, stackMatchMode: filtered.stackMatchMode, message: "Nenhuma vaga atende ao perfil de stacks obrigatórias" });
+    }
     const existing = new Set<string>();
     for (const batch of chunks(entries.map((entry) => entry.fp), LOOKUP_BATCH_SIZE)) {
       const rows = await db.select({ fingerprint: jobs.fingerprint }).from(jobs).where(inArray(jobs.fingerprint, batch));
@@ -160,7 +175,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ sou
       .set({ status: "completed", inserted, updated, duplicates: duplicateRows, finishedAt: new Date() })
       .where(eq(importRuns.id, runId));
     await db.update(jobSources).set({ lastRunAt: new Date() }).where(eq(jobSources.id, sourceId));
-    return json({ ok: true, accepted: entries.length, received: items.length, duplicates: duplicateRows, rejected: 0, inserted, updated });
+    return json({ ok: true, accepted: filtered.accepted.length, received: items.length, duplicates: duplicateRows, rejected: filtered.rejected, inserted, updated, requiredStacks: filtered.requiredStacks, stackMatchMode: filtered.stackMatchMode });
   } catch {
     await db
       .update(importRuns)

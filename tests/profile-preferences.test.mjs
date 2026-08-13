@@ -227,6 +227,8 @@ test("perfil usa checkboxes e o radar expõe filtros de visualização", async (
   assert.match(profile, /toggleGroup/);
   assert.match(profile, /Limpar seleção/);
   assert.match(profile, /Competências dominadas/);
+  assert.match(profile, /Todas as stacks selecionadas/);
+  assert.match(profile, /Qualquer stack selecionada/);
   assert.match(profile, /Formato de trabalho/);
   assert.match(profile, /allowCustom=\{false\}/);
   assert.doesNotMatch(profile, /Cidades e regiões/);

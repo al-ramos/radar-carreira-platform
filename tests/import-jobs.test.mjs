@@ -22,6 +22,8 @@ test("importação da extensão processa vagas em lotes e registra o progresso",
  assert.match(source,/await db\.batch\(/);
  assert.match(source,/status: "failed"/);
  assert.match(source,/duplicates: duplicateRows/);
+ assert.match(source,/filterImportedJobsByProfile/);
+ assert.match(source,/rejected: filtered\.rejected/);
 });
 
 test("importação manual usa lotes e pode reenviar o mesmo arquivo", async()=>{
