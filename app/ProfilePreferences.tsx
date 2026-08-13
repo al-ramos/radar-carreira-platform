@@ -73,10 +73,12 @@ export default function ProfilePreferences({ value, onChange, onSave, onClose, m
   const update = <K extends keyof ProfileChoices>(key: K, next: ProfileChoices[K]) => onChange({ ...value, [key]: next });
   const updateCareerRule = <K extends keyof ProfileChoices["careerRules"]>(key: K, next: ProfileChoices["careerRules"][K]) =>
     update("careerRules", { ...value.careerRules, [key]: next });
-  return <div className="modal-backdrop" onClick={onClose}>
-    <section className="modal profile-choice-modal" onClick={event => event.stopPropagation()}>
-      <button className="modal-close" onClick={onClose} aria-label="Fechar preferências">×</button>
-      <p className="eyebrow">MEU PERFIL</p><h2>Preferências do radar</h2>
+  // Este formulário concentra muitas preferências ainda não salvas. Um clique
+  // fora dele não deve descartá-las; o fechamento fica restrito ao X e ao Esc.
+  return <div className="modal-backdrop">
+    <section className="modal profile-choice-modal" role="dialog" aria-modal="true" aria-labelledby="profile-preferences-title">
+      <button type="button" className="modal-close" onClick={onClose} aria-label="Fechar preferências">×</button>
+      <p className="eyebrow">MEU PERFIL</p><h2 id="profile-preferences-title">Preferências do radar</h2>
       <p>Selecione o que procura. Você também pode incluir qualquer opção personalizada.</p>
       <section className="career-profile-section" aria-labelledby="career-positioning-title">
         <div className="career-profile-heading">
@@ -117,7 +119,7 @@ export default function ProfilePreferences({ value, onChange, onSave, onClose, m
       <ChoiceField label="Stack principal obrigatória" hint="Aplicada pela extensão antes de importar as vagas para o Radar." options={SKILL_OPTIONS} groups={SKILL_GROUPS} value={value.careerRules.coreStack} onChange={next => updateCareerRule("coreStack", next)} customPlaceholder="Adicionar tecnologia principal" />
       {value.careerRules.coreStack.length > 0 && <fieldset className="profile-stack-match-mode"><legend>Como combinar as stacks obrigatórias</legend><label><input type="radio" name="core-stack-match-mode" checked={value.careerRules.coreStackMatchMode === "all"} onChange={() => updateCareerRule("coreStackMatchMode", "all")} />Todas as stacks selecionadas</label><small>A vaga precisa citar todas as tecnologias marcadas.</small><label><input type="radio" name="core-stack-match-mode" checked={value.careerRules.coreStackMatchMode === "any"} onChange={() => updateCareerRule("coreStackMatchMode", "any")} />Qualquer stack selecionada</label><small>Basta a vaga citar uma das tecnologias marcadas.</small></fieldset>}
       <ChoiceField label="Exceções de stack" hint="Combinações ou domínios aceitos mesmo fora da stack principal." options={[]} value={value.careerRules.stackExceptions} onChange={next => updateCareerRule("stackExceptions", next)} customPlaceholder="Ex.: VBA + Access + SQL Server, QA .NET" />
-      {message && <div className="notice">{message}</div>}<div className="source-actions"><button className="primary" onClick={onSave}>Salvar preferências</button></div>
+      {message && <div className="notice">{message}</div>}<div className="source-actions"><button type="button" className="primary" onClick={onSave}>Salvar preferências</button></div>
       {isAdmin && <AdminSettings isOwner={isOwner} />}
     </section>
   </div>;

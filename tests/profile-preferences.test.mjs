@@ -258,6 +258,9 @@ test("perfil usa checkboxes e o radar expõe filtros de visualização", async (
   assert.match(profile, /Competências dominadas/);
   assert.match(profile, /Todas as stacks selecionadas/);
   assert.match(profile, /Qualquer stack selecionada/);
+  assert.match(profile, /role="dialog" aria-modal="true"/);
+  assert.match(profile, /type="button" className="modal-close" onClick=\{onClose\}/);
+  assert.doesNotMatch(profile, /className="modal-backdrop" onClick=\{onClose\}/);
   assert.match(profile, /Formato de trabalho/);
   assert.match(profile, /allowCustom=\{false\}/);
   assert.doesNotMatch(profile, /Cidades e regiões/);
