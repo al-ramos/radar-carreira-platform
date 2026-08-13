@@ -3,11 +3,16 @@
 // identificador estável da vaga). Fontes cujo link de referência não abre a
 // vaga diretamente (ex.: APinfo, cuja URL estável é uma busca por código)
 // devem preencher applyUrl com o link que realmente abre a vaga/candidatura.
-// contactEmail/contactSubject vêm de uma captura manual do usuário (ex.: a
-// tela pós-login do APinfo que revela o e-mail do recrutador) — também fora
-// do fingerprint, para reenviar a mesma vaga com o contato preenchido depois
-// apenas atualizar a linha existente, sem duplicar.
+// contactEmail/contactSubject podem vir de qualquer canal de ingestão ou de
+// uma captura posterior do usuário. Ficam fora do fingerprint para reenviar a
+// mesma vaga com o contato preenchido depois apenas atualizar a linha
+// existente, sem duplicar.
 export type ImportedJob={externalId?:string;company:string;title:string;seniority?:string;workMode?:string;location?:string;stack?:string[];publishedAt?:string;url:string;applyUrl?:string;contactEmail?:string;contactSubject?:string;description?:string;sourceId?:string};
+
+/** Normaliza o e-mail para a interface sem inferir nada sobre sua origem. */
+export function normalizeContactEmail(value: unknown): string | undefined {
+ return typeof value === "string" ? value.trim() || undefined : undefined;
+}
 
 /** Converte apenas datas realmente informadas pela fonte. Aceita ISO e o
  * formato dd/mm/aa usado pelo APInfo; valor ausente ou inválido permanece

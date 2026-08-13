@@ -23,6 +23,7 @@ import { isOwnerEmail } from "../lib/access";
 import { analyzeStackFit, computeVerdict, VerdictResult } from "../lib/verdict";
 import { buildApinfoApplicationEmail } from "../lib/application-email";
 import { jobAreaLabel } from "../lib/job-area";
+import { normalizeContactEmail } from "../lib/jobs";
 type Job = {
   id: string;
   score: number;
@@ -69,7 +70,7 @@ type ApiJob = {
   sourceName?: string;
   url?: string;
   applyUrl?: string;
-  contactEmail?: string;
+  contactEmail?: string | null;
   contactSubject?: string;
   externalId?: string;
   description?: string;
@@ -379,7 +380,7 @@ const adapt = (j: ApiJob): Job => ({
   stage: "Nova",
   url: j.url,
   applyUrl: j.applyUrl,
-  contactEmail: j.contactEmail,
+  contactEmail: normalizeContactEmail(j.contactEmail),
   contactSubject: j.contactSubject,
   externalId: j.externalId,
   publishedAt: j.publishedAt,
@@ -2270,8 +2271,12 @@ export default function Dashboard() {
                     </p>
                   )}
                   {selectedJob.contactEmail && (
-                    <p className="list-head-dim job-detail-source" title="Capturado manualmente na tela de contato — abre um e-mail com mensagem padrão, pronta para revisar antes de enviar">
-                      Contato:{" "}
+                    <p
+                      className="list-head-dim job-detail-source job-detail-email"
+                      data-testid="job-contact-email"
+                      title="E-mail disponível para esta vaga — abre uma mensagem pronta para revisar antes de enviar"
+                    >
+                      <strong>E-mail:</strong>{" "}
                       <a href={buildContactMailto(selectedJob) ?? `mailto:${selectedJob.contactEmail}`}>
                         {selectedJob.contactEmail}
                       </a>
