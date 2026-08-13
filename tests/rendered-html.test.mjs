@@ -167,3 +167,21 @@ test("candidatura distingue mensagem gerada, envio e resposta com datas própria
   assert.match(migration, /application_status/);
   assert.match(migration, /responded_at/);
 });
+
+test("IA aprofunda contexto com cache, orçamento e preparação de entrevista", async () => {
+  const [dashboard, route, provider, interview] = await Promise.all([
+    read("../app/Dashboard.tsx"),
+    read("../app/api/jobs/[id]/intelligence/route.ts"),
+    read("../lib/ai-provider.ts"),
+    read("../lib/job-intelligence.ts"),
+  ]);
+  assert.match(dashboard, /Aprofundar com IA/);
+  assert.match(dashboard, /Evidências encontradas na vaga/);
+  assert.match(dashboard, /PREPARAÇÃO PARA ENTREVISTA/);
+  assert.match(route, /cached\?\.descriptionHash === descriptionHash/);
+  assert.match(route, /blocked_budget/);
+  assert.match(route, /aiMonthlyTokenLimit/);
+  assert.match(provider, /response_format/);
+  assert.match(provider, /Não invente e não use conhecimento externo/);
+  assert.match(interview, /COM\+\/MTS\/DTC a CP/);
+});

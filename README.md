@@ -121,6 +121,8 @@ Antes do primeiro push com deploy, crie estes **Repository secrets** em `Setting
 
 As credenciais não devem ser adicionadas a arquivos do repositório ou ao código-fonte. O binding `DB`, o ID do D1 e as migrations ficam em `wrangler.jsonc` e `drizzle/`.
 
+Para ativar o aprofundamento opcional com IA, configure diretamente no ambiente do Worker `OPENAI_API_KEY` e `OPENAI_MODEL`. Alternativamente, `AI_API_KEY`, `AI_MODEL` e `AI_PROVIDER` permitem um provedor compatível com Chat Completions; `OPENAI_BASE_URL` ou `AI_BASE_URL` define um endpoint diferente. As regras determinísticas continuam funcionando sem essas variáveis. Cada perfil define seu limite mensal de tokens; resultados factuais são armazenados em cache por versão da descrição da vaga, e o uso devolvido pelo provedor é contabilizado no servidor.
+
 ## Integração Gmail RadarVagas
 
 ### 1. Preparar o Gmail

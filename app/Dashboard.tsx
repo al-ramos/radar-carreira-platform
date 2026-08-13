@@ -66,6 +66,14 @@ type ApiJob = {
   reasons?: string[];
 };
 type ApplicationStatus = "generated" | "sent" | "responded";
+type JobIntelligence = {
+  facts: {
+    contract: string; languageRequirement: string; companyType: string; businessDomain: string;
+    cultureSignals: string[]; ambiguities: string[]; evidence: Array<{ finding: string; excerpt: string }>;
+  };
+  interview: { anchor: string; gaps: string; questions: string[] };
+  cached: boolean; provider: string; model: string;
+};
 type PipelineJob = ApiJob & {
   stage: string;
   note?: string;
@@ -450,6 +458,8 @@ export default function Dashboard() {
   const [shareMenuJobId, setShareMenuJobId] = useState<string | null>(null);
   const [analysisOpen, setAnalysisOpen] = useState(false);
   const [analysisSaving, setAnalysisSaving] = useState(false);
+  const [jobIntelligence, setJobIntelligence] = useState<Record<string, JobIntelligence>>({});
+  const [intelligenceLoading, setIntelligenceLoading] = useState(false);
   const [aiStatus, setAiStatus] = useState<{
     provider: { configured: boolean; provider: string | null; model: string | null };
     usage: { usedTokens: number; limit: number; remainingTokens: number; period: string };
@@ -1217,6 +1227,23 @@ export default function Dashboard() {
     const labels: Record<ApplicationStatus, string> = { generated: "Mensagem registrada como gerada.", sent: "Candidatura marcada como enviada.", responded: "Resposta recebida registrada." };
     setMessage(labels[status]);
     return true;
+  }
+  async function deepenWithAi(job: Job) {
+    if (job.id.startsWith("demo")) return setMessage("A análise com IA está disponível para vagas reais.");
+    setIntelligenceLoading(true);
+    try {
+      const response = await fetch(`/api/jobs/${encodeURIComponent(job.id)}/intelligence`, { method: "POST" });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) return setMessage(data?.error ?? "Não foi possível aprofundar esta vaga com IA.");
+      setJobIntelligence(current => ({ ...current, [job.id]: data as JobIntelligence }));
+      const statusResponse = await fetch("/api/ai/status", { cache: "no-store" });
+      if (statusResponse.ok) setAiStatus(await statusResponse.json());
+      setMessage(data.cached ? "Análise aprofundada recuperada do cache, sem gastar novos tokens." : "Análise aprofundada concluída e contabilizada.");
+    } catch {
+      setMessage("A IA está indisponível agora; a análise pelas regras permanece válida.");
+    } finally {
+      setIntelligenceLoading(false);
+    }
   }
   async function save(job: Job) {
     if (job.id.startsWith("demo")) {
@@ -2351,6 +2378,36 @@ export default function Dashboard() {
                             ? "Esta oportunidade é elegível e foi adicionada ao histórico de análises."
                             : "Esta análise é apenas explicativa e não foi adicionada ao acompanhamento."}
                         </p>
+                      )}
+
+                      {selectedJob.scored && (
+                        <div className="ai-deep-analysis">
+                          <button
+                            type="button"
+                            className="analysis-toggle-btn"
+                            disabled={intelligenceLoading || !aiStatus?.provider.configured}
+                            onClick={() => void deepenWithAi(selectedJob)}
+                            title={aiStatus?.provider.configured ? "Analisa ambiguidades, empresa, cultura e entrevista" : "Configure a IA no servidor para ativar"}
+                          >
+                            {intelligenceLoading ? "Aprofundando…" : jobIntelligence[selectedJob.id] ? "Atualizar análise com IA" : "✨ Aprofundar com IA"}
+                          </button>
+                          {aiStatus && <small className="list-head-dim">IA: {aiStatus.usage.remainingTokens.toLocaleString("pt-BR")} tokens disponíveis neste mês</small>}
+                          {jobIntelligence[selectedJob.id] && (() => {
+                            const intel = jobIntelligence[selectedJob.id];
+                            return <div className="ai-intelligence-result">
+                              <h4>EMPRESA E CONTEXTO</h4>
+                              <p><strong>{intel.facts.companyType}</strong> · {intel.facts.businessDomain}</p>
+                              <p><strong>Contrato:</strong> {intel.facts.contract} · <strong>Idioma:</strong> {intel.facts.languageRequirement}</p>
+                              {intel.facts.cultureSignals.length > 0 && <p><strong>Sinais de cultura:</strong> {intel.facts.cultureSignals.join(" · ")}</p>}
+                              {intel.facts.evidence.length > 0 && <details><summary>Evidências encontradas na vaga</summary><ul>{intel.facts.evidence.map((item, index) => <li key={`${item.finding}-${index}`}><strong>{item.finding}:</strong> “{item.excerpt}”</li>)}</ul></details>}
+                              {intel.facts.ambiguities.length > 0 && <details><summary>Pontos para confirmar</summary><ul>{intel.facts.ambiguities.map(item => <li key={item}>{item}</li>)}</ul></details>}
+                              <h4>PREPARAÇÃO PARA ENTREVISTA</h4>
+                              <p>{intel.interview.anchor}</p><p>{intel.interview.gaps}</p>
+                              <ul>{intel.interview.questions.map(item => <li key={item}>{item}</li>)}</ul>
+                              <small>{intel.cached ? "Resultado reutilizado do cache" : `Gerado por ${intel.provider} · ${intel.model}`}</small>
+                            </div>;
+                          })()}
+                        </div>
                       )}
 
                       {selectedJob.scored && (() => {
