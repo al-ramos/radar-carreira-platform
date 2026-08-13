@@ -1,7 +1,9 @@
 export const PIPELINE_STAGES = ["viewed", "saved", "applied", "interview", "offer", "rejected", "archived"] as const;
 
 export type PipelineStage = typeof PIPELINE_STAGES[number];
+export type AutomaticPipelineStage = "viewed" | "saved" | "applied";
 export type AutomaticPipelineAction =
+  | "view"
   | "analyze"
   | "apply"
   | "copy_email"
@@ -9,14 +11,15 @@ export type AutomaticPipelineAction =
   | "mark_sent"
   | "forward";
 
-export const AUTOMATIC_ACTION_STAGE: Record<AutomaticPipelineAction, "saved" | "applied"> = {
+export const AUTOMATIC_ACTION_STAGE = {
+  view: "viewed",
   analyze: "saved",
   apply: "applied",
   copy_email: "saved",
   open_outlook: "applied",
   mark_sent: "applied",
   forward: "saved",
-};
+} as const satisfies Record<AutomaticPipelineAction, AutomaticPipelineStage>;
 
 const ACTIVE_STAGE_RANK: Partial<Record<PipelineStage, number>> = {
   viewed: 0,
@@ -32,7 +35,7 @@ const ACTIVE_STAGE_RANK: Partial<Record<PipelineStage, number>> = {
  */
 export function resolveAutomaticStage(
   current: string | null | undefined,
-  requested: "saved" | "applied",
+  requested: AutomaticPipelineStage,
 ): PipelineStage {
   if (current === "rejected" || current === "archived") return current;
   if (!(current && current in ACTIVE_STAGE_RANK)) return requested;

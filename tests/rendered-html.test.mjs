@@ -129,12 +129,16 @@ test("análise personalizada persiste somente vagas elegíveis e prepara orçame
   assert.match(dashboard, /Esta análise é apenas explicativa e não foi adicionada ao acompanhamento/);
   assert.match(dashboard, /AUTOMATIC_ACTION_STAGE\.apply/);
   assert.match(dashboard, /AUTOMATIC_ACTION_STAGE\.analyze/);
+  assert.match(dashboard, /<option value="viewed">👁 Visualizada<\/option>/);
+  assert.match(dashboard, /onClick=\{\(\) => openJobApplication\(detailJob\)\}/);
   assert.match(schema, /userJobAnalyses/);
   assert.match(schema, /aiUsageEvents/);
   assert.match(analysisRoute, /onConflictDoUpdate/);
   assert.match(analysisRoute, /if \(!result\.eligible\)/);
   assert.match(analysisRoute, /Apenas vagas com veredito Bate ou Provável são registradas/);
-  assert.match(pipelineRoute, /if \(!analysis\.eligible\)/);
+  assert.doesNotMatch(pipelineRoute, /analysis\.eligible/);
+  assert.match(pipelineRoute, /mode === "advance"/);
+  assert.match(pipelineRoute, /onConflictDoUpdate/);
   assert.match(aiStatusRoute, /remainingTokens/);
   assert.match(careerMigration, /career_rules/);
   assert.match(analysisMigration, /user_job_analyses/);
@@ -169,7 +173,7 @@ test("candidatura distingue mensagem gerada, envio e resposta com datas própria
   assert.match(schema, /generatedAt/);
   assert.match(schema, /sentAt/);
   assert.match(schema, /respondedAt/);
-  assert.match(applicationRoute, /A candidatura só pode ser acompanhada para vagas Bate ou Provável/);
+  assert.doesNotMatch(applicationRoute, /analysis\?\.eligible/);
   assert.match(applicationRoute, /requestedRank >= currentRank/);
   assert.match(applicationRoute, /changed: false/);
   assert.match(migration, /application_status/);

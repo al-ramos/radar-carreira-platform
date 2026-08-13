@@ -2,8 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../../chatgpt-auth";
 import { getDb } from "../../../../../db/index";
-import { jobs, profiles, userJobStatus } from "../../../../../db/schema";
-import { analyzeStoredJobForProfile } from "../../../../../lib/personalized-analysis";
+import { jobs, userJobStatus } from "../../../../../db/schema";
 import { resolveAutomaticStage } from "../../../../../lib/pipeline-stage";
 
 export const dynamic = "force-dynamic";
@@ -17,15 +16,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (!body?.status || !STATUSES.includes(body.status)) return NextResponse.json({ error: "Status inválido" }, { status: 400 });
   const { id } = await params;
   const db = getDb();
-  const [job, profile, existing] = await Promise.all([
+  const [job, existing] = await Promise.all([
     db.select().from(jobs).where(eq(jobs.id, id)).limit(1).then(rows => rows[0]),
-    db.select().from(profiles).where(eq(profiles.userId, user.userId)).limit(1).then(rows => rows[0]),
     db.select().from(userJobStatus).where(and(eq(userJobStatus.userId, user.userId), eq(userJobStatus.jobId, id))).limit(1).then(rows => rows[0]),
   ]);
   if (!job) return NextResponse.json({ error: "Vaga não encontrada" }, { status: 404 });
-  if (!profile) return NextResponse.json({ error: "Complete seu perfil antes de acompanhar candidaturas" }, { status: 412 });
-  const analysis = analyzeStoredJobForProfile(job, profile);
-  if (!analysis?.eligible) return NextResponse.json({ error: "A candidatura só pode ser acompanhada para vagas Bate ou Provável" }, { status: 422 });
 
   const requestedRank = STATUSES.indexOf(body.status);
   const currentRank = existing?.applicationStatus ? STATUSES.indexOf(existing.applicationStatus) : -1;

@@ -1001,8 +1001,6 @@ export default function Dashboard() {
   const selectedJobEligible = selectedJobVerdict?.emoji === "✅" || selectedJobVerdict?.emoji === "🟡";
   const selectedJobRejected = Boolean(selectedJobVerdict && !selectedJobEligible);
   const selectedApplication = selectedJob ? pipelineItems.find(item => item.id === selectedJob.id) : undefined;
-  const detailJobVerdict = detailJob ? verdictMap.get(detailJob.id) : null;
-  const detailJobEligible = detailJobVerdict?.emoji === "✅" || detailJobVerdict?.emoji === "🟡";
   function clearRadarFilters() {
     setQuery("");
     setFitFilter(0);
@@ -1236,19 +1234,8 @@ export default function Dashboard() {
     setSelected(job);
     setAnalysisOpen(false);
     void loadJobDetail(job);
-    const verdict = verdictMap.get(job.id);
-    const eligible = verdict?.emoji === "✅" || verdict?.emoji === "🟡";
-    if (!job.id.startsWith("demo") && currentUser && eligible) {
-      // Optimistic update: marca como viewed localmente sem rebaixar estágio existente
-      setPipelineItems((prev) => {
-        if (prev.some((p) => p.id === job.id)) return prev;
-        return [...prev, { id: job.id, stage: "viewed" } as PipelineJob];
-      });
-      void fetch("/api/pipeline", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ jobId: job.id, stage: "viewed" }),
-      });
+    if (!job.id.startsWith("demo") && currentUser) {
+      void updateStage(job.id, AUTOMATIC_ACTION_STAGE.view, undefined, "advance");
     }
   }
   /** Atualiza o dropdown imediatamente e consolida uma única gravação no servidor. */
@@ -1258,7 +1245,7 @@ export default function Dashboard() {
     if (pending) return pending;
 
     const previous = pipelineItems.find((item) => item.id === jobId);
-    const optimisticStage = mode === "advance" && (stage === "saved" || stage === "applied")
+    const optimisticStage = mode === "advance" && (stage === "viewed" || stage === "saved" || stage === "applied")
       ? resolveAutomaticStage(previous?.stage, stage)
       : stage;
     setPipelineItems((current) => {
@@ -1388,11 +1375,6 @@ export default function Dashboard() {
       setMessage("Entre na versão publicada para salvar vagas reais.");
       return;
     }
-    const verdict = verdictMap.get(job.id);
-    if (verdict?.emoji !== "✅" && verdict?.emoji !== "🟡") {
-      setMessage("Apenas vagas com veredito Bate ou Provável podem ser salvas no acompanhamento.");
-      return;
-    }
     await updateStage(job.id, "saved", "Vaga salva no seu pipeline.");
   }
   async function signOut() {
@@ -1411,19 +1393,22 @@ export default function Dashboard() {
     setPipelineLoading(false);
   }
   async function updatePipeline(jobId: string, stage: string, note: string) {
-    const r = await fetch("/api/pipeline", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ jobId, stage, note }),
-    });
-    if (r.ok) {
-      setPipelineItems((current) =>
-        current.map((item) =>
-          item.id === jobId ? { ...item, stage, note } : item,
-        ),
-      );
+    const previous = pipelineItems.find((item) => item.id === jobId);
+    setPipelineItems((current) => current.map((item) => item.id === jobId ? { ...item, stage, note } : item));
+    try {
+      const response = await fetch("/api/pipeline", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ jobId, stage, note, mode: "replace" }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(data?.error ?? "Não foi possível atualizar o pipeline.");
+      setPipelineItems((current) => current.map((item) => item.id === jobId ? { ...item, stage: data?.stage ?? stage, note } : item));
       setMessage("Pipeline atualizado.");
-    } else setMessage("Não foi possível atualizar o pipeline.");
+    } catch (error) {
+      if (previous) setPipelineItems((current) => current.map((item) => item.id === jobId ? previous : item));
+      setMessage(error instanceof Error ? error.message : "Não foi possível atualizar o pipeline.");
+    }
   }
   async function removeFromPipeline(jobId: string) {
     const r = await fetch("/api/pipeline", {
@@ -1735,6 +1720,7 @@ export default function Dashboard() {
     { id: "saved", label: "Salvas" },
     { id: "applied", label: "Candidaturas" },
     { id: "interview", label: "Entrevistas" },
+    { id: "offer", label: "Ofertas" },
     { id: "rejected", label: "Encerradas" },
   ];
   const userName =
@@ -2255,7 +2241,7 @@ export default function Dashboard() {
                   {(() => {
                     const stage = pipelineStageMap.get(j.id);
                     if (!stage || stage === "viewed") return null;
-                    const icons: Record<string, string> = { saved: "🔖", applied: "📨", interview: "🗓", rejected: "✕", archived: "✕" };
+                    const icons: Record<string, string> = { saved: "🔖", applied: "📨", interview: "🗓", offer: "🎉", rejected: "✕", archived: "✕" };
                     return icons[stage] ? <span className="card-stage-badge">{icons[stage]}</span> : null;
                   })()}
                 </div>
@@ -2303,8 +2289,14 @@ export default function Dashboard() {
                     const links = buildShareLinks(j);
                     return (
                       <div className="share-menu">
-                        <button className="share-menu-item" onClick={() => window.open(links.email, "_blank")}>📧 E-mail</button>
-                        <button className="share-menu-item" onClick={() => window.open(links.whatsapp, "_blank")}>💬 WhatsApp</button>
+                        <button className="share-menu-item" onClick={() => {
+                          window.open(links.email, "_blank");
+                          void updateStage(j.id, AUTOMATIC_ACTION_STAGE.forward, "Vaga encaminhada e salva no acompanhamento.", "advance");
+                        }}>📧 E-mail</button>
+                        <button className="share-menu-item" onClick={() => {
+                          window.open(links.whatsapp, "_blank");
+                          void updateStage(j.id, AUTOMATIC_ACTION_STAGE.forward, "Vaga encaminhada e salva no acompanhamento.", "advance");
+                        }}>💬 WhatsApp</button>
                       </div>
                     );
                   })()}
@@ -2428,7 +2420,6 @@ export default function Dashboard() {
                             }}
                           />
                         </div>
-                        disabled={!selectedJobEligible}
                       </>
                     ) : (
                       <>
@@ -2472,7 +2463,7 @@ export default function Dashboard() {
                         className="stage-selector"
                         value={currentStage === "unseen" ? "" : currentStage}
                         aria-label="Estágio no pipeline"
-                        title={!selectedJobEligible ? "Somente vagas com veredito Bate ou Provável entram no acompanhamento" : "Atualizar estágio no acompanhamento"}
+                        title="Salvar ou atualizar esta vaga no acompanhamento"
                         onChange={async (e) => {
                           const stage = e.target.value;
                           if (!stage) return;
@@ -2483,7 +2474,8 @@ export default function Dashboard() {
                           await updateStage(selectedJob.id, stage, `Estágio atualizado: ${stageLabels[stage] ?? stage}`);
                         }}
                       >
-                        <option value="" disabled>{stageLabels[currentStage]}</option>
+                        {currentStage === "unseen" && <option value="" disabled>{stageLabels.unseen}</option>}
+                        <option value="viewed">👁 Visualizada</option>
                         <option value="saved">🔖 Salvar</option>
                         <option value="applied">📨 Candidatura</option>
                         <option value="interview">🗓 Entrevista</option>
@@ -2586,7 +2578,7 @@ export default function Dashboard() {
                     ✉ Abrir no Outlook
                   </button>
                 )}
-                {selectedJobEligible && selectedApplication?.applicationStatus && (
+                {selectedApplication?.applicationStatus && (
                   <div className="application-tracking" aria-label="Acompanhamento da candidatura">
                     <span>
                       {selectedApplication.applicationStatus === "generated" ? "Mensagem gerada" : selectedApplication.applicationStatus === "sent" ? "Candidatura enviada" : "Resposta recebida"}
@@ -2842,16 +2834,12 @@ export default function Dashboard() {
             <div className="job-detail-buttons">
               <button
                 className="linkedin-action"
-                disabled={!detailJobEligible}
-                title={!detailJobEligible ? "Candidatura indisponível para vagas Não bate ou Bloqueador" : "Abrir candidatura"}
-                onClick={() => {
-                  if (!detailJobEligible) return;
-                  openJobApplication(detailJob);
-                }}
+                title="Abrir candidatura"
+                onClick={() => openJobApplication(detailJob)}
               >
                 {jobProviderLabel(detailJob)}
               </button>
-              <button className="primary" disabled={!detailJobEligible} onClick={() => save(detailJob)}>
+              <button className="primary" onClick={() => save(detailJob)}>
                 Salvar oportunidade
               </button>
             </div>
@@ -3125,6 +3113,7 @@ export default function Dashboard() {
                             {item.workMode || "Modalidade não informada"}
                           </p>
                           <select
+                            aria-label={`Status de ${item.title}`}
                             value={item.stage}
                             onChange={(e) =>
                               updatePipeline(
