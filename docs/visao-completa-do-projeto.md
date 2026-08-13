@@ -236,7 +236,9 @@ Nas importações por e-mail, o ID externo do LinkedIn também participa da busc
 - CSV: no máximo 2.000 linhas de dados.
 - Extensões: até 2.000 vagas por envio.
 - Escritas D1: lotes de 50; consultas de fingerprints: lotes de 100.
-- Coleta agendada: uma fonte por chamada, percorrida por `offset`.
+- Coleta agendada: uma fonte por chamada, percorrida por `offset`; em execução manual, `start_offset` permite retomar de um ponto específico.
+- Resiliência da coleta: pausa entre fontes, até seis tentativas para falhas transitórias e janela máxima de recuperação de 120 segundos por chamada.
+- Descrição de ATS: normalizada e limitada a 12.000 caracteres por vaga antes da gravação, para respeitar os limites operacionais de Worker e D1.
 
 ## 9. Fontes e integrações
 
@@ -584,6 +586,8 @@ sequenceDiagram
     G->>W: POST /api/cron/lifecycle
     W->>D: Fecha ou reativa vagas
 ```
+
+Em caso de indisponibilidade transitória, a chamada é repetida com intervalo controlado. Se for necessário retomar manualmente uma execução, o workflow aceita `start_offset`, evitando reprocessar as fontes anteriores. A validação operacional de 13/08/2026 confirmou o percurso das fontes restantes — incluindo Capco, com 734 vagas — seguido de enriquecimento e reconciliação do ciclo de vida.
 
 ## 18. Definição prática do produto hoje
 

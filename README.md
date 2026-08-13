@@ -203,6 +203,14 @@ Configuração do repositório:
 
 Uma execução HTTP bem-sucedida pode retornar `sources: 0` quando nenhuma fonte foi cadastrada. O resultado real deve ser conferido pelos campos `sources`, `received`, `inserted`, `updated` e `errors`.
 
+### Resiliência e retomada
+
+A rotina processa uma fonte por chamada e grava vagas no D1 em lotes, reduzindo o risco de exceder o tempo disponível no Worker. Entre fontes há uma pausa curta e falhas transitórias de infraestrutura recebem novas tentativas antes de interromper o fluxo.
+
+Em uma execução manual é possível informar `start_offset` para retomar uma coleta a partir de uma fonte específica, sem repetir as anteriores. Isso é útil quando uma indisponibilidade temporária ocorre durante um ciclo longo. As descrições são normalizadas e limitadas a 12.000 caracteres por vaga antes da gravação, preservando conteúdo suficiente para análise sem sobrecarregar o Worker/D1.
+
+Validação operacional concluída em 13/08/2026: coleta retomada percorreu as fontes restantes, incluindo Capco (734 vagas), e finalizou enriquecimento e ciclo de vida com sucesso.
+
 ## Autenticação e autorização
 
 - contas locais usam PBKDF2-SHA-256 e sessão HMAC em cookie seguro, HTTP-only e com duração de 12 horas;
@@ -229,6 +237,7 @@ Já implantado:
 - pipeline, acompanhamento de candidatura, alertas, métricas, monitoramento, auditoria e qualidade;
 - backup, relatório e gestão de usuários;
 - coleta agendada, enriquecimento e ciclo de vida;
+- recuperação de coleta por `start_offset`, tentativas controladas e limite seguro para descrições extensas;
 - build, testes de regras, limites de Worker e integração RBAC.
 
 Pontos de atenção confirmados no código atual:

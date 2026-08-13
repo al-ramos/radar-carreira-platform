@@ -44,6 +44,13 @@ O objetivo das próximas entregas é conectar essa experiência enxuta aos módu
 - Cancelamentos anteriores ocorreram porque uma execução manual foi iniciada enquanto outras publicações automáticas aguardavam na fila.
 - Procedimento recomendado: deixar o último `push` concluir a publicação automaticamente; não disparar publicação manual concorrente.
 
+### Atualização operacional — 13/08/2026
+
+- A coleta agendada foi estabilizada com gravações em lote, pausa entre fontes e tentativas controladas para indisponibilidades transitórias.
+- O workflow manual agora aceita `start_offset`, permitindo retomar a partir da fonte interrompida sem repetir o início do ciclo.
+- Descrições extensas de ATS são normalizadas e limitadas a 12.000 caracteres por vaga antes da gravação.
+- A retomada percorreu as fontes restantes, incluindo Capco (734 vagas), e concluiu enriquecimento e ciclo de vida com sucesso.
+
 ### Riscos de produto e operação
 
 - A data de atualização exibida pode ficar desatualizada e reduzir a confiança no radar.
@@ -57,7 +64,7 @@ O objetivo das próximas entregas é conectar essa experiência enxuta aos módu
 | P0-01 | Separar fontes automáticas e manuais no agendamento | Gmail e extensão LinkedIn não são coletados como ATS | Rotina diária processa apenas fontes compatíveis com Greenhouse, Lever e Ashby |
 | P0-02 | Chaves LinkedIn por usuário/dispositivo | Chaves nomeáveis, revogáveis e renováveis sem afetar outros coletores | Revogar uma chave bloqueia somente aquele dispositivo |
 | P0-03 | Testar fontes reais de ATS | Cadastro, teste e coleta validados contra fontes públicas reais | Ao menos uma fonte Greenhouse, Lever e Ashby é testada com sucesso e falhas compreensíveis |
-| P0-04 | Fechar a operação diária de coleta | Coletas gerais confiáveis e administráveis | Não é possível iniciar duas coletas gerais concorrentes; falhas recorrentes alertam administradores |
+| P0-04 | Fechar a operação diária de coleta | Coletas gerais confiáveis e administráveis | **Parcial:** recuperação e retomada por offset validadas; ainda falta bloquear coletas gerais concorrentes e alertar administradores |
 | P0-05 | Expor todas as vagas | Usuário acessa vagas além das 250 mais recentes | Paginação ou “Carregar mais” recupera resultados adicionais sem divergência do total |
 
 ## 4. Pendências confirmadas do próximo ciclo
