@@ -22,3 +22,35 @@ test("a tela de detalhes possui um único campo de e-mail e preserva as ações"
   assert.match(dashboard, /"Copiar e-mail"/);
   assert.match(dashboard, />\s*✉ Abrir no Outlook\s*</);
 });
+
+test("candidatar tenta capturar o contato antes de abrir a vaga sem bloquear o fluxo", async () => {
+  const dashboard = await readFile(new URL("../app/Dashboard.tsx", import.meta.url), "utf8");
+  const flow = dashboard.match(/function openJobApplication\(job: Job\) \{([\s\S]*?)\n  \}/)?.[1] ?? "";
+
+  assert.ok(flow.indexOf("captureApinfoContact(job)") >= 0);
+  assert.ok(flow.indexOf("captureApinfoContact(job)") < flow.indexOf("open(job.applyUrl"));
+  assert.doesNotMatch(flow, /await captureApinfoContact/);
+  assert.match(flow, /AUTOMATIC_ACTION_STAGE\.apply/);
+  assert.match(dashboard, /onClick=\{\(\) => openJobApplication\(selectedJob\)\}/);
+});
+
+test("falha na captura mantém nova tentativa e colagem manual disponíveis", async () => {
+  const dashboard = await readFile(new URL("../app/Dashboard.tsx", import.meta.url), "utf8");
+
+  assert.match(dashboard, /setContactPasteReady\(true\);[\s\S]*?Não foi possível capturar o contato/);
+  assert.match(dashboard, /"Tentar captura novamente"/);
+  assert.match(dashboard, />\s*Colar e-mail\s*</);
+  assert.match(dashboard, /onClick=\{\(\) => void pasteApinfoContact\(selectedJob\)\}/);
+});
+
+test("contato capturado permanece no campo da vaga e a API persiste a primeira gravação", async () => {
+  const [dashboard, route] = await Promise.all([
+    readFile(new URL("../app/Dashboard.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/jobs/[id]/contact/route.ts", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(dashboard, /item\.id === jobId \? \{ \.\.\.item, contactEmail: savedEmail, contactSubject: savedSubject \}/);
+  assert.match(dashboard, /r\.status === 409 && persistedEmail/);
+  assert.match(route, /\.set\(\{ contactEmail, contactSubject:/);
+  assert.match(route, /isNull\(jobs\.contactEmail\)/);
+});

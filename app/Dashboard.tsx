@@ -1551,17 +1551,34 @@ export default function Dashboard() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ contactEmail, contactSubject }),
     });
+    const data = await r.json().catch(() => null) as { contactEmail?: string; contactSubject?: string } | null;
     if (!r.ok) {
+      // Outra captura/importação pode ter preenchido o contato enquanto
+      // esta requisição estava em andamento. Nesse caso, mantém o valor já
+      // persistido disponível na tela em vez de apresentar um falso erro.
+      const persistedEmail = normalizeContactEmail(data?.contactEmail);
+      if (r.status === 409 && persistedEmail) {
+        setItems((current) =>
+          current.map((item) =>
+            item.id === jobId ? { ...item, contactEmail: persistedEmail } : item,
+          ),
+        );
+        setContactPasteReady(false);
+        setContactCaptureMsg({ text: `E-mail já cadastrado: ${persistedEmail}`, error: false });
+        return true;
+      }
       setContactCaptureMsg({ text: "E-mail encontrado, mas não foi possível salvar no Radar. Tente de novo.", error: true });
       return false;
     }
+    const savedEmail = normalizeContactEmail(data?.contactEmail) ?? contactEmail;
+    const savedSubject = data?.contactSubject ?? contactSubject;
     setItems((current) =>
       current.map((item) =>
-        item.id === jobId ? { ...item, contactEmail, contactSubject } : item,
+        item.id === jobId ? { ...item, contactEmail: savedEmail, contactSubject: savedSubject } : item,
       ),
     );
     setContactPasteReady(false);
-    setContactCaptureMsg({ text: `E-mail capturado: ${contactEmail}`, error: false });
+    setContactCaptureMsg({ text: `E-mail capturado: ${savedEmail}`, error: false });
     return true;
   }
   async function pasteApinfoContact(job: Job) {
@@ -1650,11 +1667,20 @@ export default function Dashboard() {
       setContactCapturing(false);
 
       if (!data.ok) {
+        setContactPasteReady(true);
         setContactCaptureMsg({ text: data.error || "Não foi possível capturar o contato.", error: true });
         return;
       }
 
-      if (data.email) void saveApinfoContact(pending.jobId, data.email, data.assunto);
+      if (data.email) {
+        void saveApinfoContact(pending.jobId, data.email, data.assunto);
+        return;
+      }
+      setContactPasteReady(true);
+      setContactCaptureMsg({
+        text: "Nenhum e-mail foi encontrado. Você pode tentar novamente ou colar o endereço manualmente.",
+        error: true,
+      });
     }
     window.addEventListener("message", handleExtensionMessage);
     return () => {
@@ -1662,6 +1688,28 @@ export default function Dashboard() {
       if (contactRequestTimerRef.current) clearTimeout(contactRequestTimerRef.current);
     };
   }, []);
+  /**
+   * Fluxo único de candidatura. Para vagas do APinfo, dispara primeiro a
+   * mesma captura usada pelo botão separado e abre a página logo depois,
+   * sem aguardar a extensão — uma falha de captura nunca bloqueia a vaga.
+   */
+  function openJobApplication(job: Job) {
+    if (isApinfoJob(job) && !job.contactEmail) captureApinfoContact(job);
+
+    if (job.applyUrl) {
+      open(job.applyUrl, "_blank");
+    } else if (isApinfoJob(job) && job.externalId) {
+      openApinfoJobSearch(job.externalId);
+    } else if (job.url) {
+      open(job.url, "_blank");
+    }
+    void updateStage(
+      job.id,
+      AUTOMATIC_ACTION_STAGE.apply,
+      "Página da vaga aberta e status salvo como Candidatura.",
+      "advance",
+    );
+  }
   useEffect(() => {
     if (!shareMenuJobId) return;
     function handleOutsideClick(e: MouseEvent) {
@@ -2461,28 +2509,7 @@ export default function Dashboard() {
                   type="button"
                   className="primary-job-action"
                   title={selectedJobRejected ? `${selectedJobVerdict?.emoji} ${selectedJobVerdict?.label}: abrir mesmo assim` : "Abrir candidatura"}
-                  onClick={() => {
-                    // applyUrl (quando presente) é o link que de fato abre a
-                    // vaga/candidatura — url pode ser só uma referência
-                    // estável (ex.: busca por código no APinfo), usada para
-                    // identificar a vaga sem depender de token de sessão.
-                    // Sem applyUrl, uma vaga do APinfo precisa do POST real
-                    // (não um simples GET) para efetivamente filtrar pelo
-                    // código — ver openApinfoJobSearch.
-                    if (selectedJob.applyUrl) {
-                      open(selectedJob.applyUrl, "_blank");
-                    } else if (isApinfoJob(selectedJob) && selectedJob.externalId) {
-                      openApinfoJobSearch(selectedJob.externalId);
-                    } else if (selectedJob.url) {
-                      open(selectedJob.url, "_blank");
-                    }
-                    void updateStage(
-                      selectedJob.id,
-                      AUTOMATIC_ACTION_STAGE.apply,
-                      "Página da vaga aberta e status salvo como Candidatura.",
-                      "advance",
-                    );
-                  }}
+                  onClick={() => openJobApplication(selectedJob)}
                 >
                   Candidatar
                 </button>
@@ -2495,7 +2522,7 @@ export default function Dashboard() {
                       selectedJob.contactEmail
                         ? `Copiar ${selectedJob.contactEmail}`
                         : contactPasteReady
-                          ? "Copie o e-mail mostrado na página do APinfo e clique aqui"
+                          ? "Tentar novamente a captura automática na aba do APinfo"
                         : "Clique em Candidatar, faça login no APinfo até ver Empresa/Email na tela, e clique aqui"
                     }
                     onClick={() => {
@@ -2512,10 +2539,6 @@ export default function Dashboard() {
                         );
                         return;
                       }
-                      if (contactPasteReady) {
-                        void pasteApinfoContact(selectedJob);
-                        return;
-                      }
                       captureApinfoContact(selectedJob);
                     }}
                   >
@@ -2524,8 +2547,19 @@ export default function Dashboard() {
                       : contactCapturing
                         ? "Capturando…"
                         : contactPasteReady
-                          ? "Colar e-mail"
-                        : "Capturar e-mail"}
+                          ? "Tentar captura novamente"
+                          : "Capturar e-mail"}
+                  </button>
+                )}
+                {isApinfoJob(selectedJob) && !selectedJob.contactEmail && contactPasteReady && (
+                  <button
+                    type="button"
+                    className="analysis-toggle-btn"
+                    disabled={contactCapturing}
+                    title="Colar o e-mail copiado da página do APinfo"
+                    onClick={() => void pasteApinfoContact(selectedJob)}
+                  >
+                    Colar e-mail
                   </button>
                 )}
                 {selectedJob.contactEmail && (
@@ -2812,13 +2846,7 @@ export default function Dashboard() {
                 title={!detailJobEligible ? "Candidatura indisponível para vagas Não bate ou Bloqueador" : "Abrir candidatura"}
                 onClick={() => {
                   if (!detailJobEligible) return;
-                  if (detailJob.applyUrl) {
-                    open(detailJob.applyUrl, "_blank");
-                  } else if (isApinfoJob(detailJob) && detailJob.externalId) {
-                    openApinfoJobSearch(detailJob.externalId);
-                  } else if (detailJob.url) {
-                    open(detailJob.url, "_blank");
-                  }
+                  openJobApplication(detailJob);
                 }}
               >
                 {jobProviderLabel(detailJob)}
