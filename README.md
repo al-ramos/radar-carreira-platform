@@ -209,7 +209,7 @@ A rotina processa uma fonte por chamada e grava vagas no D1 em lotes, reduzindo 
 
 Em uma execução manual é possível informar `start_offset` para retomar uma coleta a partir de uma fonte específica, sem repetir as anteriores. Isso é útil quando uma indisponibilidade temporária ocorre durante um ciclo longo. As descrições são normalizadas e limitadas a 12.000 caracteres por vaga antes da gravação, preservando conteúdo suficiente para análise sem sobrecarregar o Worker/D1.
 
-Validação operacional concluída em 13/08/2026: coleta retomada percorreu as fontes restantes, incluindo Capco (734 vagas), e finalizou enriquecimento e ciclo de vida com sucesso.
+Validação operacional em 13/08/2026: a retomada percorreu as fontes restantes, incluindo Capco (734 vagas), e as etapas de enriquecimento e ciclo de vida foram verificadas. A confirmação de um ciclo integral após uma recuperação de `503` permanece como verificação operacional do próximo ciclo.
 
 ## Autenticação e autorização
 

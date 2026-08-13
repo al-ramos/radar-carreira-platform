@@ -587,7 +587,7 @@ sequenceDiagram
     W->>D: Fecha ou reativa vagas
 ```
 
-Em caso de indisponibilidade transitória, a chamada é repetida com intervalo controlado. Se for necessário retomar manualmente uma execução, o workflow aceita `start_offset`, evitando reprocessar as fontes anteriores. A validação operacional de 13/08/2026 confirmou o percurso das fontes restantes — incluindo Capco, com 734 vagas — seguido de enriquecimento e reconciliação do ciclo de vida.
+Em caso de indisponibilidade transitória, a chamada é repetida com intervalo controlado. Se for necessário retomar manualmente uma execução, o workflow aceita `start_offset`, evitando reprocessar as fontes anteriores. A validação operacional de 13/08/2026 confirmou o percurso das fontes restantes — incluindo Capco, com 734 vagas — e verificou enriquecimento e reconciliação do ciclo de vida. Um ciclo integral que se recupere de um `503` continua como verificação operacional pendente.
 
 ## 18. Definição prática do produto hoje
 

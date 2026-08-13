@@ -49,7 +49,8 @@ O objetivo das próximas entregas é conectar essa experiência enxuta aos módu
 - A coleta agendada foi estabilizada com gravações em lote, pausa entre fontes e tentativas controladas para indisponibilidades transitórias.
 - O workflow manual agora aceita `start_offset`, permitindo retomar a partir da fonte interrompida sem repetir o início do ciclo.
 - Descrições extensas de ATS são normalizadas e limitadas a 12.000 caracteres por vaga antes da gravação.
-- A retomada percorreu as fontes restantes, incluindo Capco (734 vagas), e concluiu enriquecimento e ciclo de vida com sucesso.
+- A retomada percorreu as fontes restantes, incluindo Capco (734 vagas); enriquecimento e ciclo de vida foram verificados separadamente.
+- Próxima verificação: concluir um ciclo integral que passe por uma recuperação de `503` sem perder a resposta JSON válida.
 
 ### Riscos de produto e operação
 
