@@ -11,7 +11,9 @@ import { JOB_AREAS } from "../../../lib/job-area";
 
 export const dynamic = "force-dynamic";
 
-const FILTER_SCAN_BATCH_SIZE = 250;
+// Uma única consulta evita repetir o mesmo filtro textual e a mesma ordenação
+// para cada lote, que estourava o tempo do Worker em perfis amplos.
+const MAX_AFFINITY_CANDIDATES = 2_500;
 const LIST_DESCRIPTION_CHARS = 2_000;
 const FILTER_DESCRIPTION_CHARS = 1_000;
 // Toda vaga técnica começa com 5 pontos. Portanto, esse corte não precisa de
@@ -212,9 +214,9 @@ description: degradedMode
 sort === "imported" ? desc(jobs.firstSeenAt) : desc(jobs.publishedAt),
 desc(jobs.createdAt),
 );
-const [firstRows, eligibleTotals, sourceTotals, sourceOptionsRows, areaOptionsRows, channelOptionsRows, recentRuns] = await Promise.all([
+const [rows, eligibleTotals, sourceTotals, sourceOptionsRows, areaOptionsRows, channelOptionsRows, recentRuns] = await Promise.all([
 requiresPostFiltering
-? rowsQuery.limit(FILTER_SCAN_BATCH_SIZE)
+? rowsQuery.limit(MAX_AFFINITY_CANDIDATES)
 : rowsQuery.limit(limit).offset(offset),
 getDb().select({ total: sql<number>`count(*)` }).from(jobs).where(condition),
 getDb().select({
@@ -232,20 +234,6 @@ getDb().select({ id: importRuns.id, source: importRuns.source, sourceId: importR
   .from(importRuns).innerJoin(jobImportRuns, eq(jobImportRuns.runId, importRuns.id))
   .groupBy(importRuns.id).orderBy(desc(importRuns.startedAt)).limit(30),
 ]);
-
-// Percorre todos os candidatos em lotes pequenos. Isso elimina o antigo corte
-// silencioso nas 150 vagas mais recentes sem montar uma consulta/resposta
-// gigante no Worker de uma só vez.
-const rows = [...firstRows];
-if (requiresPostFiltering) {
-  let scanOffset = firstRows.length;
-  let batch = firstRows;
-  while (batch.length === FILTER_SCAN_BATCH_SIZE) {
-    batch = await rowsQuery.limit(FILTER_SCAN_BATCH_SIZE).offset(scanOffset);
-    rows.push(...batch);
-    scanOffset += batch.length;
-  }
-}
 
 const enriched = rows.map((job) => {
 const stack = inferTechnologyStack(`${job.title} ${job.description}`, parse(job.stack));
@@ -336,7 +324,7 @@ filterOptions: {
 page,
 limit,
 hasMore: offset + limit < totalCount,
-limited: false,
+limited: requiresPostFiltering && Number(eligibleTotals[0]?.total ?? 0) > MAX_AFFINITY_CANDIDATES,
 mode: "database",
 personalized: profileHasScoringSignals,
 degraded: degradedMode,

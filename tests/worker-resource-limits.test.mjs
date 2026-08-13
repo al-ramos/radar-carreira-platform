@@ -7,10 +7,10 @@ const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 test("a listagem pagina no D1 antes de enriquecer o fluxo normal", async () => {
   const route = await read("../app/api/jobs/route.ts");
   assert.match(route, /rowsQuery\.limit\(limit\)\.offset\(offset\)/);
-  assert.match(route, /FILTER_SCAN_BATCH_SIZE = 250/);
-  assert.match(route, /while \(batch\.length === FILTER_SCAN_BATCH_SIZE\)/);
+  assert.match(route, /MAX_AFFINITY_CANDIDATES = 2_500/);
+  assert.match(route, /rowsQuery\.limit\(MAX_AFFINITY_CANDIDATES\)/);
   assert.match(route, /profileAffinitySearchTerms/);
-  assert.doesNotMatch(route, /MAX_FILTER_CANDIDATES/);
+  assert.doesNotMatch(route, /while \(batch\.length/);
   assert.match(route, /description: ""/);
   assert.match(route, /or\(isNull\(jobs\.seniority\)/);
   assert.match(route, /LIST_DESCRIPTION_CHARS = 2_000/);
@@ -18,7 +18,7 @@ test("a listagem pagina no D1 antes de enriquecer o fluxo normal", async () => {
   assert.match(route, /BASE_TECH_SCORE = 5/);
   assert.match(route, /minScore > BASE_TECH_SCORE/);
   assert.match(route, /substr\(\$\{jobs\.description\}/);
-  assert.match(route, /const \[firstRows, eligibleTotals, sourceTotals,/);
+  assert.match(route, /const \[rows, eligibleTotals, sourceTotals,/);
   assert.match(route, /verdictFilter !== "all" && masteredSkills\.length/);
   assert.match(route, /isTechnologyJob/);
   assert.match(route, /profileHasScoringSignals \? requestedMinScore : 0/);
