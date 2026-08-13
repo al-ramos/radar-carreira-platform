@@ -1,10 +1,10 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db/index";
 import { importRuns, jobSources, jobs } from "../../../../db/schema";
 import { collect, isPullProvider } from "../../../../lib/connectors";
-import { fingerprint, recordedJobDate } from "../../../../lib/jobs";
+import { fingerprint, recordedJobDate, sourcePublishedJobDate } from "../../../../lib/jobs";
 import { findCuratedSource } from "../../../../lib/curated-sources";
 import { can } from "../../../../lib/rbac";
 
@@ -72,13 +72,13 @@ export async function POST(request: Request) {
           externalId: job.externalId ?? null, company: job.company, title: job.title,
           seniority: job.seniority ?? null, workMode: job.workMode ?? null,
           location: job.location ?? null, stack: JSON.stringify(job.stack ?? []),
-          publishedAt: recordedJobDate(job.publishedAt, now),
+          publishedAt: recordedJobDate(job.publishedAt, now), sourcePublishedAt: sourcePublishedJobDate(job.publishedAt), ingestionMode: "automatic" as const,
           url: job.url, description: job.description ?? "", firstSeenAt: now,
           lastSeenAt: now, status: "active" as const, createdAt: now, updatedAt: now,
         };
         await db.insert(jobs).values(values).onConflictDoUpdate({
           target: jobs.fingerprint,
-          set: { sourceId: source.id, title: values.title, location: values.location, workMode: values.workMode, publishedAt: values.publishedAt, url: values.url, description: values.description, lastSeenAt: now, status: "active", updatedAt: now },
+          set: { sourceId: source.id, title: values.title, location: values.location, workMode: values.workMode, publishedAt: values.publishedAt, sourcePublishedAt: sql`coalesce(${values.sourcePublishedAt}, ${jobs.sourcePublishedAt})`, url: values.url, description: values.description, lastSeenAt: now, status: "active", updatedAt: now },
         });
         existing ? sourceUpdated++ : sourceInserted++;
       }

@@ -5,7 +5,12 @@ import { normalizeImportedJobs } from "../lib/import-jobs.ts";
 
 test("normaliza o JSON gerado pelo LinkedIn Job Collector",()=>{
  const [job]=normalizeImportedJobs([{titulo:"Security Engineer",empresa:"Empresa",local:"São Paulo, Brasil · há 14 minutos · 10 candidaturas",descricao:"Modelo de trabalho híbrido",link:"https://www.linkedin.com/jobs/view/4449682834/",coletado_em:"2026-08-05T19:15:40.844Z",pagina:1}]);
- assert.deepEqual(job,{company:"Empresa",title:"Security Engineer",url:"https://www.linkedin.com/jobs/view/4449682834/",description:"Modelo de trabalho híbrido",location:"São Paulo, Brasil",workMode:"Híbrido",seniority:undefined,stack:undefined,publishedAt:"2026-08-05T19:15:40.844Z",externalId:"4449682834",applyUrl:undefined,contactEmail:undefined,contactSubject:undefined,sourceId:undefined});
+ assert.deepEqual(job,{company:"Empresa",title:"Security Engineer",url:"https://www.linkedin.com/jobs/view/4449682834/",description:"Modelo de trabalho híbrido",location:"São Paulo, Brasil",workMode:"Híbrido",seniority:undefined,stack:undefined,publishedAt:undefined,externalId:"4449682834",applyUrl:undefined,contactEmail:undefined,contactSubject:undefined,sourceId:undefined});
+});
+
+test("mantém a publicação informada pela fonte separada da coleta",()=>{
+ const [job]=normalizeImportedJobs([{titulo:"Analista",empresa:"Empresa",link:"https://www.apinfo.com/vaga/85321",data_publicacao:"13/08/26",coletado_em:"2026-08-13T18:42:00.000Z"}]);
+ assert.equal(job.publishedAt,"13/08/26");
 });
 
 test("endpoint da extensão LinkedIn responde ao preflight CORS", async()=>{

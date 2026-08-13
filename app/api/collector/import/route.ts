@@ -3,7 +3,7 @@ import { getDb } from "../../../../db/index";
 import { importRuns, jobSources, jobs, profiles } from "../../../../db/schema";
 import { filterImportedJobsByProfile } from "../../../../lib/collector-profile-filter";
 import { normalizeImportedJobs } from "../../../../lib/import-jobs";
-import { fingerprint, recordedJobDate, type ImportedJob } from "../../../../lib/jobs";
+import { fingerprint, recordedJobDate, sourcePublishedJobDate, type ImportedJob } from "../../../../lib/jobs";
 import { normalizeCareerRules } from "../../../../lib/profile-options";
 
 export const dynamic = "force-dynamic";
@@ -35,6 +35,8 @@ function valuesFor(job: ImportedJob, now: Date) {
     location: job.location ?? null,
     stack: JSON.stringify(job.stack ?? []),
     publishedAt: recordedJobDate(job.publishedAt, now),
+    sourcePublishedAt: sourcePublishedJobDate(job.publishedAt),
+    ingestionMode: "automatic" as const,
     url: job.url,
     applyUrl: job.applyUrl ?? null,
     contactEmail: job.contactEmail ?? null,
@@ -112,6 +114,7 @@ export async function POST(request: Request) {
             location: values.location,
             stack: values.stack,
             publishedAt: values.publishedAt,
+            sourcePublishedAt: sql`coalesce(${values.sourcePublishedAt}, ${jobs.sourcePublishedAt})`,
             url: values.url,
             applyUrl: values.applyUrl,
             contactEmail: sql`coalesce(${values.contactEmail}, ${jobs.contactEmail})`,

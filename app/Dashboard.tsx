@@ -34,7 +34,10 @@ type Job = {
   workMode?: string;
   age: string;
   publishedAt?: string;
+  sourcePublishedAt?: string;
   firstSeenAt?: string;
+  ingestionMode: "automatic" | "manual";
+  sourceName?: string;
   url?: string;
   applyUrl?: string;
   contactEmail?: string;
@@ -55,7 +58,10 @@ type ApiJob = {
   workMode?: string;
   seniority?: string;
   publishedAt?: string;
+  sourcePublishedAt?: string;
   firstSeenAt?: string;
+  ingestionMode?: "automatic" | "manual";
+  sourceName?: string;
   url?: string;
   applyUrl?: string;
   contactEmail?: string;
@@ -355,11 +361,11 @@ const adapt = (j: ApiJob): Job => ({
   location: j.location ?? "Não informado",
   mode: j.workMode ?? "Não informado",
   seniority: j.seniority,
-  age: j.publishedAt
+  age: (j.sourcePublishedAt ?? j.firstSeenAt)
     ? new Intl.RelativeTimeFormat("pt-BR", { numeric: "auto" }).format(
         -Math.max(
           1,
-          Math.round((Date.now() - new Date(j.publishedAt).getTime()) / 36e5),
+          Math.round((Date.now() - new Date(j.sourcePublishedAt ?? j.firstSeenAt!).getTime()) / 36e5),
         ),
         "hour",
       )
@@ -376,7 +382,10 @@ const adapt = (j: ApiJob): Job => ({
   contactSubject: j.contactSubject,
   externalId: j.externalId,
   publishedAt: j.publishedAt,
+  sourcePublishedAt: j.sourcePublishedAt,
   firstSeenAt: j.firstSeenAt,
+  ingestionMode: j.ingestionMode ?? "manual",
+  sourceName: j.sourceName,
   description: j.description,
 });
 
@@ -386,6 +395,14 @@ const formatJobDate = (value?: string) =>
         new Date(value),
       )
     : "Não informada";
+
+const formatJobDateTime = (value?: string) =>
+  value
+    ? new Intl.DateTimeFormat("pt-BR", {
+        dateStyle: "short",
+        timeStyle: "short",
+      }).format(new Date(value))
+    : "não informada";
 
 /** Mantém a paginação navegável sem despejar dezenas de botões na tela. */
 function compactPagination(current: number, total: number): Array<number | "start-ellipsis" | "end-ellipsis"> {
@@ -437,6 +454,9 @@ export default function Dashboard() {
   const [sourceFilter, setSourceFilter] = useState<
     "all" | "linkedin" | "apinfo" | "other"
   >("all");
+  const [ingestionMode, setIngestionMode] = useState<"all" | "automatic" | "manual">("all");
+  const [receivedFrom, setReceivedFrom] = useState("");
+  const [receivedTo, setReceivedTo] = useState("");
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [profileMinScore, setProfileMinScore] = useState(60);
   const [gmailOpen, setGmailOpen] = useState(false);
@@ -596,6 +616,9 @@ export default function Dashboard() {
       const params = new URLSearchParams({ page: String(page), limit: "50" });
       if (period) params.set("period", period);
       if (sourceFilter !== "all") params.set("sourceType", sourceFilter);
+      if (ingestionMode !== "all") params.set("ingestionMode", ingestionMode);
+      if (receivedFrom) params.set("receivedFrom", new Date(receivedFrom).toISOString());
+      if (receivedTo) params.set("receivedTo", new Date(receivedTo).toISOString());
       if (debouncedQuery) params.set("q", debouncedQuery);
       if (!simplifiedList && effectiveMinScore > 0) params.set("minScore", String(effectiveMinScore));
       if (pipelineFilter !== "all") params.set("pipeline", pipelineFilter);
@@ -603,7 +626,7 @@ export default function Dashboard() {
       if (sortOrder === "recent") params.set("sort", "imported");
       return params.toString();
     },
-    [period, sourceFilter, debouncedQuery, effectiveMinScore, pipelineFilter, verdictFilter, simplifiedList, sortOrder],
+    [period, sourceFilter, ingestionMode, receivedFrom, receivedTo, debouncedQuery, effectiveMinScore, pipelineFilter, verdictFilter, simplifiedList, sortOrder],
   );
   useEffect(() => {
     if (!profileReady) return;
@@ -757,6 +780,27 @@ export default function Dashboard() {
       remove: () => setSourceFilter("all"),
     });
   }
+  if (ingestionMode !== "all") {
+    activeFilterChips.push({
+      id: "ingestion",
+      label: ingestionMode === "automatic" ? "Importação automática" : "Importação manual",
+      remove: () => setIngestionMode("all"),
+    });
+  }
+  if (receivedFrom) {
+    activeFilterChips.push({
+      id: "received-from",
+      label: `Recebida desde ${formatJobDateTime(new Date(receivedFrom).toISOString())}`,
+      remove: () => setReceivedFrom(""),
+    });
+  }
+  if (receivedTo) {
+    activeFilterChips.push({
+      id: "received-to",
+      label: `Recebida até ${formatJobDateTime(new Date(receivedTo).toISOString())}`,
+      remove: () => setReceivedTo(""),
+    });
+  }
   if (period && period !== "all") {
     activeFilterChips.push({
       id: "period",
@@ -828,7 +872,7 @@ export default function Dashboard() {
   const sortReportJobs = useCallback((jobs: Job[]) =>
     [...jobs].sort((left, right) => {
       if (sortOrder === "recent") {
-        return new Date(right.publishedAt ?? 0).getTime() - new Date(left.publishedAt ?? 0).getTime();
+        return new Date(right.firstSeenAt ?? 0).getTime() - new Date(left.firstSeenAt ?? 0).getTime();
       }
       return right.score - left.score || new Date(right.publishedAt ?? 0).getTime() - new Date(left.publishedAt ?? 0).getTime();
     }),
@@ -934,6 +978,9 @@ export default function Dashboard() {
     setFitFilter(0);
     setPeriod("all");
     setSourceFilter("all");
+    setIngestionMode("all");
+    setReceivedFrom("");
+    setReceivedTo("");
     setPipelineFilter("all");
     setVerdictFilter("all");
   }
@@ -1839,6 +1886,52 @@ export default function Dashboard() {
           </div>
         )}
         <div id="radar-filter-panel" className="radar-filter-panel" hidden={!filtersOpen} aria-label="Filtros de vagas">
+          <div className="compact-filter-group ingestion-filter-group">
+            <span className="compact-filter-label">Importação e recebimento</span>
+            <div className="ingestion-filter-controls">
+              <label>
+                <span>Tipo de entrada</span>
+                <select
+                  value={ingestionMode}
+                  onChange={(event) => setIngestionMode(event.target.value as typeof ingestionMode)}
+                  aria-label="Filtrar pelo tipo de importação"
+                >
+                  <option value="all">Automáticas e manuais</option>
+                  <option value="automatic">Somente automáticas</option>
+                  <option value="manual">Somente manuais</option>
+                </select>
+              </label>
+              <label>
+                <span>Recebida a partir de</span>
+                <input
+                  type="datetime-local"
+                  value={receivedFrom}
+                  onChange={(event) => {
+                    setReceivedFrom(event.target.value);
+                    setPeriod("all");
+                  }}
+                  aria-label="Data e hora inicial de recebimento"
+                />
+              </label>
+              <label>
+                <span>Recebida até</span>
+                <input
+                  type="datetime-local"
+                  value={receivedTo}
+                  onChange={(event) => {
+                    setReceivedTo(event.target.value);
+                    setPeriod("all");
+                  }}
+                  min={receivedFrom || undefined}
+                  aria-label="Data e hora final de recebimento"
+                />
+              </label>
+            </div>
+            <small className="list-head-dim">
+              “Recebida” é a data e hora em que a vaga entrou no Radar. A publicação na fonte aparece separadamente em cada vaga.
+            </small>
+          </div>
+          <div className="compact-filter-divider" aria-hidden="true" />
           <div className="compact-filter-group">
             <span className="compact-filter-label">Status</span>
             <div className="compact-pills" role="group" aria-label="Filtrar por estágio do pipeline">
@@ -2002,7 +2095,12 @@ export default function Dashboard() {
                   <small>{j.company.toUpperCase()}</small>
                   <h3>{j.title}</h3>
                   <p>
-                    ⌖ {j.location} · {j.mode} · {j.age} · 📅 {formatJobDate(j.publishedAt)}
+                    ⌖ {j.location} · {j.mode} · {j.age}
+                  </p>
+                  <p className="job-ingestion-meta">
+                    Publicada {formatJobDateTime(j.sourcePublishedAt)} · Recebida {formatJobDateTime(j.firstSeenAt)}
+                    {` · ${j.ingestionMode === "automatic" ? "Automática" : "Manual"}`}
+                    {j.sourceName ? ` · ${j.sourceName}` : ""}
                   </p>
                   <div
                     className="tags job-stack"
@@ -2084,7 +2182,12 @@ export default function Dashboard() {
                   <h2>{selectedJob.title}</h2>
                   <p>
                     ⌖ {selectedJob.location} · {selectedJob.mode} ·{" "}
-                    {selectedJob.age} · 📅 {formatJobDate(selectedJob.publishedAt)}
+                    {selectedJob.age}
+                  </p>
+                  <p className="job-ingestion-meta job-detail-ingestion-meta">
+                    Publicada na fonte: {formatJobDateTime(selectedJob.sourcePublishedAt)} · Recebida pelo Radar: {formatJobDateTime(selectedJob.firstSeenAt)}
+                    {` · ${selectedJob.ingestionMode === "automatic" ? "Automática" : "Manual"}`}
+                    {selectedJob.sourceName ? ` · ${selectedJob.sourceName}` : ""}
                   </p>
                   {(selectedJob.externalId || selectedJob.url) && (
                     <p className="list-head-dim job-detail-source">

@@ -756,6 +756,52 @@
   color: #fff;
 }
 .radar-filter-panel .compact-filter-divider { display: none; }
+.radar-filter-panel .ingestion-filter-group {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 150px 1fr;
+  gap: 8px 14px;
+}
+.radar-filter-panel .ingestion-filter-group > .compact-filter-label {
+  min-width: 0;
+}
+.ingestion-filter-controls {
+  display: grid;
+  grid-template-columns: minmax(180px, .85fr) repeat(2, minmax(190px, 1fr));
+  gap: 10px;
+}
+.ingestion-filter-controls label {
+  display: grid;
+  gap: 5px;
+  color: #69718b;
+  font-size: 9px;
+  font-weight: 700;
+}
+.ingestion-filter-controls select,
+.ingestion-filter-controls input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #dddfea;
+  border-radius: 8px;
+  background: #fff;
+  color: #18264d;
+  padding: 8px 9px;
+  font-size: 10px;
+}
+.ingestion-filter-group > small {
+  grid-column: 2;
+  line-height: 1.45;
+}
+.job-main .job-ingestion-meta,
+.job-ingestion-meta {
+  color: #685ab5;
+  font-size: 8.5px;
+  line-height: 1.4;
+}
+.detail-heading .job-detail-ingestion-meta {
+  margin-top: 5px;
+  color: #685ab5;
+}
 .radar-filter-panel .fit-filter {
   display: grid;
   grid-template-columns: 1fr auto;
@@ -823,6 +869,9 @@
   .score-controls { grid-template-columns: 1fr 1fr; }
   .score-controls-range { grid-column: 1 / -1; }
   .score-controls .fit-filter-profile-chip { justify-self: start; }
+  .radar-filter-panel .ingestion-filter-group { grid-template-columns: 1fr; }
+  .ingestion-filter-group > small { grid-column: 1; }
+  .ingestion-filter-controls { grid-template-columns: 1fr; }
 }
 @media (max-width: 650px) {
   .radar-controls { display: grid; gap: 12px; }

@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db/index";
 import { importRuns, jobs } from "../../../../db/schema";
-import { fingerprint, recordedJobDate, type ImportedJob } from "../../../../lib/jobs";
+import { fingerprint, recordedJobDate, sourcePublishedJobDate, type ImportedJob } from "../../../../lib/jobs";
 import { parseCsvJobs } from "../../../../lib/csv-jobs";
 import { normalizeImportedJobs } from "../../../../lib/import-jobs";
 import { can } from "../../../../lib/rbac";
@@ -38,6 +38,8 @@ function valuesFor(job: ImportedJob, now: Date) {
     location: job.location ?? null,
     stack: JSON.stringify(job.stack ?? []),
     publishedAt: recordedJobDate(job.publishedAt, now),
+    sourcePublishedAt: sourcePublishedJobDate(job.publishedAt),
+    ingestionMode: "manual" as const,
     url: job.url,
     applyUrl: job.applyUrl ?? null,
     contactEmail: job.contactEmail ?? null,
@@ -95,6 +97,7 @@ export async function POST(request: Request) {
             location: values.location,
             stack: values.stack,
             publishedAt: values.publishedAt,
+            sourcePublishedAt: sql`coalesce(${values.sourcePublishedAt}, ${jobs.sourcePublishedAt})`,
             url: values.url,
             applyUrl: values.applyUrl,
             contactEmail: sql`coalesce(${values.contactEmail}, ${jobs.contactEmail})`,

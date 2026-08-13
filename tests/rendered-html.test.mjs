@@ -51,7 +51,8 @@ test("dashboard oferece radar, perfil e pipeline persistente", async () => {
   assert.match(dashboard, /Impedimentos: requisitos da vaga fora do seu perfil/);
   assert.match(dashboard, /detail-analysis-open/);
   assert.match(dashboard, /const formatJobDate/);
-  assert.match(dashboard, /📅 \{formatJobDate\(j\.publishedAt\)\}/);
+  assert.match(dashboard, /Publicada \{formatJobDateTime\(j\.sourcePublishedAt\)\}/);
+  assert.match(dashboard, /Recebida \{formatJobDateTime\(j\.firstSeenAt\)\}/);
   assert.match(dashboard, /LinkedInExtension/);
   const [jobsRoute, dateMigration] = await Promise.all([
     read("../app/api/jobs/route.ts"),

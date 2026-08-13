@@ -1,9 +1,9 @@
-import { asc, eq, inArray } from "drizzle-orm";
+import { asc, eq, inArray, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getDb } from "../../../../db/index";
 import { importRuns, jobSources, jobs, platformSettings } from "../../../../db/schema";
 import { collect, isPullProvider } from "../../../../lib/connectors";
-import { fingerprint, recordedJobDate } from "../../../../lib/jobs";
+import { fingerprint, recordedJobDate, sourcePublishedJobDate } from "../../../../lib/jobs";
 
 export const dynamic = "force-dynamic";
 
@@ -69,12 +69,13 @@ export async function POST(request: Request) {
             id: crypto.randomUUID(), fingerprint: jobFingerprint, sourceId: source.id,
             externalId: job.externalId ?? null, company: job.company, title: job.title, seniority: job.seniority ?? null,
             workMode: job.workMode ?? null, location: job.location ?? null, stack: JSON.stringify(job.stack ?? []),
-            publishedAt: recordedJobDate(job.publishedAt, now), url: job.url, description: job.description ?? "",
+            publishedAt: recordedJobDate(job.publishedAt, now), sourcePublishedAt: sourcePublishedJobDate(job.publishedAt), ingestionMode: "automatic" as const,
+            url: job.url, description: job.description ?? "",
             firstSeenAt: now, lastSeenAt: now, status: "active" as const, createdAt: now, updatedAt: now,
           };
           return getDb().insert(jobs).values(values).onConflictDoUpdate({
             target: jobs.fingerprint,
-            set: { sourceId: source.id, title: values.title, location: values.location, workMode: values.workMode, publishedAt: values.publishedAt, url: values.url, description: values.description, lastSeenAt: now, status: "active", updatedAt: now },
+            set: { sourceId: source.id, title: values.title, location: values.location, workMode: values.workMode, publishedAt: values.publishedAt, sourcePublishedAt: sql`coalesce(${values.sourcePublishedAt}, ${jobs.sourcePublishedAt})`, url: values.url, description: values.description, lastSeenAt: now, status: "active", updatedAt: now },
           });
         });
         if (statements.length) {

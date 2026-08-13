@@ -82,6 +82,7 @@ async function sendToRadar(items, settings) {
     title: job.titulo,
     company: job.empresa,
     location: job.local,
+    publishedAt: job.data_publicacao || undefined,
     description: job.descricao,
     stack: job.stack,
     // url é a referência estável (busca por código) — não abre a vaga

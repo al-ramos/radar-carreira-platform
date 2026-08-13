@@ -1,8 +1,8 @@
-import { and, desc, eq, gte, inArray, isNull, like, notInArray, notLike, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, like, lte, notInArray, notLike, or, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../chatgpt-auth";
 import { getDb } from "../../../db/index";
-import { jobs, platformSettings, profiles, userJobStatus } from "../../../db/schema";
+import { jobs, jobSources, platformSettings, profiles, userJobStatus } from "../../../db/schema";
 import { isTechnologyJob, scoreJob } from "../../../lib/scoring";
 import { inferTechnologyStack } from "../../../lib/technology-stack";
 import { allowedWorkModes, listFromStored, normalizeCareerRules } from "../../../lib/profile-options";
@@ -64,10 +64,29 @@ const pipelineFilter = degradedMode ? "all" : url.searchParams.get("pipeline") ?
 const verdictFilter = degradedMode ? "all" : url.searchParams.get("verdict") ?? "all";
 const sort = url.searchParams.get("sort") === "imported" ? "imported" : "published";
 const sourceType = url.searchParams.get("sourceType") ?? "all";
+const ingestionMode = url.searchParams.get("ingestionMode") ?? "all";
+const parseDateParam = (name: string) => {
+const value = url.searchParams.get(name);
+if (!value) return null;
+const parsed = new Date(value);
+return Number.isFinite(parsed.getTime()) ? parsed : null;
+};
+const receivedFrom = parseDateParam("receivedFrom");
+const receivedTo = parseDateParam("receivedTo");
 const cutoff = hours ? new Date(Date.now() - hours * 36e5) : null;
-const baseCondition = cutoff
+const publicationCondition = cutoff
 ? and(eq(jobs.status, "active"), gte(jobs.publishedAt, cutoff))
 : eq(jobs.status, "active");
+const ingestionCondition = ingestionMode === "automatic"
+? eq(jobs.ingestionMode, "automatic")
+: ingestionMode === "manual"
+? eq(jobs.ingestionMode, "manual")
+: undefined;
+const receivedCondition = and(
+receivedFrom ? gte(jobs.firstSeenAt, receivedFrom) : undefined,
+receivedTo ? lte(jobs.firstSeenAt, receivedTo) : undefined,
+);
+const baseCondition = and(publicationCondition, ingestionCondition, receivedCondition);
 const linkedInCondition = and(baseCondition, like(jobs.url, "%linkedin.com%"));
 const apinfoCondition = and(
 baseCondition,
@@ -136,7 +155,10 @@ workMode: jobs.workMode,
 location: jobs.location,
 stack: jobs.stack,
 publishedAt: sql<Date>`coalesce(${jobs.publishedAt}, ${jobs.firstSeenAt})`,
+sourcePublishedAt: jobs.sourcePublishedAt,
 firstSeenAt: jobs.firstSeenAt,
+ingestionMode: jobs.ingestionMode,
+sourceName: jobSources.name,
 url: jobs.url,
 applyUrl: jobs.applyUrl,
 contactEmail: jobs.contactEmail,
@@ -146,7 +168,7 @@ description: degradedMode
 : requiresPostFiltering
 ? sql<string>`substr(${jobs.description}, 1, ${FILTER_DESCRIPTION_CHARS})`
 : sql<string>`substr(${jobs.description}, 1, ${LIST_DESCRIPTION_CHARS})`,
-}).from(jobs).where(condition).orderBy(
+}).from(jobs).leftJoin(jobSources, eq(jobs.sourceId, jobSources.id)).where(condition).orderBy(
 sort === "imported" ? desc(jobs.firstSeenAt) : desc(jobs.publishedAt),
 desc(jobs.createdAt),
 );
