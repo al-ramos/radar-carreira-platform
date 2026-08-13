@@ -70,15 +70,16 @@ test("vaga sem score não recebe veredito de aderência na lista", async () => {
   assert.match(dashboard, /O veredito só complementa uma aderência calculada/);
 });
 
-test("contato existente bloqueia nova captura e a espera possui timeout", async () => {
+test("contato existente vira ação de cópia e a espera da captura possui timeout", async () => {
   const [dashboard, route, bridge] = await Promise.all([
     read("../app/Dashboard.tsx"),
     read("../app/api/jobs/[id]/contact/route.ts"),
     read("../extensao-apinfo/radar-bridge.js"),
   ]);
   assert.match(dashboard, /if \(job\.contactEmail\)/);
-  assert.match(dashboard, /contactCapturing \|\| Boolean\(selectedJob\.contactEmail\)/);
-  assert.match(dashboard, /E-mail cadastrado/);
+  assert.match(dashboard, /disabled=\{contactCapturing\}/);
+  assert.match(dashboard, /Copiar e-mail/);
+  assert.match(dashboard, /navigator\.clipboard\.writeText\(selectedJob\.contactEmail\)/);
   assert.doesNotMatch(dashboard, /Recapturar e-mail/);
   assert.match(dashboard, /12_000/);
   assert.match(route, /isNull\(jobs\.contactEmail\)/);

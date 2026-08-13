@@ -123,6 +123,8 @@ test("análise personalizada persiste somente vagas elegíveis e prepara orçame
   assert.match(profile, /Limite mensal de tokens/);
   assert.match(dashboard, /persistJobAnalysis/);
   assert.match(dashboard, /Abrir no Outlook/);
+  assert.match(dashboard, /window\.location\.href = mailto/);
+  assert.doesNotMatch(dashboard, /await updateApplicationStatus\(selectedJob, "generated"\)/);
   assert.match(dashboard, /Esta análise é apenas explicativa e não foi adicionada ao acompanhamento/);
   assert.doesNotMatch(dashboard, /updateStage\(selectedJob\.id, "applied"/);
   assert.match(schema, /userJobAnalyses/);
@@ -157,7 +159,7 @@ test("candidatura distingue mensagem gerada, envio e resposta com datas própria
   assert.match(dashboard, /Mensagem gerada/);
   assert.match(dashboard, /Marcar como enviada/);
   assert.match(dashboard, /Registrar resposta/);
-  assert.match(dashboard, /await updateApplicationStatus\(selectedJob, "generated"\)/);
+  assert.match(dashboard, /void updateApplicationStatus\(selectedJob, "generated"\)/);
   assert.match(schema, /applicationStatus/);
   assert.match(schema, /generatedAt/);
   assert.match(schema, /sentAt/);

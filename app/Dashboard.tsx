@@ -2195,14 +2195,10 @@ export default function Dashboard() {
                   {analysisSaving ? "Registrando análise…" : analysisOpen ? "✕ Fechar análise" : "🔍 Analisar candidatura"}
                 </button>
                 <button
+                  type="button"
                   className="primary-job-action"
-                  disabled={selectedJobRejected}
-                  title={selectedJobRejected ? `${selectedJobVerdict?.emoji} ${selectedJobVerdict?.label}: candidatura não recomendada pelas regras do seu perfil` : "Abrir candidatura"}
-                  onClick={async () => {
-                    if (selectedJobRejected) {
-                      setMessage("Esta vaga não está elegível para candidatura segundo as regras do seu perfil.");
-                      return;
-                    }
+                  title={selectedJobRejected ? `${selectedJobVerdict?.emoji} ${selectedJobVerdict?.label}: abrir mesmo assim` : "Abrir candidatura"}
+                  onClick={() => {
                     // applyUrl (quando presente) é o link que de fato abre a
                     // vaga/candidatura — url pode ser só uma referência
                     // estável (ex.: busca por código no APinfo), usada para
@@ -2224,17 +2220,27 @@ export default function Dashboard() {
                 </button>
                 {isApinfoJob(selectedJob) && (
                   <button
+                    type="button"
                     className="analysis-toggle-btn"
-                    disabled={contactCapturing || Boolean(selectedJob.contactEmail)}
+                    disabled={contactCapturing}
                     title={
                       selectedJob.contactEmail
-                        ? `Contato já cadastrado: ${selectedJob.contactEmail}`
+                        ? `Copiar ${selectedJob.contactEmail}`
                         : "Clique em Candidatar, faça login no APinfo até ver Empresa/Email na tela, e clique aqui"
                     }
-                    onClick={() => captureApinfoContact(selectedJob)}
+                    onClick={() => {
+                      if (selectedJob.contactEmail) {
+                        void navigator.clipboard.writeText(selectedJob.contactEmail).then(
+                          () => setMessage(`E-mail copiado: ${selectedJob.contactEmail}`),
+                          () => setMessage(`E-mail cadastrado: ${selectedJob.contactEmail}`),
+                        );
+                        return;
+                      }
+                      captureApinfoContact(selectedJob);
+                    }}
                   >
                     {selectedJob.contactEmail
-                      ? "E-mail cadastrado"
+                      ? "Copiar e-mail"
                       : contactCapturing
                         ? "Capturando…"
                         : "Capturar e-mail"}
@@ -2242,14 +2248,17 @@ export default function Dashboard() {
                 )}
                 {selectedJob.contactEmail && (
                   <button
+                    type="button"
                     className="primary-job-action"
-                    disabled={selectedJobRejected}
-                    title={selectedJobRejected ? "E-mail indisponível para vagas com veredito Não bate ou Bloqueador" : `Abre seu cliente de e-mail com mensagem pronta para ${selectedJob.contactEmail}`}
-                    onClick={async () => {
+                    title={`Abre seu cliente de e-mail com mensagem pronta para ${selectedJob.contactEmail}`}
+                    onClick={() => {
                       const mailto = buildContactMailto(selectedJob);
                       if (mailto) {
-                        await updateApplicationStatus(selectedJob, "generated");
-                        open(mailto, "_blank");
+                        // O cliente de e-mail precisa ser acionado durante o
+                        // clique. Se aguardarmos a gravação no servidor, o
+                        // navegador pode interpretar a abertura como popup.
+                        window.location.href = mailto;
+                        void updateApplicationStatus(selectedJob, "generated");
                       }
                     }}
                   >
