@@ -28,6 +28,10 @@ test("a listagem pagina no D1 antes de enriquecer o fluxo normal", async () => {
 test("a coleta agendada processa apenas uma fonte por chamada", async () => {
   const route = await read("../app/api/cron/collect/route.ts");
   assert.match(route, /const BATCH_SIZE = 1/);
+  assert.match(route, /const LOOKUP_BATCH_SIZE = 100/);
+  assert.match(route, /const WRITE_BATCH_SIZE = 50/);
+  assert.match(route, /await getDb\(\)\.batch\(statements/);
+  assert.doesNotMatch(route, /await getDb\(\)\.select\(\{ id: jobs\.id \}\)/);
 });
 
 test("falha da API não exibe as quatro vagas demonstrativas", async () => {

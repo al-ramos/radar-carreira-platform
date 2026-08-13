@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, inArray } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getDb } from "../../../../db/index";
 import { importRuns, jobSources, jobs, platformSettings } from "../../../../db/schema";
@@ -8,6 +8,13 @@ import { fingerprint, recordedJobDate } from "../../../../lib/jobs";
 export const dynamic = "force-dynamic";
 
 const BATCH_SIZE = 1;
+const LOOKUP_BATCH_SIZE = 100;
+const WRITE_BATCH_SIZE = 50;
+
+const chunks = <T,>(values: T[], size: number) =>
+  Array.from({ length: Math.ceil(values.length / size) }, (_, index) =>
+    values.slice(index * size, (index + 1) * size),
+  );
 
 export async function POST(request: Request) {
   if (request.headers.get("x-radar-collector-authenticated") !== "1") {
@@ -40,22 +47,40 @@ export async function POST(request: Request) {
       let sourceInserted = 0;
       let sourceUpdated = 0;
 
-      for (const job of found) {
+      // Uma fonte pode devolver centenas de vagas. Consultar e gravar cada
+      // item isoladamente esgota o tempo do Worker e derruba a próxima fonte
+      // com 500/503. Mantemos a coleta em uma fonte por chamada, mas usamos
+      // leituras e escritas D1 em lote dentro dela.
+      const entries = [...new Map(found.map((job) => [fingerprint(job), job])).entries()]
+        .map(([jobFingerprint, job]) => ({ jobFingerprint, job }));
+      const existing = new Set<string>();
+      for (const fingerprintBatch of chunks(entries.map((entry) => entry.jobFingerprint), LOOKUP_BATCH_SIZE)) {
+        const rows = await getDb()
+          .select({ fingerprint: jobs.fingerprint })
+          .from(jobs)
+          .where(inArray(jobs.fingerprint, fingerprintBatch));
+        rows.forEach((row) => existing.add(row.fingerprint));
+      }
+
+      for (const entryBatch of chunks(entries, WRITE_BATCH_SIZE)) {
         const now = new Date();
-        const jobFingerprint = fingerprint(job);
-        const existing = (await getDb().select({ id: jobs.id }).from(jobs).where(eq(jobs.fingerprint, jobFingerprint)).limit(1))[0];
-        const values = {
-          id: existing?.id ?? crypto.randomUUID(), fingerprint: jobFingerprint, sourceId: source.id,
-          externalId: job.externalId ?? null, company: job.company, title: job.title, seniority: job.seniority ?? null,
-          workMode: job.workMode ?? null, location: job.location ?? null, stack: JSON.stringify(job.stack ?? []),
-          publishedAt: recordedJobDate(job.publishedAt, now), url: job.url, description: job.description ?? "",
-          firstSeenAt: now, lastSeenAt: now, status: "active" as const, createdAt: now, updatedAt: now,
-        };
-        await getDb().insert(jobs).values(values).onConflictDoUpdate({
-          target: jobs.fingerprint,
-          set: { sourceId: source.id, title: values.title, location: values.location, workMode: values.workMode, publishedAt: values.publishedAt, url: values.url, description: values.description, lastSeenAt: now, status: "active", updatedAt: now },
+        const statements = entryBatch.map(({ job, jobFingerprint }) => {
+          const values = {
+            id: crypto.randomUUID(), fingerprint: jobFingerprint, sourceId: source.id,
+            externalId: job.externalId ?? null, company: job.company, title: job.title, seniority: job.seniority ?? null,
+            workMode: job.workMode ?? null, location: job.location ?? null, stack: JSON.stringify(job.stack ?? []),
+            publishedAt: recordedJobDate(job.publishedAt, now), url: job.url, description: job.description ?? "",
+            firstSeenAt: now, lastSeenAt: now, status: "active" as const, createdAt: now, updatedAt: now,
+          };
+          return getDb().insert(jobs).values(values).onConflictDoUpdate({
+            target: jobs.fingerprint,
+            set: { sourceId: source.id, title: values.title, location: values.location, workMode: values.workMode, publishedAt: values.publishedAt, url: values.url, description: values.description, lastSeenAt: now, status: "active", updatedAt: now },
+          });
         });
-        if (existing) sourceUpdated++; else sourceInserted++;
+        if (statements.length) {
+          await getDb().batch(statements as [typeof statements[number], ...typeof statements[number][]]);
+        }
+        entryBatch.forEach((entry) => existing.has(entry.jobFingerprint) ? sourceUpdated++ : sourceInserted++);
       }
 
       inserted += sourceInserted;
