@@ -8,7 +8,7 @@ import {
   localSessionCookieOptions,
 } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db";
-import { localAccounts, profiles } from "../../../../db/schema";
+import { localAccounts, platformSettings, profiles } from "../../../../db/schema";
 
 export const dynamic = "force-dynamic";
 
@@ -28,11 +28,12 @@ export async function POST(request: Request) {
 
   const credentials = await hashLocalPassword(password);
   const now = new Date();
+  const settings = (await db.select({ defaultMinScore: platformSettings.defaultMinScore }).from(platformSettings).where(eq(platformSettings.id, "global")).limit(1))[0];
   const account = { userId: `local-${crypto.randomUUID()}`, email, name, ...credentials };
   await db.insert(localAccounts).values({ ...account, createdBy: null, createdAt: now, updatedAt: now });
   await db.insert(profiles).values({
     userId: account.userId, email, name, role: "user", seniority: null, preferredMode: null,
-    cities: "[]", masteredSkills: "[]", desiredAreas: "[]", avoidTerms: "[]", minScore: 60, updatedAt: now,
+    cities: "[]", masteredSkills: "[]", desiredAreas: "[]", avoidTerms: "[]", minScore: settings?.defaultMinScore ?? 70, updatedAt: now,
   });
 
   const session = await createLocalUserSession(account, password);

@@ -1,6 +1,6 @@
 import { and,desc,eq,like,or } from "drizzle-orm";
 import { getDb } from "../../../../db/index";
-import { importRuns,jobEvents,jobSources,jobs,userJobStatus } from "../../../../db/schema";
+import { importRuns,jobEvents,jobSources,jobs,platformSettings,userJobStatus } from "../../../../db/schema";
 import { applicationFromEmail,jobsFromEmail,type RadarEmail } from "../../../../lib/email-jobs";
 import { fingerprint } from "../../../../lib/jobs";
 import { enrichLinkedInJobs } from "../../../../lib/enrichment";
@@ -13,6 +13,8 @@ export async function POST(request:Request){
   const provided=request.headers.get("authorization")?.replace(/^Bearer\s+/i,"")??"",db=getDb(),source=(await db.select().from(jobSources).where(eq(jobSources.id,"gmail-radarvagas")).limit(1))[0];
   let config:{hash:string;userId:string}|null=null;try{config=source?JSON.parse(source.externalRef):null}catch{config=null}
   if(!config||!provided||await digest(provided)!==config.hash)return Response.json({error:"Não autorizado"},{status:401});
+  const settings=(await db.select({emailEnabled:platformSettings.emailImportEnabled,enrichmentEnabled:platformSettings.enrichmentEnabled}).from(platformSettings).where(eq(platformSettings.id,"global")).limit(1))[0];
+  if(settings&&!settings.emailEnabled)return Response.json({ok:true,skipped:true,message:"Importação por e-mail pausada pelo administrador"});
   const payload=await request.json() as {label?:string;messages?:RadarEmail[]};
   if(payload.label!=="RadarVagas"||!Array.isArray(payload.messages))return Response.json({error:"Etiqueta RadarVagas obrigatória"},{status:400});
   const imported=payload.messages.flatMap(jobsFromEmail),runId=crypto.randomUUID(),now=new Date();
@@ -38,6 +40,6 @@ export async function POST(request:Request){
   }
   for(const email of payload.messages){const signal=applicationFromEmail(email);if(!signal)continue;const condition=signal.title&&signal.company?and(like(jobs.title,`%${signal.title}%`),like(jobs.company,`%${signal.company}%`)):signal.title?like(jobs.title,`%${signal.title}%`):signal.company?like(jobs.company,`%${signal.company}%`):null;if(!condition)continue;const matches=await db.select({id:jobs.id}).from(jobs).where(condition).orderBy(desc(jobs.updatedAt)).limit(2);if(matches.length!==1)continue;const jobId=matches[0].id;await db.insert(userJobStatus).values({userId:config.userId,jobId,stage:signal.stage,note:signal.detail,updatedAt:new Date(email.date)}).onConflictDoUpdate({target:[userJobStatus.userId,userJobStatus.jobId],set:{stage:signal.stage,note:signal.detail,updatedAt:new Date(email.date)}});await db.insert(jobEvents).values({jobId,type:signal.type,detail:signal.detail,occurredAt:new Date(email.date)});events++}
   await db.update(importRuns).set({status:"completed",inserted,updated,finishedAt:new Date()}).where(eq(importRuns.id,runId));
-  const enriched=await enrichLinkedInJobs();
+  const enriched=settings?.enrichmentEnabled===false?0:await enrichLinkedInJobs();
   return Response.json({ok:true,emails:payload.messages.length,jobs:imported.length,inserted,updated,pipelineEvents:events,enriched});
 }

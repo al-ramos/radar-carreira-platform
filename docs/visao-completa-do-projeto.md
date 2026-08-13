@@ -480,7 +480,7 @@ A base contém testes para:
 - paginação e limites de recursos do Worker;
 - período padrão e busca por código.
 
-`npm test` executa build e testes `*.test.mjs`. A integração RBAC roda separadamente com loaders que simulam bindings Cloudflare e usa as migrations reais `0010`/`0011`.
+`npm test` executa build e testes `*.test.mjs`. A integração RBAC usa loaders que simulam bindings Cloudflare e as migrations reais `0010`/`0011`; a esteira executa ambas as suítes antes da publicação.
 
 ## 15. Pontos de atenção confirmados
 
@@ -488,18 +488,14 @@ Estes itens foram observados no código atual e devem orientar próximas decisõ
 
 | Prioridade | Ponto | Impacto |
 |---|---|---|
-| Alta | `POST /api/admin/report` exige autenticação, mas não verifica `report.export` | o catálogo RBAC promete uma restrição que a rota não aplica |
-| Alta | `offer` aparece no pipeline aceito e nas métricas, mas não no enum Drizzle de `user_job_status.stage` | modelo, API e métricas não compartilham o mesmo conjunto formal de etapas |
-| Alta | exclusão de vagas remove pipeline, leituras e eventos, mas não remove explicitamente análises, fatos de IA e entregas antes de `jobs` | FKs sem cascade podem bloquear exclusões de vagas já analisadas |
 | Média | grupos, `user_roles`, `user_groups` e `access_audit_log` existem no banco, porém não há rotas/UI de atribuição nem gravação de auditoria de acesso | RBAC granular está parcialmente operacional, não administrável de ponta a ponta |
-| Média | `platform_settings.emailImportEnabled`, `enrichmentEnabled` e `retentionDays` são editáveis, mas os respectivos fluxos não consultam todos esses valores | parte da tela de parâmetros funciona como configuração declarativa, sem efeito completo |
-| Média | convite e cadastro aceitam senha de 4 caracteres, enquanto o bootstrap exige 8 e o planejamento antigo cita 12 | política de senha inconsistente entre fluxos e documentação histórica |
 | Média | cache de fatos de IA é global por vaga, mas o consumo é atribuído apenas ao usuário que gerou o cache | usuários seguintes recebem o resultado sem novo evento de consumo; comportamento é eficiente, mas deve ser política explícita |
-| Média | filtro com score/veredito calcula no máximo 150 candidatos antes de paginar | resultados muito extensos podem ter total/páginas limitados nesse modo |
-| Média | `test:rbac-integration` forma o caminho `C:\\C:\\...` nos loaders quando executado neste Windows com Node 24 | a suíte de integração não inicia nesse ambiente, embora os 57 testes regulares e o build passem |
-| Baixa | README da extensão informa versão 1.5.1, mas o manifesto está em 1.6.2 | documentação local da extensão está desatualizada |
-| Baixa | `defaultMinScore` global é configurável, porém a listagem usa o score solicitado/perfil e não esse valor como fallback | parâmetro pode não produzir o efeito esperado no Radar |
+| Média | coletas gerais não possuem trava explícita de concorrência e falhas consecutivas aparecem no monitor sem alerta proativo | execuções sobrepostas ou falhas não observadas podem degradar a operação |
+| Média | a coleta manual de ATS ainda consulta e grava cada vaga individualmente | fontes grandes podem consumir mais tempo e operações D1 que a coleta agendada em lotes |
+| Média | a validação integrada manual da extensão LinkedIn 2.2.0 ainda precisa registrar aceitas, rejeitadas, novas e atualizadas | os testes automatizados cobrem as regras, mas não substituem a confirmação do fluxo real no navegador |
 | Baixa | health verifica banco; não verifica ATS, Gmail, IA nem secrets | “healthy” significa essencialmente D1 disponível |
+
+Itens concluídos no ciclo de 13/08/2026: `report.export`, alinhamento de `offer`, exclusão referencial de IA, efeito integral das configurações operacionais, senha mínima unificada em 8 caracteres para novos cadastros/convites/bootstrap, paginação pós-filtro sem teto fixo de 150 candidatas, loader RBAC compatível com Windows/Node.js 24, documentação APinfo 1.6.2, backup ampliado e execução da suíte regular completa mais integração RBAC na esteira.
 
 ### Limitações assumidas pelo desenho
 

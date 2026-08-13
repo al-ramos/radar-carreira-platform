@@ -2414,6 +2414,7 @@ export default function Dashboard() {
                     saved: "🔖 Salva",
                     applied: "📨 Candidatura",
                     interview: "🗓 Entrevista",
+                    offer: "🎉 Oferta",
                     rejected: "✕ Encerrada",
                     archived: "✕ Encerrada",
                   };
@@ -2438,6 +2439,7 @@ export default function Dashboard() {
                         <option value="saved">🔖 Salvar</option>
                         <option value="applied">📨 Candidatura</option>
                         <option value="interview">🗓 Entrevista</option>
+                        <option value="offer">🎉 Oferta</option>
                         <option value="rejected">✕ Encerrar</option>
                       </select>
                     </div>

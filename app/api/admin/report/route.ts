@@ -2,6 +2,7 @@ import { eq, inArray } from "drizzle-orm";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db/index";
 import { jobs, jobSources, userJobStatus } from "../../../../db/schema";
+import { can } from "../../../../lib/rbac";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +24,8 @@ export async function POST(request: Request) {
   const user = await getChatGPTUser();
   if (!user)
     return Response.json({ error: "Autenticação necessária" }, { status: 401 });
+  if (!await can(user, "report.export"))
+    return Response.json({ error: "Sem permissão para exportar relatórios" }, { status: 403 });
 
   let body: { rows?: ReportRow[] };
   try {

@@ -287,7 +287,7 @@ test("rota /api/admin/settings: GET exige settings.view, PUT exige settings.edit
 
 test("rota /api/admin/backup (backup.export): nega quem não tem a permissão, concede a quem tem", async () => {
   const routeSource = await readFile(new URL("../app/api/admin/backup/route.ts", import.meta.url), "utf8");
-  assert.match(routeSource, /await can\(u,\s*"backup\.export"\)/);
+  assert.match(routeSource, /await can\((?:u|user),\s*"backup\.export"\)/);
   assert.doesNotMatch(routeSource, /profile\?\.role|p\?\.role/);
 
   const sqlite = getRawSqlite();

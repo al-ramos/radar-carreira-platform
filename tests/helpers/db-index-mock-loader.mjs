@@ -1,7 +1,5 @@
-import { pathToFileURL } from "node:url";
-
 const DB_INDEX_SPECIFIER_RE = /\/db\/index(\.(ts|js))?$/;
-const FAKE_DB_INDEX_URL = pathToFileURL(new URL("./fake-db-index.mjs", import.meta.url).pathname).href;
+const FAKE_DB_INDEX_URL = new URL("./fake-db-index.mjs", import.meta.url).href;
 
 export async function resolve(specifier, context, nextResolve) {
   if (DB_INDEX_SPECIFIER_RE.test(specifier)) {

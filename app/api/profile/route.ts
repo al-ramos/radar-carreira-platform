@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getDb } from "../../../db/index";
-import { profiles } from "../../../db/schema";
+import { platformSettings, profiles } from "../../../db/schema";
 import { allowedWorkModes, listFromStored, normalizeCareerRules, normalizeMinScore } from "../../../lib/profile-options";
 import { getChatGPTUser } from "../../chatgpt-auth";
 
@@ -13,7 +13,8 @@ export async function GET() {
   const db = getDb();
   let profile = (await db.select().from(profiles).where(eq(profiles.userId, user.userId)).limit(1))[0];
   if (!profile) {
-    profile = { userId: user.userId, email: user.email, name: user.fullName, role: "user", seniority: null, preferredMode: null, cities: "[]", masteredSkills: "[]", desiredAreas: "[]", avoidTerms: "[]", minScore: 60, careerRules: "{}", updatedAt: new Date() };
+    const settings = (await db.select({ defaultMinScore: platformSettings.defaultMinScore }).from(platformSettings).where(eq(platformSettings.id, "global")).limit(1))[0];
+    profile = { userId: user.userId, email: user.email, name: user.fullName, role: "user", seniority: null, preferredMode: null, cities: "[]", masteredSkills: "[]", desiredAreas: "[]", avoidTerms: "[]", minScore: settings?.defaultMinScore ?? 70, careerRules: "{}", updatedAt: new Date() };
     await db.insert(profiles).values(profile);
   }
   return NextResponse.json({ user: { ...user, role: profile.role }, profile: { ...profile, seniority: listFromStored(profile.seniority), preferredMode: allowedWorkModes(profile.preferredMode), masteredSkills: listFromStored(profile.masteredSkills), desiredAreas: listFromStored(profile.desiredAreas), avoidTerms: listFromStored(profile.avoidTerms), careerRules: normalizeCareerRules(profile.careerRules) } });

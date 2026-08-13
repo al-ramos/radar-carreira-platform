@@ -32,8 +32,10 @@ jobs:
         run: npm run build
       - name: Validar código
         run: npm run lint
-      - name: Executar testes
-        run: node --test tests/rendered-html.test.mjs
+      - name: Executar suíte regular completa
+        run: node --test tests/*.test.mjs
+      - name: Executar integração RBAC
+        run: npm run test:rbac-integration
 
   deploy:
     name: Publicar no Cloudflare

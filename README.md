@@ -111,9 +111,7 @@ npm run lint
 npm run db:generate
 ```
 
-`npm test` executa o build e a suíte regular, que combina testes de regras de negócio com verificações estruturais do código. `npm run test:rbac-integration` é separado: chama `can()` de `lib/rbac.ts` contra SQLite real em memória (`node:sqlite`), populado com as migrations `0010`/`0011`, usando loaders que simulam `cloudflare:workers` e o binding D1.
-
-No Windows com Node.js 24, os loaders atuais podem montar um caminho inválido no formato `C:\C:\...`; o fluxo oficialmente configurado usa Node.js 22.
+`npm test` executa o build e a suíte regular, que combina testes de regras de negócio com verificações estruturais do código. `npm run test:rbac-integration` chama `can()` de `lib/rbac.ts` contra SQLite real em memória (`node:sqlite`), populado com as migrations `0010`/`0011`, usando loaders que simulam `cloudflare:workers` e o binding D1. A esteira executa as duas suítes; o ambiente oficial continua usando Node.js 22 e os loaders também são compatíveis com Node.js 24 no Windows.
 
 ## Banco de dados
 
@@ -242,16 +240,14 @@ Já implantado:
 
 Pontos de atenção confirmados no código atual:
 
-1. aplicar `report.export` à rota de relatório, que hoje exige autenticação, mas não essa permissão RBAC;
-2. alinhar a etapa `offer` entre API, métricas e enum principal do pipeline;
-3. garantir exclusão referencial de análises e fatos de IA ao remover vagas;
-4. concluir a administração de grupos, atribuições de roles e auditoria de acesso;
-5. fazer `emailImportEnabled`, `enrichmentEnabled`, `retentionDays` e `defaultMinScore` produzirem efeito integral;
-6. unificar a política mínima de senha entre cadastro, convite e bootstrap;
-7. eliminar o limite prático de 150 candidatas em filtros que exigem score/veredito;
-8. corrigir os loaders da integração RBAC no Windows/Node.js 24;
-9. atualizar a documentação da extensão APinfo da versão 1.5.1 para o manifesto 1.6.2;
-10. ampliar o backup, que hoje é operacional e não inclui perfis, pipeline, RBAC, análises ou consumo de IA.
+1. concluir a administração de grupos, atribuições de roles e auditoria de acesso;
+2. definir explicitamente a política de contabilização quando outro usuário reutiliza fatos de IA já armazenados em cache;
+3. ampliar o diagnóstico de saúde além do banco D1, incluindo integrações e configurações essenciais;
+4. bloquear coletas gerais concorrentes e alertar administradores após falhas consecutivas;
+5. processar também a coleta manual de ATS em lotes;
+6. concluir a validação operacional manual da extensão LinkedIn 2.2.0 e registrar aceitas, rejeitadas, novas e atualizadas.
+
+Concluídos neste ciclo: permissão `report.export`, etapa `offer`, limpeza referencial de IA, efeito das configurações operacionais, política mínima de 8 caracteres para novas senhas, filtros sem teto fixo de 150 candidatas, loaders RBAC no Windows/Node.js 24, documentação APinfo 1.6.2, backup funcional/RBAC ampliado e execução das duas suítes na esteira.
 
 Consulte a [visão completa do projeto](docs/visao-completa-do-projeto.md) para o inventário das APIs, todas as regras, limitações e diagramas de arquitetura.
 

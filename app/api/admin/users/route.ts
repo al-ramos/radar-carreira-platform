@@ -2,7 +2,7 @@ import { desc, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser, hashLocalPassword, LOCAL_PASSWORD_MIN_LENGTH } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db/index";
-import { localAccounts, profiles, userJobStatus } from "../../../../db/schema";
+import { localAccounts, platformSettings, profiles, userJobStatus } from "../../../../db/schema";
 import { listFromStored } from "../../../../lib/profile-options";
 import { can } from "../../../../lib/rbac";
 
@@ -76,6 +76,7 @@ export async function POST(request: Request) {
   const passwordData = await hashLocalPassword(password);
   const now = new Date();
   const userId = `local-${crypto.randomUUID()}`;
+  const settings = (await db.select({ defaultMinScore: platformSettings.defaultMinScore }).from(platformSettings).where(eq(platformSettings.id, "global")).limit(1))[0];
   await db.insert(localAccounts).values({
     userId,
     email,
@@ -96,7 +97,7 @@ export async function POST(request: Request) {
     masteredSkills: "[]",
     desiredAreas: "[]",
     avoidTerms: "[]",
-    minScore: 60,
+    minScore: settings?.defaultMinScore ?? 70,
     updatedAt: now,
   });
   return NextResponse.json({ ok: true, userId }, { status: 201 });
