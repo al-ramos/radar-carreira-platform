@@ -123,6 +123,30 @@ type ImportRunOption = { id: string; source: string; sourceId?: string | null; c
 type JobFilterOptions = { sources: FilterOption[]; areas: FilterOption[]; channels: FilterOption[]; importRuns: ImportRunOption[] };
 const JOBS_FETCH_ATTEMPTS = 2;
 const JOBS_RETRY_BASE_DELAY_MS = 350;
+const PROFILE_FETCH_TIMEOUT_MS = 8_000;
+const JOBS_FETCH_TIMEOUT_MS = 10_000;
+
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+  timeoutMs = JOBS_FETCH_TIMEOUT_MS,
+) {
+  const controller = new AbortController();
+  const parentSignal = init.signal;
+  const abortFromParent = () => controller.abort(parentSignal?.reason);
+  if (parentSignal?.aborted) abortFromParent();
+  else parentSignal?.addEventListener("abort", abortFromParent, { once: true });
+  const timer = window.setTimeout(
+    () => controller.abort(new DOMException("Tempo limite excedido", "TimeoutError")),
+    timeoutMs,
+  );
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    window.clearTimeout(timer);
+    parentSignal?.removeEventListener("abort", abortFromParent);
+  }
+}
 
 function waitForRetry(delayMs: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -138,7 +162,7 @@ async function fetchJobsWithRetry(url: string, signal: AbortSignal) {
   let lastError: unknown;
   for (let attempt = 0; attempt < JOBS_FETCH_ATTEMPTS; attempt += 1) {
     try {
-      const response = await fetch(url, { cache: "no-store", signal });
+      const response = await fetchWithTimeout(url, { cache: "no-store", signal });
       if (response.ok) return response.json();
       throw new Error(`Falha ao carregar vagas (HTTP ${response.status})`);
     } catch (error) {
@@ -152,7 +176,7 @@ async function fetchJobsWithRetry(url: string, signal: AbortSignal) {
   const fallbackUrl = new URL(url, window.location.origin);
   fallbackUrl.searchParams.set("degraded", "1");
   try {
-    const fallbackResponse = await fetch(fallbackUrl, { cache: "no-store", signal });
+    const fallbackResponse = await fetchWithTimeout(fallbackUrl, { cache: "no-store", signal });
     if (fallbackResponse.ok) return fallbackResponse.json();
   } catch (error) {
     if (signal.aborted) throw error;
@@ -449,7 +473,10 @@ export default function Dashboard() {
     [importCount, setImportCount] = useState(0),
     [message, setMessage] = useState(""),
     [sourceVersion, setSourceVersion] = useState(0),
-    [jobsRefreshVersion, setJobsRefreshVersion] = useState(0);
+    [jobsRefreshVersion, setJobsRefreshVersion] = useState(0),
+    [profileRefreshVersion, setProfileRefreshVersion] = useState(0),
+    [profileLoadFailed, setProfileLoadFailed] = useState(false),
+    [loadError, setLoadError] = useState<string | null>(null);
   const [slugWarning, setSlugWarning] = useState<string[] | null>(null);
   const [collectionResults, setCollectionResults] = useState<
     CollectionOutcome[]
@@ -647,7 +674,7 @@ export default function Dashboard() {
     [period, sourceFilter, areaFilter, channelFilter, importRunFilter, ingestionMode, receivedFrom, receivedTo, debouncedQuery, effectiveMinScore, pipelineFilter, verdictFilter, simplifiedList, sortOrder],
   );
   useEffect(() => {
-    if (!profileReady) return;
+    if (!profileReady || profileLoadFailed) return;
     const controller = new AbortController();
     let staleRetryTimer: ReturnType<typeof setTimeout> | null = null;
     fetchJobsWithRetry(`/api/jobs?${buildJobsParams(1)}`, controller.signal)
@@ -678,6 +705,7 @@ export default function Dashboard() {
         setPeriod((current) => current ?? String(data.period ?? "24"));
         setSimplifiedList(Boolean(data.degraded));
         setMode("database");
+        setLoadError(null);
         staleRetryCountRef.current = 0;
         setMessage((current) => {
           if (data.degraded) {
@@ -704,17 +732,24 @@ export default function Dashboard() {
           return;
         }
         setMode("unavailable");
+        setLoadError("Não foi possível carregar as vagas dentro do tempo esperado.");
         setMessage("O Radar está temporariamente indisponível. Tentaremos novamente automaticamente.");
+        if (staleRetryCountRef.current < 3) {
+          staleRetryCountRef.current += 1;
+          staleRetryTimer = setTimeout(() => setJobsRefreshVersion((version) => version + 1), 3_000);
+        }
       });
     return () => {
       controller.abort();
       if (staleRetryTimer) clearTimeout(staleRetryTimer);
     };
-  }, [period, sourceFilter, debouncedQuery, effectiveMinScore, pipelineFilter, verdictFilter, sortOrder, buildJobsParams, jobsRefreshVersion, profileReady]);
+  }, [period, sourceFilter, debouncedQuery, effectiveMinScore, pipelineFilter, verdictFilter, sortOrder, buildJobsParams, jobsRefreshVersion, profileReady, profileLoadFailed]);
   useEffect(() => {
-    fetch("/api/profile")
+    const controller = new AbortController();
+    fetchWithTimeout("/api/profile", { cache: "no-store", signal: controller.signal }, PROFILE_FETCH_TIMEOUT_MS)
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((data) => {
+        setProfileLoadFailed(false);
         setCurrentUser(data.user);
         setProfileMinScore(Number(data.profile?.minScore ?? 60));
         if (Array.isArray(data.profile?.masteredSkills)) {
@@ -733,7 +768,7 @@ export default function Dashboard() {
         }
         // Carrega pipeline automaticamente ao confirmar usuário autenticado
         if (data.user) {
-          fetch("/api/pipeline")
+          fetchWithTimeout("/api/pipeline", { cache: "no-store", signal: controller.signal }, PROFILE_FETCH_TIMEOUT_MS)
             .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
             .then((d) => setPipelineItems(d.items ?? []))
             .catch((err) => {
@@ -744,9 +779,18 @@ export default function Dashboard() {
             });
         }
       })
-      .catch(() => setCurrentUser(null))
-      .finally(() => setProfileReady(true));
-  }, []);
+      .catch((error) => {
+        if (controller.signal.aborted && error instanceof DOMException && error.name === "AbortError") return;
+        setCurrentUser(null);
+        setProfileLoadFailed(true);
+        setMode("unavailable");
+        setLoadError("Não foi possível carregar seu perfil dentro do tempo esperado.");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setProfileReady(true);
+      });
+    return () => controller.abort();
+  }, [profileRefreshVersion]);
   // Restaura scroll da lista após os jobs carregarem
   useEffect(() => {
     if (!items.length || mode === "preview") return;
@@ -1014,6 +1058,13 @@ export default function Dashboard() {
     setReceivedTo("");
     setPipelineFilter("all");
     setVerdictFilter("all");
+  }
+  function retryRadarLoad() {
+    setLoadError(null);
+    setMode("loading");
+    setProfileReady(false);
+    setProfileLoadFailed(false);
+    setProfileRefreshVersion((version) => version + 1);
   }
   async function goToJobsPage(page: number) {
     if (page === currentPage || page < 1) return;
@@ -1891,6 +1942,11 @@ export default function Dashboard() {
         {profileLoading ? (
           <div className="notice" role="status">
             Carregando seu perfil e calculando a aderência das vagas…
+          </div>
+        ) : mode === "unavailable" ? (
+          <div className="notice" role="alert">
+            <span>{loadError ?? "Não foi possível carregar o Radar."}</span>{" "}
+            <button type="button" onClick={retryRadarLoad}>Tentar novamente</button>
           </div>
         ) : personalizationUnavailable ? (
           <div className="notice" role="status">

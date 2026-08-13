@@ -7,7 +7,7 @@ const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 test("a listagem pagina no D1 antes de enriquecer o fluxo normal", async () => {
   const route = await read("../app/api/jobs/route.ts");
   assert.match(route, /rowsQuery\.limit\(limit\)\.offset\(offset\)/);
-  assert.match(route, /MAX_AFFINITY_CANDIDATES = 2_500/);
+  assert.match(route, /MAX_AFFINITY_CANDIDATES = 500/);
   assert.match(route, /rowsQuery\.limit\(MAX_AFFINITY_CANDIDATES\)/);
   assert.match(route, /profileAffinitySearchTerms/);
   assert.doesNotMatch(route, /while \(batch\.length/);
@@ -16,8 +16,8 @@ test("a listagem pagina no D1 antes de enriquecer o fluxo normal", async () => {
   assert.match(route, /LIST_DESCRIPTION_CHARS = 2_000/);
   assert.match(route, /FILTER_DESCRIPTION_CHARS = 1_000/);
   assert.match(route, /BASE_TECH_SCORE = 5/);
-  assert.match(route, /minScore > 0/);
-  assert.match(route, /sort === "score"/);
+  assert.match(route, /minScore > BASE_TECH_SCORE/);
+  assert.doesNotMatch(route, /requiresPostFiltering = .*sort === "score"/);
   assert.match(route, /substr\(\$\{jobs\.description\}/);
   assert.match(route, /const \[rows, eligibleTotals, sourceTotals,/);
   assert.match(route, /verdictFilter !== "all" && masteredSkills\.length/);
@@ -56,6 +56,9 @@ test("falha da API não exibe as quatro vagas demonstrativas", async () => {
   assert.match(dashboard, /useState<Job\[]>\(\[\]\)/);
   assert.match(dashboard, /setMode\("unavailable"\)/);
   assert.match(dashboard, /fetchJobsWithRetry/);
+  assert.match(dashboard, /fetchWithTimeout/);
+  assert.match(dashboard, /JOBS_FETCH_TIMEOUT_MS = 10_000/);
+  assert.match(dashboard, /PROFILE_FETCH_TIMEOUT_MS = 8_000/);
   assert.match(dashboard, /searchParams\.set\("degraded", "1"\)/);
   assert.match(dashboard, /modo simplificado/);
   assert.match(dashboard, /A lista anterior pode estar desatualizada/);
@@ -66,9 +69,11 @@ test("falha da API não exibe as quatro vagas demonstrativas", async () => {
   assert.match(dashboard, /j\.score >= visibleMinScore/);
   assert.match(dashboard, /simplifiedRetryCountRef\.current >= 3/);
   assert.match(dashboard, /fetchJobsWithRetry\(`\/api\/jobs\?\$\{buildJobsParams\(page\)\}/);
-  assert.match(dashboard, /if \(!profileReady\) return;/);
-  assert.match(dashboard, /finally\(\(\) => setProfileReady\(true\)\)/);
+  assert.match(dashboard, /if \(!profileReady \|\| profileLoadFailed\) return;/);
+  assert.match(dashboard, /if \(!controller\.signal\.aborted\) setProfileReady\(true\)/);
   assert.match(dashboard, /const profileLoading = !profileReady \|\| mode === "loading"/);
+  assert.match(dashboard, /Não foi possível carregar as vagas dentro do tempo esperado/);
+  assert.match(dashboard, /Tentar novamente/);
   assert.match(dashboard, /Seu perfil está salvo\. A lista está temporariamente sem aderência/);
   assert.match(dashboard, /Pontuação/);
   assert.match(dashboard, /Escolher aderência mínima ao seu perfil/);

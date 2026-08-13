@@ -13,7 +13,8 @@ test("filtro, ordenação, detalhe e explicação compartilham o score personali
   assert.match(dashboard, /params\.set\("sort", sortOrder === "recent" \? "imported" : "score"\)/);
   assert.match(dashboard, /event\.target\.checked \? "profile" : 0/);
   assert.match(dashboard, /analyzeStackFit\(detailJob\.stack, profileMasteredSkills\)\.missingSkills/);
-  assert.match(jobsRoute, /minScore > 0 \|\| verdictFilter !== "all" \|\| sort === "score"/);
+  assert.match(jobsRoute, /minScore > BASE_TECH_SCORE \|\| verdictFilter !== "all"/);
+  assert.match(jobsRoute, /filtered\.sort\(\(a, b\) => b\.score - a\.score\)/);
   assert.match(detailRoute, /scoreJob\(/);
   assert.match(detailRoute, /\.\.\.match/);
 });

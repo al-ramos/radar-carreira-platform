@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 
 // Uma única consulta evita repetir o mesmo filtro textual e a mesma ordenação
 // para cada lote, que estourava o tempo do Worker em perfis amplos.
-const MAX_AFFINITY_CANDIDATES = 2_500;
+const MAX_AFFINITY_CANDIDATES = 500;
 const LIST_DESCRIPTION_CHARS = 2_000;
 const FILTER_DESCRIPTION_CHARS = 1_000;
 // Toda vaga técnica começa com 5 pontos. Portanto, esse corte não precisa de
@@ -158,10 +158,10 @@ const pipelineCondition = pipelineFilter === "all"
 : pipelineFilter === "unseen"
 ? pipelineIds.length ? notInArray(jobs.id, pipelineIds) : undefined
 : stageIds.length ? inArray(jobs.id, stageIds) : eq(jobs.id, "__nenhuma_vaga__");
-// Corte, total, paginação e ordenação precisam partir do mesmo score. Mesmo
-// o corte de 5% exclui vagas não técnicas (score 0), e "Pontuação" deve ordenar
-// o conjunto candidato antes de paginar — não apenas os 50 itens da página.
-const requiresPostFiltering = minScore > 0 || verdictFilter !== "all" || sort === "score";
+// O cálculo global só é necessário quando um filtro realmente depende dele.
+// Ordenar a listagem padrão por score não pode materializar milhares de vagas
+// no Worker: a página consultada é pontuada e ordenada logo abaixo.
+const requiresPostFiltering = minScore > BASE_TECH_SCORE || verdictFilter !== "all";
 // O score depende do perfil e não existe como coluna no banco. Antes de
 // calculá-lo, reduzimos o universo com todos os sinais capazes de somar pontos.
 // A condição é deliberadamente ampla: pode trazer falsos positivos, mas nunca
