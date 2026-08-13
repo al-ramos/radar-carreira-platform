@@ -41,6 +41,74 @@ const chunks = <T,>(values: T[], size: number) =>
     values.slice(index * size, (index + 1) * size),
   );
 
+const count = (value: unknown) => Math.max(0, Math.min(1_000_000, Number(value) || 0));
+const collectorRunId = (value: unknown) => {
+  const candidate = String(value ?? "").trim();
+  return /^[a-zA-Z0-9-]{8,80}$/.test(candidate) ? candidate : crypto.randomUUID();
+};
+
+type CollectorStatusPayload = {
+  runId?: string;
+  status?: "running" | "completed" | "failed" | "needs_attention" | "cancelled";
+  received?: number;
+  inserted?: number;
+  updated?: number;
+  duplicates?: number;
+  error?: string;
+  startedAt?: string;
+  finishedAt?: string;
+};
+
+async function recordCollectorStatus(
+  db: ReturnType<typeof getDb>,
+  source: typeof jobSources.$inferSelect,
+  sourceId: string,
+  sourceName: string,
+  actorUserId: string,
+  statusPayload: CollectorStatusPayload,
+) {
+  const now = new Date();
+  const runId = collectorRunId(statusPayload.runId);
+  const reportedStatus = statusPayload.status ?? "running";
+  const status = reportedStatus === "completed" ? "completed" : reportedStatus === "running" ? "running" : "failed";
+  const startedAt = statusPayload.startedAt && !Number.isNaN(Date.parse(statusPayload.startedAt)) ? new Date(statusPayload.startedAt) : now;
+  const finishedAt = status === "running" ? null : statusPayload.finishedAt && !Number.isNaN(Date.parse(statusPayload.finishedAt)) ? new Date(statusPayload.finishedAt) : now;
+  const error = String(statusPayload.error || (reportedStatus === "cancelled" ? "Execução cancelada no navegador" : "")).slice(0, 300);
+  const values = {
+    id: runId,
+    source: sourceName,
+    status,
+    received: count(statusPayload.received),
+    inserted: count(statusPayload.inserted),
+    updated: count(statusPayload.updated),
+    duplicates: count(statusPayload.duplicates),
+    errors: status === "failed" ? 1 : 0,
+    actorUserId,
+    startedAt,
+    finishedAt,
+  };
+  await db.insert(importRuns).values(values).onConflictDoUpdate({
+    target: importRuns.id,
+    set: {
+      status: values.status,
+      received: values.received,
+      inserted: values.inserted,
+      updated: values.updated,
+      duplicates: values.duplicates,
+      errors: values.errors,
+      finishedAt: values.finishedAt,
+    },
+  });
+  if (status === "running") {
+    await db.update(jobSources).set({ lastAttemptAt: now }).where(eq(jobSources.id, sourceId));
+  } else if (status === "completed") {
+    await db.update(jobSources).set({ lastRunAt: now, lastSuccessAt: now, lastError: null, consecutiveFailures: 0 }).where(eq(jobSources.id, sourceId));
+  } else {
+    await db.update(jobSources).set({ lastRunAt: now, lastError: error || `Execução ${reportedStatus}`, consecutiveFailures: source.consecutiveFailures + 1 }).where(eq(jobSources.id, sourceId));
+  }
+  return { runId, status: reportedStatus, recorded: true };
+}
+
 function valuesFor(sourceId: string, job: ImportedJob, now: Date) {
   return {
     id: crypto.randomUUID(),
@@ -90,8 +158,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ sou
   if (!source || !source.enabled || !config.hash || config.hash !== (await digest(token)))
     return json({ error: "Chave do coletor inválida" }, { status: 401 });
 
-  const payload = (await request.json().catch(() => null)) as { action?: string; jobs?: unknown[] } | null;
+  const payload = (await request.json().catch(() => null)) as { action?: string; runId?: string; run?: CollectorStatusPayload; jobs?: unknown[] } | null;
   if (payload?.action === "test") return json({ ok: true, connected: true });
+  if (payload?.action === "status") {
+    return json({ ok: true, ...(await recordCollectorStatus(db, source, sourceId, sourceName, config.userId ?? "collector", payload.run ?? {})) });
+  }
   const items = normalizeImportedJobs(Array.isArray(payload?.jobs) ? payload.jobs : []);
   if (!items.length) return json({ error: "Nenhuma vaga válida recebida" }, { status: 400 });
   if (items.length > 2000) return json({ error: "O limite é de 2.000 vagas por envio" }, { status: 400 });
@@ -109,7 +180,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ sou
     job,
   }));
   const duplicateRows = filtered.accepted.length - entries.length;
-  const runId = crypto.randomUUID();
+  const runId = collectorRunId(payload?.runId);
   const startedAt = new Date();
   await db.insert(importRuns).values({
     id: runId,
@@ -119,6 +190,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ sou
     duplicates: duplicateRows,
     actorUserId: config.userId ?? "collector",
     startedAt,
+  }).onConflictDoUpdate({
+    target: importRuns.id,
+    set: { status: "running", received: items.length, duplicates: duplicateRows, errors: 0, finishedAt: null },
   });
 
   let inserted = 0;
@@ -126,8 +200,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ sou
   try {
     if (!entries.length) {
       await db.update(importRuns).set({ status: "completed", finishedAt: new Date() }).where(eq(importRuns.id, runId));
-      await db.update(jobSources).set({ lastRunAt: new Date() }).where(eq(jobSources.id, sourceId));
-      return json({ ok: true, accepted: 0, received: items.length, duplicates: 0, rejected: filtered.rejected, inserted: 0, updated: 0, requiredStacks: filtered.requiredStacks, stackMatchMode: filtered.stackMatchMode, message: "Nenhuma vaga atende ao perfil de stacks obrigatórias" });
+      const finishedAt = new Date();
+      await db.update(jobSources).set({ lastRunAt: finishedAt, lastSuccessAt: finishedAt, lastError: null, consecutiveFailures: 0 }).where(eq(jobSources.id, sourceId));
+      return json({ ok: true, runId, accepted: 0, received: items.length, duplicates: 0, rejected: filtered.rejected, inserted: 0, updated: 0, requiredStacks: filtered.requiredStacks, stackMatchMode: filtered.stackMatchMode, message: "Nenhuma vaga atende ao perfil de stacks obrigatórias" });
     }
     const existing = new Set<string>();
     for (const batch of chunks(entries.map((entry) => entry.fp), LOOKUP_BATCH_SIZE)) {
@@ -174,8 +249,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ sou
       .update(importRuns)
       .set({ status: "completed", inserted, updated, duplicates: duplicateRows, finishedAt: new Date() })
       .where(eq(importRuns.id, runId));
-    await db.update(jobSources).set({ lastRunAt: new Date() }).where(eq(jobSources.id, sourceId));
-    return json({ ok: true, accepted: filtered.accepted.length, received: items.length, duplicates: duplicateRows, rejected: filtered.rejected, inserted, updated, requiredStacks: filtered.requiredStacks, stackMatchMode: filtered.stackMatchMode });
+    const finishedAt = new Date();
+    await db.update(jobSources).set({ lastRunAt: finishedAt, lastSuccessAt: finishedAt, lastError: null, consecutiveFailures: 0 }).where(eq(jobSources.id, sourceId));
+    return json({ ok: true, runId, accepted: filtered.accepted.length, received: items.length, duplicates: duplicateRows, rejected: filtered.rejected, inserted, updated, requiredStacks: filtered.requiredStacks, stackMatchMode: filtered.stackMatchMode });
   } catch {
     await db
       .update(importRuns)

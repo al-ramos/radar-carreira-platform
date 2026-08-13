@@ -26,6 +26,24 @@ test("importação da extensão processa vagas em lotes e registra o progresso",
  assert.match(source,/rejected: filtered\.rejected/);
 });
 
+test("coletores registram início, conclusão e falha no monitoramento", async()=>{
+ const [route,monitor,ui]=await Promise.all([
+  readFile(new URL("../app/api/collector/import/[sourceId]/route.ts",import.meta.url),"utf8"),
+  readFile(new URL("../app/api/admin/monitor/route.ts",import.meta.url),"utf8"),
+  readFile(new URL("../app/Monitoring.tsx",import.meta.url),"utf8"),
+ ]);
+ assert.match(route,/payload\?\.action === "status"/);
+ assert.match(route,/recordCollectorStatus/);
+ assert.match(route,/onConflictDoUpdate/);
+ assert.match(route,/lastAttemptAt: now/);
+ assert.match(route,/lastSuccessAt: now/);
+ assert.match(route,/consecutiveFailures: source\.consecutiveFailures \+ 1/);
+ assert.match(route,/collectorRunId\(payload\?\.runId\)/);
+ assert.match(monitor,/sources\.some\(s=>s\.enabled&&s\.lastError\)/);
+ assert.match(ui,/última execução/);
+ assert.match(ui,/r\.received.*r\.inserted.*r\.updated/);
+});
+
 test("importação manual usa lotes e pode reenviar o mesmo arquivo", async()=>{
  const source=await readFile(new URL("../app/api/admin/import/route.ts",import.meta.url),"utf8");
  assert.match(source,/WRITE_BATCH_SIZE = 50/);
