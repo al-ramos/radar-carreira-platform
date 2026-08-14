@@ -302,17 +302,26 @@ async function setContacts(map) {
 }
 
 /**
- * Acha a aba do APinfo mais recentemente usada. Usada pela ponte com o
- * Radar (radar-bridge.js → background.js), onde não há um tabId explícito
- * vindo de quem clicou — diferente do painel da própria extensão, que já
- * roda na aba/janela certa e identifica o tabId antes de pedir a captura.
- * Por isso CAPTURE_CONTACT_FOR_RADAR sempre confere o código da vaga
- * capturada contra o código pedido, depois de achar a aba por aqui.
+ * Acha a aba de contato da vaga solicitada pelo Radar. Como o Radar avança
+ * automaticamente para a próxima oportunidade, a aba APinfo mais recente
+ * pode ser a página inicial ou outra vaga. Quando há um código, a URL de
+ * candidatura traz `codvaga` e permite selecionar a aba exata.
  */
-async function findMostRecentApinfoTab() {
+async function findMostRecentApinfoTab(externalId) {
   const tabs = await chrome.tabs.query({ url: 'https://www.apinfo.com/*' });
   if (!tabs.length) return null;
   tabs.sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0));
+
+  if (externalId) {
+    const expectedId = String(externalId);
+    return tabs.find((tab) => {
+      try {
+        return new URL(tab.url).searchParams.get('codvaga') === expectedId;
+      } catch {
+        return false;
+      }
+    }) || null;
+  }
   return tabs[0];
 }
 
@@ -320,9 +329,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === 'CAPTURE_CONTACT_FOR_RADAR') {
     (async () => {
       try {
-        const tab = await findMostRecentApinfoTab();
+        const tab = await findMostRecentApinfoTab(message.externalId);
         if (!tab) {
-          throw new Error('Nenhuma aba do APinfo encontrada. Clique em "Candidatar" para abrir a vaga, faça login e volte aqui.');
+          throw new Error(
+            message.externalId
+              ? `A página de contato da vaga ${message.externalId} não foi encontrada. Clique em "Candidatar", aguarde a página abrir e tente novamente.`
+              : 'Nenhuma aba do APinfo encontrada. Clique em "Candidatar" para abrir a vaga, faça login e volte aqui.',
+          );
         }
         const contact = await collectContact(tab.id);
 
