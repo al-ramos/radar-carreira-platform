@@ -258,6 +258,12 @@ test("mostra como impedimento as stacks exigidas pela vaga que faltam no perfil"
   assert.deepEqual(result.missingSkills, ["Python", "Google Cloud"]);
 });
 
+test("não trata a tag combinada C# / .NET como lacuna quando o perfil tem .NET", () => {
+  const result = analyzeStackFit([".NET", "C# / .NET", "Azure", "REST"], ["C#", ".NET", "SQL"]);
+  assert.deepEqual(result.matchingSkills, [".NET"]);
+  assert.deepEqual(result.missingSkills, ["Azure", "REST"]);
+});
+
 test("perfil usa checkboxes e o radar expõe filtros de visualização", async () => {
   const [profile, dashboard, options] = await Promise.all([
     readFile(new URL("../app/ProfilePreferences.tsx", import.meta.url), "utf8"),

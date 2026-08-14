@@ -23,7 +23,7 @@ const EQUIVALENT_SKILL_GROUPS = [
   ["gcp", "google cloud", "google cloud platform"],
   ["aws", "amazon web services"],
   ["azure", "microsoft azure"],
-  ["c#", "csharp", ".net", "dotnet", "net core", ".net core", "asp.net", "asp net"],
+  ["c#", "csharp", ".net", "dotnet", "net core", ".net core", "asp.net", "asp net", "c# / .net", "c#/.net", "c# .net"],
   ["sql", "sql server", "mssql"],
   ["postgres", "postgresql"],
   ["node", "node.js", "nodejs"],
