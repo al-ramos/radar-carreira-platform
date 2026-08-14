@@ -86,6 +86,24 @@ export const jobAiFacts = sqliteTable("job_ai_facts", {
   analyzedAt: integer("analyzed_at", { mode: "timestamp_ms" }).notNull(),
 });
 
+/**
+ * Triagem automática diária de vagas (assistente de candidatura).
+ *
+ * Marca cada vaga como já processada pela análise automática (critérios de
+ * aderência .NET/C# do usuário), independente de qualquer análise de IA por
+ * usuário em `user_job_analyses`. Sem `userId` pelo mesmo motivo de
+ * `notifications`: hoje só a proprietária opera esse fluxo. `veredito` usa
+ * os mesmos símbolos de `userJobAnalyses.verdict` para consistência, mas é
+ * uma tabela própria porque a origem, o disparo (scheduled task diária) e o
+ * propósito (checar/gate, não julgamento por perfil) são diferentes.
+ */
+export const jobAiTriage = sqliteTable("job_ai_triage", {
+  jobId: text("job_id").primaryKey().references(() => jobs.id),
+  processedAt: integer("processed_at", { mode: "timestamp_ms" }).notNull(),
+  veredito: text("veredito", { enum: ["✅", "🟡", "🔴", "❌"] }).notNull(),
+  motivo: text("motivo"),
+});
+
 export const aiUsageEvents = sqliteTable("ai_usage_events", {
   id: text("id").primaryKey(),
   userId: text("user_id").notNull(),
