@@ -158,10 +158,15 @@ const pipelineCondition = pipelineFilter === "all"
 : pipelineFilter === "unseen"
 ? pipelineIds.length ? notInArray(jobs.id, pipelineIds) : undefined
 : stageIds.length ? inArray(jobs.id, stageIds) : eq(jobs.id, "__nenhuma_vaga__");
-// O cálculo global só é necessário quando um filtro realmente depende dele.
-// Ordenar a listagem padrão por score não pode materializar milhares de vagas
-// no Worker: a página consultada é pontuada e ordenada logo abaixo.
-const requiresPostFiltering = minScore > BASE_TECH_SCORE || verdictFilter !== "all";
+// O cálculo completo (materializar até MAX_AFFINITY_CANDIDATES, pontuar,
+// ordenar e só então paginar) é necessário sempre que o resultado exibido
+// depende do score — inclusive na ordenação padrão "Pontuação" (sort===
+// "score"), não só quando há filtro de aderência/veredito ativo. Sem isso,
+// a página vem paginada por data direto do banco e o score anexado deixa
+// de refletir a ordem/paginação reais — sintoma: pontuação parece "não
+// funcionar" sem filtro. O teto de MAX_AFFINITY_CANDIDATES continua sendo
+// o limite de CPU no Worker gratuito: nunca materializamos mais que isso.
+const requiresPostFiltering = minScore > BASE_TECH_SCORE || verdictFilter !== "all" || sort === "score";
 // O score depende do perfil e não existe como coluna no banco. Antes de
 // calculá-lo, reduzimos o universo com todos os sinais capazes de somar pontos.
 // A condição é deliberadamente ampla: pode trazer falsos positivos, mas nunca

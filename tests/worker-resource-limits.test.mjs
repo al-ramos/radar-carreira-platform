@@ -17,7 +17,10 @@ test("a listagem pagina no D1 antes de enriquecer o fluxo normal", async () => {
   assert.match(route, /FILTER_DESCRIPTION_CHARS = 1_000/);
   assert.match(route, /BASE_TECH_SCORE = 5/);
   assert.match(route, /minScore > BASE_TECH_SCORE/);
-  assert.doesNotMatch(route, /requiresPostFiltering = .*sort === "score"/);
+  // A ordenação padrão por Pontuação também exige o cálculo completo — sem
+  // isso, a lista sem filtro pagina por data com o score anexado por cima,
+  // sem refletir a ordem/paginação reais.
+  assert.match(route, /requiresPostFiltering = .*sort === "score"/);
   assert.match(route, /substr\(\$\{jobs\.description\}/);
   assert.match(route, /const \[rows, eligibleTotals, sourceTotals,/);
   assert.match(route, /verdictFilter !== "all" && masteredSkills\.length/);
