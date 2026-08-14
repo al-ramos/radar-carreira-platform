@@ -17,6 +17,10 @@ test("filtro, ordenação, detalhe e explicação compartilham o score personali
   assert.match(jobsRoute, /filtered\.sort\(\(a, b\) => b\.score - a\.score\)/);
   assert.match(detailRoute, /scoreJob\(/);
   assert.match(detailRoute, /\.\.\.match/);
+  assert.match(dashboard, /setRequestedMinScore\(effectiveMinScore\)/);
+  assert.match(dashboard, /setLoadedMinScore\(requestedMinScore\)/);
+  assert.match(dashboard, /const visibleMinScore = simplifiedList \? 0 : loadedMinScore/);
+  assert.match(dashboard, /Atualizando pontuação/);
 });
 
 test("cache de análise é invalidado quando a versão do perfil muda", async () => {

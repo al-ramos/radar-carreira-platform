@@ -456,6 +456,8 @@ export default function Dashboard() {
     [items, setItems] = useState<Job[]>([]),
     [selected, setSelected] = useState<Job>(demo[0]),
     [fitFilter, setFitFilter] = useState<"profile" | number>(0),
+    [requestedMinScore, setRequestedMinScore] = useState(0),
+    [loadedMinScore, setLoadedMinScore] = useState(0),
     [sortOrder, setSortOrder] = useState<"score" | "recent">("score"),
     [simplifiedList, setSimplifiedList] = useState(false),
     [period, setPeriod] = useState<string | null>(null),
@@ -547,9 +549,19 @@ export default function Dashboard() {
    *  pedir ao servidor só as vagas que batem (mantém a paginação correta). */
   const effectiveMinScore =
     fitFilter === "profile" ? profileMinScore : fitFilter;
-  // A resposta de contingência não possui perfil nem score. Não deixamos que
-  // o corte salvo esconda toda a lista enquanto a personalização se recupera.
-  const visibleMinScore = simplifiedList ? 0 : effectiveMinScore;
+  // Arrastar o controle não deve iniciar uma consulta para cada ponto do
+  // slider. Em Workers gratuitos, essas consultas concorrentes podem disputar
+  // CPU e deixar a tela momentaneamente com a lista anterior filtrada pelo
+  // novo valor (o enganoso "0 de 11.891").
+  useEffect(() => {
+    const timer = window.setTimeout(() => setRequestedMinScore(effectiveMinScore), 250);
+    return () => window.clearTimeout(timer);
+  }, [effectiveMinScore]);
+  const scoreFilterPending = requestedMinScore !== effectiveMinScore || loadedMinScore !== requestedMinScore;
+  // O corte visual só muda depois que a API respondeu para aquele mesmo
+  // valor. Assim, contagem, paginação e vagas sempre representam a mesma
+  // consulta; enquanto isso, a interface informa que está atualizando.
+  const visibleMinScore = simplifiedList ? 0 : loadedMinScore;
   const profileLoading = !profileReady || mode === "loading";
   const personalizationUnavailable = !profileLoading && simplifiedList;
   const personalizationPending = profileLoading || simplifiedList;
@@ -665,13 +677,13 @@ export default function Dashboard() {
       if (receivedFrom) params.set("receivedFrom", new Date(receivedFrom).toISOString());
       if (receivedTo) params.set("receivedTo", new Date(receivedTo).toISOString());
       if (debouncedQuery) params.set("q", debouncedQuery);
-      if (!simplifiedList && effectiveMinScore > 0) params.set("minScore", String(effectiveMinScore));
+      if (!simplifiedList && requestedMinScore > 0) params.set("minScore", String(requestedMinScore));
       if (pipelineFilter !== "all") params.set("pipeline", pipelineFilter);
       if (!simplifiedList && verdictFilter !== "all") params.set("verdict", verdictFilter);
       params.set("sort", sortOrder === "recent" ? "imported" : "score");
       return params.toString();
     },
-    [period, sourceFilter, areaFilter, channelFilter, importRunFilter, ingestionMode, receivedFrom, receivedTo, debouncedQuery, effectiveMinScore, pipelineFilter, verdictFilter, simplifiedList, sortOrder],
+    [period, sourceFilter, areaFilter, channelFilter, importRunFilter, ingestionMode, receivedFrom, receivedTo, debouncedQuery, requestedMinScore, pipelineFilter, verdictFilter, simplifiedList, sortOrder],
   );
   useEffect(() => {
     if (!profileReady || profileLoadFailed) return;
@@ -703,6 +715,7 @@ export default function Dashboard() {
         setSourcesCount(typeof data.sourcesCount === "number" ? data.sourcesCount : null);
         if (data.filterOptions) setJobFilterOptions(data.filterOptions);
         setPeriod((current) => current ?? String(data.period ?? "24"));
+        setLoadedMinScore(requestedMinScore);
         setSimplifiedList(Boolean(data.degraded));
         setMode("database");
         setLoadError(null);
@@ -743,7 +756,7 @@ export default function Dashboard() {
       controller.abort();
       if (staleRetryTimer) clearTimeout(staleRetryTimer);
     };
-  }, [period, sourceFilter, debouncedQuery, effectiveMinScore, pipelineFilter, verdictFilter, sortOrder, buildJobsParams, jobsRefreshVersion, profileReady, profileLoadFailed]);
+  }, [period, sourceFilter, debouncedQuery, requestedMinScore, pipelineFilter, verdictFilter, sortOrder, buildJobsParams, jobsRefreshVersion, profileReady, profileLoadFailed]);
   useEffect(() => {
     const controller = new AbortController();
     fetchWithTimeout("/api/profile", { cache: "no-store", signal: controller.signal }, PROFILE_FETCH_TIMEOUT_MS)
@@ -2022,8 +2035,14 @@ export default function Dashboard() {
                 {effectiveMinScore === 0 ? "Sem corte" : `${effectiveMinScore}%`}
               </strong>
               <span className="score-controls-result">
-                <b>{filtered.length} {filtered.length === 1 ? "vaga" : "vagas"}</b>
-                {totalJobs != null && totalJobs > items.length && <small>de {totalJobs.toLocaleString("pt-BR")}</small>}
+                {scoreFilterPending ? (
+                  <b role="status">Atualizando pontuação…</b>
+                ) : (
+                  <>
+                    <b>{filtered.length} {filtered.length === 1 ? "vaga" : "vagas"}</b>
+                    {totalJobs != null && totalJobs > items.length && <small>de {totalJobs.toLocaleString("pt-BR")}</small>}
+                  </>
+                )}
               </span>
             </div>
             <div className="score-controls-range">
@@ -2216,7 +2235,7 @@ export default function Dashboard() {
               type="button"
               className="pagination-arrow"
               onClick={() => void goToJobsPage(currentPage - 1)}
-              disabled={loadingMore || currentPage <= 1}
+              disabled={loadingMore || scoreFilterPending || currentPage <= 1}
               aria-label="Página anterior"
             >
               <span aria-hidden="true">←</span> <span className="pagination-button-label">Anterior</span>
@@ -2228,7 +2247,7 @@ export default function Dashboard() {
                   key={item}
                   className={`pagination-page ${item === currentPage ? "active" : ""}`}
                   onClick={() => void goToJobsPage(item)}
-                  disabled={loadingMore}
+                  disabled={loadingMore || scoreFilterPending}
                   aria-current={item === currentPage ? "page" : undefined}
                   data-page-distance={Math.abs(item - currentPage)}
                 >
@@ -2242,7 +2261,7 @@ export default function Dashboard() {
               type="button"
               className="pagination-arrow"
               onClick={() => void goToJobsPage(currentPage + 1)}
-              disabled={loadingMore || currentPage >= Math.ceil(totalJobs / 50)}
+              disabled={loadingMore || scoreFilterPending || currentPage >= Math.ceil(totalJobs / 50)}
               aria-label="Próxima página"
             >
               <span className="pagination-button-label">Próxima</span> <span aria-hidden="true">→</span>
