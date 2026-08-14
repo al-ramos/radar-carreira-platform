@@ -47,3 +47,6 @@ next-env.d.ts
 /site-upload.tar.gz
 /apply_onboarding.ps1
 /fix_platform_css.ps1
+
+# scratch/lixo temporário gerado durante manutenção do repositório
+/_to_delete/
