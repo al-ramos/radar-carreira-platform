@@ -682,13 +682,19 @@ export default function Dashboard() {
       if (receivedFrom) params.set("receivedFrom", new Date(receivedFrom).toISOString());
       if (receivedTo) params.set("receivedTo", new Date(receivedTo).toISOString());
       if (debouncedQuery) params.set("q", debouncedQuery);
-      if (!simplifiedList && requestedMinScore > 0) params.set("minScore", String(requestedMinScore));
+      // Sempre pedimos o filtro que a pessoa escolheu, mesmo vindo de uma
+      // resposta simplificada — quem decide se o pedido é atendido é o
+      // servidor (via fetchJobsWithRetry + fallback ?degraded=1), não o
+      // cliente. Omitir esses parâmetros enquanto simplifiedList=true fazia
+      // a busca seguinte ter sucesso trivial e "curar" o modo simplificado
+      // sozinha, disparando de novo a busca completa em loop infinito.
+      if (requestedMinScore > 0) params.set("minScore", String(requestedMinScore));
       if (pipelineFilter !== "all") params.set("pipeline", pipelineFilter);
-      if (!simplifiedList && verdictFilter !== "all") params.set("verdict", verdictFilter);
+      if (verdictFilter !== "all") params.set("verdict", verdictFilter);
       params.set("sort", sortOrder === "recent" ? "imported" : "score");
       return params.toString();
     },
-    [period, sourceFilter, areaFilter, channelFilter, importRunFilter, ingestionMode, receivedFrom, receivedTo, debouncedQuery, requestedMinScore, pipelineFilter, verdictFilter, simplifiedList, sortOrder],
+    [period, sourceFilter, areaFilter, channelFilter, importRunFilter, ingestionMode, receivedFrom, receivedTo, debouncedQuery, requestedMinScore, pipelineFilter, verdictFilter, sortOrder],
   );
   useEffect(() => {
     if (!profileReady || profileLoadFailed) return;
