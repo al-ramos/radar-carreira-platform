@@ -1334,7 +1334,7 @@ export default function Dashboard() {
     if (!pendingAutoAdvanceRef.current) return;
     if (loadingMore) return;
     pendingAutoAdvanceRef.current = false;
-    if (orderedJobs.length > 0) selectJob(orderedJobs[0]);
+    if (orderedJobs.length > 0) window.setTimeout(() => selectJob(orderedJobs[0]), 0);
   }, [loadingMore, orderedJobs]);
   /** Atualiza o dropdown imediatamente e consolida uma única gravação no servidor. */
   function updateStage(jobId: string, stage: string, toast?: string, mode: "replace" | "advance" = "replace") {
