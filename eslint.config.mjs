@@ -17,6 +17,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Rascunhos locais ignorados pelo Git; não pertencem ao aplicativo.
+    "_to_delete/**",
   ]),
 ]);
 

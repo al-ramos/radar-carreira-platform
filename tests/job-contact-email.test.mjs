@@ -23,15 +23,15 @@ test("a tela de detalhes possui um único campo de e-mail e preserva as ações"
   assert.match(dashboard, />\s*✉ Abrir no Outlook\s*</);
 });
 
-test("candidatar tenta capturar o contato antes de abrir a vaga sem bloquear o fluxo", async () => {
+test("candidatar abre a vaga antes de capturar o contato sem bloquear o fluxo", async () => {
   const dashboard = await readFile(new URL("../app/Dashboard.tsx", import.meta.url), "utf8");
   const flow = dashboard.match(/function openJobApplication\(job: Job\) \{([\s\S]*?)\n  \}/)?.[1] ?? "";
 
-  assert.ok(flow.indexOf("captureApinfoContact(job)") >= 0);
-  assert.ok(flow.indexOf("captureApinfoContact(job)") < flow.indexOf("open(job.applyUrl"));
+  assert.match(flow, /window\.setTimeout\(\(\) => captureApinfoContact\(job\), 1_500\)/);
+  assert.ok(flow.indexOf("open(job.applyUrl") < flow.indexOf("captureApinfoContact(job)"));
   assert.doesNotMatch(flow, /await captureApinfoContact/);
   assert.match(flow, /AUTOMATIC_ACTION_STAGE\.apply/);
-  assert.match(dashboard, /onClick=\{\(\) => openJobApplication\(selectedJob\)\}/);
+  assert.match(dashboard, /openJobApplication\(selectedJob\);[\s\S]*?advanceToNextJob\(\);/);
 });
 
 test("falha na captura mantém nova tentativa e colagem manual disponíveis", async () => {
@@ -52,5 +52,5 @@ test("contato capturado permanece no campo da vaga e a API persiste a primeira g
   assert.match(dashboard, /item\.id === jobId \? \{ \.\.\.item, contactEmail: savedEmail, contactSubject: savedSubject \}/);
   assert.match(dashboard, /r\.status === 409 && persistedEmail/);
   assert.match(route, /\.set\(\{ contactEmail, contactSubject:/);
-  assert.match(route, /isNull\(jobs\.contactEmail\)/);
+  assert.match(route, /or\(isNull\(jobs\.contactEmail\), eq\(jobs\.contactEmail, ""\)\)/);
 });

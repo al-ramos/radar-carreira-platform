@@ -126,6 +126,7 @@ const JOBS_FETCH_ATTEMPTS = 2;
 const JOBS_RETRY_BASE_DELAY_MS = 350;
 const PROFILE_FETCH_TIMEOUT_MS = 8_000;
 const JOBS_FETCH_TIMEOUT_MS = 10_000;
+const APINFO_CONTACT_CAPTURE_TIMEOUT_MS = 4_000 * 5;
 
 async function fetchWithTimeout(
   input: RequestInfo | URL,
@@ -1721,7 +1722,11 @@ export default function Dashboard() {
         text: "A extensão não respondeu. Copie o e-mail exibido no APinfo e clique em “Colar e-mail”.",
         error: true,
       });
-    }, 4_000);
+    // A aba do APinfo é aberta em outra guia e pode levar alguns segundos
+    // para terminar o redirecionamento/login. Não descarte uma resposta da
+    // extensão cedo: ela pode ter lido o e-mail corretamente, mas chegar
+    // depois do antigo limite de 4 segundos.
+    }, APINFO_CONTACT_CAPTURE_TIMEOUT_MS);
     window.postMessage(
       { source: "radar-dashboard", type: "RADAR_CAPTURE_CONTACT", externalId: job.externalId, requestId },
       window.location.origin,
@@ -1772,19 +1777,23 @@ export default function Dashboard() {
     };
   }, []);
   /**
-   * Fluxo único de candidatura. Para vagas do APinfo, dispara primeiro a
-   * mesma captura usada pelo botão separado e abre a página logo depois,
-   * sem aguardar a extensão — uma falha de captura nunca bloqueia a vaga.
+   * Fluxo único de candidatura. Para vagas do APinfo, abre a página antes
+   * de pedir a captura. Assim a extensão consulta a nova aba — já com o
+   * contato renderizado — em vez de disputar a captura com a navegação.
+   * Uma falha de captura nunca bloqueia a vaga.
    */
   function openJobApplication(job: Job) {
-    if (isApinfoJob(job) && !job.contactEmail) captureApinfoContact(job);
-
     if (job.applyUrl) {
       open(job.applyUrl, "_blank");
     } else if (isApinfoJob(job) && job.externalId) {
       openApinfoJobSearch(job.externalId);
     } else if (job.url) {
       open(job.url, "_blank");
+    }
+    if (isApinfoJob(job) && !job.contactEmail) {
+      // Dá tempo para o APinfo concluir a troca de página antes de a
+      // extensão procurar a aba mais recente e injetar o coletor.
+      window.setTimeout(() => captureApinfoContact(job), 1_500);
     }
     void updateStage(
       job.id,

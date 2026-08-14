@@ -1,4 +1,4 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, or } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../../chatgpt-auth";
 import { getDb } from "../../../../../db/index";
@@ -33,15 +33,16 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     );
   }
 
+  const contactIsMissing = or(isNull(jobs.contactEmail), eq(jobs.contactEmail, ""));
   const updated = await db
     .update(jobs)
     .set({ contactEmail, contactSubject: body?.contactSubject?.trim() || null, updatedAt: new Date() })
-    .where(and(eq(jobs.id, id), isNull(jobs.contactEmail)))
-    .returning({ id: jobs.id });
+    .where(and(eq(jobs.id, id), contactIsMissing))
+    .returning({ id: jobs.id, contactEmail: jobs.contactEmail, contactSubject: jobs.contactSubject });
 
   if (!updated.length) {
     return NextResponse.json({ error: "Esta vaga já possui e-mail de contato cadastrado" }, { status: 409 });
   }
 
-  return NextResponse.json({ ok: true, contactEmail, contactSubject: body?.contactSubject?.trim() || null });
+  return NextResponse.json({ ok: true, contactEmail: updated[0].contactEmail, contactSubject: updated[0].contactSubject });
 }
