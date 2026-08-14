@@ -40,20 +40,25 @@ export async function POST(request: Request) {
 
   const db = getDb();
   const ids = requested.map((r) => r.id);
-  const jobRows = await Promise.all(
-    Array.from({ length: Math.ceil(ids.length / 200) }, (_, index) =>
-      db
+  // Lotes sequenciais (não em paralelo) e menores: exports grandes (500+ vagas)
+  // faziam vários leftJoins simultâneos no D1 e a rota voltava 503. Buscar um
+  // lote por vez evita o pico de leitura, ao custo de um pouco mais de tempo.
+  const REPORT_BATCH_SIZE = 100;
+  const jobRows: Array<{ job: typeof jobs.$inferSelect; source: string | null }> = [];
+  for (let index = 0; index < ids.length; index += REPORT_BATCH_SIZE) {
+    const batchIds = ids.slice(index, index + REPORT_BATCH_SIZE);
+    const batchRows = await db
       .select({ job: jobs, source: jobSources.name })
       .from(jobs)
       .leftJoin(jobSources, eq(jobs.sourceId, jobSources.id))
-      .where(inArray(jobs.id, ids.slice(index * 200, (index + 1) * 200))),
-    ),
-  );
+      .where(inArray(jobs.id, batchIds));
+    jobRows.push(...batchRows);
+  }
   const pipeline = await db
     .select()
     .from(userJobStatus)
     .where(eq(userJobStatus.userId, user.userId));
-  const byJob = new Map(jobRows.flat().map((r) => [r.job.id, r]));
+  const byJob = new Map(jobRows.map((r) => [r.job.id, r]));
   const byStatus = new Map(pipeline.map((item) => [item.jobId, item]));
 
   const header = [
