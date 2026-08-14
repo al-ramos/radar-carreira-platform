@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "Coletor de Vagas do APinfo",
+  "version": "1.4.0",
+  "description": "Painel para organizar pesquisas de vagas do APinfo e exportar em CSV e JSON, ou enviar ao Radar de Carreira.",
+  "permissions": ["activeTab", "scripting", "storage", "downloads"],
+  "host_permissions": [
+    "https://www.apinfo.com/*",
+    "https://radar-carreira-platform.al-ramos.workers.dev/*"
+  ],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    {
+      "matches": ["https://radar-carreira-platform.al-ramos.workers.dev/*"],
+      "js": ["radar-bridge.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "options_page": "dashboard.html",
+  "action": {
+    "default_title": "Coletar vagas do APinfo",
+    "default_popup": "popup.html"
+  }
+}

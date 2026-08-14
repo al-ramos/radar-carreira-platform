@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import AlertCenter from "./AlertCenter";
+import NotificationBell from "./NotificationBell";
 import Analytics from "./Analytics";
 import Monitoring from "./Monitoring";
 import SourceList from "./SourceList";
@@ -488,6 +489,9 @@ export default function Dashboard() {
   const loadedJobsRef = useRef<Job[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [loadingMore, setLoadingMore] = useState(false);
+  /** Quando o avanço automático de triagem precisa virar a página, sinaliza
+   * para o efeito abaixo selecionar a primeira vaga assim que ela carregar. */
+  const pendingAutoAdvanceRef = useRef(false);
   const [profileReady, setProfileReady] = useState(false);
   const [profileMasteredSkills, setProfileMasteredSkills] = useState<string[]>([]);
   const [sourceFilter, setSourceFilter] = useState("all");
@@ -1302,6 +1306,36 @@ export default function Dashboard() {
       void updateStage(job.id, AUTOMATIC_ACTION_STAGE.view, undefined, "advance");
     }
   }
+  /**
+   * Triagem sequencial: ao concluir uma ação de análise sobre a vaga aberta
+   * (Candidatar, Analisar candidatura, Encaminhar), pula automaticamente para
+   * a próxima vaga da lista. Se a vaga atual for a última da página, avança
+   * para a próxima página e seleciona a primeira vaga assim que ela chegar.
+   */
+  function advanceToNextJob() {
+    if (!selectedJob) return;
+    const index = orderedJobs.findIndex((job) => job.id === selectedJob.id);
+    if (index === -1) return;
+    const next = orderedJobs[index + 1];
+    if (next) {
+      selectJob(next);
+      return;
+    }
+    const totalPages = totalJobs != null ? Math.ceil(totalJobs / 50) : currentPage;
+    if (currentPage >= totalPages) {
+      setMessage("Você chegou ao fim da lista de vagas.");
+      return;
+    }
+    pendingAutoAdvanceRef.current = true;
+    void goToJobsPage(currentPage + 1);
+  }
+  // Conclui o avanço automático de triagem quando a nova página termina de carregar.
+  useEffect(() => {
+    if (!pendingAutoAdvanceRef.current) return;
+    if (loadingMore) return;
+    pendingAutoAdvanceRef.current = false;
+    if (orderedJobs.length > 0) selectJob(orderedJobs[0]);
+  }, [loadingMore, orderedJobs]);
   /** Atualiza o dropdown imediatamente e consolida uma única gravação no servidor. */
   function updateStage(jobId: string, stage: string, toast?: string, mode: "replace" | "advance" = "replace") {
     const requestKey = `${jobId}:${stage}:${mode}`;
@@ -1909,6 +1943,7 @@ export default function Dashboard() {
                 Entrar
               </a>
             )}
+            {canManageSources && <NotificationBell />}
             {currentUser && (
               <div className="report-menu-wrap">
                 <button
@@ -2567,6 +2602,8 @@ export default function Dashboard() {
                     const opening = !analysisOpen;
                     setAnalysisOpen(opening);
                     if (opening && selectedJobEligible) void persistJobAnalysis(selectedJob);
+                    // Fechar o painel de análise marca a triagem desta vaga como concluída.
+                    else if (!opening) advanceToNextJob();
                   }}
                   title="Análise de candidatura com base no seu perfil"
                 >
@@ -2576,7 +2613,10 @@ export default function Dashboard() {
                   type="button"
                   className="primary-job-action"
                   title={selectedJobRejected ? `${selectedJobVerdict?.emoji} ${selectedJobVerdict?.label}: abrir mesmo assim` : "Abrir candidatura"}
-                  onClick={() => openJobApplication(selectedJob)}
+                  onClick={() => {
+                    openJobApplication(selectedJob);
+                    advanceToNextJob();
+                  }}
                 >
                   Candidatar
                 </button>
@@ -2672,12 +2712,14 @@ export default function Dashboard() {
                       <button className="analysis-toggle-btn" onClick={() => {
                         window.open(links.email, "_blank");
                         void updateStage(selectedJob.id, AUTOMATIC_ACTION_STAGE.forward, "Vaga encaminhada e salva no acompanhamento.", "advance");
+                        advanceToNextJob();
                       }}>
                         Encaminhar por e-mail
                       </button>
                       <button className="analysis-toggle-btn" onClick={() => {
                         window.open(links.whatsapp, "_blank");
                         void updateStage(selectedJob.id, AUTOMATIC_ACTION_STAGE.forward, "Vaga encaminhada e salva no acompanhamento.", "advance");
+                        advanceToNextJob();
                       }}>
                         Encaminhar no WhatsApp
                       </button>

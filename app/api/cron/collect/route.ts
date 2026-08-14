@@ -6,6 +6,7 @@ import { collect, isPullProvider } from "../../../../lib/connectors";
 import { fingerprint, recordedJobDate, sourcePublishedJobDate } from "../../../../lib/jobs";
 import { inferJobArea } from "../../../../lib/job-area";
 import { recordImportRunJobs } from "../../../../lib/import-tracking";
+import { notifyImportRun } from "../../../../lib/notifications";
 
 export const dynamic = "force-dynamic";
 
@@ -97,6 +98,11 @@ export async function POST(request: Request) {
       const message = error instanceof Error ? error.message.slice(0, 300) : "Falha desconhecida na coleta";
       await getDb().update(importRuns).set({ status: "failed", errors: 1, finishedAt: new Date() }).where(eq(importRuns.id, runId));
       await getDb().update(jobSources).set({ lastError: message, consecutiveFailures: source.consecutiveFailures + 1 }).where(eq(jobSources.id, source.id));
+      // Só falha notifica aqui: a coleta roda uma fonte por chamada, dezenas
+      // de vezes por dia, e sucesso por fonte inundaria o sino. Falha é o
+      // caso que precisa de atenção proativa (P0-04: alertar administradores
+      // após falhas de coleta).
+      await notifyImportRun(getDb(), { runId, source: source.name, status: "failed", received: 0, inserted: 0, updated: 0, error: message }).catch(() => undefined);
     }
   }
 

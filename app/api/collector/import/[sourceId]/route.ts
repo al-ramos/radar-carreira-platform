@@ -7,6 +7,7 @@ import { fingerprint, recordedJobDate, sourcePublishedJobDate, type ImportedJob 
 import { normalizeCareerRules } from "../../../../../lib/profile-options";
 import { inferJobArea } from "../../../../../lib/job-area";
 import { recordImportRunJobs } from "../../../../../lib/import-tracking";
+import { notifyImportRun } from "../../../../../lib/notifications";
 
 export const dynamic = "force-dynamic";
 
@@ -107,8 +108,10 @@ async function recordCollectorStatus(
     await db.update(jobSources).set({ lastAttemptAt: now }).where(eq(jobSources.id, sourceId));
   } else if (status === "completed") {
     await db.update(jobSources).set({ lastRunAt: now, lastSuccessAt: now, lastError: null, consecutiveFailures: 0 }).where(eq(jobSources.id, sourceId));
+    await notifyImportRun(db, { runId, source: sourceName, status: "completed", received: values.received, inserted: values.inserted, updated: values.updated, duplicates: values.duplicates }).catch(() => undefined);
   } else {
     await db.update(jobSources).set({ lastRunAt: now, lastError: error || `Execução ${reportedStatus}`, consecutiveFailures: source.consecutiveFailures + 1 }).where(eq(jobSources.id, sourceId));
+    await notifyImportRun(db, { runId, source: sourceName, status: "failed", received: values.received, inserted: values.inserted, updated: values.updated, duplicates: values.duplicates, error: error || `Execução ${reportedStatus}` }).catch(() => undefined);
   }
   return { runId, status: reportedStatus, recorded: true };
 }
@@ -212,6 +215,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ sou
       await db.update(importRuns).set({ status: "completed", finishedAt: new Date() }).where(eq(importRuns.id, runId));
       const finishedAt = new Date();
       await db.update(jobSources).set({ lastRunAt: finishedAt, lastSuccessAt: finishedAt, lastError: null, consecutiveFailures: 0 }).where(eq(jobSources.id, sourceId));
+      await notifyImportRun(db, { runId, source: sourceName, status: "completed", received: items.length, inserted: 0, updated: 0, duplicates: 0 }).catch(() => undefined);
       return json({ ok: true, runId, accepted: 0, received: items.length, duplicates: 0, rejected: filtered.rejected, inserted: 0, updated: 0, requiredStacks: filtered.requiredStacks, stackMatchMode: filtered.stackMatchMode, message: "Nenhuma vaga atende ao perfil de stacks obrigatórias" });
     }
     const existing = new Set<string>();
@@ -265,6 +269,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ sou
       .where(eq(importRuns.id, runId));
     const finishedAt = new Date();
     await db.update(jobSources).set({ lastRunAt: finishedAt, lastSuccessAt: finishedAt, lastError: null, consecutiveFailures: 0 }).where(eq(jobSources.id, sourceId));
+    await notifyImportRun(db, { runId, source: sourceName, status: "completed", received: items.length, inserted, updated, duplicates: duplicateRows }).catch(() => undefined);
     return json({ ok: true, runId, accepted: filtered.accepted.length, received: items.length, duplicates: duplicateRows, rejected: filtered.rejected, inserted, updated, requiredStacks: filtered.requiredStacks, stackMatchMode: filtered.stackMatchMode });
   } catch {
     await db
@@ -272,6 +277,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ sou
       .set({ status: "failed", inserted, updated, duplicates: duplicateRows, errors: 1, finishedAt: new Date() })
       .where(eq(importRuns.id, runId))
       .catch(() => undefined);
+    await notifyImportRun(db, { runId, source: sourceName, status: "failed", received: items.length, inserted, updated, duplicates: duplicateRows, error: "A importação foi interrompida antes de concluir." }).catch(() => undefined);
     return json(
       { error: "A importação foi interrompida. Reenvie o mesmo lote para concluir as vagas pendentes.", runId, inserted, updated },
       { status: 500 },

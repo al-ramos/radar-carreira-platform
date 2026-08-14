@@ -7,6 +7,7 @@ import { fingerprint, recordedJobDate, sourcePublishedJobDate, type ImportedJob 
 import { normalizeCareerRules } from "../../../../lib/profile-options";
 import { inferJobArea } from "../../../../lib/job-area";
 import { recordImportRunJobs } from "../../../../lib/import-tracking";
+import { notifyImportRun } from "../../../../lib/notifications";
 
 export const dynamic = "force-dynamic";
 
@@ -94,6 +95,7 @@ export async function POST(request: Request) {
     if (!entries.length) {
       await db.update(importRuns).set({ status: "completed", finishedAt: new Date() }).where(eq(importRuns.id, runId));
       await db.update(jobSources).set({ lastRunAt: new Date() }).where(eq(jobSources.id, SOURCE_ID));
+      await notifyImportRun(db, { runId, source: "Extensão LinkedIn", status: "completed", received: items.length, inserted: 0, updated: 0, duplicates: 0 }).catch(() => undefined);
       return json({ ok: true, accepted: 0, received: items.length, duplicates: 0, rejected: filtered.rejected, inserted: 0, updated: 0, requiredStacks: filtered.requiredStacks, stackMatchMode: filtered.stackMatchMode, message: "Nenhuma vaga atende ao perfil de stacks obrigatórias" });
     }
     const existing = new Set<string>();
@@ -140,9 +142,11 @@ export async function POST(request: Request) {
 
     await db.update(importRuns).set({ status: "completed", inserted, updated, duplicates: duplicateRows, finishedAt: new Date() }).where(eq(importRuns.id, runId));
     await db.update(jobSources).set({ lastRunAt: new Date() }).where(eq(jobSources.id, SOURCE_ID));
+    await notifyImportRun(db, { runId, source: "Extensão LinkedIn", status: "completed", received: items.length, inserted, updated, duplicates: duplicateRows }).catch(() => undefined);
     return json({ ok: true, accepted: filtered.accepted.length, received: items.length, duplicates: duplicateRows, rejected: filtered.rejected, inserted, updated, requiredStacks: filtered.requiredStacks, stackMatchMode: filtered.stackMatchMode });
   } catch {
     await db.update(importRuns).set({ status: "failed", inserted, updated, duplicates: duplicateRows, errors: 1, finishedAt: new Date() }).where(eq(importRuns.id, runId)).catch(() => undefined);
+    await notifyImportRun(db, { runId, source: "Extensão LinkedIn", status: "failed", received: items.length, inserted, updated, duplicates: duplicateRows, error: "A importação foi interrompida antes de concluir." }).catch(() => undefined);
     return json({ error: "A importação foi interrompida. Reenvie o mesmo lote para concluir as vagas pendentes.", runId, inserted, updated }, { status: 500 });
   }
 }

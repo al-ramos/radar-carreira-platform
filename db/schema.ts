@@ -1,4 +1,4 @@
-import { integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const profiles = sqliteTable("profiles", {
   userId: text("user_id").primaryKey(), email: text("email").notNull(), name: text("name"),
@@ -157,6 +157,29 @@ export const alertDeliveries = sqliteTable("alert_deliveries", {
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   sentAt: integer("sent_at", { mode: "timestamp_ms" }),
 });
+
+/**
+ * Histórico único de notificações operacionais (sino no portal).
+ *
+ * Genérica por desenho: `type` cobre o evento hoje (`import`) e os próximos
+ * itens do roadmap (`report`, `digest`, `pipeline`) sem precisar de tabela
+ * nova a cada entrega. Sem `userId` porque quem opera fontes/importações
+ * hoje é exclusivamente a proprietária da conta; a rota de leitura filtra
+ * por `isOwnerEmail()`, o mesmo padrão do bypass em `lib/rbac.ts`. Quando o
+ * produto tiver múltiplos operadores, adicionar `userId` nullable (null =
+ * broadcast) é uma migration aditiva, não uma reescrita.
+ */
+export const notifications = sqliteTable("notifications", {
+  id: text("id").primaryKey(),
+  type: text("type", { enum: ["import", "report", "digest", "pipeline"] }).notNull(),
+  severity: text("severity", { enum: ["success", "error", "info"] }).notNull().default("info"),
+  title: text("title").notNull(),
+  body: text("body").notNull().default(""),
+  link: text("link"),
+  metadata: text("metadata").notNull().default("{}"),
+  read: integer("read", { mode: "boolean" }).notNull().default(false),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+}, t => [index("notifications_created_at_idx").on(t.createdAt)]);
 
 // --- RBAC: perfis (roles), permissões e grupos de acesso ---
 

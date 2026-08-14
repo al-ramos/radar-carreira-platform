@@ -6,6 +6,7 @@ import { fingerprint } from "../../../../lib/jobs";
 import { enrichLinkedInJobs } from "../../../../lib/enrichment";
 import { inferJobArea } from "../../../../lib/job-area";
 import { recordImportRunJobs } from "../../../../lib/import-tracking";
+import { notifyImportRun } from "../../../../lib/notifications";
 
 export const dynamic="force-dynamic";
 const digest=async(value:string)=>Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(value)))).map(byte=>byte.toString(16).padStart(2,"0")).join("");
@@ -40,6 +41,7 @@ export async function POST(request:Request){
   }
   for(const email of payload.messages){const signal=applicationFromEmail(email);if(!signal)continue;const condition=signal.title&&signal.company?and(like(jobs.title,`%${signal.title}%`),like(jobs.company,`%${signal.company}%`)):signal.title?like(jobs.title,`%${signal.title}%`):signal.company?like(jobs.company,`%${signal.company}%`):null;if(!condition)continue;const matches=await db.select({id:jobs.id}).from(jobs).where(condition).orderBy(desc(jobs.updatedAt)).limit(2);if(matches.length!==1)continue;const jobId=matches[0].id;await db.insert(userJobStatus).values({userId:config.userId,jobId,stage:signal.stage,note:signal.detail,updatedAt:new Date(email.date)}).onConflictDoUpdate({target:[userJobStatus.userId,userJobStatus.jobId],set:{stage:signal.stage,note:signal.detail,updatedAt:new Date(email.date)}});await db.insert(jobEvents).values({jobId,type:signal.type,detail:signal.detail,occurredAt:new Date(email.date)});events++}
   await db.update(importRuns).set({status:"completed",inserted,updated,finishedAt:new Date()}).where(eq(importRuns.id,runId));
+  await notifyImportRun(db,{runId,source:"Gmail RadarVagas",status:"completed",received:payload.messages.length,inserted,updated}).catch(()=>undefined);
   const enriched=settings?.enrichmentEnabled===false?0:await enrichLinkedInJobs();
   return Response.json({ok:true,emails:payload.messages.length,jobs:imported.length,inserted,updated,pipelineEvents:events,enriched});
 }

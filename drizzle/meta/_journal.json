@@ -106,6 +106,62 @@
       "when": 1786550400004,
       "tag": "0014_backfill_job_dates",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "6",
+      "when": 1786567937000,
+      "tag": "0015_personalized_career_rules",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1786567938000,
+      "tag": "0016_user_job_analyses",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1786567939000,
+      "tag": "0017_ai_analysis_accounting",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1786570471000,
+      "tag": "0018_remove_ineligible_analyses",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1786570907000,
+      "tag": "0019_application_tracking",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1786657665000,
+      "tag": "0020_job_ingestion_metadata",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1786659295000,
+      "tag": "0021_job_filter_dimensions",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "6",
+      "when": 1786714595510,
+      "tag": "0022_notifications",
+      "breakpoints": true
     }
   ]
 }

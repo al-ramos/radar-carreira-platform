@@ -9,6 +9,7 @@ import { normalizeImportedJobs } from "../../../../lib/import-jobs";
 import { can } from "../../../../lib/rbac";
 import { inferJobArea } from "../../../../lib/job-area";
 import { recordImportRunJobs } from "../../../../lib/import-tracking";
+import { notifyImportRun } from "../../../../lib/notifications";
 
 export const dynamic = "force-dynamic";
 
@@ -122,9 +123,11 @@ export async function POST(request: Request) {
     }
 
     await db.update(importRuns).set({ status: "completed", inserted, updated, duplicates: duplicateRows, finishedAt: new Date() }).where(eq(importRuns.id, runId));
+    await notifyImportRun(db, { runId, source: source === "csv" ? "Importação CSV" : "Importação manual", status: "completed", received: items.length, inserted, updated, duplicates: duplicateRows }).catch(() => undefined);
     return NextResponse.json({ ok: true, runId, received: items.length, accepted: entries.length, inserted, updated, duplicates: duplicateRows, errors: 0 });
   } catch {
     await db.update(importRuns).set({ status: "failed", inserted, updated, duplicates: duplicateRows, errors: 1, finishedAt: new Date() }).where(eq(importRuns.id, runId)).catch(() => undefined);
+    await notifyImportRun(db, { runId, source: source === "csv" ? "Importação CSV" : "Importação manual", status: "failed", received: items.length, inserted, updated, duplicates: duplicateRows, error: "A importação foi interrompida antes de concluir." }).catch(() => undefined);
     return NextResponse.json({ error: "A importação foi interrompida. Reenvie o mesmo arquivo para concluir as vagas pendentes.", runId, inserted, updated }, { status: 500 });
   }
 }

@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Organizador de vagas — APinfo</title>
+  <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+  <main class="card">
+    <header>
+      <span class="eyebrow">COLETOR APINFO</span>
+      <h1>Organizador de vagas</h1>
+      <p>Navegue manualmente pelas páginas de resultados no APinfo e colete uma página por vez. Os resultados se acumulam aqui até você exportar.</p>
+    </header>
+
+    <div class="progress-box" id="progress-box">
+      <div><strong id="progress-total">0</strong><small>vagas acumuladas</small></div>
+      <div><strong id="progress-page">—</strong><small>página atual</small></div>
+      <div><strong id="progress-results">—</strong><small>total no APinfo</small></div>
+    </div>
+
+    <div class="actions">
+      <button class="primary" id="collect-page" type="button">Coletar esta página</button>
+      <button class="secondary" id="open-apinfo" type="button">Abrir busca de vagas do APinfo</button>
+      <button class="secondary" id="clear-accumulated" type="button">Limpar acumulado</button>
+    </div>
+    <div class="status" id="collect-status" aria-live="polite"></div>
+
+    <section class="settings">
+      <h2>Contato da vaga (manual)</h2>
+      <p>
+        Faça login no APinfo com seu CPF e senha <strong>direto na tela do site</strong> (a extensão nunca vê nem
+        preenche essa senha) e abra a página de uma vaga que mostre "Empresa" e "Email". Com essa página aberta,
+        clique abaixo para guardar esse contato — ele é anexado à vaga correspondente na exportação.
+      </p>
+      <div class="actions">
+        <button class="secondary" id="collect-contact" type="button">Capturar contato desta vaga</button>
+        <button class="secondary" id="clear-contacts" type="button">Limpar contatos</button>
+      </div>
+      <div class="status" id="contact-status" aria-live="polite"></div>
+      <small id="contact-count">Nenhum contato capturado ainda.</small>
+    </section>
+
+    <section class="settings">
+      <h2>Coleta automática (todas as páginas, sem filtro)</h2>
+      <p>Avança sozinho por todas as páginas do resultado. Só funciona com <strong>nenhum filtro marcado</strong> na busca do APinfo — filtro de estado, cidade ou cargo faz o avanço automático quebrar a busca. Para trazer um recorte filtrado, use a coleta manual acima.</p>
+      <label>Intervalo entre páginas (segundos)
+        <input id="auto-delay" type="number" min="2" max="30" step="1" value="4">
+      </label>
+      <label>Limite de páginas nesta execução
+        <input id="auto-max-pages" type="number" min="1" max="500" step="1" value="200">
+      </label>
+      <div class="actions">
+        <button class="primary" id="auto-collect-start" type="button">Coletar todas as páginas</button>
+        <button class="secondary" id="auto-collect-cancel" type="button" disabled>Cancelar</button>
+      </div>
+      <div class="auto-progress" id="auto-progress" hidden>
+        <div class="auto-progress-bar"><div class="auto-progress-fill" id="auto-progress-fill"></div></div>
+        <small id="auto-progress-label">—</small>
+      </div>
+      <div class="status" id="auto-collect-status" aria-live="polite"></div>
+    </section>
+
+    <section class="settings">
+      <h2>Stacks aceitas</h2>
+      <p>Marque as tecnologias desejadas. Sem marcação, todas as vagas coletadas serão mantidas.</p>
+      <div class="stack-grid" id="stack-options"></div>
+      <label>Regra das stacks
+        <select id="stack-mode">
+          <option value="any">Qualquer stack selecionada</option>
+          <option value="all">Todas as stacks selecionadas</option>
+        </select>
+      </label>
+      <label>Termos adicionais, separados por vírgula
+        <input id="custom-terms" type="text" placeholder="SAP, Salesforce, ERP">
+      </label>
+      <label>Termos para excluir, separados por vírgula
+        <input id="excluded-terms" type="text" placeholder="Estágio, Trainee, Júnior">
+      </label>
+
+      <h2>Destino</h2>
+      <div class="destination-grid">
+        <label class="check"><input id="download-files" type="checkbox" checked> Baixar CSV e JSON</label>
+        <label class="check"><input id="send-radar" type="checkbox"> Enviar ao Radar de Carreira</label>
+      </div>
+      <label>Subpasta dentro de Downloads
+        <input id="download-folder" type="text" value="RadarCarreira" placeholder="RadarCarreira">
+      </label>
+      <label>Endpoint do Radar
+        <input id="portal-url" type="url" value="https://radar-carreira-platform.al-ramos.workers.dev/api/collector/import/apinfo-extension">
+      </label>
+      <label>Chave exclusiva do coletor
+        <input id="portal-token" type="password" autocomplete="new-password" placeholder="Gerada em Radar → Extensão APinfo">
+      </label>
+      <div class="actions settings-actions">
+        <button class="secondary" id="save-settings" type="button">Salvar parâmetros</button>
+        <button class="secondary" id="test-radar" type="button">Testar conexão</button>
+      </div>
+    </section>
+
+    <section class="steps">
+      <div><b>1</b><p>Abra a pesquisa de vagas do APinfo e configure os filtros que quiser (estado, cidade, cargo, palavras-chave).</p></div>
+      <div><b>2</b><p>Clique em <strong>Coletar esta página</strong>. As vagas visíveis entram no acumulado.</p></div>
+      <div><b>3</b><p>Use a paginação do próprio APinfo para ir à próxima página e colete de novo. Repita quantas páginas quiser.</p></div>
+      <div><b>4</b><p>Quando terminar, exporte o acumulado em CSV/JSON e/ou envie ao Radar.</p></div>
+    </section>
+    <div class="actions">
+      <button class="primary" id="export" type="button">Exportar acumulado</button>
+    </div>
+    <div class="status" id="export-status" aria-live="polite"></div>
+
+    <aside>O APinfo limita a quantidade de consultas em pouco tempo. Colete no seu ritmo normal de navegação — evite clicar em "Coletar esta página" repetidamente sem realmente mudar de página.</aside>
+  </main>
+  <script src="stacks.js"></script>
+  <script src="dashboard.js"></script>
+</body>
+</html>
