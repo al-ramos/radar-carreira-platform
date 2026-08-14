@@ -1,4 +1,4 @@
-CREATE TABLE `job_ai_triage` (
+CREATE TABLE IF NOT EXISTS `job_ai_triage` (
 	`job_id` text PRIMARY KEY NOT NULL,
 	`processed_at` integer NOT NULL,
 	`veredito` text NOT NULL,
