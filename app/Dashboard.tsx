@@ -566,6 +566,14 @@ export default function Dashboard() {
     return () => window.clearTimeout(timer);
   }, [effectiveMinScore]);
   const scoreFilterPending = requestedMinScore !== effectiveMinScore || loadedMinScore !== requestedMinScore;
+  // Espelha requiresPostFiltering do servidor (app/api/jobs/route.ts): esses
+  // três filtros exigem materializar e pontuar um lote em memória, o que sem
+  // um corte de período pode estourar o tempo do Worker em bases grandes.
+  // "Todas" só fica disponível quando nenhum deles está ativo.
+  const requiresHeavyFiltering = sortOrder === "score" || requestedMinScore > 5 || verdictFilter !== "all";
+  useEffect(() => {
+    if (requiresHeavyFiltering && period === "all") setPeriod("24");
+  }, [requiresHeavyFiltering, period]);
   // O corte visual só muda depois que a API respondeu para aquele mesmo
   // valor. Assim, contagem, paginação e vagas sempre representam a mesma
   // consulta; enquanto isso, a interface informa que está atualizando.
@@ -2053,11 +2061,14 @@ export default function Dashboard() {
               aria-label="Período das vagas"
               onChange={(e) => setPeriod(e.target.value)}
               value={period ?? "24"}
+              title={requiresHeavyFiltering ? "Desligue \"Ordenar por Pontuação\", o filtro de veredito ou reduza a aderência mínima para liberar \"Todas\"." : undefined}
             >
               <option value="24">Últimas 24h</option>
               <option value="72">Últimos 3 dias</option>
               <option value="168">Últimos 7 dias</option>
-              <option value="all">Todas</option>
+              <option value="all" disabled={requiresHeavyFiltering}>
+                Todas{requiresHeavyFiltering ? " (indisponível com pontuação/veredito ativos)" : ""}
+              </option>
             </select>
             <button
               type="button"
