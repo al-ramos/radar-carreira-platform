@@ -6,6 +6,7 @@ import Analytics from "./Analytics";
 import Monitoring from "./Monitoring";
 import SourceList from "./SourceList";
 import AuditTrail from "./AuditTrail";
+import TriageReport from "./TriageReport";
 import DataQuality from "./DataQuality";
 import UserManagement from "./UserManagement";
 import LinkedInExtension from "./LinkedInExtension";
@@ -322,6 +323,7 @@ const nav = [
   "Métricas",
   "Monitoramento",
   "Auditoria",
+  "Triagem IA",
   "Qualidade",
   "Usuários",
   "Extensão LinkedIn",
@@ -510,6 +512,7 @@ export default function Dashboard() {
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [monitorOpen, setMonitorOpen] = useState(false);
   const [auditOpen, setAuditOpen] = useState(false);
+  const [triageOpen, setTriageOpen] = useState(false);
   const [qualityOpen, setQualityOpen] = useState(false);
   const [usersOpen, setUsersOpen] = useState(false);
   const [linkedinOpen, setLinkedInOpen] = useState(false);
@@ -736,7 +739,8 @@ export default function Dashboard() {
             return "Exibindo a lista em modo simplificado enquanto a personalização se recupera.";
           }
           if (data.limited) {
-            return "A pontuação considerou as 2.500 vagas candidatas mais recentes. Restrinja o período para ordenar todo o resultado.";
+            const candidateLimit = Number(data.candidateLimit) || 500;
+            return `A pontuação considerou as ${candidateLimit.toLocaleString("pt-BR")} vagas candidatas mais recentes. Restrinja o período para ordenar todo o resultado.`;
           }
           return current.startsWith("O Radar está temporariamente indisponível.") ||
             current.startsWith("Não foi possível atualizar agora.")
@@ -1849,10 +1853,10 @@ export default function Dashboard() {
     canManageSources = isOwner,
     visibleNav = nav.filter((item) => {
       if (item === "Fontes" || item === "Importações") return canManageSources;
-      if (item === "Auditoria" || item === "Extensão LinkedIn" || item === "Extensão APinfo") return isOwner;
+      if (item === "Auditoria" || item === "Triagem IA" || item === "Extensão LinkedIn" || item === "Extensão APinfo") return isOwner;
       return (
         (isAdmin && (item !== "Usuários" || isOwner)) ||
-        !new Set(["Auditoria", "Usuários", "Extensão LinkedIn", "Extensão APinfo"]).has(item)
+        !new Set(["Auditoria", "Triagem IA", "Usuários", "Extensão LinkedIn", "Extensão APinfo"]).has(item)
       );
     }),
     icons: Record<string, string> = {
@@ -1862,6 +1866,7 @@ export default function Dashboard() {
       Métricas: "▥",
       Monitoramento: "◌",
       Auditoria: "≡",
+      "Triagem IA": "◈",
       Qualidade: "✓",
       Usuários: "♙",
       "Extensão LinkedIn": "in",
@@ -1894,6 +1899,7 @@ export default function Dashboard() {
                 if (n === "Métricas") setAnalyticsOpen(true);
                 if (n === "Monitoramento") setMonitorOpen(true);
                 if (n === "Auditoria") setAuditOpen(true);
+                if (n === "Triagem IA") setTriageOpen(true);
                 if (n === "Qualidade") setQualityOpen(true);
                 if (n === "Usuários") setUsersOpen(true);
                 if (n === "Extensão LinkedIn") setLinkedInOpen(true);
@@ -3021,6 +3027,7 @@ export default function Dashboard() {
       {usersOpen && isOwner && <UserManagement close={() => setUsersOpen(false)} />}
       {qualityOpen && <DataQuality close={() => setQualityOpen(false)} />}
       {auditOpen && <AuditTrail close={() => setAuditOpen(false)} />}
+      {triageOpen && isOwner && <TriageReport close={() => setTriageOpen(false)} />}
       {monitorOpen && <Monitoring close={() => setMonitorOpen(false)} />}
       {analyticsOpen && <Analytics close={() => setAnalyticsOpen(false)} />}
       {alertsOpen && <AlertCenter close={() => setAlertsOpen(false)} />}

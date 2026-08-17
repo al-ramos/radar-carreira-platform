@@ -8,7 +8,7 @@ test("dashboard oferece radar, perfil e pipeline persistente", async () => {
   const dashboard = await read("../app/Dashboard.tsx");
   assert.match(
     dashboard,
-    /const nav\s*=\s*\[\s*"Radar",\s*"Pipeline",\s*"Alertas",\s*"Métricas",\s*"Monitoramento",\s*"Auditoria",\s*"Qualidade",\s*"Usuários",\s*"Extensão LinkedIn",\s*"Extensão APinfo",\s*"Gmail RadarVagas",\s*"Fontes",\s*"Importações",\s*"Configurações",?\s*\]/,
+    /const nav\s*=\s*\[\s*"Radar",\s*"Pipeline",\s*"Alertas",\s*"Métricas",\s*"Monitoramento",\s*"Auditoria",\s*"Triagem IA",\s*"Qualidade",\s*"Usuários",\s*"Extensão LinkedIn",\s*"Extensão APinfo",\s*"Gmail RadarVagas",\s*"Fontes",\s*"Importações",\s*"Configurações",?\s*\]/,
   );
   // Desde o commit 9239c98 (paginação no servidor após filtros), a URL de
   // /api/jobs é montada por buildJobsParams(page), não mais como string
@@ -196,4 +196,26 @@ test("IA aprofunda contexto com cache, orçamento e preparação de entrevista",
   assert.match(provider, /response_format/);
   assert.match(provider, /Não invente e não use conhecimento externo/);
   assert.match(interview, /COM\+\/MTS\/DTC a CP/);
+});
+
+test("triagem por IA fica visível só ao proprietário e consulta job_ai_triage sem expor o backlog por padrão", async () => {
+  const [dashboard, route, component, platformCss] = await Promise.all([
+    read("../app/Dashboard.tsx"),
+    read("../app/api/admin/triage/route.ts"),
+    read("../app/TriageReport.tsx"),
+    read("../app/platform.css"),
+  ]);
+  assert.match(dashboard, /import TriageReport from "\.\/TriageReport"/);
+  assert.match(dashboard, /\[triageOpen, setTriageOpen\]/);
+  assert.match(dashboard, /"Triagem IA"/);
+  assert.match(dashboard, /item === "Auditoria" \|\| item === "Triagem IA"/);
+  assert.match(dashboard, /\{triageOpen && isOwner && <TriageReport/);
+  assert.match(route, /isOwnerEmail\(user\.email\)/);
+  assert.match(route, /Acesso restrito ao proprietário/);
+  assert.match(route, /includeBacklog/);
+  assert.match(route, /!= '⚪'/);
+  assert.match(component, /Vagas avaliadas por IA/);
+  assert.match(component, /Incluir não avaliadas/);
+  assert.match(platformCss, /\.triage-toggle/);
+  assert.match(platformCss, /\.triage-row/);
 });
