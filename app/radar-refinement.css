@@ -723,6 +723,156 @@
   color: #fff;
   font-size: 9px;
 }
+
+/* ─── Toggle Lista/Tabela ─────────────────────────────────────── */
+.view-mode-toggle {
+  display: inline-flex;
+  border: 1px solid #dedfea;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+}
+.view-mode-toggle button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 42px;
+  padding: 0 12px;
+  background: none;
+  border: none;
+  color: #18264d;
+  font-size: 11px;
+  font-weight: 750;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.view-mode-toggle button + button {
+  border-left: 1px solid #dedfea;
+}
+.view-mode-toggle button:hover {
+  background: #f5f3ff;
+}
+.view-mode-toggle button.active {
+  background: #efe9ff;
+  color: #5b21b6;
+}
+
+/* ─── Visão em tabela ─────────────────────────────────────────── */
+.job-table-wrap {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.job-table-header {
+  display: grid;
+  grid-template-columns: minmax(140px, 1.1fr) minmax(200px, 1.6fr) 88px minmax(160px, 1fr);
+  gap: 10px;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #fff;
+  border-bottom: 1px solid var(--line);
+}
+.job-table-th {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 9px 8px;
+  background: none;
+  border: none;
+  text-align: left;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: .02em;
+  text-transform: uppercase;
+  color: #5b6472;
+  cursor: pointer;
+}
+.job-table-th:hover,
+.job-table-th.active {
+  color: #5b21b6;
+}
+.job-table-sort-arrow {
+  font-size: 8px;
+  min-width: 8px;
+}
+.job-table-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 1.1fr) minmax(200px, 1.6fr) 88px minmax(160px, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+}
+.job-table-row:hover {
+  background: #f8f7ff;
+}
+.job-table-row.selected {
+  background: #efe9ff;
+}
+.job-table-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-size: 12px;
+  color: #18264d;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.job-table-cell-company {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 10.5px;
+  color: #5b6472;
+}
+.job-table-cell-title {
+  font-weight: 700;
+  white-space: normal;
+}
+.job-table-cell-title small {
+  font-weight: 500;
+  color: #5b6472;
+  font-size: 9.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.job-table-cell-score {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  font-weight: 750;
+}
+.job-table-cell-stack {
+  flex-direction: row;
+  flex-wrap: wrap;
+  white-space: normal;
+  gap: 4px;
+}
+.job-table-stack-tag {
+  display: inline-flex;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #f0eefc;
+  color: #5b21b6;
+  font-size: 9.5px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+@media (max-width: 700px) {
+  .job-table-header { display: none; }
+  .job-table-row {
+    grid-template-columns: 1fr;
+    gap: 3px;
+  }
+}
+
 .radar-filter-panel {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
