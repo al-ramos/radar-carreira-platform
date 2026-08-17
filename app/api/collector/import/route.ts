@@ -122,7 +122,7 @@ export async function POST(request: Request) {
             ingestionChannel: values.ingestionChannel,
             roleArea: values.roleArea,
             publishedAt: values.publishedAt,
-            sourcePublishedAt: sql`coalesce(${values.sourcePublishedAt}, ${jobs.sourcePublishedAt})`,
+            sourcePublishedAt: sql`coalesce(${values.sourcePublishedAt?.getTime() ?? null}, ${jobs.sourcePublishedAt})`,
             url: values.url,
             applyUrl: values.applyUrl,
             contactEmail: sql`coalesce(${values.contactEmail}, ${jobs.contactEmail})`,
@@ -144,9 +144,10 @@ export async function POST(request: Request) {
     await db.update(jobSources).set({ lastRunAt: new Date() }).where(eq(jobSources.id, SOURCE_ID));
     await notifyImportRun(db, { runId, source: "Extensão LinkedIn", status: "completed", received: items.length, inserted, updated, duplicates: duplicateRows }).catch(() => undefined);
     return json({ ok: true, accepted: filtered.accepted.length, received: items.length, duplicates: duplicateRows, rejected: filtered.rejected, inserted, updated, requiredStacks: filtered.requiredStacks, stackMatchMode: filtered.stackMatchMode });
-  } catch {
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : "Falha desconhecida durante a gravação";
     await db.update(importRuns).set({ status: "failed", inserted, updated, duplicates: duplicateRows, errors: 1, finishedAt: new Date() }).where(eq(importRuns.id, runId)).catch(() => undefined);
-    await notifyImportRun(db, { runId, source: "Extensão LinkedIn", status: "failed", received: items.length, inserted, updated, duplicates: duplicateRows, error: "A importação foi interrompida antes de concluir." }).catch(() => undefined);
+    await notifyImportRun(db, { runId, source: "Extensão LinkedIn", status: "failed", received: items.length, inserted, updated, duplicates: duplicateRows, error: detail.slice(0, 300) }).catch(() => undefined);
     return json({ error: "A importação foi interrompida. Reenvie o mesmo lote para concluir as vagas pendentes.", runId, inserted, updated }, { status: 500 });
   }
 }

@@ -49,6 +49,33 @@ test("coletores registram início, conclusão e falha no monitoramento", async()
  assert.match(ui,/r\.received.*r\.inserted.*r\.updated/);
 });
 
+test("rotas convertem Date para epoch antes de interpolar sourcePublishedAt no SQL do D1", async()=>{
+ const files=[
+  "../app/api/collector/import/route.ts",
+  "../app/api/collector/import/[sourceId]/route.ts",
+  "../app/api/admin/import/route.ts",
+  "../app/api/admin/collect/route.ts",
+  "../app/api/cron/collect/route.ts",
+ ];
+ for(const file of files){
+  const source=await readFile(new URL(file,import.meta.url),"utf8");
+  assert.doesNotMatch(source,/coalesce\(\$\{values\.sourcePublishedAt\},/);
+  assert.match(source,/coalesce\(\$\{values\.sourcePublishedAt\?\.getTime\(\) \?\? null\},/);
+ }
+});
+
+test("falhas de importação preservam o detalhe técnico na notificação", async()=>{
+ const routes=await Promise.all([
+  readFile(new URL("../app/api/collector/import/route.ts",import.meta.url),"utf8"),
+  readFile(new URL("../app/api/collector/import/[sourceId]/route.ts",import.meta.url),"utf8"),
+  readFile(new URL("../app/api/admin/import/route.ts",import.meta.url),"utf8"),
+ ]);
+ for(const route of routes){
+  assert.match(route,/catch \(error\)/);
+  assert.match(route,/error: detail\.slice\(0, 300\)/);
+ }
+});
+
 test("importação manual usa lotes e pode reenviar o mesmo arquivo", async()=>{
  const source=await readFile(new URL("../app/api/admin/import/route.ts",import.meta.url),"utf8");
  assert.match(source,/WRITE_BATCH_SIZE = 50/);

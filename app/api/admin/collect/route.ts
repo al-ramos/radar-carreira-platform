@@ -80,7 +80,7 @@ export async function POST(request: Request) {
         };
         await db.insert(jobs).values(values).onConflictDoUpdate({
           target: jobs.fingerprint,
-          set: { sourceId: source.id, title: values.title, location: values.location, workMode: values.workMode, ingestionChannel: values.ingestionChannel, roleArea: values.roleArea, publishedAt: values.publishedAt, sourcePublishedAt: sql`coalesce(${values.sourcePublishedAt}, ${jobs.sourcePublishedAt})`, url: values.url, description: values.description, lastSeenAt: now, status: "active", updatedAt: now },
+          set: { sourceId: source.id, title: values.title, location: values.location, workMode: values.workMode, ingestionChannel: values.ingestionChannel, roleArea: values.roleArea, publishedAt: values.publishedAt, sourcePublishedAt: sql`coalesce(${values.sourcePublishedAt?.getTime() ?? null}, ${jobs.sourcePublishedAt})`, url: values.url, description: values.description, lastSeenAt: now, status: "active", updatedAt: now },
         });
         await recordImportRunJobs(db,runId,[fp],new Set(existing?[fp]:[]),now);
         existing ? sourceUpdated++ : sourceInserted++;

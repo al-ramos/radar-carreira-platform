@@ -104,7 +104,7 @@ export async function POST(request: Request) {
             ingestionChannel: values.ingestionChannel,
             roleArea: values.roleArea,
             publishedAt: values.publishedAt,
-            sourcePublishedAt: sql`coalesce(${values.sourcePublishedAt}, ${jobs.sourcePublishedAt})`,
+            sourcePublishedAt: sql`coalesce(${values.sourcePublishedAt?.getTime() ?? null}, ${jobs.sourcePublishedAt})`,
             url: values.url,
             applyUrl: values.applyUrl,
             contactEmail: sql`coalesce(${values.contactEmail}, ${jobs.contactEmail})`,
@@ -125,9 +125,10 @@ export async function POST(request: Request) {
     await db.update(importRuns).set({ status: "completed", inserted, updated, duplicates: duplicateRows, finishedAt: new Date() }).where(eq(importRuns.id, runId));
     await notifyImportRun(db, { runId, source: source === "csv" ? "Importação CSV" : "Importação manual", status: "completed", received: items.length, inserted, updated, duplicates: duplicateRows }).catch(() => undefined);
     return NextResponse.json({ ok: true, runId, received: items.length, accepted: entries.length, inserted, updated, duplicates: duplicateRows, errors: 0 });
-  } catch {
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : "Falha desconhecida durante a gravação";
     await db.update(importRuns).set({ status: "failed", inserted, updated, duplicates: duplicateRows, errors: 1, finishedAt: new Date() }).where(eq(importRuns.id, runId)).catch(() => undefined);
-    await notifyImportRun(db, { runId, source: source === "csv" ? "Importação CSV" : "Importação manual", status: "failed", received: items.length, inserted, updated, duplicates: duplicateRows, error: "A importação foi interrompida antes de concluir." }).catch(() => undefined);
+    await notifyImportRun(db, { runId, source: source === "csv" ? "Importação CSV" : "Importação manual", status: "failed", received: items.length, inserted, updated, duplicates: duplicateRows, error: detail.slice(0, 300) }).catch(() => undefined);
     return NextResponse.json({ error: "A importação foi interrompida. Reenvie o mesmo arquivo para concluir as vagas pendentes.", runId, inserted, updated }, { status: 500 });
   }
 }
