@@ -71,6 +71,6 @@ export async function notifyImportRun(db: ReturnType<typeof getDb>, outcome: Imp
     title,
     body: parts.join(" · "),
     link: "/?open=importacoes",
-    metadata: { runId: outcome.runId, source: outcome.source, received: outcome.received, inserted: outcome.inserted, updated: outcome.updated, duplicates: outcome.duplicates ?? 0 },
+    metadata: { runId: outcome.runId, source: outcome.source, received: outcome.received, inserted: outcome.inserted, updated: outcome.updated, duplicates: outcome.duplicates ?? 0, error: outcome.error ?? null },
   });
 }

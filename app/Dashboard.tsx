@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import AlertCenter from "./AlertCenter";
 import NotificationBell from "./NotificationBell";
+import ImportRunReport from "./ImportRunReport";
 import Analytics from "./Analytics";
 import Monitoring from "./Monitoring";
 import SourceList from "./SourceList";
@@ -535,6 +536,7 @@ export default function Dashboard() {
     usage: { usedTokens: number; limit: number; remainingTokens: number; period: string };
   } | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [importReportRunId, setImportReportRunId] = useState<string | null>(null);
   // Captura de contato do APinfo pedida à extensão a partir do próprio
   // Radar — ver captureApinfoContact/buildContactMailto e o useEffect que
   // escuta a resposta da extensão (RADAR_CAPTURE_CONTACT_RESULT).
@@ -605,6 +607,7 @@ export default function Dashboard() {
   // ──────────────────────────────────────────────────────────────────────────
   const closeOpenOverlays = () => {
     setImporting(false);
+    setImportReportRunId(null);
     setSourcesOpen(false);
     setPipelineOpen(false);
     setGmailOpen(false);
@@ -2016,7 +2019,7 @@ export default function Dashboard() {
                 Entrar
               </a>
             )}
-            {canManageSources && <NotificationBell />}
+            {canManageSources && <NotificationBell onOpenImportRun={setImportReportRunId} />}
             {currentUser && (
               <div className="report-menu-wrap">
                 <button
@@ -3180,6 +3183,7 @@ export default function Dashboard() {
       {qualityOpen && <DataQuality close={() => setQualityOpen(false)} />}
       {auditOpen && <AuditTrail close={() => setAuditOpen(false)} />}
       {triageOpen && isOwner && <TriageReport close={() => setTriageOpen(false)} />}
+      {importReportRunId && <ImportRunReport runId={importReportRunId} close={() => setImportReportRunId(null)} />}
       {monitorOpen && <Monitoring close={() => setMonitorOpen(false)} />}
       {analyticsOpen && <Analytics close={() => setAnalyticsOpen(false)} />}
       {alertsOpen && <AlertCenter close={() => setAlertsOpen(false)} />}

@@ -8,6 +8,7 @@ type Notification = {
   title: string;
   body: string;
   link: string | null;
+  metadata: Record<string, unknown>;
   read: boolean;
   createdAt: string;
 };
@@ -32,7 +33,7 @@ function timeAgo(iso: string) {
  * por que não há segmentação por usuário: só a proprietária opera fontes
  * e importações, e a API já restringe a leitura a ela.
  */
-export default function NotificationBell() {
+export default function NotificationBell({ onOpenImportRun }: { onOpenImportRun?: (runId: string) => void }) {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<Notification[]>([]);
   const [unread, setUnread] = useState(0);
@@ -78,6 +79,12 @@ export default function NotificationBell() {
     await fetch("/api/notifications", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ all: true }) });
   }
 
+  function openNotification(notification: Notification) {
+    void markRead(notification.id);
+    const runId = notification.type === "import" ? notification.metadata.runId : undefined;
+    if (typeof runId === "string" && onOpenImportRun) onOpenImportRun(runId);
+  }
+
   if (!loaded && !open) return null;
 
   return (
@@ -105,8 +112,21 @@ export default function NotificationBell() {
           </div>
           <div className="notification-bell-list">
             {items.length === 0 && <p className="notification-bell-empty">Nenhuma notificação ainda.</p>}
-            {items.map((n) => (
-              <article key={n.id} className={n.read ? "read" : ""}>
+            {items.map((n) => {
+              const canOpenReport = n.type === "import" && typeof n.metadata.runId === "string";
+              return <article
+                key={n.id}
+                className={`${n.read ? "read " : ""}${canOpenReport ? "clickable" : ""}`}
+                onClick={canOpenReport ? () => openNotification(n) : undefined}
+                onKeyDown={canOpenReport ? (event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    openNotification(n);
+                  }
+                } : undefined}
+                role={canOpenReport ? "button" : undefined}
+                tabIndex={canOpenReport ? 0 : undefined}
+              >
                 <span className={`notification-bell-icon severity-${n.severity}`} aria-hidden="true">
                   {ICON[n.severity]}
                 </span>
@@ -116,12 +136,20 @@ export default function NotificationBell() {
                   <small>{timeAgo(n.createdAt)}</small>
                 </div>
                 {!n.read && (
-                  <button type="button" className="notification-bell-read-btn" onClick={() => void markRead(n.id)} aria-label="Marcar como lida">
+                  <button
+                    type="button"
+                    className="notification-bell-read-btn"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void markRead(n.id);
+                    }}
+                    aria-label="Marcar como lida"
+                  >
                     ×
                   </button>
                 )}
-              </article>
-            ))}
+              </article>;
+            })}
           </div>
         </div>
       )}

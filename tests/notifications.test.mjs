@@ -47,15 +47,26 @@ test("os seis pontos de conclusão/falha de import_runs notificam o histórico",
   for (const route of routes) assert.match(route, /notifyImportRun/);
 });
 
-test("o sino aparece no cabeçalho do Radar para quem administra fontes", async () => {
-  const [dashboard, bell, styles] = await Promise.all([
+test("o sino abre o relatório detalhado da importação para quem administra fontes", async () => {
+  const [dashboard, bell, styles, report, route] = await Promise.all([
     read("../app/Dashboard.tsx"),
     read("../app/NotificationBell.tsx"),
     read("../app/radar-refinement.css"),
+    read("../app/ImportRunReport.tsx"),
+    read("../app/api/admin/imports/[id]/route.ts"),
   ]);
   assert.match(dashboard, /import NotificationBell from "\.\/NotificationBell"/);
-  assert.match(dashboard, /canManageSources && <NotificationBell \/>/);
+  assert.match(dashboard, /import ImportRunReport from "\.\/ImportRunReport"/);
+  assert.match(dashboard, /canManageSources && <NotificationBell onOpenImportRun=\{setImportReportRunId\}/);
+  assert.match(dashboard, /<ImportRunReport runId=\{importReportRunId\}/);
   assert.match(bell, /fetch\("\/api\/notifications"\)/);
+  assert.match(bell, /metadata\.runId/);
+  assert.match(bell, /onOpenImportRun/);
   assert.match(bell, /notification-bell-badge/);
   assert.match(styles, /\.notification-bell-dropdown/);
+  assert.match(styles, /\.import-run-report/);
+  assert.match(report, /RELATÓRIO DE IMPORTAÇÃO/);
+  assert.match(report, /Vagas afetadas/);
+  assert.match(route, /jobImportRuns/);
+  assert.match(route, /import\.run/);
 });
