@@ -465,6 +465,11 @@ export default function Dashboard() {
     [loadedMinScore, setLoadedMinScore] = useState(0),
     [sortOrder, setSortOrder] = useState<"score" | "recent">("score"),
     [viewMode, setViewMode] = useState<"cards" | "table">("cards"),
+    // Controla só a visibilidade do painel de detalhe quando ele vira drawer
+    // (viewMode === "table"). Não mexe em `selected`/`selectedJob` — outras
+    // partes da tela (avanço automático, ações do pipeline) continuam
+    // dependendo da última vaga vista normalmente.
+    [tableDrawerOpen, setTableDrawerOpen] = useState(false),
     [simplifiedList, setSimplifiedList] = useState(false),
     [period, setPeriod] = useState<string | null>(null),
     [mode, setMode] = useState("loading"),
@@ -976,30 +981,75 @@ export default function Dashboard() {
    * clicar num cabeçalho de coluna ordena só a tabela. Opera sobre a mesma
    * `orderedJobs` (já filtrada pelos controles da tela), então herda busca,
    * aderência mínima, período etc. automaticamente. */
-  const [tableSort, setTableSort] = useState<{ column: "company" | "title" | "score" | "stack"; direction: "asc" | "desc" }>(
+  const [tableSort, setTableSort] = useState<{ column: "company" | "title" | "score" | "stack" | "location" | "source" | "publishedAt"; direction: "asc" | "desc" }>(
     { column: "score", direction: "desc" },
   );
   const toggleTableSort = useCallback((column: typeof tableSort.column) => {
     setTableSort((current) =>
       current.column === column
         ? { column, direction: current.direction === "asc" ? "desc" : "asc" }
-        : { column, direction: column === "score" ? "desc" : "asc" },
+        : { column, direction: column === "score" || column === "publishedAt" ? "desc" : "asc" },
     );
   }, []);
+  /** Filtro por coluna da tabela — texto livre em Empresa/Vaga/Stack, exato
+   * em Modalidade/Veredito/Fonte. Roda em cima da página já carregada
+   * (client-side), não chama a API de novo. */
+  const [tableColumnFilters, setTableColumnFilters] = useState<{
+    company: string; title: string; mode: string; verdict: string; stack: string; source: string;
+  }>({ company: "", title: "", mode: "", verdict: "", stack: "", source: "" });
+  const setTableColumnFilter = useCallback((column: keyof typeof tableColumnFilters, value: string) => {
+    setTableColumnFilters((current) => ({ ...current, [column]: value }));
+  }, []);
+  const clearTableColumnFilters = useCallback(() => {
+    setTableColumnFilters({ company: "", title: "", mode: "", verdict: "", stack: "", source: "" });
+  }, []);
+  const activeTableColumnFilterCount = Object.values(tableColumnFilters).filter(Boolean).length;
   const tableJobs = useMemo(() => {
     const { column, direction } = tableSort;
     const factor = direction === "asc" ? 1 : -1;
-    return [...orderedJobs].sort((left, right) => {
+    const filters = tableColumnFilters;
+    const filtered = filters.company || filters.title || filters.mode || filters.verdict || filters.stack || filters.source
+      ? orderedJobs.filter((j) => {
+          if (filters.company && !j.company.toLowerCase().includes(filters.company.toLowerCase())) return false;
+          if (filters.title && !j.title.toLowerCase().includes(filters.title.toLowerCase())) return false;
+          if (filters.mode && j.mode !== filters.mode) return false;
+          if (filters.verdict) {
+            const v = verdictMap.get(j.id);
+            const key = v ? (v.emoji === "✅" ? "ok" : v.emoji === "🟡" ? "maybe" : v.emoji === "🔴" ? "no" : "blocked") : "none";
+            if (key !== filters.verdict) return false;
+          }
+          if (filters.stack && !j.stack.some((s) => s.toLowerCase().includes(filters.stack.toLowerCase()))) return false;
+          if (filters.source && (j.sourceName ?? "") !== filters.source) return false;
+          return true;
+        })
+      : orderedJobs;
+    return [...filtered].sort((left, right) => {
       switch (column) {
         case "score":
           return (left.score - right.score) * factor;
         case "stack":
           return (left.stack[0] ?? "").localeCompare(right.stack[0] ?? "", "pt-BR") * factor;
+        case "location":
+          return left.location.localeCompare(right.location, "pt-BR") * factor;
+        case "source":
+          return (left.sourceName ?? "").localeCompare(right.sourceName ?? "", "pt-BR") * factor;
+        case "publishedAt":
+          return (new Date(left.sourcePublishedAt ?? 0).getTime() - new Date(right.sourcePublishedAt ?? 0).getTime()) * factor;
         default:
           return left[column].localeCompare(right[column], "pt-BR") * factor;
       }
     });
-  }, [orderedJobs, tableSort]);
+  }, [orderedJobs, tableSort, tableColumnFilters, verdictMap]);
+  /** Opções distintas para os filtros de coluna do tipo "select" (Modalidade
+   * e Fonte), derivadas da página de vagas já carregada. */
+  const tableModeOptions = useMemo(
+    () => Array.from(new Set(orderedJobs.map((j) => j.mode).filter(Boolean))).sort((a, b) => a.localeCompare(b, "pt-BR")),
+    [orderedJobs],
+  );
+  const tableSourceOptions = useMemo(
+    () => Array.from(new Set(orderedJobs.map((j) => j.sourceName).filter((s): s is string => Boolean(s)))).sort((a, b) => a.localeCompare(b, "pt-BR")),
+    [orderedJobs],
+  );
   const sortReportJobs = useCallback((jobs: Job[]) =>
     [...jobs].sort((left, right) => {
       if (sortOrder === "recent") {
@@ -1367,6 +1417,7 @@ export default function Dashboard() {
   function selectJob(job: Job) {
     setSelected(job);
     setAnalysisOpen(false);
+    setTableDrawerOpen(true);
     void loadJobDetail(job);
     if (!job.id.startsWith("demo") && currentUser) {
       void updateStage(job.id, AUTOMATIC_ACTION_STAGE.view, undefined, "advance");
@@ -2128,7 +2179,7 @@ export default function Dashboard() {
                 type="button"
                 className={viewMode === "cards" ? "active" : ""}
                 aria-pressed={viewMode === "cards"}
-                onClick={() => setViewMode("cards")}
+                onClick={() => { setViewMode("cards"); setTableDrawerOpen(false); }}
               >
                 ☰ Lista
               </button>
@@ -2136,7 +2187,7 @@ export default function Dashboard() {
                 type="button"
                 className={viewMode === "table" ? "active" : ""}
                 aria-pressed={viewMode === "table"}
-                onClick={() => setViewMode("table")}
+                onClick={() => { setViewMode("table"); setTableDrawerOpen(false); }}
               >
                 ▦ Tabela
               </button>
@@ -2398,7 +2449,7 @@ export default function Dashboard() {
             <span className="pagination-summary">Página {currentPage} de {Math.ceil(totalJobs / 50)}</span>
           </nav>
         )}
-        <div className="workspace">
+        <div className={`workspace${viewMode === "table" ? " workspace-table-mode" : ""}`}>
           <div className="job-list" ref={jobListRef} onScroll={handleJobListScroll}>
             {viewMode === "table" && orderedJobs.length > 0 && (
               <div className="job-table-wrap" role="table" aria-label="Vagas em formato de tabela">
@@ -2406,8 +2457,11 @@ export default function Dashboard() {
                   {([
                     { column: "company" as const, label: "Empresa" },
                     { column: "title" as const, label: "Vaga" },
-                    { column: "score" as const, label: "Score" },
+                    { column: "location" as const, label: "Local / Modalidade" },
+                    { column: "score" as const, label: "Score / Veredito" },
                     { column: "stack" as const, label: "Stack" },
+                    { column: "source" as const, label: "Fonte" },
+                    { column: "publishedAt" as const, label: "Publicada" },
                   ]).map(({ column, label }) => (
                     <button
                       key={column}
@@ -2424,9 +2478,46 @@ export default function Dashboard() {
                     </button>
                   ))}
                 </div>
+                <div className="job-table-filter-row" role="row">
+                  <span role="cell" className="job-table-filter-cell">
+                    <input type="text" placeholder="Filtrar empresa…" value={tableColumnFilters.company} onChange={(e) => setTableColumnFilter("company", e.target.value)} aria-label="Filtrar por empresa" />
+                  </span>
+                  <span role="cell" className="job-table-filter-cell">
+                    <input type="text" placeholder="Filtrar vaga…" value={tableColumnFilters.title} onChange={(e) => setTableColumnFilter("title", e.target.value)} aria-label="Filtrar por título da vaga" />
+                  </span>
+                  <span role="cell" className="job-table-filter-cell">
+                    <select value={tableColumnFilters.mode} onChange={(e) => setTableColumnFilter("mode", e.target.value)} aria-label="Filtrar por modalidade">
+                      <option value="">Modalidade</option>
+                      {tableModeOptions.map((m) => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                  </span>
+                  <span role="cell" className="job-table-filter-cell">
+                    <select value={tableColumnFilters.verdict} onChange={(e) => setTableColumnFilter("verdict", e.target.value)} aria-label="Filtrar por veredito">
+                      <option value="">Veredito</option>
+                      <option value="ok">✅ Recomendado</option>
+                      <option value="maybe">🟡 Talvez</option>
+                      <option value="no">🔴 Não recomendado</option>
+                      <option value="blocked">⛔ Impedido</option>
+                      <option value="none">— Sem veredito</option>
+                    </select>
+                  </span>
+                  <span role="cell" className="job-table-filter-cell">
+                    <input type="text" placeholder="Filtrar stack…" value={tableColumnFilters.stack} onChange={(e) => setTableColumnFilter("stack", e.target.value)} aria-label="Filtrar por stack" />
+                  </span>
+                  <span role="cell" className="job-table-filter-cell">
+                    <select value={tableColumnFilters.source} onChange={(e) => setTableColumnFilter("source", e.target.value)} aria-label="Filtrar por fonte">
+                      <option value="">Fonte</option>
+                      {tableSourceOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </span>
+                  <span role="cell" className="job-table-filter-cell job-table-filter-clear-cell">
+                    {activeTableColumnFilterCount > 0 && <button type="button" className="job-table-filter-clear" onClick={clearTableColumnFilters}>Limpar ({activeTableColumnFilterCount})</button>}
+                  </span>
+                </div>
                 {tableJobs.map((j) => {
                   const v = verdictMap.get(j.id);
                   const stage = pipelineStageMap.get(j.id);
+                  const verdictKey = v ? (v.emoji === "✅" ? "ok" : v.emoji === "🟡" ? "maybe" : v.emoji === "🔴" ? "no" : "blocked") : null;
                   return (
                     <div
                       key={j.id}
@@ -2451,14 +2542,17 @@ export default function Dashboard() {
                       </span>
                       <span role="cell" className="job-table-cell job-table-cell-title">
                         {j.title}
-                        <small className="list-head-dim">⌖ {j.location} · {j.mode}</small>
+                      </span>
+                      <span role="cell" className="job-table-cell job-table-cell-location">
+                        <span className="job-table-location-line">⌖ {j.location}</span>
+                        <span className="job-table-mode-tag">{j.mode}</span>
                       </span>
                       <span role="cell" className="job-table-cell job-table-cell-score">
                         {currentUser ? (
                           j.scored ? (
                             <>
                               <strong>{j.score}</strong>
-                              {v && <span className={`verdict-badge verdict-${v.emoji === "✅" ? "ok" : v.emoji === "🟡" ? "maybe" : v.emoji === "🔴" ? "no" : "blocked"}`}>{v.emoji}</span>}
+                              {v && <span className={`verdict-badge verdict-${verdictKey}`}>{v.emoji}</span>}
                             </>
                           ) : (
                             <span title={j.reasons[0] ?? "Sem dados suficientes para calcular a aderência"}>—</span>
@@ -2477,9 +2571,21 @@ export default function Dashboard() {
                           <span className="stack-unavailable">Stack não informada</span>
                         )}
                       </span>
+                      <span role="cell" className="job-table-cell job-table-cell-source">
+                        {j.sourceName ?? "—"}
+                      </span>
+                      <span role="cell" className="job-table-cell job-table-cell-date">
+                        {j.sourcePublishedAt ? formatJobDateTime(j.sourcePublishedAt) : j.age}
+                      </span>
                     </div>
                   );
                 })}
+                {tableJobs.length === 0 && (
+                  <div className="job-table-empty">
+                    Nenhuma vaga corresponde aos filtros de coluna atuais. {" "}
+                    <button type="button" onClick={clearTableColumnFilters}>Limpar filtros de coluna</button>
+                  </div>
+                )}
               </div>
             )}
             {viewMode === "cards" && orderedJobs.map((j) => (
@@ -2622,9 +2728,15 @@ export default function Dashboard() {
               </div>
             )}
           </div>
-          {selectedJob ? (
-            <aside className={`detail${analysisOpen ? " detail-analysis-open" : ""}`}>
+          {viewMode === "table" && tableDrawerOpen && selectedJob && (
+            <div className="detail-drawer-backdrop" onClick={() => setTableDrawerOpen(false)} aria-hidden="true" />
+          )}
+          {selectedJob && (viewMode !== "table" || tableDrawerOpen) ? (
+            <aside className={`detail${analysisOpen ? " detail-analysis-open" : ""}${viewMode === "table" ? " detail-drawer" : ""}`}>
               <div className="detail-heading">
+                {viewMode === "table" && (
+                  <button type="button" className="detail-drawer-close" onClick={() => setTableDrawerOpen(false)} aria-label="Fechar detalhes da vaga">×</button>
+                )}
                 <div>
                   <small>{selectedJob.company.toUpperCase()}</small>
                   <h2>{selectedJob.title}</h2>
@@ -3061,7 +3173,7 @@ export default function Dashboard() {
                 })()}
               </div>
             </aside>
-          ) : (
+          ) : viewMode === "table" ? null : (
             <aside className="detail radar-detail-empty">
               <strong>
                 Ajuste os filtros para selecionar uma oportunidade.

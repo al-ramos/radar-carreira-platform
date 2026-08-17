@@ -1298,4 +1298,49 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .import-run-outcome.updated { background: #f0edff; color: #6557bd; }
 .import-run-outcome.duplicate { background: #f2f3f8; color: #69718b; }
 @media (max-width: 720px) { .import-run-metrics { grid-template-columns: repeat(2, 1fr); } .import-run-jobs article { grid-template-columns: 72px 1fr; } .import-run-jobs time { grid-column: 2; } }
+
+/* Tabela ampliada: filtros por coluna e detalhe em drawer. */
+.view-mode-toggle { padding: 2px; gap: 2px; }
+.view-mode-toggle button { min-height: 38px; border-radius: 8px; color: #69718b; }
+.view-mode-toggle button:hover { color: #18264d; }
+.view-mode-toggle button.active { background: #18264d; color: #fff; }
+.workspace.workspace-table-mode { grid-template-columns: 1fr !important; }
+.workspace.workspace-table-mode .job-list { max-height: none; }
+.job-table-wrap { border: 1px solid #e5e6ef; border-radius: 10px; background: #fff; overflow: hidden; }
+.job-table-header, .job-table-filter-row, .job-table-row { grid-template-columns: 1.05fr 1.5fr 1fr 1fr 1.1fr .85fr .85fr; gap: 8px; }
+.job-table-header { padding: 0 16px; background: #f7f7fc; border-bottom: 1px solid #e5e6ef; }
+.job-table-th { min-height: 38px; padding: 0; color: #69718b; }
+.job-table-th:hover, .job-table-th.active { color: #18264d; }
+.job-table-sort-arrow { color: #6a5cf0; }
+.job-table-filter-row { padding: 8px 16px; background: #fbfbfe; border-bottom: 1px solid #e5e6ef; align-items: center; }
+.job-table-filter-cell input, .job-table-filter-cell select { width: 100%; min-height: 30px; padding: 0 8px; border: 1px solid #dedfea; border-radius: 7px; background: #fff; color: #18264d; font-size: 10.5px; }
+.job-table-filter-clear-cell { display: flex; justify-content: flex-end; }
+.job-table-filter-clear, .job-table-empty button { border: 0; background: transparent; color: #6a5cf0; font-size: 10px; font-weight: 750; white-space: nowrap; cursor: pointer; }
+.job-table-filter-clear:hover, .job-table-empty button:hover { text-decoration: underline; }
+.job-table-row { padding: 11px 16px; border-bottom: 1px solid #eceefb; }
+.job-table-row:hover { background: #f7faef; }
+.job-table-row.selected { background: #f5f3ff; box-shadow: inset 3px 0 #6a5cf0; }
+.job-table-cell-location { display: flex; flex-direction: column; gap: 2px; }
+.job-table-location-line { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10.5px; }
+.job-table-mode-tag { align-self: flex-start; border-radius: 4px; background: #f0edff; color: #6a5cf0; padding: 1px 6px; font-size: 9px; font-weight: 700; }
+.job-table-cell-source, .job-table-cell-date { color: #69718b; font-size: 10.5px; }
+.job-table-empty { padding: 26px 16px; color: #69718b; font-size: 11px; text-align: center; }
+.detail-drawer-backdrop { position: fixed; inset: 0; z-index: 40; background: #07140e40; }
+.detail.detail-drawer { position: fixed; top: 0; right: 0; bottom: 0; z-index: 41; width: min(560px, 92vw); max-height: 100vh; border-radius: 0; border-left: 1px solid var(--line); box-shadow: -20px 0 60px #10182014; }
+.detail-drawer-close { position: absolute; top: 14px; right: 16px; width: 30px; height: 30px; border: 1px solid #e5e6ef; border-radius: 999px; background: #fff; color: #69718b; font-size: 17px; line-height: 1; cursor: pointer; }
+.detail-drawer .detail-heading { padding-right: 40px; }
+@media (max-width: 1100px) {
+  .job-table-header, .job-table-filter-row, .job-table-row { grid-template-columns: 1.05fr 1.5fr 1fr 1fr 1.1fr; }
+  .job-table-cell-source, .job-table-filter-row .job-table-filter-cell:nth-child(6), .job-table-header .job-table-th:nth-child(6), .job-table-cell-date, .job-table-header .job-table-th:nth-child(7) { display: none; }
+}
+@media (max-width: 900px) {
+  .job-table-header, .job-table-filter-row, .job-table-row { grid-template-columns: 1.05fr 1.5fr 1fr; }
+  .job-table-cell-score, .job-table-filter-row .job-table-filter-cell:nth-child(4), .job-table-header .job-table-th:nth-child(4), .job-table-cell-stack, .job-table-filter-row .job-table-filter-cell:nth-child(5), .job-table-header .job-table-th:nth-child(5) { display: none; }
+  .detail.detail-drawer { width: 100vw; }
+}
+@media (max-width: 650px) {
+  .job-table-header, .job-table-filter-row { display: none; }
+  .job-table-row { grid-template-columns: 1fr; gap: 4px; padding: 12px 14px; }
+  .job-table-cell-score { order: -1; justify-content: flex-start; }
+}
 @media (max-width: 720px) { .notification-bell-dropdown { position: fixed; top: auto; right: 16px; bottom: 16px; left: 16px; width: auto; max-height: 60vh; } }

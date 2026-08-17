@@ -219,3 +219,17 @@ test("triagem por IA fica visível só ao proprietário e consulta job_ai_triage
   assert.match(platformCss, /\.triage-toggle/);
   assert.match(platformCss, /\.triage-row/);
 });
+
+test("a tabela permite filtrar colunas e abre detalhes sem reduzir a área de resultados", async () => {
+  const [dashboard, css] = await Promise.all([
+    read("../app/Dashboard.tsx"),
+    read("../app/radar-refinement.css"),
+  ]);
+  assert.match(dashboard, /tableColumnFilters/);
+  assert.match(dashboard, /Filtrar empresa/);
+  assert.match(dashboard, /Limpar filtros de coluna/);
+  assert.match(dashboard, /workspace-table-mode/);
+  assert.match(dashboard, /detail-drawer/);
+  assert.match(css, /\.job-table-filter-row/);
+  assert.match(css, /\.detail\.detail-drawer/);
+});
