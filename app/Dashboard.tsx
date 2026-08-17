@@ -463,6 +463,7 @@ export default function Dashboard() {
     [requestedMinScore, setRequestedMinScore] = useState(0),
     [loadedMinScore, setLoadedMinScore] = useState(0),
     [sortOrder, setSortOrder] = useState<"score" | "recent">("score"),
+    [viewMode, setViewMode] = useState<"cards" | "table">("cards"),
     [simplifiedList, setSimplifiedList] = useState(false),
     [period, setPeriod] = useState<string | null>(null),
     [mode, setMode] = useState("loading"),
@@ -571,9 +572,12 @@ export default function Dashboard() {
   // um corte de período pode estourar o tempo do Worker em bases grandes.
   // "Todas" só fica disponível quando nenhum deles está ativo.
   const requiresHeavyFiltering = sortOrder === "score" || requestedMinScore > 5 || verdictFilter !== "all";
-  useEffect(() => {
-    if (requiresHeavyFiltering && period === "all") setPeriod("24");
-  }, [requiresHeavyFiltering, period]);
+  // Derivado em vez de sincronizado via efeito (setState síncrono num
+  // useEffect dispara renders em cascata e é banido pelo
+  // react-hooks/set-state-in-effect). "period" continua guardando a última
+  // escolha explícita da pessoa; só a leitura é substituída por "24" quando
+  // essa escolha deixou de ser válida para o filtro atual.
+  const effectivePeriod = requiresHeavyFiltering && period === "all" ? "24" : period;
   // O corte visual só muda depois que a API respondeu para aquele mesmo
   // valor. Assim, contagem, paginação e vagas sempre representam a mesma
   // consulta; enquanto isso, a interface informa que está atualizando.
@@ -684,7 +688,7 @@ export default function Dashboard() {
   const buildJobsParams = useCallback(
     (page: number) => {
       const params = new URLSearchParams({ page: String(page), limit: "50" });
-      if (period) params.set("period", period);
+      if (effectivePeriod) params.set("period", effectivePeriod);
       if (sourceFilter !== "all") params.set("sourceId", sourceFilter);
       if (areaFilter !== "all") params.set("area", areaFilter);
       if (channelFilter !== "all") params.set("channel", channelFilter);
@@ -705,7 +709,7 @@ export default function Dashboard() {
       params.set("sort", sortOrder === "recent" ? "imported" : "score");
       return params.toString();
     },
-    [period, sourceFilter, areaFilter, channelFilter, importRunFilter, ingestionMode, receivedFrom, receivedTo, debouncedQuery, requestedMinScore, pipelineFilter, verdictFilter, sortOrder],
+    [effectivePeriod, sourceFilter, areaFilter, channelFilter, importRunFilter, ingestionMode, receivedFrom, receivedTo, debouncedQuery, requestedMinScore, pipelineFilter, verdictFilter, sortOrder],
   );
   useEffect(() => {
     if (!profileReady || profileLoadFailed) return;
@@ -779,7 +783,7 @@ export default function Dashboard() {
       controller.abort();
       if (staleRetryTimer) clearTimeout(staleRetryTimer);
     };
-  }, [period, sourceFilter, debouncedQuery, requestedMinScore, pipelineFilter, verdictFilter, sortOrder, buildJobsParams, jobsRefreshVersion, profileReady, profileLoadFailed]);
+  }, [effectivePeriod, sourceFilter, debouncedQuery, requestedMinScore, pipelineFilter, verdictFilter, sortOrder, buildJobsParams, jobsRefreshVersion, profileReady, profileLoadFailed]);
   useEffect(() => {
     const controller = new AbortController();
     fetchWithTimeout("/api/profile", { cache: "no-store", signal: controller.signal }, PROFILE_FETCH_TIMEOUT_MS)
@@ -918,10 +922,10 @@ export default function Dashboard() {
       remove: () => setReceivedTo(""),
     });
   }
-  if (period && period !== "all") {
+  if (effectivePeriod && effectivePeriod !== "all") {
     activeFilterChips.push({
       id: "period",
-      label: period === "24" ? "Últimas 24h" : period === "72" ? "Últimos 3 dias" : "Últimos 7 dias",
+      label: effectivePeriod === "24" ? "Últimas 24h" : effectivePeriod === "72" ? "Últimos 3 dias" : "Últimos 7 dias",
       remove: () => setPeriod("all"),
     });
   }
@@ -979,6 +983,34 @@ export default function Dashboard() {
     }),
     [filtered, sortOrder],
   );
+  /** Ordenação da visão em tabela — independente do "Ordenar por" dos cards,
+   * clicar num cabeçalho de coluna ordena só a tabela. Opera sobre a mesma
+   * `orderedJobs` (já filtrada pelos controles da tela), então herda busca,
+   * aderência mínima, período etc. automaticamente. */
+  const [tableSort, setTableSort] = useState<{ column: "company" | "title" | "score" | "stack"; direction: "asc" | "desc" }>(
+    { column: "score", direction: "desc" },
+  );
+  const toggleTableSort = useCallback((column: typeof tableSort.column) => {
+    setTableSort((current) =>
+      current.column === column
+        ? { column, direction: current.direction === "asc" ? "desc" : "asc" }
+        : { column, direction: column === "score" ? "desc" : "asc" },
+    );
+  }, []);
+  const tableJobs = useMemo(() => {
+    const { column, direction } = tableSort;
+    const factor = direction === "asc" ? 1 : -1;
+    return [...orderedJobs].sort((left, right) => {
+      switch (column) {
+        case "score":
+          return (left.score - right.score) * factor;
+        case "stack":
+          return (left.stack[0] ?? "").localeCompare(right.stack[0] ?? "", "pt-BR") * factor;
+        default:
+          return left[column].localeCompare(right[column], "pt-BR") * factor;
+      }
+    });
+  }, [orderedJobs, tableSort]);
   const sortReportJobs = useCallback((jobs: Job[]) =>
     [...jobs].sort((left, right) => {
       if (sortOrder === "recent") {
@@ -1948,11 +1980,11 @@ export default function Dashboard() {
           <div>
             <p className="eyebrow">
               RADAR ·{" "}
-              {period === "24"
+              {effectivePeriod === "24"
                 ? "ÚLTIMAS 24 HORAS"
-                : period === "72"
+                : effectivePeriod === "72"
                   ? "ÚLTIMOS 3 DIAS"
-                  : period === "168"
+                  : effectivePeriod === "168"
                     ? "ÚLTIMOS 7 DIAS"
                     : "TODAS AS VAGAS"}
               {sourcesCount !== null && sourcesCount > 0
@@ -2060,7 +2092,7 @@ export default function Dashboard() {
             <select
               aria-label="Período das vagas"
               onChange={(e) => setPeriod(e.target.value)}
-              value={period ?? "24"}
+              value={effectivePeriod ?? "24"}
               title={requiresHeavyFiltering ? "Desligue \"Ordenar por Pontuação\", o filtro de veredito ou reduza a aderência mínima para liberar \"Todas\"." : undefined}
             >
               <option value="24">Últimas 24h</option>
@@ -2079,6 +2111,24 @@ export default function Dashboard() {
             >
               Filtros{activeFilterCount > 0 && <span>{activeFilterCount}</span>}
             </button>
+            <div className="view-mode-toggle" role="group" aria-label="Forma de exibição das vagas">
+              <button
+                type="button"
+                className={viewMode === "cards" ? "active" : ""}
+                aria-pressed={viewMode === "cards"}
+                onClick={() => setViewMode("cards")}
+              >
+                ☰ Lista
+              </button>
+              <button
+                type="button"
+                className={viewMode === "table" ? "active" : ""}
+                aria-pressed={viewMode === "table"}
+                onClick={() => setViewMode("table")}
+              >
+                ▦ Tabela
+              </button>
+            </div>
           </div>
         </div>
         {activeFilterChips.length > 0 && (
@@ -2338,7 +2388,89 @@ export default function Dashboard() {
         )}
         <div className="workspace">
           <div className="job-list" ref={jobListRef} onScroll={handleJobListScroll}>
-            {orderedJobs.map((j) => (
+            {viewMode === "table" && orderedJobs.length > 0 && (
+              <div className="job-table-wrap" role="table" aria-label="Vagas em formato de tabela">
+                <div className="job-table-header" role="row">
+                  {([
+                    { column: "company" as const, label: "Empresa" },
+                    { column: "title" as const, label: "Vaga" },
+                    { column: "score" as const, label: "Score" },
+                    { column: "stack" as const, label: "Stack" },
+                  ]).map(({ column, label }) => (
+                    <button
+                      key={column}
+                      type="button"
+                      role="columnheader"
+                      aria-sort={tableSort.column === column ? (tableSort.direction === "asc" ? "ascending" : "descending") : "none"}
+                      className={`job-table-th${tableSort.column === column ? " active" : ""}`}
+                      onClick={() => toggleTableSort(column)}
+                    >
+                      {label}
+                      <span className="job-table-sort-arrow" aria-hidden="true">
+                        {tableSort.column === column ? (tableSort.direction === "asc" ? "▲" : "▼") : ""}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                {tableJobs.map((j) => {
+                  const v = verdictMap.get(j.id);
+                  const stage = pipelineStageMap.get(j.id);
+                  return (
+                    <div
+                      key={j.id}
+                      role="row"
+                      tabIndex={0}
+                      className={`job-table-row ${selectedJob?.id === j.id ? "selected" : ""}`}
+                      onClick={() => selectJob(j)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          selectJob(j);
+                        }
+                      }}
+                    >
+                      <span role="cell" className="job-table-cell job-table-cell-company">
+                        {stage && stage !== "viewed" && (
+                          <span className="card-stage-badge" aria-hidden="true">
+                            {{ saved: "🔖", applied: "📨", interview: "🗓", offer: "🎉", rejected: "✕", archived: "✕" }[stage] ?? ""}
+                          </span>
+                        )}
+                        {j.company}
+                      </span>
+                      <span role="cell" className="job-table-cell job-table-cell-title">
+                        {j.title}
+                        <small className="list-head-dim">⌖ {j.location} · {j.mode}</small>
+                      </span>
+                      <span role="cell" className="job-table-cell job-table-cell-score">
+                        {currentUser ? (
+                          j.scored ? (
+                            <>
+                              <strong>{j.score}</strong>
+                              {v && <span className={`verdict-badge verdict-${v.emoji === "✅" ? "ok" : v.emoji === "🟡" ? "maybe" : v.emoji === "🔴" ? "no" : "blocked"}`}>{v.emoji}</span>}
+                            </>
+                          ) : (
+                            <span title={j.reasons[0] ?? "Sem dados suficientes para calcular a aderência"}>—</span>
+                          )
+                        ) : (
+                          <span className="score-locked" title="Entre para ver a aderência ao seu perfil">🔒</span>
+                        )}
+                      </span>
+                      <span role="cell" className="job-table-cell job-table-cell-stack">
+                        {j.stack.length ? (
+                          <>
+                            {j.stack.slice(0, 3).map((t) => <span key={t} className="job-table-stack-tag">{t}</span>)}
+                            {j.stack.length > 3 && <span className="stack-more">+{j.stack.length - 3}</span>}
+                          </>
+                        ) : (
+                          <span className="stack-unavailable">Stack não informada</span>
+                        )}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {viewMode === "cards" && orderedJobs.map((j) => (
               <div
                 key={j.id}
                 role="button"
