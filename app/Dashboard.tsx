@@ -567,17 +567,7 @@ export default function Dashboard() {
     return () => window.clearTimeout(timer);
   }, [effectiveMinScore]);
   const scoreFilterPending = requestedMinScore !== effectiveMinScore || loadedMinScore !== requestedMinScore;
-  // Espelha requiresPostFiltering do servidor (app/api/jobs/route.ts): esses
-  // três filtros exigem materializar e pontuar um lote em memória, o que sem
-  // um corte de período pode estourar o tempo do Worker em bases grandes.
-  // "Todas" só fica disponível quando nenhum deles está ativo.
-  const requiresHeavyFiltering = sortOrder === "score" || requestedMinScore > 5 || verdictFilter !== "all";
-  // Derivado em vez de sincronizado via efeito (setState síncrono num
-  // useEffect dispara renders em cascata e é banido pelo
-  // react-hooks/set-state-in-effect). "period" continua guardando a última
-  // escolha explícita da pessoa; só a leitura é substituída por "24" quando
-  // essa escolha deixou de ser válida para o filtro atual.
-  const effectivePeriod = requiresHeavyFiltering && period === "all" ? "24" : period;
+  const effectivePeriod = period;
   // O corte visual só muda depois que a API respondeu para aquele mesmo
   // valor. Assim, contagem, paginação e vagas sempre representam a mesma
   // consulta; enquanto isso, a interface informa que está atualizando.
@@ -749,10 +739,6 @@ export default function Dashboard() {
         setMessage((current) => {
           if (data.degraded) {
             return "Exibindo a lista em modo simplificado enquanto a personalização se recupera.";
-          }
-          if (data.limited) {
-            const candidateLimit = Number(data.candidateLimit) || 500;
-            return `A pontuação considerou as ${candidateLimit.toLocaleString("pt-BR")} vagas candidatas mais recentes. Restrinja o período para ordenar todo o resultado.`;
           }
           return current.startsWith("O Radar está temporariamente indisponível.") ||
             current.startsWith("Não foi possível atualizar agora.")
@@ -926,7 +912,7 @@ export default function Dashboard() {
     activeFilterChips.push({
       id: "period",
       label: effectivePeriod === "24" ? "Últimas 24h" : effectivePeriod === "72" ? "Últimos 3 dias" : "Últimos 7 dias",
-      remove: () => setPeriod("all"),
+      remove: () => handlePeriodChange("all"),
     });
   }
   if (pipelineFilter !== "all") {
@@ -1117,6 +1103,7 @@ export default function Dashboard() {
     setQuery("");
     setFitFilter(0);
     setPeriod("all");
+    setSortOrder("recent");
     setSourceFilter("all");
     setAreaFilter("all");
     setChannelFilter("all");
@@ -1126,6 +1113,31 @@ export default function Dashboard() {
     setReceivedTo("");
     setPipelineFilter("all");
     setVerdictFilter("all");
+  }
+  /**
+   * A janela "Todas" nunca fica bloqueada. Para manter a consulta leve e a
+   * ordenação honesta, ela desliga os filtros que exigem calcular score em
+   * memória e passa a listar o banco por importação recente.
+   */
+  function handlePeriodChange(nextPeriod: string) {
+    setPeriod(nextPeriod);
+    if (nextPeriod === "all") {
+      setSortOrder("recent");
+      setFitFilter(0);
+      setVerdictFilter("all");
+    }
+  }
+  function handleSortOrderChange(nextSort: "score" | "recent") {
+    setSortOrder(nextSort);
+    if (nextSort === "score" && period === "all") setPeriod("24");
+  }
+  function handleFitFilterChange(nextFilter: "profile" | number) {
+    setFitFilter(nextFilter);
+    if (nextFilter !== 0 && period === "all") setPeriod("24");
+  }
+  function handleVerdictFilterChange(nextVerdict: typeof verdictFilter) {
+    setVerdictFilter(nextVerdict);
+    if (nextVerdict !== "all" && period === "all") setPeriod("24");
   }
   function retryRadarLoad() {
     setLoadError(null);
@@ -1344,7 +1356,7 @@ export default function Dashboard() {
       const savedMinScore = Number(data?.profile?.minScore ?? profileChoices.minScore);
       setProfileMinScore(savedMinScore);
       setProfileChoices((current) => ({ ...current, minScore: savedMinScore }));
-      setFitFilter("profile");
+      handleFitFilterChange("profile");
       setTimeout(() => location.reload(), 900);
     }
   }
@@ -2091,16 +2103,13 @@ export default function Dashboard() {
             </select>
             <select
               aria-label="Período das vagas"
-              onChange={(e) => setPeriod(e.target.value)}
+              onChange={(e) => handlePeriodChange(e.target.value)}
               value={effectivePeriod ?? "24"}
-              title={requiresHeavyFiltering ? "Desligue \"Ordenar por Pontuação\", o filtro de veredito ou reduza a aderência mínima para liberar \"Todas\"." : undefined}
             >
               <option value="24">Últimas 24h</option>
               <option value="72">Últimos 3 dias</option>
               <option value="168">Últimos 7 dias</option>
-              <option value="all" disabled={requiresHeavyFiltering}>
-                Todas{requiresHeavyFiltering ? " (indisponível com pontuação/veredito ativos)" : ""}
-              </option>
+              <option value="all">Todas</option>
             </select>
             <button
               type="button"
@@ -2172,7 +2181,7 @@ export default function Dashboard() {
                 step={5}
                 list="fit-filter-ticks"
                 value={fitFilterSliderValue}
-                onChange={(event) => setFitFilter(Number(event.target.value))}
+                onChange={(event) => handleFitFilterChange(Number(event.target.value))}
                 style={{ "--fit-fill": `${fitFilterSliderValue}%`, "--fit-color": fitFilterColor } as CSSProperties}
               />
               <div className="score-controls-foot" aria-hidden="true">
@@ -2184,19 +2193,19 @@ export default function Dashboard() {
                 <input
                   type="checkbox"
                   checked={fitFilter === "profile"}
-                  onChange={(event) => setFitFilter(event.target.checked ? "profile" : 0)}
+                  onChange={(event) => handleFitFilterChange(event.target.checked ? "profile" : 0)}
                 />
                 Usar meu perfil ({profileMinScore}%)
               </label>
               <label className="score-sort">
                 <span>Ordenar por</span>
-                <select value={sortOrder} onChange={(event) => setSortOrder(event.target.value as "score" | "recent")} aria-label="Ordenar vagas">
+                <select value={sortOrder} onChange={(event) => handleSortOrderChange(event.target.value as "score" | "recent")} aria-label="Ordenar vagas">
                   <option value="score">Pontuação</option>
                   <option value="recent">Importadas recentemente</option>
                 </select>
               </label>
               {typeof fitFilter === "number" && fitFilter < 80 && (
-                <button type="button" className="fit-tip" onClick={() => setFitFilter(80)}>
+                <button type="button" className="fit-tip" onClick={() => handleFitFilterChange(80)}>
                   <span aria-hidden="true">💡</span> Dica: tente 80% ou mais para melhores resultados
                 </button>
               )}
@@ -2242,7 +2251,7 @@ export default function Dashboard() {
               </label>
               <label>
                 <span>Importação específica</span>
-                <select value={importRunFilter} onChange={(event) => { setImportRunFilter(event.target.value); setPeriod("all"); }} aria-label="Filtrar por uma importação específica">
+                <select value={importRunFilter} onChange={(event) => { setImportRunFilter(event.target.value); handlePeriodChange("all"); }} aria-label="Filtrar por uma importação específica">
                   <option value="all">Todas as importações</option>
                   {jobFilterOptions.importRuns.map(run => <option key={run.id} value={run.id}>{run.source} · {formatJobDateTime(run.startedAt)} · {run.jobs} vagas</option>)}
                 </select>
@@ -2254,7 +2263,7 @@ export default function Dashboard() {
                   value={receivedFrom}
                   onChange={(event) => {
                     setReceivedFrom(event.target.value);
-                    setPeriod("all");
+                    handlePeriodChange("all");
                   }}
                   aria-label="Data e hora inicial de recebimento"
                 />
@@ -2266,7 +2275,7 @@ export default function Dashboard() {
                   value={receivedTo}
                   onChange={(event) => {
                     setReceivedTo(event.target.value);
-                    setPeriod("all");
+                    handlePeriodChange("all");
                   }}
                   min={receivedFrom || undefined}
                   aria-label="Data e hora final de recebimento"
@@ -2329,7 +2338,7 @@ export default function Dashboard() {
                         key={v}
                         type="button"
                         className={verdictFilter === v ? "active" : ""}
-                        onClick={() => setVerdictFilter(v)}
+                        onClick={() => handleVerdictFilterChange(v)}
                         aria-pressed={verdictFilter === v}
                       >
                         {v !== "all" && <>{v} </>}{label}{count > 0 && <span>{count}</span>}
