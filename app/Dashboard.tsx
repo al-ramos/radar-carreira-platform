@@ -550,6 +550,43 @@ export default function Dashboard() {
   const [contactCaptureMsg, setContactCaptureMsg] = useState<{ text: string; error: boolean } | null>(null);
   const contactRequestRef = useRef<{ requestId: string; jobId: string } | null>(null);
   const contactRequestTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Captura de contato do APinfo EM LOTE — ver captureApinfoContactsBatch e
+  // o useEffect que escuta RADAR_CAPTURE_CONTACTS_BATCH_PROGRESS/_RESULT.
+  // Pressupõe que a pessoa já está autenticada no APinfo no navegador (login
+  // manual, como sempre foi); a extensão só abre abas em segundo plano com
+  // essa sessão já existente, nunca solicita nem manipula credenciais.
+  const [contactBatchState, setContactBatchState] = useState<{
+    requestId: string;
+    total: number;
+    done: number;
+    found: number;
+    failed: number;
+  } | null>(null);
+  const contactBatchRequestIdRef = useRef<string | null>(null);
+  /** Espelha `items` para uso dentro de listeners registrados uma única vez
+   * (dependências vazias) — evita remover/re-registrar o listener de
+   * RADAR_CAPTURE_CONTACTS_BATCH_* a cada vaga capturada, mesmo padrão já
+   * usado por loadedJobsRef. */
+  const itemsRef = useRef<Job[]>([]);
+  useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
+  /**
+   * Snapshot FIXO (externalId -> vaga) montado uma única vez quando o lote
+   * começa (ver captureApinfoContactsBatch) — não usar itemsRef/items para
+   * reencontrar a vaga a cada PROGRESS. O lote roda por minutos e "items"
+   * pode ser substituído nesse meio tempo (refresh por visibilitychange,
+   * troca de página, atualização de stack, etc.); se o lookup dependesse do
+   * estado ao vivo, uma vaga ainda pendente podia deixar de ser encontrada e
+   * o e-mail já capturado pela extensão seria descartado sem aviso — era a
+   * causa real da intermitência ao salvar o e-mail em lote.
+   */
+  const contactBatchJobsRef = useRef<Map<string, Job>>(new Map());
+  /** Quantas chamadas a saveApinfoContact (disparadas pelo lote) resolveram
+   * como falha — ref, não state, porque o PATCH pode terminar depois do
+   * RADAR_CAPTURE_CONTACTS_BATCH_RESULT (contactBatchState já virou null
+   * nesse ponto) e um state preso a `current` perderia essa contagem. */
+  const contactBatchSaveFailedRef = useRef(0);
   const pipelineUpdateRequestsRef = useRef(new Map<string, Promise<boolean>>());
   const applicationUpdateRequestsRef = useRef(new Map<string, Promise<boolean>>());
   const [preferencesOpen, setPreferencesOpen] = useState(false);
@@ -1048,6 +1085,15 @@ export default function Dashboard() {
   );
   const tableSourceOptions = useMemo(
     () => Array.from(new Set(orderedJobs.map((j) => j.sourceName).filter((s): s is string => Boolean(s)))).sort((a, b) => a.localeCompare(b, "pt-BR")),
+    [orderedJobs],
+  );
+  /** Quantas vagas do APinfo, entre as visíveis com os filtros atuais, ainda
+   * não têm contactEmail — usado para mostrar (e habilitar) o botão de
+   * captura em lote só quando há algo genuinamente pendente. Mesma base
+   * (orderedJobs) usada por captureApinfoContactsBatch, para o número no
+   * botão sempre bater com o que ele de fato processa. */
+  const apinfoContactsPendingCount = useMemo(
+    () => orderedJobs.filter((j) => isApinfoJob(j) && !j.contactEmail && j.applyUrl).length,
     [orderedJobs],
   );
   const sortReportJobs = useCallback((jobs: Job[]) =>
@@ -1893,6 +1939,149 @@ export default function Dashboard() {
     };
   }, []);
   /**
+   * Pede à extensão do APinfo (via radar-bridge.js) para capturar o contato
+   * de VÁRIAS vagas em sequência — todas as vagas do APinfo hoje visíveis
+   * na tela sem contactEmail. A extensão abre uma aba própria por vaga em
+   * segundo plano, usando a sessão do APinfo já autenticada pela pessoa no
+   * navegador (login manual, feito por ela mesma, como sempre foi); esta
+   * função nunca solicita nem manipula credenciais.
+   */
+  function captureApinfoContactsBatch() {
+    const pending = orderedJobs.filter((j) => isApinfoJob(j) && !j.contactEmail && j.applyUrl);
+    if (!pending.length) {
+      setContactCaptureMsg({ text: "Nenhuma vaga do APinfo sem e-mail está visível na tela agora.", error: true });
+      return;
+    }
+    const requestId = crypto.randomUUID();
+    contactBatchRequestIdRef.current = requestId;
+    contactBatchJobsRef.current = new Map(pending.map((j) => [String(j.externalId), j]));
+    contactBatchSaveFailedRef.current = 0;
+    setContactBatchState({ requestId, total: pending.length, done: 0, found: 0, failed: 0 });
+    setContactCaptureMsg(null);
+    window.postMessage(
+      {
+        source: "radar-dashboard",
+        type: "RADAR_CAPTURE_CONTACTS_BATCH",
+        requestId,
+        items: pending.map((j) => ({ externalId: j.externalId, applyUrl: j.applyUrl })),
+      },
+      window.location.origin,
+    );
+  }
+  function cancelApinfoContactsBatch() {
+    const requestId = contactBatchRequestIdRef.current;
+    if (!requestId) return;
+    window.postMessage(
+      { source: "radar-dashboard", type: "RADAR_CAPTURE_CONTACTS_BATCH_CANCEL", requestId },
+      window.location.origin,
+    );
+  }
+  // Escuta progresso e resultado final da captura em lote (repassados pelo
+  // radar-bridge.js). Cada vaga com e-mail encontrado é salva assim que o
+  // progresso chega — não espera o lote inteiro terminar — reaproveitando
+  // saveApinfoContact, a mesma função usada na captura individual. Registro
+  // único (dependências vazias), como handleExtensionMessage acima — usa
+  // itemsRef.current em vez de fechar sobre "items"/"orderedJobs", que
+  // mudariam a cada e-mail salvo e forçariam remover/re-registrar o
+  // listener no meio do lote.
+  useEffect(() => {
+    function handleBatchMessage(event: MessageEvent) {
+      if (event.source !== window) return;
+      if (event.origin !== window.location.origin) return;
+      const data = event.data as
+        | {
+            source?: string;
+            type?: string;
+            requestId?: string;
+            ok?: boolean;
+            error?: string;
+            total?: number;
+            index?: number;
+            last?: { externalId?: string; ok?: boolean; email?: string; assunto?: string; error?: string };
+            results?: Array<{ externalId?: string; ok?: boolean; email?: string; assunto?: string; error?: string }>;
+            found?: number;
+            failed?: number;
+            stoppedReason?: string | null;
+            cancelled?: boolean;
+          }
+        | null;
+      if (!data || data.source !== "radar-extension") return;
+      if (data.requestId !== contactBatchRequestIdRef.current) return;
+
+      if (data.type === "RADAR_CAPTURE_CONTACTS_BATCH_PROGRESS") {
+        const last = data.last;
+        if (last?.ok && last.email && last.externalId) {
+          // Lookup no snapshot fixo (contactBatchJobsRef), não em itemsRef —
+          // ver comentário na declaração do ref. Sem isso, uma vaga que
+          // saísse de "items" durante o lote (minutos de duração) perdia o
+          // e-mail já capturado, sem erro visível.
+          const job = contactBatchJobsRef.current.get(String(last.externalId));
+          if (job) {
+            saveApinfoContact(job.id, last.email, last.assunto)
+              .then((saved) => {
+                if (!saved) contactBatchSaveFailedRef.current += 1;
+              })
+              .catch(() => {
+                contactBatchSaveFailedRef.current += 1;
+              });
+          }
+        }
+        setContactBatchState((current) =>
+          current
+            ? {
+                ...current,
+                done: data.index ?? current.done,
+                found: current.found + (last?.ok && last.email ? 1 : 0),
+                failed: current.failed + (last && !(last.ok && last.email) ? 1 : 0),
+              }
+            : current,
+        );
+        return;
+      }
+
+      if (data.type === "RADAR_CAPTURE_CONTACTS_BATCH_RESULT") {
+        contactBatchRequestIdRef.current = null;
+        if (!data.ok) {
+          setContactCaptureMsg({ text: data.error || "Falha na captura em lote.", error: true });
+          setContactBatchState(null);
+          return;
+        }
+        // No cancelamento (radar-bridge.js), o background.js já parou de
+        // postar assim que a porta desconectou — found/failed não vêm
+        // dele. O que já foi encontrado até o cancelamento está em
+        // contactBatchState (atualizado a cada PROGRESS, cada um já salvo
+        // via saveApinfoContact) — usa o valor mais recente, não o 0 fixo
+        // que a mensagem sintética de cancelamento carrega.
+        setContactBatchState((current) => {
+          const found = data.cancelled ? (current?.found ?? 0) : data.found ?? 0;
+          const failed = data.cancelled ? (current?.failed ?? 0) : data.failed ?? 0;
+          // saveFailed vem de um ref (não do state), porque o PATCH de
+          // saveApinfoContact pode ainda estar em andamento neste exato
+          // instante (ver declaração de contactBatchSaveFailedRef) — a
+          // última vaga do lote em especial costuma ainda não ter resolvido.
+          // Se isso acontecer, saveApinfoContact ainda assim atualiza
+          // contactCaptureMsg sozinha (não fica mais suprimida, já que
+          // contactBatchState volta a null aqui embaixo) — a mensagem final
+          // pode ser corrigida por um flash logo em seguida nesse caso raro.
+          const saveFailed = contactBatchSaveFailedRef.current;
+          const saved = Math.max(0, found - saveFailed);
+          const saveFailedNote = saveFailed
+            ? ` ${saveFailed} encontrado${saveFailed === 1 ? "" : "s"} mas não salvo${saveFailed === 1 ? "" : "s"} no Radar — tente de novo para essa${saveFailed === 1 ? "" : "s"}.`
+            : "";
+          const label = data.cancelled
+            ? `Captura em lote cancelada: ${saved} e-mail${saved === 1 ? "" : "s"} salvo${saved === 1 ? "" : "s"} até parar.${saveFailedNote}`
+            : data.stoppedReason
+              ? `${data.stoppedReason} (${saved} e-mail${saved === 1 ? "" : "s"} salvo${saved === 1 ? "" : "s"} até parar.)${saveFailedNote}`
+              : `Captura em lote concluída: ${saved} e-mail${saved === 1 ? "" : "s"} salvo${saved === 1 ? "" : "s"}${failed ? `, ${failed} não encontrado${failed === 1 ? "" : "s"}` : ""}.${saveFailedNote}`;
+          setContactCaptureMsg({ text: label, error: Boolean(saveFailed) });
+          return null;
+        });
+      }
+    }
+    window.addEventListener("message", handleBatchMessage);
+    return () => window.removeEventListener("message", handleBatchMessage);
+  }, []);
+  /**
    * Fluxo único de candidatura. Para vagas do APinfo, abre a página antes
    * de pedir a captura. Assim a extensão consulta a nova aba — já com o
    * contato renderizado — em vez de disputar a captura com a navegação.
@@ -2192,8 +2381,40 @@ export default function Dashboard() {
                 ▦ Tabela
               </button>
             </div>
+            {(apinfoContactsPendingCount > 0 || contactBatchState) && (
+              contactBatchState ? (
+                <button
+                  type="button"
+                  className="filter-trigger active"
+                  onClick={cancelApinfoContactsBatch}
+                  title="Cancela a captura em lote — o que já foi encontrado até agora fica salvo."
+                >
+                  Capturando {contactBatchState.done}/{contactBatchState.total}
+                  {contactBatchState.found > 0 && ` · ${contactBatchState.found} ✓`}
+                  {" · Cancelar"}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="filter-trigger"
+                  onClick={captureApinfoContactsBatch}
+                  title="Abre, uma a uma em segundo plano, as páginas de contato das vagas do APinfo visíveis sem e-mail — requer que você já esteja autenticado no APinfo neste navegador."
+                >
+                  ✉ Capturar e-mails ({apinfoContactsPendingCount})
+                </button>
+              )
+            )}
           </div>
         </div>
+        {!contactBatchState && contactCaptureMsg && (
+          <p
+            className="list-head-dim"
+            role="status"
+            style={{ color: contactCaptureMsg.error ? "#b04a1a" : "#2e6b3e", margin: "-6px 0 4px" }}
+          >
+            {contactCaptureMsg.text}
+          </p>
+        )}
         {activeFilterChips.length > 0 && (
           <div className="active-filter-row" aria-label="Filtros ativos">
             <span>Filtros ativos</span>

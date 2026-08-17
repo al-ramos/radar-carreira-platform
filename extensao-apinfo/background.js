@@ -3,7 +3,7 @@ importScripts('stacks.js');
 /**
  * background.js — service worker da extensão.
  *
- * Há dois modos de coleta:
+ * Há dois modos de coleta de VAGAS (listagem pública, sem login):
  *
  * 1) Manual (COLLECT_CURRENT_PAGE): a pessoa navega até a página que quer
  *    (preservando filtros de estado/cidade/cargo como preferir) e clica em
@@ -19,6 +19,21 @@ importScripts('stacks.js');
  *    ser aplicado depois, na exportação.
  *
  * Ambos acumulam em chrome.storage.session até a pessoa exportar ou limpar.
+ *
+ * Há também a captura de CONTATO (e-mail), que é um mecanismo separado
+ * porque a listagem pública não mostra e-mail — só a página individual de
+ * cada vaga, depois de login manual (CPF/senha, feito pela pessoa direto no
+ * site do APinfo; esta extensão nunca vê nem manipula essas credenciais):
+ *
+ * 3) Individual (COLLECT_CONTACT / CAPTURE_CONTACT_FOR_RADAR): lê a página
+ *    de contato já aberta na aba ativa (ou a aba mais recente do APinfo,
+ *    quando chamado pelo Radar).
+ *
+ * 4) Em lote (CAPTURE_CONTACTS_BATCH, via porta): dado um conjunto de vagas
+ *    (código + link de candidatura), abre uma aba de segundo plano por vaga
+ *    em sequência, lê o contato e fecha — pressupõe que a pessoa já está
+ *    autenticada no APinfo no navegador (cookies de sessão valem para
+ *    qualquer aba do mesmo domínio, não precisa logar de novo por aba).
  */
 
 const normalized = value => String(value || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -481,6 +496,82 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 /**
+ * Captura o contato de VÁRIAS vagas em sequência, cada uma numa aba de
+ * segundo plano própria (não reaproveita/navega a aba ativa do usuário).
+ * Pressupõe que a pessoa já está autenticada no APinfo no navegador atual
+ * (login manual, como sempre foi) — os cookies de sessão são por domínio,
+ * não por aba, então uma aba nova criada aqui já carrega a página de
+ * contato normalmente, sem precisar logar de novo.
+ *
+ * Mesma cautela da coleta automática de páginas (autoCollectAllPages):
+ * delay entre cada vaga e checagem de sinalização de limite de consultas,
+ * para não martelar o servidor do APinfo. Uma vaga sem e-mail encontrado
+ * (login não feito, página mudou de layout, etc.) não interrompe as
+ * demais — cada resultado é reportado individualmente via onProgress.
+ */
+async function captureContactsBatch(items, { delayMs = 3000, isCancelled = () => false } = {}, onProgress = () => {}) {
+  const results = [];
+  let stoppedReason = null;
+
+  for (let index = 0; index < items.length; index++) {
+    if (isCancelled()) {
+      stoppedReason = 'Captura cancelada.';
+      break;
+    }
+    const { externalId, applyUrl } = items[index];
+    if (index > 0) await sleep(delayMs);
+
+    let tab = null;
+    let rateLimited = false;
+    try {
+      if (!applyUrl) throw new Error('Vaga sem link de candidatura salvo.');
+
+      tab = await chrome.tabs.create({ url: applyUrl, active: false });
+      await waitForTabLoad(tab.id, 15000);
+      await sleep(600); // pequena folga extra para o DOM assentar, como no restante do arquivo
+
+      const bodyText = await chrome.scripting
+        .executeScript({ target: { tabId: tab.id }, func: () => document.body?.innerText || '' })
+        .then((r) => r[0]?.result || '')
+        .catch(() => '');
+
+      if (looksRateLimited(bodyText)) {
+        rateLimited = true;
+        throw new Error('Limite de consultas atingido.');
+      }
+
+      const contact = await collectContact(tab.id);
+
+      // Mesma checagem de segurança do fluxo individual (CAPTURE_CONTACT_FOR_RADAR):
+      // confirma que o código lido na página bate com a vaga pedida antes de
+      // gravar — evita salvar contato errado se o APinfo redirecionar para
+      // outra vaga (ex. vaga removida, link expirado).
+      if (externalId && contact.codigo !== String(externalId)) {
+        throw new Error(`A página aberta mostra a vaga ${contact.codigo}, não a vaga ${externalId} pedida.`);
+      }
+
+      const contacts = await getContacts();
+      contacts[contact.codigo] = contact;
+      await setContacts(contacts);
+
+      results.push({ externalId, ok: true, email: contact.email, assunto: contact.assunto, empresa: contact.empresa });
+    } catch (error) {
+      results.push({ externalId, ok: false, error: error.message || 'Falha ao capturar o contato desta vaga.' });
+    } finally {
+      if (tab) await chrome.tabs.remove(tab.id).catch(() => {});
+    }
+
+    if (rateLimited) {
+      stoppedReason = 'O APinfo sinalizou limite de consultas. Captura em lote interrompida — tente retomar mais tarde.';
+    }
+    onProgress({ index: index + 1, total: items.length, last: results[results.length - 1], stopped: Boolean(stoppedReason) });
+    if (rateLimited) break;
+  }
+
+  return { results, stoppedReason };
+}
+
+/**
  * AUTO_COLLECT_ALL roda via porta (chrome.runtime.connect), não via
  * sendMessage: a coleta de todas as páginas leva minutos, e uma porta
  * permite emitir eventos de progresso incrementais ("página 15 de 115…")
@@ -547,6 +638,74 @@ chrome.runtime.onConnect.addListener((port) => {
         if (cancelled) return;
         try {
           port.postMessage({ ok: false, type: 'ERROR', error: error.message || 'Falha na coleta automática.' });
+        } catch {
+          /* porta fechada */
+        }
+      }
+    })();
+  });
+});
+
+/**
+ * CAPTURE_CONTACTS_BATCH roda via porta, mesmo motivo do AUTO_COLLECT_ALL:
+ * captura de dezenas de vagas leva minutos, e a porta permite progresso
+ * incremental ("vaga 12 de 40…") em vez de um único request/response.
+ *
+ * Chamador esperado: o próprio Dashboard do Radar (via radar-bridge.js),
+ * pedindo a captura de todas as vagas do APinfo hoje sem contact_email
+ * visíveis na tela. Pressupõe sessão já autenticada no APinfo pelo usuário
+ * — esta extensão não solicita nem manipula login em nenhum momento.
+ *
+ * Mensagens do painel → background: { type: 'START', items: [{externalId, applyUrl}] }, { type: 'CANCEL' }
+ * Mensagens do background → painel: { type: 'PROGRESS', ... }, { type: 'DONE', ... }, { type: 'ERROR', error }
+ */
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== 'apinfo-capture-contacts-batch') return;
+
+  let cancelled = false;
+  port.onDisconnect.addListener(() => {
+    cancelled = true;
+  });
+
+  port.onMessage.addListener((message) => {
+    if (message?.type === 'CANCEL') {
+      cancelled = true;
+      return;
+    }
+    if (message?.type !== 'START') return;
+
+    (async () => {
+      try {
+        const items = Array.isArray(message.items) ? message.items.filter((item) => item?.externalId) : [];
+        if (!items.length) throw new Error('Nenhuma vaga sem e-mail foi informada para captura.');
+
+        const { results, stoppedReason } = await captureContactsBatch(
+          items,
+          { delayMs: message.delayMs || 3000, isCancelled: () => cancelled },
+          (progress) => {
+            if (cancelled) return;
+            try {
+              port.postMessage({ type: 'PROGRESS', ...progress });
+            } catch {
+              /* porta pode já ter sido fechada pelo painel */
+            }
+          },
+        );
+
+        if (cancelled) return;
+
+        port.postMessage({
+          ok: true,
+          type: 'DONE',
+          results,
+          found: results.filter((r) => r.ok && r.email).length,
+          failed: results.filter((r) => !r.ok).length,
+          stoppedReason: stoppedReason || null,
+        });
+      } catch (error) {
+        if (cancelled) return;
+        try {
+          port.postMessage({ ok: false, type: 'ERROR', error: error.message || 'Falha na captura em lote.' });
         } catch {
           /* porta fechada */
         }
