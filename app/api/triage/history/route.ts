@@ -68,6 +68,18 @@ export async function GET() {
       .from(draftOutbox).where(and(eq(draftOutbox.userId, user.userId), inArray(draftOutbox.historyId, historyIds)))
     : [];
   const outboxByHistoryId = new Map(outboxItems.map((item) => [item.historyId, item.status]));
+  const allOutbox = await db.select({ status: draftOutbox.status, createdAt: draftOutbox.createdAt })
+    .from(draftOutbox).where(eq(draftOutbox.userId, user.userId));
+  const latestScheduledBatch = batches.find((batch) => batch.trigger === "scheduled");
+  const now = Date.now();
+  const oldestPending = allOutbox.filter((item) => item.status === "pending").sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())[0];
+  const alerts = [
+    ...(allOutbox.some((item) => item.status === "failed") ? [{ level: "error", message: `${allOutbox.filter((item) => item.status === "failed").length} rascunho(s) com falha aguardam retomada.` }] : []),
+    ...(oldestPending && now - oldestPending.createdAt.getTime() > 24 * 60 * 60 * 1000 ? [{ level: "warning", message: "Há rascunhos pendentes há mais de 24 horas." }] : []),
+    ...(!latestScheduledBatch ? [{ level: "warning", message: "A rotina diária ainda não registrou nenhuma execução." }] : []),
+    ...(latestScheduledBatch && latestScheduledBatch.status === "failed" ? [{ level: "error", message: "A última rotina diária falhou; consulte o detalhe do lote." }] : []),
+    ...(latestScheduledBatch && now - (latestScheduledBatch.completedAt ?? latestScheduledBatch.startedAt ?? latestScheduledBatch.createdAt).getTime() > 30 * 60 * 60 * 1000 ? [{ level: "warning", message: "A rotina diária está sem atualização há mais de 30 horas." }] : []),
+  ];
 
   return NextResponse.json({
     items: items.map((item) => ({ ...item, hasValidContactEmail: hasValidContactEmail(item.contactEmail) })),
@@ -91,5 +103,12 @@ export async function GET() {
         draftsFailed: drafts.filter((status) => status === "failed").length,
       };
     }),
+    operational: {
+      pendingDrafts: allOutbox.filter((item) => item.status === "pending").length,
+      readyDrafts: allOutbox.filter((item) => item.status === "drafted").length,
+      failedDrafts: allOutbox.filter((item) => item.status === "failed").length,
+      oldestPendingAt: oldestPending?.createdAt ?? null,
+      alerts,
+    },
   });
 }

@@ -5,6 +5,7 @@ type Data = { counts: Record<string, number>; total: number; items: Item[] };
 type PilotResult = { batchId: string; processed: Array<{ jobId: string; title: string; company: string; reference: string | null; contactEligible: boolean; aiEligible: boolean; aiStatus: string; verdict: string; label: string; blocker: string | null }>; skipped: number; aiCompleted?: number };
 type HistoryItem = { id: string; batchId: string; verdict: string; label: string; blocker: string | null; source: string; confidence: number; rows: string; processedAt: string; title: string; company: string; contactEmail: string | null; hasValidContactEmail: boolean; draftStatus: "pending" | "drafted" | "failed" | "cancelled" | null; trigger: string };
 type Batch = { id: string; trigger: "manual" | "scheduled" | "assistant"; scope: string; status: string; startedAt: string | null; completedAt: string | null; createdAt: string; error: string | null; total: number; completed: number; failed: number; eligible: number; eligibleWithoutContact: number; draftsPending: number; draftsReady: number; draftsFailed: number };
+type Operational = { pendingDrafts: number; readyDrafts: number; failedDrafts: number; oldestPendingAt: string | null; alerts: Array<{ level: "warning" | "error"; message: string }> };
 const rowClass: Record<string, string> = { "✅": "approved", "🟡": "partial", "❌": "rejected", "🔴": "rejected" };
 export default function TriageReport({ close, sourceId, sourceLabel }: { close: () => void; sourceId?: string; sourceLabel?: string }) {
   const [data, setData] = useState<Data | null>(null),
@@ -17,13 +18,14 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
     [reprocess, setReprocess] = useState(false),
     [history, setHistory] = useState<HistoryItem[]>([]),
     [batches, setBatches] = useState<Batch[]>([]),
+    [operational, setOperational] = useState<Operational | null>(null),
     [verdictFilter, setVerdictFilter] = useState("all"),
     [sourceFilter, setSourceFilter] = useState("all"),
     [draftFilter, setDraftFilter] = useState("all"),
     [historyPage, setHistoryPage] = useState(0);
   const loadHistory = () => fetch("/api/triage/history")
-    .then(async (r) => ({ ok: r.ok, data: await r.json() as { items?: HistoryItem[]; batches?: Batch[] } }))
-    .then(({ ok, data }) => { if (ok) { setHistory(data.items ?? []); setBatches(data.batches ?? []); } });
+    .then(async (r) => ({ ok: r.ok, data: await r.json() as { items?: HistoryItem[]; batches?: Batch[]; operational?: Operational } }))
+    .then(({ ok, data }) => { if (ok) { setHistory(data.items ?? []); setBatches(data.batches ?? []); setOperational(data.operational ?? null); } });
   useEffect(() => {
     fetch(`/api/admin/triage${includeBacklog ? "?includeBacklog=1" : ""}`)
       .then(async (r) => ({ ok: r.ok, data: await r.json() }))
@@ -169,6 +171,11 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
             </div>
           ) : <p className="triage-automation-empty">Ainda não houve execução agendada registrada. A primeira rotina diária aparecerá aqui.</p>}
         </section>
+        {operational && <section className="triage-operations" aria-label="Saúde operacional da triagem">
+          <div><h3>Saúde operacional</h3><small>Fila de rascunhos e rotina diária.</small></div>
+          <div className="triage-operations-metrics"><span><b>{operational.pendingDrafts}</b> na fila</span><span><b>{operational.readyDrafts}</b> prontos</span><span><b>{operational.failedDrafts}</b> com falha</span></div>
+          {operational.alerts.length > 0 ? <ul>{operational.alerts.map((alert) => <li key={alert.message} className={alert.level}>{alert.message}</li>)}</ul> : <p className="triage-operations-ok">Sem alertas operacionais.</p>}
+        </section>}
         {history.length > 0 && (
           <section className="triage-history" aria-label="Histórico persistido da nova triagem">
             <div>
