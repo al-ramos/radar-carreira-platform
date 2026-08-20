@@ -75,7 +75,7 @@ export default function TriageReport({ close }: { close: () => void }) {
         <p className="eyebrow">TRIAGEM AUTOMÁTICA</p>
         <div className="triage-title">
           <div>
-            <h2>Triagem de vagas</h2>
+            <h2>Vagas avaliadas por IA</h2>
             <p>Primeiro pelas regras do seu perfil .NET/C#; IA somente quando necessária.</p>
             <div className="triage-run-panel">
               <div className="triage-run-settings">
