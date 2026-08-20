@@ -33,6 +33,12 @@ test("interface oferece filtro automático e mostra as duas datas", async () => 
   assert.match(dashboard, /Recebida pelo Radar:/);
 });
 
+test("histórico da triagem preserva a data de publicação de importações APInfo legadas", async () => {
+  const route = await read("../app/api/triage/history/route.ts");
+  assert.match(route, /publishedAt: jobs\.publishedAt/);
+  assert.match(route, /sourcePublishedAt: item\.sourcePublishedAt \?\? item\.publishedAt/);
+});
+
 test("migração classifica importações antigas e cria índices do filtro", async () => {
   const migration = await read("../drizzle/0020_job_ingestion_metadata.sql");
   assert.match(migration, /ADD `source_published_at` integer/);

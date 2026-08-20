@@ -45,6 +45,7 @@ export async function GET() {
       workMode: jobs.workMode,
       location: jobs.location,
       sourcePublishedAt: jobs.sourcePublishedAt,
+      publishedAt: jobs.publishedAt,
       receivedAt: jobs.firstSeenAt,
       url: jobs.url,
       contactEmail: jobs.contactEmail,
@@ -59,6 +60,10 @@ export async function GET() {
   return NextResponse.json({
     items: items.map((item) => ({
       ...item,
+      // Importações anteriores à coluna `source_published_at` ainda possuem a
+      // data de publicação em `published_at`. Sem esse fallback, a consulta
+      // APInfo do dia perde vagas que foram efetivamente publicadas hoje.
+      sourcePublishedAt: item.sourcePublishedAt ?? item.publishedAt,
       batchId: "daily-triage",
       blocker: null,
       source: "rules",
