@@ -10,6 +10,7 @@ export default function TriageReport({ close }: { close: () => void }) {
     [includeBacklog, setIncludeBacklog] = useState(false),
     [message, setMessage] = useState("Carregando avaliações…"),
     [runningPilot, setRunningPilot] = useState(false),
+    [queueingDrafts, setQueueingDrafts] = useState(false),
     [pilot, setPilot] = useState<PilotResult | null>(null),
     [batchSize, setBatchSize] = useState(10),
     [reprocess, setReprocess] = useState(false),
@@ -51,6 +52,20 @@ export default function TriageReport({ close }: { close: () => void }) {
       setRunningPilot(false);
     }
   };
+  const queueDrafts = async () => {
+    setQueueingDrafts(true);
+    setMessage("Verificando vagas elegíveis para a fila de rascunhos…");
+    try {
+      const response = await fetch("/api/triage/drafts/queue", { method: "POST" });
+      const result = await response.json() as { error?: string; queued: number; noValidContact: number; outdated: number; alreadyPresent: number };
+      if (!response.ok) throw new Error(result.error ?? "Não foi possível preparar a fila de rascunhos.");
+      setMessage(`Fila preparada: ${result.queued} vaga(s) elegível(is); ${result.noValidContact} sem e-mail válido; ${result.outdated} precisa(m) de nova avaliação; ${result.alreadyPresent} já estava(m) na fila. Nenhum e-mail foi criado ou enviado.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Não foi possível preparar a fila de rascunhos.");
+    } finally {
+      setQueueingDrafts(false);
+    }
+  };
   return (
     <div className="modal-backdrop" onClick={close}>
       <section className="modal triage-modal" onClick={(e) => e.stopPropagation()}>
@@ -76,7 +91,10 @@ export default function TriageReport({ close }: { close: () => void }) {
               <button className="primary triage-run-button" disabled={runningPilot} onClick={runPilot}>
                 {runningPilot ? "Executando triagem…" : `Iniciar triagem de até ${batchSize} vagas`}
               </button>
-              <small>Esta etapa usa regras determinísticas. IA, rascunhos e envio de e-mails estão desativados.</small>
+              <button className="triage-queue-button" disabled={queueingDrafts || runningPilot} onClick={queueDrafts}>
+                {queueingDrafts ? "Preparando fila…" : "Preparar fila de rascunhos elegíveis"}
+              </button>
+              <small>A fila exige vaga aprovada ou provável, análise atual e e-mail de contato válido. Esta ação não cria nem envia e-mails.</small>
             </div>
           </div>
           <label className="triage-toggle">
