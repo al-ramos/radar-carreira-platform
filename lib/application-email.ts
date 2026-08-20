@@ -63,6 +63,6 @@ export function buildApinfoApplicationEmail({
     anchorLine +
     contractLine +
     "Tenho interesse em conversar para apresentar melhor minha experiência e entender os próximos passos do processo seletivo.\n\n" +
-    "Segue meu currículo em anexo."
+    "Fico à disposição para encaminhar meu currículo e demais informações necessárias."
   );
 }

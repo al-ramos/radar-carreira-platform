@@ -16,7 +16,7 @@ test("personaliza a candidatura da APinfo somente com stacks confirmadas", () =>
   assert.match(body, /Desenvolvedor \.NET \(código 85079\)/);
   assert.match(body, /especialmente em SQL, PostgreSQL/);
   assert.match(body, /Atuo em nível Pleno\/Sênior/);
-  assert.match(body, /Segue meu currículo em anexo/);
+  assert.match(body, /Fico à disposição para encaminhar meu currículo/);
   assert.doesNotMatch(body, /Atenciosamente|Almir Ramos/);
   assert.doesNotMatch(body, /JavaScript|React|Docker/);
 });

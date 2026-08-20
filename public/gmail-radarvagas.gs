@@ -44,3 +44,43 @@ function instalarColetaDiaria() {
   ScriptApp.getProjectTriggers().filter(trigger => trigger.getHandlerFunction() === 'importarRadarVagas').forEach(trigger => ScriptApp.deleteTrigger(trigger));
   ScriptApp.newTrigger('importarRadarVagas').timeBased().everyDays(1).atHour(8).create();
 }
+
+// Executa manualmente ou por gatilho. Nunca envia mensagens: apenas cria ou
+// reaproveita rascunhos que já foram aprovados e enfileirados pelo Radar.
+function criarRascunhosRadar() {
+  const secret = PropertiesService.getScriptProperties().getProperty('RADAR_SECRET');
+  if (!secret) throw new Error('Configure RADAR_SECRET nas propriedades do script.');
+  const response = UrlFetchApp.fetch(`${radarUrl()}/api/cron/drafts`, {
+    method:'post', contentType:'application/json', headers:{Authorization:`Bearer ${secret}`},
+    payload:JSON.stringify({action:'prepare',limit:10}), muteHttpExceptions:true
+  });
+  if (response.getResponseCode() >= 300) throw new Error(response.getContentText());
+  const payload = JSON.parse(response.getContentText());
+  (payload.drafts || []).forEach(item => {
+    try {
+      const existing = GmailApp.getDrafts().find(draft => {
+        const message = draft.getMessage();
+        return message.getTo().toLowerCase() === item.to.toLowerCase() && message.getSubject() === item.subject;
+      });
+      const draft = existing || GmailApp.createDraft(item.to, item.subject, item.body);
+      confirmarRascunhoRadar(secret, item.outboxId, draft.getId());
+    } catch (error) {
+      registrarFalhaRascunhoRadar(secret, item.outboxId, String(error));
+    }
+  });
+  console.log(`Rascunhos processados: ${(payload.drafts || []).length}. Nenhum e-mail foi enviado.`);
+}
+
+function confirmarRascunhoRadar(secret, outboxId, gmailDraftId) {
+  return UrlFetchApp.fetch(`${radarUrl()}/api/cron/drafts`, {
+    method:'post',contentType:'application/json',headers:{Authorization:`Bearer ${secret}`},
+    payload:JSON.stringify({action:'confirm',outboxId:outboxId,gmailDraftId:gmailDraftId}),muteHttpExceptions:true
+  });
+}
+
+function registrarFalhaRascunhoRadar(secret, outboxId, error) {
+  return UrlFetchApp.fetch(`${radarUrl()}/api/cron/drafts`, {
+    method:'post',contentType:'application/json',headers:{Authorization:`Bearer ${secret}`},
+    payload:JSON.stringify({action:'fail',outboxId:outboxId,error:error}),muteHttpExceptions:true
+  });
+}
