@@ -69,6 +69,7 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
       const result = await response.json() as { error?: string; queued: number; noValidContact: number; outdated: number; alreadyPresent: number };
       if (!response.ok) throw new Error(result.error ?? "Não foi possível preparar a fila de rascunhos.");
       setMessage(`Fila preparada: ${result.queued} vaga(s) elegível(is); ${result.noValidContact} sem e-mail válido; ${result.outdated} precisa(m) de nova avaliação; ${result.alreadyPresent} já estava(m) na fila. Nenhum e-mail foi criado ou enviado.`);
+      void loadHistory();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Não foi possível preparar a fila de rascunhos.");
     } finally {
@@ -211,3 +212,4 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
     </div>
   );
 }
+
