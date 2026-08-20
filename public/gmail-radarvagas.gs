@@ -52,7 +52,7 @@ function criarRascunhosRadar() {
   if (!secret) throw new Error('Configure RADAR_SECRET nas propriedades do script.');
   const response = UrlFetchApp.fetch(`${radarUrl()}/api/cron/drafts`, {
     method:'post', contentType:'application/json', headers:{Authorization:`Bearer ${secret}`},
-    payload:JSON.stringify({action:'prepare',limit:10}), muteHttpExceptions:true
+    payload:JSON.stringify({action:'prepare',limit:10,retryFailed:true}), muteHttpExceptions:true
   });
   if (response.getResponseCode() >= 300) throw new Error(response.getContentText());
   const payload = JSON.parse(response.getContentText());
@@ -63,7 +63,8 @@ function criarRascunhosRadar() {
         return message.getTo().toLowerCase() === item.to.toLowerCase() && message.getSubject() === item.subject;
       });
       const draft = existing || GmailApp.createDraft(item.to, item.subject, item.body);
-      confirmarRascunhoRadar(secret, item.outboxId, draft.getId());
+      const confirm = confirmarRascunhoRadar(secret, item.outboxId, draft.getId());
+      if (confirm.getResponseCode() >= 300) throw new Error(confirm.getContentText());
     } catch (error) {
       registrarFalhaRascunhoRadar(secret, item.outboxId, String(error));
     }

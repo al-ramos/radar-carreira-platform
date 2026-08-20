@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, or } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getDb } from "../../../../db/index";
 import { draftOutbox, jobSources, jobs, profiles, triageHistory, userJobAnalyses } from "../../../../db/schema";
@@ -29,7 +29,7 @@ async function authenticate(request: Request) {
 export async function POST(request: Request) {
   const owner = await authenticate(request);
   if (!owner) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
-  const body = await request.json().catch(() => ({})) as { action?: "prepare" | "confirm" | "fail"; outboxId?: string; gmailDraftId?: string; error?: string; limit?: number };
+  const body = await request.json().catch(() => ({})) as { action?: "prepare" | "confirm" | "fail"; outboxId?: string; gmailDraftId?: string; error?: string; limit?: number; retryFailed?: boolean };
   const db = getDb();
 
   if (body.action === "confirm" || body.action === "fail") {
@@ -52,6 +52,9 @@ export async function POST(request: Request) {
   if (!profileIsReadyForTriage(canonicalProfile)) return NextResponse.json({ drafts: [], reason: "Perfil técnico não está pronto" });
   const versions = getAnalysisVersions(canonicalProfile);
   const limit = Math.max(1, Math.min(20, Math.floor(body.limit ?? 10)));
+  const eligibleOutboxStatus = body.retryFailed
+    ? or(eq(draftOutbox.status, "pending"), eq(draftOutbox.status, "failed"))
+    : eq(draftOutbox.status, "pending");
   const rows = await db.select({
     outboxId: draftOutbox.id,
     jobId: jobs.id,
@@ -69,7 +72,7 @@ export async function POST(request: Request) {
     .innerJoin(jobs, eq(draftOutbox.jobId, jobs.id))
     .innerJoin(triageHistory, eq(draftOutbox.historyId, triageHistory.id))
     .innerJoin(userJobAnalyses, and(eq(userJobAnalyses.userId, draftOutbox.userId), eq(userJobAnalyses.jobId, draftOutbox.jobId)))
-    .where(and(eq(draftOutbox.userId, owner.userId), eq(draftOutbox.status, "pending")))
+    .where(and(eq(draftOutbox.userId, owner.userId), eligibleOutboxStatus))
     .limit(limit);
 
   const drafts = rows.flatMap((row) => {
