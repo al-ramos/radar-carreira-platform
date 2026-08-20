@@ -216,7 +216,7 @@ test("triagem por IA fica visível só ao proprietário e consulta job_ai_triage
   assert.match(route, /!= '⚪'/);
   assert.match(component, /Triagem de vagas/);
   assert.match(component, /CENTRO DE DECISÃO/);
-  assert.match(component, /Vagas analisadas/);
+  assert.match(component, /Resumo do filtro atual/);
   assert.match(platformCss, /\.triage-toggle/);
   assert.match(platformCss, /\.triage-row/);
 });
