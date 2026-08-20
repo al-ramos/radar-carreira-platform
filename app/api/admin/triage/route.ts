@@ -43,14 +43,9 @@ export async function GET(request: Request) {
       processedAt: jobAiTriage.processedAt,
       title: jobs.title,
       company: jobs.company,
-      externalId: jobs.externalId,
-      sourceId: jobs.sourceId,
       workMode: jobs.workMode,
       location: jobs.location,
-      sourcePublishedAt: jobs.sourcePublishedAt,
-      receivedAt: jobs.firstSeenAt,
       url: jobs.url,
-      contactEmail: jobs.contactEmail,
     })
     .from(jobAiTriage)
     .innerJoin(jobs, eq(jobAiTriage.jobId, jobs.id))
