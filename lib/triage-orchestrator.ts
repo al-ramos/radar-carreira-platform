@@ -18,6 +18,14 @@ function saoPauloDate(now: Date): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
 }
 
+/** Janela civil do dia no fuso do Radar. Evita depender do parse ambíguo de
+ * 24:00 e mantém o recorte da rotina agendada separado de UTC. */
+export function saoPauloDayWindow(referenceDate: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(referenceDate)) throw new Error("referenceDate deve usar YYYY-MM-DD");
+  const start = new Date(`${referenceDate}T00:00:00-03:00`);
+  return { start, end: new Date(start.getTime() + 24 * 60 * 60 * 1000) };
+}
+
 export function normalizeTriageRunRequest(request: TriageRunRequest, now = new Date()): NormalizedTriageRunRequest {
   const referenceDate = request.referenceDate ?? saoPauloDate(now);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(referenceDate)) throw new Error("referenceDate deve usar YYYY-MM-DD");

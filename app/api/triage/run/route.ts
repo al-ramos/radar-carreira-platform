@@ -6,13 +6,12 @@ import { draftOutbox, jobSources, jobs, profiles, triageBatchItems, triageBatche
 import { getAnalysisVersions } from "../../../../lib/analysis-versions";
 import { canonicalizeProfile } from "../../../../lib/canonical-profile";
 import { evaluateDeterministicTriage } from "../../../../lib/deterministic-triage";
-import { normalizeTriageRunRequest, type TriageRunRequest } from "../../../../lib/triage-orchestrator";
+import { normalizeTriageRunRequest, saoPauloDayWindow, type TriageRunRequest } from "../../../../lib/triage-orchestrator";
 import { triageIdempotencyKey } from "../../../../lib/triage-idempotency";
 import { hasValidContactEmail } from "../../../../lib/contact-email";
 
 export const dynamic = "force-dynamic";
 const digest = async (value: string) => Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)))).map((byte) => byte.toString(16).padStart(2, "0")).join("");
-function saoPauloWindow(date: string) { return { start: new Date(`${date}T00:00:00-03:00`), end: new Date(`${date}T24:00:00-03:00`) }; }
 
 function parseStack(value: string): string[] {
   try {
@@ -80,8 +79,8 @@ export async function POST(request: Request) {
     .leftJoin(userJobAnalyses, and(eq(userJobAnalyses.userId, userId), eq(userJobAnalyses.jobId, jobs.id)))
     .where(and(
       eq(jobs.status, "active"),
-      scopedToReferenceDay ? gte(run.sourceId ? jobs.publishedAt : jobs.firstSeenAt, saoPauloWindow(run.referenceDate).start) : undefined,
-      scopedToReferenceDay ? lt(run.sourceId ? jobs.publishedAt : jobs.firstSeenAt, saoPauloWindow(run.referenceDate).end) : undefined,
+      scopedToReferenceDay ? gte(run.sourceId ? jobs.publishedAt : jobs.firstSeenAt, saoPauloDayWindow(run.referenceDate).start) : undefined,
+      scopedToReferenceDay ? lt(run.sourceId ? jobs.publishedAt : jobs.firstSeenAt, saoPauloDayWindow(run.referenceDate).end) : undefined,
       run.sourceId ? eq(jobs.sourceId, run.sourceId) : undefined,
       run.reprocess ? undefined : isNull(userJobAnalyses.jobId),
     ))
