@@ -5,12 +5,15 @@ import { draftOutbox, jobSources, jobs, profiles, triageHistory, userJobAnalyses
 import { getAnalysisVersions } from "../../../../lib/analysis-versions";
 import { buildApinfoApplicationEmail } from "../../../../lib/application-email";
 import { canonicalizeProfile, profileIsReadyForTriage } from "../../../../lib/canonical-profile";
-import { hasValidContactEmail } from "../../../../lib/contact-email";
+import { evaluateDeterministicTriage } from "../../../../lib/deterministic-triage";
+import { isSafeForDraft } from "../../../../lib/draft-eligibility";
 
 export const dynamic = "force-dynamic";
 
 const digest = async (value: string) => Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)))).map((byte) => byte.toString(16).padStart(2, "0")).join("");
 const list = (value: string) => { try { const parsed: unknown = JSON.parse(value); return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : []; } catch { return []; } };
+const parseStack = (value: string) => { try { const parsed: unknown = JSON.parse(value); return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : []; } catch { return []; } };
+const CONNECTOR_VERSION = "radar-drafts-v2";
 
 async function authenticate(request: Request) {
   const source = (await getDb().select().from(jobSources).where(eq(jobSources.id, "gmail-radarvagas")).limit(1))[0];
@@ -29,8 +32,14 @@ async function authenticate(request: Request) {
 export async function POST(request: Request) {
   const owner = await authenticate(request);
   if (!owner) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
-  const body = await request.json().catch(() => ({})) as { action?: "prepare" | "confirm" | "fail"; outboxId?: string; gmailDraftId?: string; error?: string; limit?: number; retryFailed?: boolean };
+  const body = await request.json().catch(() => ({})) as { action?: "prepare" | "confirm" | "fail" | "health"; outboxId?: string; gmailDraftId?: string; error?: string; limit?: number; retryFailed?: boolean; connectorVersion?: string };
   const db = getDb();
+
+  if (body.connectorVersion && body.connectorVersion !== CONNECTOR_VERSION) {
+    return NextResponse.json({ error: "Conector Gmail desatualizado. Atualize o arquivo gmail-radarvagas.gs antes de criar rascunhos." }, { status: 409 });
+  }
+
+  if (body.action === "health") return NextResponse.json({ ok: true, connectorVersion: CONNECTOR_VERSION, sent: false });
 
   if (body.action === "confirm" || body.action === "fail") {
     if (!body.outboxId) return NextResponse.json({ error: "Identificador da fila obrigatório" }, { status: 400 });
@@ -63,8 +72,19 @@ export async function POST(request: Request) {
     externalId: jobs.externalId,
     contactEmail: jobs.contactEmail,
     contactSubject: jobs.contactSubject,
+    description: jobs.description,
+    stack: jobs.stack,
+    seniority: jobs.seniority,
+    workMode: jobs.workMode,
+    location: jobs.location,
+    publishedAt: jobs.publishedAt,
     matchingSkills: userJobAnalyses.matchingSkills,
     missingSkills: userJobAnalyses.missingSkills,
+    analysisVerdict: userJobAnalyses.verdict,
+    analysisBlocker: userJobAnalyses.blocker,
+    analysisProfileRevision: userJobAnalyses.profileRevision,
+    analysisRulesRevision: userJobAnalyses.rulesRevision,
+    analysisInstructionsRevision: userJobAnalyses.instructionsRevision,
     profileRevision: triageHistory.profileRevision,
     rulesRevision: triageHistory.rulesRevision,
     instructionsRevision: triageHistory.instructionsRevision,
@@ -75,17 +95,46 @@ export async function POST(request: Request) {
     .where(and(eq(draftOutbox.userId, owner.userId), eligibleOutboxStatus))
     .limit(limit);
 
-  const drafts = rows.flatMap((row) => {
-    if (!hasValidContactEmail(row.contactEmail)) return [];
-    const current = row.profileRevision === versions.profileRevision && row.rulesRevision === versions.rulesRevision && row.instructionsRevision === versions.instructionsRevision;
-    if (!current) return [];
+  const drafts: Array<{ outboxId: string; to: string; subject: string; body: string }> = [];
+  for (const row of rows) {
+    const versionsCurrent = row.profileRevision === versions.profileRevision
+      && row.rulesRevision === versions.rulesRevision
+      && row.instructionsRevision === versions.instructionsRevision
+      && row.analysisProfileRevision === versions.profileRevision
+      && row.analysisRulesRevision === versions.rulesRevision
+      && row.analysisInstructionsRevision === versions.instructionsRevision;
+    const deterministic = evaluateDeterministicTriage({
+      title: row.title,
+      description: row.description,
+      stack: parseStack(row.stack),
+      seniority: row.seniority,
+      workMode: row.workMode,
+      location: row.location,
+      publishedAt: row.publishedAt,
+    }, canonicalProfile);
+    const safe = versionsCurrent && isSafeForDraft({
+      verdict: row.analysisVerdict,
+      blocker: row.analysisBlocker,
+      contactEmail: row.contactEmail,
+      deterministicVerdict: deterministic.verdict,
+      deterministicBlocker: deterministic.blocker,
+    });
+    if (!safe) {
+      const reason = !versionsCurrent
+        ? "Análise desatualizada; reavalie a vaga antes de criar rascunho."
+        : !row.contactEmail?.trim()
+          ? "E-mail de contato inválido ou ausente."
+          : "Revalidação atual não aprovou a vaga para rascunho.";
+      await db.update(draftOutbox).set({ status: "cancelled", error: reason, updatedAt: new Date() }).where(eq(draftOutbox.id, row.outboxId));
+      continue;
+    }
     const subject = row.contactSubject?.trim() || `Candidatura — ${row.title}${row.externalId ? ` (vaga ${row.externalId})` : ""}`;
-    return [{
+    drafts.push({
       outboxId: row.outboxId,
       to: row.contactEmail!.trim().toLowerCase(),
       subject,
       body: buildApinfoApplicationEmail({ title: row.title, company: row.company, externalId: row.externalId ?? undefined, matchingSkills: list(row.matchingSkills), missingSkills: list(row.missingSkills), seniority: canonicalProfile.seniority, careerRules: canonicalProfile.careerRules }),
-    }];
-  });
-  return NextResponse.json({ drafts, sent: false });
+    });
+  }
+  return NextResponse.json({ drafts, scanned: rows.length, hasMore: rows.length === limit, connectorVersion: CONNECTOR_VERSION, sent: false });
 }

@@ -2,8 +2,8 @@
 import { useEffect, useState } from "react";
 type Item = { jobId: string; veredito: string; motivo: string | null; processedAt: string; title: string; company: string; workMode: string | null; location: string | null; url: string };
 type Data = { counts: Record<string, number>; total: number; items: Item[] };
-type PilotResult = { batchId: string; processed: Array<{ jobId: string; title: string; company: string; reference: string | null; contactEligible: boolean; verdict: string; label: string; blocker: string | null }>; skipped: number };
-type HistoryItem = { id: string; batchId: string; verdict: string; label: string; blocker: string | null; source: string; confidence: number; processedAt: string; title: string; company: string; contactEmail: string | null; hasValidContactEmail: boolean; draftStatus: "pending" | "drafted" | "failed" | "cancelled" | null; trigger: string };
+type PilotResult = { batchId: string; processed: Array<{ jobId: string; title: string; company: string; reference: string | null; contactEligible: boolean; aiEligible: boolean; aiStatus: string; verdict: string; label: string; blocker: string | null }>; skipped: number; aiCompleted?: number };
+type HistoryItem = { id: string; batchId: string; verdict: string; label: string; blocker: string | null; source: string; confidence: number; rows: string; processedAt: string; title: string; company: string; contactEmail: string | null; hasValidContactEmail: boolean; draftStatus: "pending" | "drafted" | "failed" | "cancelled" | null; trigger: string };
 type Batch = { id: string; trigger: "manual" | "scheduled" | "assistant"; scope: string; status: string; startedAt: string | null; completedAt: string | null; createdAt: string; error: string | null; total: number; completed: number; failed: number; eligible: number; eligibleWithoutContact: number; draftsPending: number; draftsReady: number; draftsFailed: number };
 const rowClass: Record<string, string> = { "✅": "approved", "🟡": "partial", "❌": "rejected", "🔴": "rejected" };
 export default function TriageReport({ close, sourceId, sourceLabel }: { close: () => void; sourceId?: string; sourceLabel?: string }) {
@@ -16,7 +16,11 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
     [batchSize, setBatchSize] = useState(10),
     [reprocess, setReprocess] = useState(false),
     [history, setHistory] = useState<HistoryItem[]>([]),
-    [batches, setBatches] = useState<Batch[]>([]);
+    [batches, setBatches] = useState<Batch[]>([]),
+    [verdictFilter, setVerdictFilter] = useState("all"),
+    [sourceFilter, setSourceFilter] = useState("all"),
+    [draftFilter, setDraftFilter] = useState("all"),
+    [historyPage, setHistoryPage] = useState(0);
   const loadHistory = () => fetch("/api/triage/history")
     .then(async (r) => ({ ok: r.ok, data: await r.json() as { items?: HistoryItem[]; batches?: Batch[] } }))
     .then(({ ok, data }) => { if (ok) { setHistory(data.items ?? []); setBatches(data.batches ?? []); } });
@@ -35,6 +39,9 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
     new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(v));
   const rejected = (data?.counts["❌"] ?? 0) + (data?.counts["🔴"] ?? 0);
   const latestScheduled = batches.find((batch) => batch.trigger === "scheduled");
+  const filteredHistory = history.filter((item) => (verdictFilter === "all" || item.verdict === verdictFilter) && (sourceFilter === "all" || item.source === sourceFilter) && (draftFilter === "all" || item.draftStatus === draftFilter));
+  const historyPageSize = 10;
+  const visibleHistory = filteredHistory.slice(historyPage * historyPageSize, (historyPage + 1) * historyPageSize);
   const scheduledSummary = (batch: Batch) => {
     if (batch.total === 0) return "Nenhuma vaga nova pendente de avaliação foi encontrada para este dia.";
     if (batch.eligible === 0) return "Nenhuma vaga aderente ou provável foi encontrada neste lote.";
@@ -48,12 +55,12 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
       const response = await fetch("/api/triage/run", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ trigger: sourceId ? "gpt" : "portal", sourceId, batchSize, reprocess, aiMode: "off", createDrafts: false }),
+        body: JSON.stringify({ trigger: sourceId ? "gpt" : "portal", sourceId, batchSize, reprocess, aiMode: "ambiguous", createDrafts: false }),
       });
       const result = await response.json() as PilotResult & { error?: string };
       if (!response.ok) throw new Error(result.error ?? "Não foi possível concluir o piloto.");
       setPilot(result);
-      setMessage(`Piloto concluído: ${result.processed.length} vagas registradas, ${result.skipped} já processada(s). IA e rascunhos permaneceram desativados.`);
+      setMessage(`Triagem concluída: ${result.processed.length} vagas registradas, ${result.aiCompleted ?? 0} refinada(s) por IA e ${result.skipped} já processada(s). Rascunhos continuam dependentes de contato válido.`);
       void loadHistory();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Não foi possível concluir o piloto.");
@@ -76,6 +83,17 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
       setQueueingDrafts(false);
     }
   };
+  const retryFailedDrafts = async () => {
+    setQueueingDrafts(true);
+    try {
+      const response = await fetch("/api/triage/drafts/queue", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "retryFailed" }) });
+      const result = await response.json() as { error?: string; retried?: number };
+      if (!response.ok) throw new Error(result.error ?? "Não foi possível retomar os rascunhos.");
+      setMessage(`${result.retried ?? 0} falha(s) de rascunho voltaram para a fila. O Gmail continuará criando somente rascunhos.`);
+      void loadHistory();
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Não foi possível retomar os rascunhos."); }
+    finally { setQueueingDrafts(false); }
+  };
   return (
     <div className="modal-backdrop" onClick={close}>
       <section className="modal triage-modal" onClick={(e) => e.stopPropagation()}>
@@ -85,8 +103,9 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
         <p className="eyebrow">TRIAGEM AUTOMÁTICA</p>
         <div className="triage-title">
           <div>
-            <h2>Vagas avaliadas por IA</h2>
-            <p>Primeiro pelas regras do seu perfil .NET/C#; IA somente quando necessária.</p>
+            <p className="triage-kicker">CENTRO DE DECISÃO</p>
+            <h2>Triagem de vagas</h2>
+            <p>Regras primeiro. IA apenas para incertezas. Rascunhos somente após validação e contato confirmado.</p>
             <div className="triage-run-panel">
               <div className="triage-run-settings">
                 <label>
@@ -99,11 +118,12 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
                 </label>
               </div>
               <button className="primary triage-run-button" disabled={runningPilot} onClick={runPilot}>
-                {runningPilot ? "Executando triagem…" : `Iniciar triagem de até ${batchSize} vagas`}
+                {runningPilot ? "Analisando vagas…" : `Analisar ${batchSize} vagas agora`}
               </button>
               <button className="triage-queue-button" disabled={queueingDrafts || runningPilot} onClick={queueDrafts}>
-                {queueingDrafts ? "Preparando fila…" : "Preparar fila de rascunhos elegíveis"}
+                {queueingDrafts ? "Preparando fila…" : "Preparar rascunhos elegíveis"}
               </button>
+              <button className="triage-queue-button" disabled={queueingDrafts || runningPilot} onClick={retryFailedDrafts}>Reprocessar falhas de rascunho</button>
               <small>{sourceId ? `Exceção manual: somente vagas de hoje da fonte ${sourceLabel ?? sourceId}. ` : ""}A fila exige vaga aprovada ou provável, análise atual e e-mail de contato válido. Esta ação não cria nem envia e-mails.</small>
             </div>
           </div>
@@ -119,7 +139,7 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
         {message && <div className="notice">{message}</div>}
         {pilot && (
           <section className="triage-current-run" aria-label="Resultado desta execução">
-            <div className="triage-section-heading"><h3>Resultado desta execução</h3><small>{pilot.processed.length} vaga(s) analisada(s) · regras</small></div>
+            <div className="triage-section-heading"><h3>Resultado desta execução</h3><small>{pilot.processed.length} vaga(s) analisada(s) · regras e IA quando necessária</small></div>
             <div className="triage-list">
             {pilot.processed.map((item) => (
               <article key={item.jobId} className={`triage-row ${item.verdict === "BATE" ? "approved" : item.verdict === "PROVAVEL" ? "partial" : "rejected"}`}>
@@ -153,20 +173,27 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
           <section className="triage-history" aria-label="Histórico persistido da nova triagem">
             <div>
               <h3>Histórico da nova triagem</h3>
-              <small>Resultados gravados no sistema. Rascunhos só poderão ser habilitados futuramente quando houver e-mail de contato válido.</small>
+            <small>Resultados gravados no sistema. A IA só refina vagas ambíguas; rascunhos exigem e-mail de contato válido.</small>
             </div>
             <div className="triage-list">
-              {history.slice(0, 20).map((item) => (
+              <div className="triage-run-settings">
+                <label>Veredito<select value={verdictFilter} onChange={(e) => { setVerdictFilter(e.target.value); setHistoryPage(0); }}><option value="all">Todos</option><option value="✅">Aprovadas</option><option value="🟡">Prováveis</option><option value="❌">Reprovadas</option></select></label>
+                <label>Origem<select value={sourceFilter} onChange={(e) => { setSourceFilter(e.target.value); setHistoryPage(0); }}><option value="all">Regras e IA</option><option value="rules">Regras</option><option value="ai">IA</option></select></label>
+                <label>Rascunho<select value={draftFilter} onChange={(e) => { setDraftFilter(e.target.value); setHistoryPage(0); }}><option value="all">Todos</option><option value="pending">Na fila</option><option value="drafted">Pronto</option><option value="failed">Com falha</option></select></label>
+              </div>
+              {visibleHistory.map((item) => (
                 <article key={item.id} className={`triage-row ${rowClass[item.verdict] ?? "backlog"}`}>
                   <div>
                     <small>{item.company} · {date(item.processedAt)} · {item.source === "ai" ? "IA" : "Regras"}</small>
                     <b>{item.title}</b>
                     <span>{item.label}{item.blocker ? ` · ${item.blocker}` : ""}{item.hasValidContactEmail ? " · E-mail de contato válido" : " · Sem e-mail de contato válido"}{item.draftStatus === "drafted" ? " · Rascunho pronto" : item.draftStatus === "pending" ? " · Rascunho aguardando criação" : item.draftStatus === "failed" ? " · Falha ao criar rascunho" : ""}</span>
+                    {item.source === "ai" && <details><summary>Ver evidências e decisão refinada</summary><pre>{item.rows}</pre></details>}
                   </div>
                   <strong>{item.verdict}</strong>
                 </article>
               ))}
             </div>
+            {filteredHistory.length > historyPageSize && <div className="triage-run-settings"><button disabled={historyPage === 0} onClick={() => setHistoryPage(page => page - 1)}>Anterior</button><small>Página {historyPage + 1} de {Math.ceil(filteredHistory.length / historyPageSize)}</small><button disabled={(historyPage + 1) * historyPageSize >= filteredHistory.length} onClick={() => setHistoryPage(page => page + 1)}>Próxima</button></div>}
           </section>
         )}
         {data && (
@@ -212,4 +239,3 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
     </div>
   );
 }
-

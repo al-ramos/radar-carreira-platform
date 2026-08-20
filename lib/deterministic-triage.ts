@@ -15,6 +15,15 @@ export type DeterministicTriage = {
   result: VerdictResult;
 };
 
+/** IA só é considerada quando as regras não encontraram bloqueador, mas
+ * ainda faltam evidências para uma decisão totalmente determinística. */
+export function needsAiRefinement(value: DeterministicTriage) {
+  if (value.blocker) return { eligible: false, reason: "bloqueador determinístico" } as const;
+  if (value.confidence >= 100) return { eligible: false, reason: "evidências suficientes nas regras" } as const;
+  if (value.verdict === "NAO_BATE") return { eligible: false, reason: "não aderente pelas regras" } as const;
+  return { eligible: true, reason: "evidências incompletas sem bloqueador" } as const;
+}
+
 export function evaluateDeterministicTriage(job: JobForTriage, profile: CanonicalCandidateProfile): DeterministicTriage {
   const stack = inferTechnologyStack(`${job.title} ${job.description}`, Array.isArray(job.stack) ? job.stack.filter((item): item is string => typeof item === "string") : []);
   const result = computeVerdict({ ...job, stack }, profile.masteredSkills, profile.careerRules);

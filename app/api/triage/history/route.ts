@@ -22,6 +22,7 @@ export async function GET() {
       blocker: triageHistory.blocker,
       source: triageHistory.source,
       confidence: triageHistory.confidence,
+      rows: triageHistory.rows,
       processedAt: triageHistory.createdAt,
       title: jobs.title,
       company: jobs.company,

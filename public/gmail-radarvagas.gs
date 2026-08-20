@@ -45,31 +45,56 @@ function instalarColetaDiaria() {
   ScriptApp.newTrigger('importarRadarVagas').timeBased().everyDays(1).atHour(8).create();
 }
 
+const RADAR_DRAFT_CONNECTOR_VERSION = 'radar-drafts-v2';
+
 // Executa manualmente ou por gatilho. Nunca envia mensagens: apenas cria ou
 // reaproveita rascunhos que já foram aprovados e enfileirados pelo Radar.
 function criarRascunhosRadar() {
   const secret = PropertiesService.getScriptProperties().getProperty('RADAR_SECRET');
   if (!secret) throw new Error('Configure RADAR_SECRET nas propriedades do script.');
+  let processed = 0, scanned = 0;
+  // 10 lotes de 10 cobrem com margem a rotina diária e preservam o limite
+  // por chamada. Itens que deixaram de ser seguros são cancelados pelo Radar.
+  for (let batch = 0; batch < 10; batch += 1) {
+    const response = UrlFetchApp.fetch(`${radarUrl()}/api/cron/drafts`, {
+      method:'post', contentType:'application/json', headers:{Authorization:`Bearer ${secret}`},
+      payload:JSON.stringify({action:'prepare',limit:10,retryFailed:true,connectorVersion:RADAR_DRAFT_CONNECTOR_VERSION}), muteHttpExceptions:true
+    });
+    if (response.getResponseCode() >= 300) throw new Error(response.getContentText());
+    const payload = JSON.parse(response.getContentText());
+    (payload.drafts || []).forEach(item => {
+      try {
+        const existing = GmailApp.getDrafts().find(draft => {
+          const message = draft.getMessage();
+          return message.getTo().toLowerCase() === item.to.toLowerCase() && message.getSubject() === item.subject;
+        });
+        const draft = existing || GmailApp.createDraft(item.to, item.subject, item.body);
+        const confirm = confirmarRascunhoRadar(secret, item.outboxId, draft.getId());
+        if (confirm.getResponseCode() >= 300) throw new Error(confirm.getContentText());
+        processed += 1;
+      } catch (error) {
+        registrarFalhaRascunhoRadar(secret, item.outboxId, String(error));
+      }
+    });
+    scanned += payload.scanned || 0;
+    if (!payload.hasMore) break;
+  }
+  console.log(`Rascunhos processados: ${processed}; itens verificados: ${scanned}. Nenhum e-mail foi enviado.`);
+}
+
+// Diagnóstico seguro antes de uma operação manual: confirma URL, credencial e
+// versão do conector sem criar ou enviar nenhum e-mail.
+function verificarConectorRascunhosRadar() {
+  const secret = PropertiesService.getScriptProperties().getProperty('RADAR_SECRET');
+  if (!secret) throw new Error('Configure RADAR_SECRET nas propriedades do script.');
   const response = UrlFetchApp.fetch(`${radarUrl()}/api/cron/drafts`, {
     method:'post', contentType:'application/json', headers:{Authorization:`Bearer ${secret}`},
-    payload:JSON.stringify({action:'prepare',limit:10,retryFailed:true}), muteHttpExceptions:true
+    payload:JSON.stringify({action:'health',connectorVersion:RADAR_DRAFT_CONNECTOR_VERSION}), muteHttpExceptions:true
   });
   if (response.getResponseCode() >= 300) throw new Error(response.getContentText());
   const payload = JSON.parse(response.getContentText());
-  (payload.drafts || []).forEach(item => {
-    try {
-      const existing = GmailApp.getDrafts().find(draft => {
-        const message = draft.getMessage();
-        return message.getTo().toLowerCase() === item.to.toLowerCase() && message.getSubject() === item.subject;
-      });
-      const draft = existing || GmailApp.createDraft(item.to, item.subject, item.body);
-      const confirm = confirmarRascunhoRadar(secret, item.outboxId, draft.getId());
-      if (confirm.getResponseCode() >= 300) throw new Error(confirm.getContentText());
-    } catch (error) {
-      registrarFalhaRascunhoRadar(secret, item.outboxId, String(error));
-    }
-  });
-  console.log(`Rascunhos processados: ${(payload.drafts || []).length}. Nenhum e-mail foi enviado.`);
+  if (payload.connectorVersion !== RADAR_DRAFT_CONNECTOR_VERSION) throw new Error('Versão do conector não corresponde ao Radar publicado.');
+  console.log('Conector de rascunhos verificado. Nenhum e-mail foi criado ou enviado.');
 }
 
 // Agenda somente a criação de rascunhos pendentes já aprovados pelo Radar.
@@ -91,7 +116,7 @@ function executarTriagemDiariaERascunhos() {
   if (!secret) throw new Error('Configure RADAR_SECRET nas propriedades do script.');
   const response = UrlFetchApp.fetch(`${radarUrl()}/api/triage/run`, {
     method:'post',contentType:'application/json',headers:{Authorization:`Bearer ${secret}`},
-    payload:JSON.stringify({trigger:'schedule',batchSize:100,aiMode:'off',createDrafts:false}),muteHttpExceptions:true
+    payload:JSON.stringify({trigger:'schedule',batchSize:100,aiMode:'ambiguous',createDrafts:false}),muteHttpExceptions:true
   });
   if (response.getResponseCode() >= 300) throw new Error(response.getContentText());
   criarRascunhosRadar();
