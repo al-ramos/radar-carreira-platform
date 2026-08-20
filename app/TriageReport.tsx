@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 type Item = { jobId: string; veredito: string; motivo: string | null; processedAt: string; title: string; company: string; workMode: string | null; location: string | null; url: string };
 type Data = { counts: Record<string, number>; total: number; items: Item[] };
 type PilotResult = { batchId: string; processed: Array<{ jobId: string; title: string; company: string; reference: string | null; contactEligible: boolean; aiEligible: boolean; aiStatus: string; verdict: string; label: string; blocker: string | null }>; skipped: number; aiCompleted?: number };
-type HistoryItem = { id: string; batchId: string; verdict: string; label: string; blocker: string | null; source: string; confidence: number; rows: string; processedAt: string; title: string; company: string; contactEmail: string | null; hasValidContactEmail: boolean; draftStatus: "pending" | "drafted" | "failed" | "cancelled" | null; trigger: string };
+type HistoryItem = { id: string; batchId: string; verdict: string; label: string; blocker: string | null; source: string; confidence: number; rows: string; processedAt: string; title: string; company: string; contactEmail: string | null; hasValidContactEmail: boolean; draftStatus: "pending" | "drafted" | "failed" | "cancelled" | null; draftSubject: string; draftError: string | null; draftUpdatedAt: string | null; trigger: string };
 type Batch = { id: string; trigger: "manual" | "scheduled" | "assistant"; scope: string; status: string; startedAt: string | null; completedAt: string | null; createdAt: string; error: string | null; total: number; completed: number; failed: number; eligible: number; eligibleWithoutContact: number; draftsPending: number; draftsReady: number; draftsFailed: number };
 type Operational = { pendingDrafts: number; readyDrafts: number; failedDrafts: number; oldestPendingAt: string | null; alerts: Array<{ level: "warning" | "error"; message: string }> };
 const rowClass: Record<string, string> = { "✅": "approved", "🟡": "partial", "❌": "rejected", "🔴": "rejected" };
@@ -44,6 +44,7 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
   const filteredHistory = history.filter((item) => (verdictFilter === "all" || item.verdict === verdictFilter) && (sourceFilter === "all" || item.source === sourceFilter) && (draftFilter === "all" || item.draftStatus === draftFilter));
   const historyPageSize = 10;
   const visibleHistory = filteredHistory.slice(historyPage * historyPageSize, (historyPage + 1) * historyPageSize);
+  const draftItems = history.filter((item) => item.draftStatus && ["pending", "drafted", "failed"].includes(item.draftStatus));
   const scheduledSummary = (batch: Batch) => {
     if (batch.total === 0) return "Nenhuma vaga nova pendente de avaliação foi encontrada para este dia.";
     if (batch.eligible === 0) return "Nenhuma vaga aderente ou provável foi encontrada neste lote.";
@@ -175,6 +176,15 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
           <div><h3>Saúde operacional</h3><small>Fila de rascunhos e rotina diária.</small></div>
           <div className="triage-operations-metrics"><span><b>{operational.pendingDrafts}</b> na fila</span><span><b>{operational.readyDrafts}</b> prontos</span><span><b>{operational.failedDrafts}</b> com falha</span></div>
           {operational.alerts.length > 0 ? <ul>{operational.alerts.map((alert) => <li key={alert.message} className={alert.level}>{alert.message}</li>)}</ul> : <p className="triage-operations-ok">Sem alertas operacionais.</p>}
+        </section>}
+        {draftItems.length > 0 && <section className="triage-drafts" aria-label="Rascunhos de candidatura">
+          <div><h3>Rascunhos de candidatura</h3><small>Itens da fila; o portal não envia e-mails.</small></div>
+          <div className="triage-list">
+            {draftItems.map((item) => <article key={item.id} className={`triage-row ${item.draftStatus === "failed" ? "rejected" : item.draftStatus === "drafted" ? "approved" : "partial"}`}>
+              <div><small>{item.draftStatus === "drafted" ? "Rascunho pronto" : item.draftStatus === "failed" ? "Falha — pode reprocessar" : "Aguardando o conector Gmail"} · {item.draftUpdatedAt ? date(item.draftUpdatedAt) : date(item.processedAt)}</small><b>{item.title}</b><span>Para: {item.contactEmail ?? "Contato inválido"} · Assunto: {item.draftSubject}</span>{item.draftError && <span className="triage-draft-error">Erro: {item.draftError}</span>}</div>
+              <strong>{item.draftStatus === "drafted" ? "✉️" : item.draftStatus === "failed" ? "⚠️" : "⏳"}</strong>
+            </article>)}
+          </div>
         </section>}
         {history.length > 0 && (
           <section className="triage-history" aria-label="Histórico persistido da nova triagem">

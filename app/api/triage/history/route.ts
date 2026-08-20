@@ -26,8 +26,12 @@ export async function GET() {
       processedAt: triageHistory.createdAt,
       title: jobs.title,
       company: jobs.company,
+      externalId: jobs.externalId,
       contactEmail: jobs.contactEmail,
+      contactSubject: jobs.contactSubject,
       draftStatus: draftOutbox.status,
+      draftError: draftOutbox.error,
+      draftUpdatedAt: draftOutbox.updatedAt,
       trigger: triageBatches.trigger,
     })
     .from(triageHistory)
@@ -82,7 +86,11 @@ export async function GET() {
   ];
 
   return NextResponse.json({
-    items: items.map((item) => ({ ...item, hasValidContactEmail: hasValidContactEmail(item.contactEmail) })),
+    items: items.map((item) => ({
+      ...item,
+      hasValidContactEmail: hasValidContactEmail(item.contactEmail),
+      draftSubject: item.contactSubject?.trim() || `Candidatura — ${item.title}${item.externalId ? ` (vaga ${item.externalId})` : ""}`,
+    })),
     batches: batches.map((batch) => {
       const batchRows = batchItems.filter((item) => item.batchId === batch.id);
       const assessed = batchHistory.filter((item) => item.batchId === batch.id);
