@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db/index";
 import { jobs, triageBatches, triageHistory } from "../../../../db/schema";
+import { hasValidContactEmail } from "../../../../lib/contact-email";
 
 export const dynamic = "force-dynamic";
 
@@ -34,5 +35,7 @@ export async function GET() {
     .orderBy(desc(triageHistory.createdAt))
     .limit(100);
 
-  return NextResponse.json({ items });
+  return NextResponse.json({
+    items: items.map((item) => ({ ...item, hasValidContactEmail: hasValidContactEmail(item.contactEmail) })),
+  });
 }

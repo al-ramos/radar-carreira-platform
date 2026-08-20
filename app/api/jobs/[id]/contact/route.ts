@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../../chatgpt-auth";
 import { getDb } from "../../../../../db/index";
 import { jobs } from "../../../../../db/schema";
+import { normalizeContactEmail } from "../../../../../lib/contact-email";
 
 export const dynamic = "force-dynamic";
 
@@ -20,8 +21,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
   const { id } = await params;
   const body = (await request.json().catch(() => null)) as { contactEmail?: string; contactSubject?: string } | null;
-  const contactEmail = body?.contactEmail?.trim();
-  if (!contactEmail) return NextResponse.json({ error: "E-mail de contato ausente" }, { status: 400 });
+  const contactEmail = normalizeContactEmail(body?.contactEmail);
+  if (!contactEmail) return NextResponse.json({ error: "Informe um único e-mail de contato válido" }, { status: 400 });
 
   const db = getDb();
   const job = (await db.select({ id: jobs.id, contactEmail: jobs.contactEmail }).from(jobs).where(eq(jobs.id, id)).limit(1))[0];

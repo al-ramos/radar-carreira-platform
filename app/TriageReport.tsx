@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 type Item = { jobId: string; veredito: string; motivo: string | null; processedAt: string; title: string; company: string; workMode: string | null; location: string | null; url: string };
 type Data = { counts: Record<string, number>; total: number; items: Item[] };
 type PilotResult = { batchId: string; processed: Array<{ jobId: string; verdict: string; label: string; blocker: string | null }>; skipped: number };
-type HistoryItem = { id: string; batchId: string; verdict: string; label: string; blocker: string | null; source: string; confidence: number; processedAt: string; title: string; company: string; contactEmail: string | null; trigger: string };
+type HistoryItem = { id: string; batchId: string; verdict: string; label: string; blocker: string | null; source: string; confidence: number; processedAt: string; title: string; company: string; contactEmail: string | null; hasValidContactEmail: boolean; trigger: string };
 const rowClass: Record<string, string> = { "✅": "approved", "🟡": "partial", "❌": "rejected", "🔴": "rejected" };
 export default function TriageReport({ close }: { close: () => void }) {
   const [data, setData] = useState<Data | null>(null),
@@ -115,7 +115,7 @@ export default function TriageReport({ close }: { close: () => void }) {
                   <div>
                     <small>{item.company} · {date(item.processedAt)} · {item.source === "ai" ? "IA" : "Regras"}</small>
                     <b>{item.title}</b>
-                    <span>{item.label}{item.blocker ? ` · ${item.blocker}` : ""}{item.contactEmail ? " · E-mail de contato cadastrado" : " · Sem e-mail de contato"}</span>
+                    <span>{item.label}{item.blocker ? ` · ${item.blocker}` : ""}{item.hasValidContactEmail ? " · E-mail de contato válido" : " · Sem e-mail de contato válido"}</span>
                   </div>
                   <strong>{item.verdict}</strong>
                 </article>
