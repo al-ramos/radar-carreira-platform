@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../../chatgpt-auth";
 import { getDb } from "../../../../../db/index";
 import { jobs, profiles, userJobAnalyses } from "../../../../../db/schema";
+import { analysisVersionsMatch, getAnalysisVersions } from "../../../../../lib/analysis-versions";
+import { canonicalizeProfile } from "../../../../../lib/canonical-profile";
 import { analyzeStoredJobForProfile } from "../../../../../lib/personalized-analysis";
 
 export const dynamic = "force-dynamic";
@@ -14,10 +16,10 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const db = getDb();
   const [row, profile] = await Promise.all([
     db.select().from(userJobAnalyses).where(and(eq(userJobAnalyses.userId, user.userId), eq(userJobAnalyses.jobId, id))).limit(1).then(rows => rows[0]),
-    db.select({ updatedAt: profiles.updatedAt }).from(profiles).where(eq(profiles.userId, user.userId)).limit(1).then(rows => rows[0]),
+    db.select().from(profiles).where(eq(profiles.userId, user.userId)).limit(1).then(rows => rows[0]),
   ]);
   if (!row) return NextResponse.json({ analysis: null });
-  if (!profile || row.profileVersion.getTime() !== profile.updatedAt.getTime()) {
+  if (!profile || !analysisVersionsMatch(row, getAnalysisVersions(canonicalizeProfile(profile)))) {
     return NextResponse.json({ analysis: null, stale: true });
   }
   return NextResponse.json({ analysis: { ...row, rows: JSON.parse(row.rows), matchingSkills: JSON.parse(row.matchingSkills), missingSkills: JSON.parse(row.missingSkills) } });
@@ -44,10 +46,12 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
   }
 
   const now = new Date();
+  const versions = getAnalysisVersions(canonicalizeProfile(profile));
   const values = {
     userId: user.userId,
     jobId: id,
     profileVersion: profile.updatedAt,
+    ...versions,
     verdict: result.verdict.emoji,
     label: result.verdict.label,
     blocker: result.verdict.blocker ?? null,
@@ -61,7 +65,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     updatedAt: now,
   };
   const unchanged = existing
-    && existing.profileVersion.getTime() === values.profileVersion.getTime()
+    && analysisVersionsMatch(existing, values)
     && existing.verdict === values.verdict
     && existing.label === values.label
     && existing.blocker === values.blocker
@@ -75,6 +79,9 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     target: [userJobAnalyses.userId, userJobAnalyses.jobId],
     set: {
       profileVersion: values.profileVersion,
+      profileRevision: values.profileRevision,
+      rulesRevision: values.rulesRevision,
+      instructionsRevision: values.instructionsRevision,
       verdict: values.verdict,
       label: values.label,
       blocker: values.blocker,

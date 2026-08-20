@@ -25,6 +25,6 @@ test("filtro, ordenação, detalhe e explicação compartilham o score personali
 
 test("cache de análise é invalidado quando a versão do perfil muda", async () => {
   const route = await read("../app/api/jobs/[id]/analysis/route.ts");
-  assert.match(route, /row\.profileVersion\.getTime\(\) !== profile\.updatedAt\.getTime\(\)/);
+  assert.match(route, /analysisVersionsMatch\(row, getAnalysisVersions\(canonicalizeProfile\(profile\)\)\)/);
   assert.match(route, /analysis: null, stale: true/);
 });

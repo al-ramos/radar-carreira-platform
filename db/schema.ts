@@ -61,6 +61,9 @@ export const userJobAnalyses = sqliteTable("user_job_analyses", {
   userId: text("user_id").notNull(),
   jobId: text("job_id").notNull().references(() => jobs.id),
   profileVersion: integer("profile_version", { mode: "timestamp_ms" }).notNull(),
+  profileRevision: text("profile_revision").notNull().default("legacy"),
+  rulesRevision: text("rules_revision").notNull().default("legacy"),
+  instructionsRevision: text("instructions_revision").notNull().default("legacy"),
   verdict: text("verdict", { enum: ["✅", "🟡", "🔴", "❌"] }).notNull(),
   label: text("label").notNull(),
   blocker: text("blocker"),
@@ -73,6 +76,45 @@ export const userJobAnalyses = sqliteTable("user_job_analyses", {
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
 }, t => [primaryKey({ columns: [t.userId, t.jobId] })]);
+
+/** Lote imutável de uma execução manual, agendada ou assistida. */
+export const triageBatches = sqliteTable("triage_batches", {
+  id: text("id").primaryKey(), userId: text("user_id").notNull(), trigger: text("trigger", { enum: ["manual", "scheduled", "assistant"] }).notNull(),
+  scope: text("scope").notNull(), status: text("status", { enum: ["queued", "running", "completed", "failed", "cancelled"] }).notNull().default("queued"),
+  startedAt: integer("started_at", { mode: "timestamp_ms" }), completedAt: integer("completed_at", { mode: "timestamp_ms" }),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+}, t => [index("triage_batches_user_created_idx").on(t.userId, t.createdAt)]);
+
+/** Histórico aditivo: uma vaga pode ser julgada por vários lotes. */
+export const triageHistory = sqliteTable("triage_history", {
+  id: text("id").primaryKey(), batchId: text("batch_id").notNull().references(() => triageBatches.id), userId: text("user_id").notNull(), jobId: text("job_id").notNull().references(() => jobs.id),
+  profileRevision: text("profile_revision").notNull(), rulesRevision: text("rules_revision").notNull(), instructionsRevision: text("instructions_revision").notNull(),
+  verdict: text("verdict", { enum: ["✅", "🟡", "🔴", "❌"] }).notNull(), label: text("label").notNull(), blocker: text("blocker"),
+  source: text("source", { enum: ["rules", "ai"] }).notNull(), confidence: integer("confidence").notNull(), rows: text("rows").notNull().default("[]"),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+}, t => [index("triage_history_user_job_created_idx").on(t.userId, t.jobId, t.createdAt), index("triage_history_batch_idx").on(t.batchId)]);
+
+export const triageBatchItems = sqliteTable("triage_batch_items", {
+  batchId: text("batch_id").notNull().references(() => triageBatches.id), jobId: text("job_id").notNull().references(() => jobs.id),
+  status: text("status", { enum: ["queued", "processing", "completed", "failed", "skipped"] }).notNull().default("queued"),
+  historyId: text("history_id").references(() => triageHistory.id), error: text("error"), attemptCount: integer("attempt_count").notNull().default(0),
+  leaseOwner: text("lease_owner"), leaseUntil: integer("lease_until", { mode: "timestamp_ms" }), updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+}, t => [primaryKey({ columns: [t.batchId, t.jobId] }), index("triage_batch_items_status_idx").on(t.batchId, t.status)]);
+
+/** Chave global que impede o mesmo perfil/vaga/versões de ser processado duas vezes. */
+export const triageDeduplication = sqliteTable("triage_deduplication", {
+  idempotencyKey: text("idempotency_key").primaryKey(), userId: text("user_id").notNull(), jobId: text("job_id").notNull().references(() => jobs.id),
+  profileRevision: text("profile_revision").notNull(), rulesRevision: text("rules_revision").notNull(), instructionsRevision: text("instructions_revision").notNull(),
+  status: text("status", { enum: ["processing", "completed", "failed"] }).notNull(), historyId: text("history_id").references(() => triageHistory.id),
+  leaseOwner: text("lease_owner"), leaseUntil: integer("lease_until", { mode: "timestamp_ms" }), attemptCount: integer("attempt_count").notNull().default(0), error: text("error"), updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+}, t => [index("triage_deduplication_lease_idx").on(t.status, t.leaseUntil)]);
+
+/** Outbox persistente; a etapa futura cria/atualiza, mas nunca envia e-mail. */
+export const draftOutbox = sqliteTable("draft_outbox", {
+  id: text("id").primaryKey(), userId: text("user_id").notNull(), jobId: text("job_id").notNull().references(() => jobs.id), historyId: text("history_id").notNull().references(() => triageHistory.id),
+  status: text("status", { enum: ["pending", "drafted", "failed", "cancelled"] }).notNull().default("pending"), gmailDraftId: text("gmail_draft_id"), error: text("error"),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(), updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+}, t => [uniqueIndex("draft_outbox_user_job_unique").on(t.userId, t.jobId), index("draft_outbox_status_idx").on(t.userId, t.status)]);
 
 export const jobAiFacts = sqliteTable("job_ai_facts", {
   jobId: text("job_id").primaryKey().references(() => jobs.id),
