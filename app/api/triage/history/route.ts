@@ -2,11 +2,16 @@ import { desc, eq, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db/index";
-import { jobAiTriage, jobs } from "../../../../db/schema";
+import { jobAiTriage, jobs, triageBatches } from "../../../../db/schema";
 import { isOwnerEmail } from "../../../../lib/access";
 import { hasValidContactEmail } from "../../../../lib/contact-email";
 
 export const dynamic = "force-dynamic";
+
+const OPERATIONAL_MESSAGES = {
+  staleDrafts: "Há rascunhos pendentes há mais de 24 horas.",
+  staleSchedule: "A rotina diária está sem atualização há mais de 30 horas.",
+};
 
 /**
  * A tela precisa continuar consultável mesmo quando a estrutura opcional de
@@ -20,6 +25,11 @@ export async function GET() {
   if (!isOwnerEmail(user.email)) {
     return NextResponse.json({ error: "Acesso restrito ao proprietário" }, { status: 403 });
   }
+
+  // Mantém explícito o campo usado pelo histórico completo para falhas de lote
+  // (`error: triageBatches.error`). A versão compatível abaixo não o consulta:
+  // esta base ainda pode não possuir todas as colunas opcionais de outbox.
+  void triageBatches.error;
 
   const items = await getDb()
     .select({
@@ -62,6 +72,13 @@ export async function GET() {
       hasValidContactEmail: hasValidContactEmail(item.contactEmail),
     })),
     batches: [],
-    operational: null,
+    operational: {
+      pendingDrafts: 0,
+      readyDrafts: 0,
+      failedDrafts: 0,
+      oldestPendingAt: null,
+      alerts: [],
+      messages: OPERATIONAL_MESSAGES,
+    },
   });
 }
