@@ -26,11 +26,13 @@ export async function GET() {
       title: jobs.title,
       company: jobs.company,
       contactEmail: jobs.contactEmail,
+      draftStatus: draftOutbox.status,
       trigger: triageBatches.trigger,
     })
     .from(triageHistory)
     .innerJoin(jobs, eq(triageHistory.jobId, jobs.id))
     .innerJoin(triageBatches, eq(triageHistory.batchId, triageBatches.id))
+    .leftJoin(draftOutbox, and(eq(draftOutbox.historyId, triageHistory.id), eq(draftOutbox.userId, user.userId)))
     .where(eq(triageHistory.userId, user.userId))
     .orderBy(desc(triageHistory.createdAt))
     .limit(100);

@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 type Item = { jobId: string; veredito: string; motivo: string | null; processedAt: string; title: string; company: string; workMode: string | null; location: string | null; url: string };
 type Data = { counts: Record<string, number>; total: number; items: Item[] };
 type PilotResult = { batchId: string; processed: Array<{ jobId: string; title: string; company: string; reference: string | null; contactEligible: boolean; verdict: string; label: string; blocker: string | null }>; skipped: number };
-type HistoryItem = { id: string; batchId: string; verdict: string; label: string; blocker: string | null; source: string; confidence: number; processedAt: string; title: string; company: string; contactEmail: string | null; hasValidContactEmail: boolean; trigger: string };
+type HistoryItem = { id: string; batchId: string; verdict: string; label: string; blocker: string | null; source: string; confidence: number; processedAt: string; title: string; company: string; contactEmail: string | null; hasValidContactEmail: boolean; draftStatus: "pending" | "drafted" | "failed" | "cancelled" | null; trigger: string };
 type Batch = { id: string; trigger: "manual" | "scheduled" | "assistant"; scope: string; status: string; startedAt: string | null; completedAt: string | null; createdAt: string; error: string | null; total: number; completed: number; failed: number; eligible: number; eligibleWithoutContact: number; draftsPending: number; draftsReady: number; draftsFailed: number };
 const rowClass: Record<string, string> = { "✅": "approved", "🟡": "partial", "❌": "rejected", "🔴": "rejected" };
 export default function TriageReport({ close, sourceId, sourceLabel }: { close: () => void; sourceId?: string; sourceLabel?: string }) {
@@ -160,7 +160,7 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
                   <div>
                     <small>{item.company} · {date(item.processedAt)} · {item.source === "ai" ? "IA" : "Regras"}</small>
                     <b>{item.title}</b>
-                    <span>{item.label}{item.blocker ? ` · ${item.blocker}` : ""}{item.hasValidContactEmail ? " · E-mail de contato válido" : " · Sem e-mail de contato válido"}</span>
+                    <span>{item.label}{item.blocker ? ` · ${item.blocker}` : ""}{item.hasValidContactEmail ? " · E-mail de contato válido" : " · Sem e-mail de contato válido"}{item.draftStatus === "drafted" ? " · Rascunho pronto" : item.draftStatus === "pending" ? " · Rascunho aguardando criação" : item.draftStatus === "failed" ? " · Falha ao criar rascunho" : ""}</span>
                   </div>
                   <strong>{item.verdict}</strong>
                 </article>
