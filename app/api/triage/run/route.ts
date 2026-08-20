@@ -81,7 +81,10 @@ export async function POST(request: Request) {
     for (const { job } of candidates) {
       const key = triageIdempotencyKey(user.userId, job.id, versions);
       const claimed = await db.select().from(triageDeduplication).where(eq(triageDeduplication.idempotencyKey, key)).limit(1).then(rows => rows[0]);
-      if (claimed?.status === "completed") {
+      // A reavaliação é uma solicitação explícita do operador: preserva o
+      // histórico aditivo, mas não deixa uma execução normal duplicar o mesmo
+      // perfil/vaga/versões.
+      if (claimed?.status === "completed" && !run.reprocess) {
         skipped += 1;
         continue;
       }
