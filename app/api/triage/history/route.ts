@@ -1,8 +1,8 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db/index";
-import { jobs, triageBatches, triageHistory } from "../../../../db/schema";
+import { draftOutbox, jobs, triageBatchItems, triageBatches, triageHistory } from "../../../../db/schema";
 import { hasValidContactEmail } from "../../../../lib/contact-email";
 
 export const dynamic = "force-dynamic";
@@ -35,7 +35,48 @@ export async function GET() {
     .orderBy(desc(triageHistory.createdAt))
     .limit(100);
 
+  const db = getDb();
+  const batches = await db.select({
+    id: triageBatches.id,
+    trigger: triageBatches.trigger,
+    scope: triageBatches.scope,
+    status: triageBatches.status,
+    startedAt: triageBatches.startedAt,
+    completedAt: triageBatches.completedAt,
+    createdAt: triageBatches.createdAt,
+  }).from(triageBatches)
+    .where(eq(triageBatches.userId, user.userId))
+    .orderBy(desc(triageBatches.createdAt))
+    .limit(8);
+  const batchIds = batches.map((batch) => batch.id);
+  const batchItems = batchIds.length
+    ? await db.select({ batchId: triageBatchItems.batchId, historyId: triageBatchItems.historyId, status: triageBatchItems.status })
+      .from(triageBatchItems).where(inArray(triageBatchItems.batchId, batchIds))
+    : [];
+  const historyIds = batchItems.flatMap((item) => item.historyId ? [item.historyId] : []);
+  const outboxItems = historyIds.length
+    ? await db.select({ historyId: draftOutbox.historyId, status: draftOutbox.status })
+      .from(draftOutbox).where(and(eq(draftOutbox.userId, user.userId), inArray(draftOutbox.historyId, historyIds)))
+    : [];
+  const outboxByHistoryId = new Map(outboxItems.map((item) => [item.historyId, item.status]));
+
   return NextResponse.json({
     items: items.map((item) => ({ ...item, hasValidContactEmail: hasValidContactEmail(item.contactEmail) })),
+    batches: batches.map((batch) => {
+      const batchRows = batchItems.filter((item) => item.batchId === batch.id);
+      const drafts = batchRows.flatMap((item) => {
+        const status = item.historyId ? outboxByHistoryId.get(item.historyId) : null;
+        return status ? [status] : [];
+      });
+      return {
+        ...batch,
+        total: batchRows.length,
+        completed: batchRows.filter((item) => item.status === "completed").length,
+        failed: batchRows.filter((item) => item.status === "failed").length,
+        draftsPending: drafts.filter((status) => status === "pending").length,
+        draftsReady: drafts.filter((status) => status === "drafted").length,
+        draftsFailed: drafts.filter((status) => status === "failed").length,
+      };
+    }),
   });
 }

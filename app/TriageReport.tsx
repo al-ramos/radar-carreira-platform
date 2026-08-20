@@ -4,6 +4,7 @@ type Item = { jobId: string; veredito: string; motivo: string | null; processedA
 type Data = { counts: Record<string, number>; total: number; items: Item[] };
 type PilotResult = { batchId: string; processed: Array<{ jobId: string; title: string; company: string; reference: string | null; contactEligible: boolean; verdict: string; label: string; blocker: string | null }>; skipped: number };
 type HistoryItem = { id: string; batchId: string; verdict: string; label: string; blocker: string | null; source: string; confidence: number; processedAt: string; title: string; company: string; contactEmail: string | null; hasValidContactEmail: boolean; trigger: string };
+type Batch = { id: string; trigger: "manual" | "scheduled" | "assistant"; scope: string; status: string; startedAt: string | null; completedAt: string | null; createdAt: string; total: number; completed: number; failed: number; draftsPending: number; draftsReady: number; draftsFailed: number };
 const rowClass: Record<string, string> = { "✅": "approved", "🟡": "partial", "❌": "rejected", "🔴": "rejected" };
 export default function TriageReport({ close }: { close: () => void }) {
   const [data, setData] = useState<Data | null>(null),
@@ -14,10 +15,11 @@ export default function TriageReport({ close }: { close: () => void }) {
     [pilot, setPilot] = useState<PilotResult | null>(null),
     [batchSize, setBatchSize] = useState(10),
     [reprocess, setReprocess] = useState(false),
-    [history, setHistory] = useState<HistoryItem[]>([]);
+    [history, setHistory] = useState<HistoryItem[]>([]),
+    [batches, setBatches] = useState<Batch[]>([]);
   const loadHistory = () => fetch("/api/triage/history")
-    .then(async (r) => ({ ok: r.ok, data: await r.json() as { items?: HistoryItem[] } }))
-    .then(({ ok, data }) => { if (ok) setHistory(data.items ?? []); });
+    .then(async (r) => ({ ok: r.ok, data: await r.json() as { items?: HistoryItem[]; batches?: Batch[] } }))
+    .then(({ ok, data }) => { if (ok) { setHistory(data.items ?? []); setBatches(data.batches ?? []); } });
   useEffect(() => {
     fetch(`/api/admin/triage${includeBacklog ? "?includeBacklog=1" : ""}`)
       .then(async (r) => ({ ok: r.ok, data: await r.json() }))
@@ -32,6 +34,7 @@ export default function TriageReport({ close }: { close: () => void }) {
   const date = (v: string) =>
     new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(v));
   const rejected = (data?.counts["❌"] ?? 0) + (data?.counts["🔴"] ?? 0);
+  const latestScheduled = batches.find((batch) => batch.trigger === "scheduled");
   const runPilot = async () => {
     setRunningPilot(true);
     setMessage("Executando piloto determinístico de até 10 vagas…");
@@ -124,6 +127,19 @@ export default function TriageReport({ close }: { close: () => void }) {
             </div>
           </section>
         )}
+        <section className="triage-automation" aria-label="Status da automação diária">
+          <div>
+            <h3>Automação diária</h3>
+            <small>Triagem por regras para as vagas recebidas no dia; rascunhos só entram na fila se houver e-mail válido.</small>
+          </div>
+          {latestScheduled ? (
+            <div className="triage-automation-status">
+              <strong>{latestScheduled.status === "completed" ? "Última execução concluída" : `Última execução: ${latestScheduled.status}`}</strong>
+              <span>{date(latestScheduled.completedAt ?? latestScheduled.startedAt ?? latestScheduled.createdAt)} · {latestScheduled.completed}/{latestScheduled.total} vaga(s) concluída(s)</span>
+              <span>{latestScheduled.draftsReady} rascunho(s) pronto(s) · {latestScheduled.draftsPending} aguardando criação · {latestScheduled.draftsFailed} falha(s)</span>
+            </div>
+          ) : <p className="triage-automation-empty">Ainda não houve execução agendada registrada. A primeira rotina diária aparecerá aqui.</p>}
+        </section>
         {history.length > 0 && (
           <section className="triage-history" aria-label="Histórico persistido da nova triagem">
             <div>
