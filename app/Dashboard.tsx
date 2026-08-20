@@ -3515,7 +3515,11 @@ export default function Dashboard() {
       {usersOpen && isOwner && <UserManagement close={() => setUsersOpen(false)} />}
       {qualityOpen && <DataQuality close={() => setQualityOpen(false)} />}
       {auditOpen && <AuditTrail close={() => setAuditOpen(false)} />}
-      {triageOpen && isOwner && <TriageReport close={() => setTriageOpen(false)} />}
+      {triageOpen && isOwner && <TriageReport
+        close={() => setTriageOpen(false)}
+        sourceId={sourceFilter === "all" ? undefined : sourceFilter}
+        sourceLabel={sourceFilter === "all" ? undefined : jobFilterOptions.sources.find(option => option.id === sourceFilter)?.label}
+      />}
       {importReportRunId && <ImportRunReport runId={importReportRunId} close={() => setImportReportRunId(null)} />}
       {monitorOpen && <Monitoring close={() => setMonitorOpen(false)} />}
       {analyticsOpen && <Analytics close={() => setAnalyticsOpen(false)} />}

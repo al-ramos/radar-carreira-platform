@@ -6,7 +6,7 @@ type PilotResult = { batchId: string; processed: Array<{ jobId: string; title: s
 type HistoryItem = { id: string; batchId: string; verdict: string; label: string; blocker: string | null; source: string; confidence: number; processedAt: string; title: string; company: string; contactEmail: string | null; hasValidContactEmail: boolean; trigger: string };
 type Batch = { id: string; trigger: "manual" | "scheduled" | "assistant"; scope: string; status: string; startedAt: string | null; completedAt: string | null; createdAt: string; total: number; completed: number; failed: number; eligible: number; eligibleWithoutContact: number; draftsPending: number; draftsReady: number; draftsFailed: number };
 const rowClass: Record<string, string> = { "✅": "approved", "🟡": "partial", "❌": "rejected", "🔴": "rejected" };
-export default function TriageReport({ close }: { close: () => void }) {
+export default function TriageReport({ close, sourceId, sourceLabel }: { close: () => void; sourceId?: string; sourceLabel?: string }) {
   const [data, setData] = useState<Data | null>(null),
     [includeBacklog, setIncludeBacklog] = useState(false),
     [message, setMessage] = useState("Carregando avaliações…"),
@@ -48,7 +48,7 @@ export default function TriageReport({ close }: { close: () => void }) {
       const response = await fetch("/api/triage/run", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ trigger: "portal", batchSize, reprocess, aiMode: "off", createDrafts: false }),
+        body: JSON.stringify({ trigger: sourceId ? "gpt" : "portal", sourceId, batchSize, reprocess, aiMode: "off", createDrafts: false }),
       });
       const result = await response.json() as PilotResult & { error?: string };
       if (!response.ok) throw new Error(result.error ?? "Não foi possível concluir o piloto.");
@@ -103,7 +103,7 @@ export default function TriageReport({ close }: { close: () => void }) {
               <button className="triage-queue-button" disabled={queueingDrafts || runningPilot} onClick={queueDrafts}>
                 {queueingDrafts ? "Preparando fila…" : "Preparar fila de rascunhos elegíveis"}
               </button>
-              <small>A fila exige vaga aprovada ou provável, análise atual e e-mail de contato válido. Esta ação não cria nem envia e-mails.</small>
+              <small>{sourceId ? `Exceção manual: somente vagas de hoje da fonte ${sourceLabel ?? sourceId}. ` : ""}A fila exige vaga aprovada ou provável, análise atual e e-mail de contato válido. Esta ação não cria nem envia e-mails.</small>
             </div>
           </div>
           <label className="triage-toggle">

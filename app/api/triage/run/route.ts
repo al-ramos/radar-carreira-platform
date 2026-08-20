@@ -50,6 +50,7 @@ export async function POST(request: Request) {
     run = normalizeTriageRunRequest({
       trigger: body.trigger ?? "portal",
       referenceDate: body.referenceDate,
+      sourceId: body.sourceId,
       batchSize: body.batchSize,
       reprocess: body.reprocess,
       aiMode: body.aiMode ?? "off",
@@ -69,11 +70,22 @@ export async function POST(request: Request) {
 
   const canonicalProfile = canonicalizeProfile(profile);
   const versions = getAnalysisVersions(canonicalProfile);
+  // Uma fonte informada transforma a execução manual em um recorte diário
+  // explícito. Isso preserva o comportamento normal do portal, mas permite
+  // lotes excepcionais (por exemplo, APInfo de hoje) sem misturar vagas de
+  // outras origens ou datas.
+  const scopedToReferenceDay = run.trigger === "schedule" || Boolean(run.sourceId);
   const candidates = await db
     .select({ job: jobs })
     .from(jobs)
     .leftJoin(userJobAnalyses, and(eq(userJobAnalyses.userId, userId), eq(userJobAnalyses.jobId, jobs.id)))
-    .where(and(eq(jobs.status, "active"), run.trigger === "schedule" ? gte(jobs.firstSeenAt, saoPauloWindow(run.referenceDate).start) : undefined, run.trigger === "schedule" ? lt(jobs.firstSeenAt, saoPauloWindow(run.referenceDate).end) : undefined, run.reprocess ? undefined : isNull(userJobAnalyses.jobId)))
+    .where(and(
+      eq(jobs.status, "active"),
+      scopedToReferenceDay ? gte(jobs.firstSeenAt, saoPauloWindow(run.referenceDate).start) : undefined,
+      scopedToReferenceDay ? lt(jobs.firstSeenAt, saoPauloWindow(run.referenceDate).end) : undefined,
+      run.sourceId ? eq(jobs.sourceId, run.sourceId) : undefined,
+      run.reprocess ? undefined : isNull(userJobAnalyses.jobId),
+    ))
     .orderBy(desc(jobs.firstSeenAt), desc(jobs.createdAt))
     .limit(run.batchSize);
 
@@ -81,7 +93,9 @@ export async function POST(request: Request) {
   const batchId = crypto.randomUUID();
   const trigger = run.trigger === "portal" ? "manual" : run.trigger === "schedule" ? "scheduled" : "assistant";
   await db.insert(triageBatches).values({
-    id: batchId, userId, trigger, scope: run.trigger === "schedule" ? "schedule-day" : run.reprocess ? "reprocess" : "unreviewed", status: "running", startedAt: now, createdAt: now,
+    id: batchId, userId, trigger,
+    scope: run.sourceId ? `source-day:${run.sourceId}` : run.trigger === "schedule" ? "schedule-day" : run.reprocess ? "reprocess" : "unreviewed",
+    status: "running", startedAt: now, createdAt: now,
   });
 
   const processed: Array<{ jobId: string; title: string; company: string; reference: string | null; contactEligible: boolean; verdict: string; label: string; blocker: string | null }> = [];
