@@ -1,5 +1,5 @@
 /**
- * verdict.ts — Avaliação estruturada de vagas contra o perfil do candidato .NET
+ * verdict.ts — Avaliação estruturada de vagas contra o perfil canônico.
  * Implementa as regras do prompt de análise de vagas sem depender de API externa.
  */
 
@@ -74,14 +74,6 @@ const JUNIOR_RE = /\b(júnior|junior|jr\.?\s|estagiário|trainee)\b/i;
 const CONSULTORIA_RE = /\b(consultoria|consulting|bodyshop|alocação|alocacao|outsourcing|terceirizado)\b/i;
 const INTERMEDIARIO_RE = /\b(jobgether|betterleap|hired\.com|turing\.com|toptal|crossover|remoteok)\b/i;
 
-/** Stack principal do candidato (C#/.NET/AWS etc.) */
-const CANDIDATE_STACK = [
-  "c#", ".net", "asp.net", "dotnet", "net core", ".net core", ".net 8", ".net 6",
-  "aws", "sql server", "mssql", "rabbitmq", "masstransit", "mediatr", "polly",
-  "react", "typescript", "terraform", "github actions", "docker", "kubernetes",
-  "entity framework", "ef core", "dapper", "azure", "azure devops",
-];
-
 /**
  * Variações que representam a mesma tecnologia no perfil e na vaga. A lista
  * é propositalmente curta: uma equivalência errada seria pior que pedir uma
@@ -148,13 +140,13 @@ function hasEquivalentSkill(requiredSkills: string[], profileSkills: string[]): 
  * vaga pede e não está no perfil, não o que existe no perfil mas não foi
  * citado na descrição.
  */
-export function analyzeStackFit(jobStack: string[], userSkills?: string[]): StackFit {
+export function analyzeStackFit(jobStack: string[], userSkills: string[] = []): StackFit {
   const requiredSkills = uniqueEquivalentSkills(
     jobStack
       .map((skill) => skill.trim())
       .filter(skill => Boolean(skill) && isTechnicalSkillTag(skill)),
   );
-  const profileSkills = userSkills?.length ? userSkills : CANDIDATE_STACK;
+  const profileSkills = userSkills;
   const matchingSkills = requiredSkills.filter((required) =>
     profileSkills.some((profileSkill) => skillsAreEquivalent(required, profileSkill)),
   );
@@ -272,7 +264,7 @@ export function computeVerdict(job: {
   seniority?: string | null;
   workMode?: string | null;
   location?: string | null;
-}, userSkills?: string[], rules?: CareerRules): VerdictResult {
+}, userSkills: string[] = [], rules?: CareerRules): VerdictResult {
   const fullText = `${job.title} ${job.description} ${job.workMode ?? ""} ${job.location ?? ""}`;
   const lc = fullText.toLowerCase();
   const stackText = `${fullText} ${job.stack.join(" ")}`;
