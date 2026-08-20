@@ -24,7 +24,13 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
     [historyPage, setHistoryPage] = useState(0);
   const loadHistory = () => fetch("/api/triage/history")
     .then(async (r) => ({ ok: r.ok, data: await r.json() as { items?: HistoryItem[]; batches?: Batch[]; operational?: Operational } }))
-    .then(({ ok, data }) => { if (ok) { setHistory(data.items ?? []); setBatches(data.batches ?? []); setOperational(data.operational ?? null); } });
+    .then(({ ok, data }) => {
+      if (!ok) { setMessage("Não foi possível carregar o histórico da triagem."); return; }
+      const items = data.items ?? [];
+      setHistory(items); setBatches(data.batches ?? []); setOperational(data.operational ?? null);
+      setMessage(items.length ? "" : "Nenhuma vaga foi triada neste histórico ainda. Use “Analisar vagas agora” para iniciar.");
+    })
+    .catch(() => setMessage("Não foi possível carregar o histórico da triagem."));
   useEffect(() => {
     void loadHistory();
   }, []);
@@ -181,7 +187,7 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
             </article>)}
           </div>
         </section>}
-        {history.length > 0 && (
+        {(
           <section className="triage-history" aria-label="Histórico persistido da nova triagem">
             <div>
               <h3>Histórico da nova triagem</h3>
@@ -194,12 +200,12 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
                 <label>Fonte<select value={jobSourceFilter} onChange={(e) => { setJobSourceFilter(e.target.value); setHistoryPage(0); }}><option value="all">Todas</option>{jobSources.map((source) => <option key={source} value={source}>{source}</option>)}</select></label>
                 <label>Rascunho<select value={draftFilter} onChange={(e) => { setDraftFilter(e.target.value); setHistoryPage(0); }}><option value="all">Todos</option><option value="pending">Na fila</option><option value="drafted">Pronto</option><option value="failed">Com falha</option></select></label>
               </div>
-              <div className="triage-table-wrap"><table className="triage-table"><thead><tr><th><button onClick={() => sortHistory("verdict")}>Veredito</button></th><th><button onClick={() => sortHistory("title")}>Vaga</button></th><th><button onClick={() => sortHistory("company")}>Empresa</button></th><th>Fonte / código</th><th>Local e modalidade</th><th>Publicada / recebida</th><th>Contato</th><th><button onClick={() => sortHistory("draft")}>Rascunho</button></th><th><button onClick={() => sortHistory("processedAt")}>Analisada</button></th></tr></thead><tbody>{visibleHistory.map((item) => <tr key={item.id} className={rowClass[item.verdict] ?? "backlog"}><td className="triage-verdict">{item.verdict}<small>{item.source === "ai" ? "IA" : "Regras"}</small></td><td><a href={item.url} target="_blank" rel="noreferrer"><b>{item.title}</b></a><span>{item.label}{item.blocker ? ` · ${item.blocker}` : ""}</span>{item.source === "ai" && <details><summary>Evidências</summary><pre>{item.rows}</pre></details>}</td><td>{item.company}</td><td>{item.jobSource ?? "Não informada"}<small>{item.externalId ? `Código ${item.externalId}` : "Sem código"}</small></td><td>{item.workMode ?? "—"}<small>{item.location ?? "Local não informado"}</small></td><td>{item.sourcePublishedAt ? date(item.sourcePublishedAt) : "Não informada"}<small>Recebida: {date(item.receivedAt)}</small></td><td>{item.hasValidContactEmail ? item.contactEmail : "Manual / sem e-mail"}</td><td>{item.draftStatus === "drafted" ? "Pronto" : item.draftStatus === "pending" ? "Na fila" : item.draftStatus === "failed" ? "Falhou" : "—"}</td><td>{date(item.processedAt)}</td></tr>)}</tbody></table></div>
+              <div className="triage-table-wrap"><table className="triage-table"><thead><tr><th><button onClick={() => sortHistory("verdict")}>Veredito</button></th><th><button onClick={() => sortHistory("title")}>Vaga</button></th><th><button onClick={() => sortHistory("company")}>Empresa</button></th><th>Fonte / código</th><th>Local e modalidade</th><th>Publicada / recebida</th><th>Contato</th><th><button onClick={() => sortHistory("draft")}>Rascunho</button></th><th><button onClick={() => sortHistory("processedAt")}>Analisada</button></th></tr></thead><tbody>{visibleHistory.length ? visibleHistory.map((item) => <tr key={item.id} className={rowClass[item.verdict] ?? "backlog"}><td className="triage-verdict">{item.verdict}<small>{item.source === "ai" ? "IA" : "Regras"}</small></td><td><a href={item.url} target="_blank" rel="noreferrer"><b>{item.title}</b></a><span>{item.label}{item.blocker ? ` · ${item.blocker}` : ""}</span>{item.source === "ai" && <details><summary>Evidências</summary><pre>{item.rows}</pre></details>}</td><td>{item.company}</td><td>{item.jobSource ?? "Não informada"}<small>{item.externalId ? `Código ${item.externalId}` : "Sem código"}</small></td><td>{item.workMode ?? "—"}<small>{item.location ?? "Local não informado"}</small></td><td>{item.sourcePublishedAt ? date(item.sourcePublishedAt) : "Não informada"}<small>Recebida: {date(item.receivedAt)}</small></td><td>{item.hasValidContactEmail ? item.contactEmail : "Manual / sem e-mail"}</td><td>{item.draftStatus === "drafted" ? "Pronto" : item.draftStatus === "pending" ? "Na fila" : item.draftStatus === "failed" ? "Falhou" : "—"}</td><td>{date(item.processedAt)}</td></tr>) : <tr><td className="triage-table-empty" colSpan={9}>Ainda não há vagas triadas para exibir. A tabela será preenchida após a primeira execução.</td></tr>}</tbody></table></div>
             </div>
             {filteredHistory.length > historyPageSize && <div className="triage-run-settings"><button disabled={historyPage === 0} onClick={() => setHistoryPage(page => page - 1)}>Anterior</button><small>Página {historyPage + 1} de {Math.ceil(filteredHistory.length / historyPageSize)}</small><button disabled={(historyPage + 1) * historyPageSize >= filteredHistory.length} onClick={() => setHistoryPage(page => page + 1)}>Próxima</button></div>}
           </section>
         )}
-        {history.length > 0 && <div className="triage-summary"><article className="approved"><small>Aprovadas (atuais)</small><strong>{currentAssessments.filter((item) => item.verdict === "✅").length}</strong></article><article className="partial"><small>Prováveis (atuais)</small><strong>{currentAssessments.filter((item) => item.verdict === "🟡").length}</strong></article><article className="rejected"><small>Não aderentes (atuais)</small><strong>{currentAssessments.filter((item) => item.verdict === "❌" || item.verdict === "🔴").length}</strong></article><article><small>Vagas analisadas</small><strong>{currentAssessments.length}</strong></article></div>}
+        <div className="triage-summary"><article className="approved"><small>Aprovadas (atuais)</small><strong>{currentAssessments.filter((item) => item.verdict === "✅").length}</strong></article><article className="partial"><small>Prováveis (atuais)</small><strong>{currentAssessments.filter((item) => item.verdict === "🟡").length}</strong></article><article className="rejected"><small>Não aderentes (atuais)</small><strong>{currentAssessments.filter((item) => item.verdict === "❌" || item.verdict === "🔴").length}</strong></article><article><small>Vagas analisadas</small><strong>{currentAssessments.length}</strong></article></div>
       </section>
     </div>
   );
