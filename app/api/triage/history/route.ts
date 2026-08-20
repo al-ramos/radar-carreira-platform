@@ -54,6 +54,11 @@ export async function GET() {
       .from(triageBatchItems).where(inArray(triageBatchItems.batchId, batchIds))
     : [];
   const historyIds = batchItems.flatMap((item) => item.historyId ? [item.historyId] : []);
+  const batchHistory = batchIds.length
+    ? await db.select({ batchId: triageHistory.batchId, verdict: triageHistory.verdict, contactEmail: jobs.contactEmail })
+      .from(triageHistory).innerJoin(jobs, eq(triageHistory.jobId, jobs.id))
+      .where(and(eq(triageHistory.userId, user.userId), inArray(triageHistory.batchId, batchIds)))
+    : [];
   const outboxItems = historyIds.length
     ? await db.select({ historyId: draftOutbox.historyId, status: draftOutbox.status })
       .from(draftOutbox).where(and(eq(draftOutbox.userId, user.userId), inArray(draftOutbox.historyId, historyIds)))
@@ -64,6 +69,8 @@ export async function GET() {
     items: items.map((item) => ({ ...item, hasValidContactEmail: hasValidContactEmail(item.contactEmail) })),
     batches: batches.map((batch) => {
       const batchRows = batchItems.filter((item) => item.batchId === batch.id);
+      const assessed = batchHistory.filter((item) => item.batchId === batch.id);
+      const eligible = assessed.filter((item) => item.verdict === "✅" || item.verdict === "🟡");
       const drafts = batchRows.flatMap((item) => {
         const status = item.historyId ? outboxByHistoryId.get(item.historyId) : null;
         return status ? [status] : [];
@@ -73,6 +80,8 @@ export async function GET() {
         total: batchRows.length,
         completed: batchRows.filter((item) => item.status === "completed").length,
         failed: batchRows.filter((item) => item.status === "failed").length,
+        eligible: eligible.length,
+        eligibleWithoutContact: eligible.filter((item) => !hasValidContactEmail(item.contactEmail)).length,
         draftsPending: drafts.filter((status) => status === "pending").length,
         draftsReady: drafts.filter((status) => status === "drafted").length,
         draftsFailed: drafts.filter((status) => status === "failed").length,
