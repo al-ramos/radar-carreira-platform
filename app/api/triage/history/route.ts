@@ -1,8 +1,8 @@
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db/index";
-import { jobAiTriage, jobs, triageBatches } from "../../../../db/schema";
+import { draftOutbox, jobs, triageBatches, userJobAnalyses } from "../../../../db/schema";
 import { isOwnerEmail } from "../../../../lib/access";
 import { hasValidContactEmail } from "../../../../lib/contact-email";
 
@@ -15,9 +15,9 @@ const OPERATIONAL_MESSAGES = {
 
 /**
  * A tela precisa continuar consultável mesmo quando a estrutura opcional de
- * lotes/rascunhos ainda não tiver sido migrada no D1. A fonte canônica para a
- * triagem diária é `job_ai_triage`: ela contém cada vaga efetivamente avaliada
- * e não depende da fila de rascunhos.
+ * lotes/rascunhos ainda não tiver sido migrada no D1. A fonte canônica é a
+ * análise pessoal (`user_job_analyses`): ela preserva a avaliação aplicada ao
+ * perfil, inclusive as vagas APInfo consultadas antes da triagem diária.
  */
 export async function GET() {
   const user = await getChatGPTUser();
@@ -33,11 +33,15 @@ export async function GET() {
 
   const items = await getDb()
     .select({
-      id: jobAiTriage.jobId,
-      jobId: jobAiTriage.jobId,
-      verdict: jobAiTriage.veredito,
-      label: jobAiTriage.motivo,
-      processedAt: jobAiTriage.processedAt,
+      id: userJobAnalyses.jobId,
+      jobId: userJobAnalyses.jobId,
+      verdict: userJobAnalyses.verdict,
+      label: userJobAnalyses.label,
+      blocker: userJobAnalyses.blocker,
+      source: userJobAnalyses.source,
+      confidence: userJobAnalyses.confidence,
+      rows: userJobAnalyses.rows,
+      processedAt: userJobAnalyses.updatedAt,
       title: jobs.title,
       company: jobs.company,
       externalId: jobs.externalId,
@@ -50,11 +54,15 @@ export async function GET() {
       url: jobs.url,
       contactEmail: jobs.contactEmail,
       contactSubject: jobs.contactSubject,
+      draftStatus: draftOutbox.status,
+      draftError: draftOutbox.error,
+      draftUpdatedAt: draftOutbox.updatedAt,
     })
-    .from(jobAiTriage)
-    .innerJoin(jobs, eq(jobAiTriage.jobId, jobs.id))
-    .where(sql`${jobAiTriage.veredito} != '⚪'`)
-    .orderBy(desc(jobAiTriage.processedAt))
+    .from(userJobAnalyses)
+    .innerJoin(jobs, eq(userJobAnalyses.jobId, jobs.id))
+    .leftJoin(draftOutbox, and(eq(draftOutbox.userId, user.userId), eq(draftOutbox.jobId, jobs.id)))
+    .where(eq(userJobAnalyses.userId, user.userId))
+    .orderBy(desc(userJobAnalyses.updatedAt))
     .limit(1000);
 
   return NextResponse.json({
@@ -64,14 +72,7 @@ export async function GET() {
       // data de publicação em `published_at`. Sem esse fallback, a consulta
       // APInfo do dia perde vagas que foram efetivamente publicadas hoje.
       sourcePublishedAt: item.sourcePublishedAt ?? item.publishedAt,
-      batchId: "daily-triage",
-      blocker: null,
-      source: "rules",
-      confidence: 100,
-      rows: "[]",
-      draftStatus: null,
-      draftError: null,
-      draftUpdatedAt: null,
+      batchId: "profile-analysis",
       draftSubject: item.contactSubject?.trim() || `Candidatura — ${item.title}${item.externalId ? ` (vaga ${item.externalId})` : ""}`,
       trigger: "scheduled",
       hasValidContactEmail: hasValidContactEmail(item.contactEmail),
