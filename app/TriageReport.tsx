@@ -25,6 +25,7 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
     [publishedDateFilter, setPublishedDateFilter] = useState(saoPauloToday),
     [receivedDateFilter, setReceivedDateFilter] = useState(""),
     [analysedDateFilter, setAnalysedDateFilter] = useState(""),
+    [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(false),
     [sortKey, setSortKey] = useState<"processedAt" | "company" | "title" | "verdict" | "draft">("processedAt"),
     [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc"),
     [historyPage, setHistoryPage] = useState(0);
@@ -69,6 +70,7 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
   });
   const historyPageSize = 10;
   const visibleHistory = orderedHistory.slice(historyPage * historyPageSize, (historyPage + 1) * historyPageSize);
+  const hasActiveAdvancedFilters = draftFilter !== "all" || Boolean(receivedDateFilter) || Boolean(analysedDateFilter);
   const draftItems = history.filter((item) => item.draftStatus && ["pending", "drafted", "failed"].includes(item.draftStatus));
   const scheduledSummary = (batch: Batch) => {
     if (batch.total === 0) return "Nenhuma vaga nova pendente de avaliação foi encontrada para este dia.";
@@ -205,27 +207,39 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
         </section>}
         {(
           <section className="triage-history" aria-label="Histórico persistido da nova triagem">
-            <div>
-              <h3>Histórico da triagem</h3>
-            <small>Use os filtros para escolher exatamente as vagas que deseja consultar.</small>
+            <div className="triage-history-heading">
+              <div>
+                <h3>Histórico da triagem</h3>
+                <small>Use os filtros para escolher exatamente as vagas que deseja consultar.</small>
+              </div>
+              <div className="triage-summary triage-summary-compact" aria-label="Resumo do filtro atual">
+                <article className="approved"><small>Aprovadas</small><strong>{filteredHistory.filter((item) => item.verdict === "✅").length}</strong></article>
+                <article className="partial"><small>Prováveis</small><strong>{filteredHistory.filter((item) => item.verdict === "🟡").length}</strong></article>
+                <article className="rejected"><small>Não aderentes</small><strong>{filteredHistory.filter((item) => item.verdict === "❌" || item.verdict === "🔴").length}</strong></article>
+                <article><small>Analisadas</small><strong>{filteredHistory.length}</strong></article>
+              </div>
             </div>
             <div className="triage-list">
               <div className="triage-run-settings triage-table-filters">
                 <label>Veredito<select value={verdictFilter} onChange={(e) => { setVerdictFilter(e.target.value); setHistoryPage(0); }}><option value="all">Todos</option><option value="✅">Aprovadas</option><option value="🟡">Prováveis</option><option value="❌">Reprovadas</option></select></label>
                 <label>Origem<select value={sourceFilter} onChange={(e) => { setSourceFilter(e.target.value); setHistoryPage(0); }}><option value="all">Regras, IA e histórico</option><option value="rules">Regras</option><option value="ai">IA</option><option value="legacy">Histórico do Radar</option></select></label>
                 <label>Fonte<select value={jobSourceFilter} onChange={(e) => { setJobSourceFilter(e.target.value); setHistoryPage(0); }}><option value="all">Todas</option>{jobSources.map((source) => <option key={source} value={source}>{sourceName(source)}</option>)}</select></label>
-                <label>Rascunho<select value={draftFilter} onChange={(e) => { setDraftFilter(e.target.value); setHistoryPage(0); }}><option value="all">Todos</option><option value="pending">Na fila</option><option value="drafted">Pronto</option><option value="failed">Com falha</option></select></label>
                 <label>Publicada em<input type="date" value={publishedDateFilter} onChange={(e) => { setPublishedDateFilter(e.target.value); setHistoryPage(0); }} /></label>
-                <label>Recebida em (opcional)<input type="date" value={receivedDateFilter} onChange={(e) => { setReceivedDateFilter(e.target.value); setHistoryPage(0); }} /></label>
-                <label>Analisada em (opcional)<input type="date" value={analysedDateFilter} onChange={(e) => { setAnalysedDateFilter(e.target.value); setHistoryPage(0); }} /></label>
-                <button type="button" className="triage-clear-filters" onClick={() => { setVerdictFilter("all"); setSourceFilter("rules"); setJobSourceFilter("apinfo-extension"); setDraftFilter("all"); setPublishedDateFilter(saoPauloToday()); setReceivedDateFilter(""); setAnalysedDateFilter(""); setHistoryPage(0); }}>Consulta APInfo de hoje</button>
+                <details className="triage-advanced-filters" open={advancedFiltersOpen || hasActiveAdvancedFilters} onToggle={(event) => setAdvancedFiltersOpen(event.currentTarget.open)}>
+                  <summary>Mais filtros</summary>
+                  <div>
+                    <label>Rascunho<select value={draftFilter} onChange={(e) => { setDraftFilter(e.target.value); setHistoryPage(0); }}><option value="all">Todos</option><option value="pending">Na fila</option><option value="drafted">Pronto</option><option value="failed">Com falha</option></select></label>
+                    <label>Recebida em<input type="date" value={receivedDateFilter} onChange={(e) => { setReceivedDateFilter(e.target.value); setHistoryPage(0); }} /></label>
+                    <label>Analisada em<input type="date" value={analysedDateFilter} onChange={(e) => { setAnalysedDateFilter(e.target.value); setHistoryPage(0); }} /></label>
+                  </div>
+                </details>
+                <button type="button" className="triage-clear-filters" onClick={() => { setVerdictFilter("all"); setSourceFilter("rules"); setJobSourceFilter("apinfo-extension"); setDraftFilter("all"); setPublishedDateFilter(saoPauloToday()); setReceivedDateFilter(""); setAnalysedDateFilter(""); setAdvancedFiltersOpen(false); setHistoryPage(0); }}>Consulta APInfo de hoje</button>
               </div>
               <div className="triage-table-wrap"><table className="triage-table"><thead><tr><th><button onClick={() => sortHistory("verdict")}>Veredito</button></th><th><button onClick={() => sortHistory("title")}>Vaga</button></th><th><button onClick={() => sortHistory("company")}>Empresa</button></th><th>Fonte / código</th><th>Local e modalidade</th><th>Publicada / recebida</th><th>Contato</th><th><button onClick={() => sortHistory("draft")}>Rascunho</button></th><th><button onClick={() => sortHistory("processedAt")}>Analisada</button></th></tr></thead><tbody>{visibleHistory.length ? visibleHistory.map((item) => <tr key={item.id} className={rowClass[item.verdict] ?? "backlog"}><td className="triage-verdict">{item.verdict}<small>{item.source === "ai" ? "IA" : item.source === "legacy" ? "Radar" : "Regras"}</small></td><td><a href={item.url} target="_blank" rel="noreferrer"><b>{item.title}</b></a><span>{item.label}{item.blocker ? ` · ${item.blocker}` : ""}</span>{item.source === "ai" && <details><summary>Evidências</summary><pre>{item.rows}</pre></details>}</td><td>{item.company}</td><td>{item.jobSource ? sourceName(item.jobSource) : "Não informada"}<small>{item.externalId ? `Código ${item.externalId}` : "Sem código"}</small></td><td>{item.workMode ?? "—"}<small>{item.location ?? "Local não informado"}</small></td><td>{item.sourcePublishedAt ? date(item.sourcePublishedAt) : "Não informada"}<small>Recebida: {date(item.receivedAt)}</small></td><td>{item.hasValidContactEmail ? item.contactEmail : "Manual / sem e-mail"}</td><td>{item.draftStatus === "drafted" ? "Pronto" : item.draftStatus === "pending" ? "Na fila" : item.draftStatus === "failed" ? "Falhou" : "—"}</td><td>{date(item.processedAt)}</td></tr>) : <tr><td className="triage-table-empty" colSpan={9}>Nenhuma vaga corresponde aos filtros selecionados.</td></tr>}</tbody></table></div>
             </div>
             {filteredHistory.length > historyPageSize && <div className="triage-run-settings"><button disabled={historyPage === 0} onClick={() => setHistoryPage(page => page - 1)}>Anterior</button><small>Página {historyPage + 1} de {Math.ceil(filteredHistory.length / historyPageSize)}</small><button disabled={(historyPage + 1) * historyPageSize >= filteredHistory.length} onClick={() => setHistoryPage(page => page + 1)}>Próxima</button></div>}
           </section>
         )}
-        <div className="triage-summary"><article className="approved"><small>Aprovadas (filtro atual)</small><strong>{filteredHistory.filter((item) => item.verdict === "✅").length}</strong></article><article className="partial"><small>Prováveis (filtro atual)</small><strong>{filteredHistory.filter((item) => item.verdict === "🟡").length}</strong></article><article className="rejected"><small>Não aderentes (filtro atual)</small><strong>{filteredHistory.filter((item) => item.verdict === "❌" || item.verdict === "🔴").length}</strong></article><article><small>Vagas analisadas (filtro)</small><strong>{filteredHistory.length}</strong></article></div>
       </section>
     </div>
   );
