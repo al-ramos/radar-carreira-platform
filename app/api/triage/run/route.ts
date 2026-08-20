@@ -71,9 +71,8 @@ export async function POST(request: Request) {
   const canonicalProfile = canonicalizeProfile(profile);
   const versions = getAnalysisVersions(canonicalProfile);
   // Uma fonte informada transforma a execução manual em um recorte diário
-  // explícito. Isso preserva o comportamento normal do portal, mas permite
-  // lotes excepcionais (por exemplo, APInfo de hoje) sem misturar vagas de
-  // outras origens ou datas.
+  // explícito pela publicação, que é o mesmo critério exibido no Radar. A
+  // rotina agendada preserva firstSeenAt, conforme a regra operacional.
   const scopedToReferenceDay = run.trigger === "schedule" || Boolean(run.sourceId);
   const candidates = await db
     .select({ job: jobs })
@@ -81,8 +80,8 @@ export async function POST(request: Request) {
     .leftJoin(userJobAnalyses, and(eq(userJobAnalyses.userId, userId), eq(userJobAnalyses.jobId, jobs.id)))
     .where(and(
       eq(jobs.status, "active"),
-      scopedToReferenceDay ? gte(jobs.firstSeenAt, saoPauloWindow(run.referenceDate).start) : undefined,
-      scopedToReferenceDay ? lt(jobs.firstSeenAt, saoPauloWindow(run.referenceDate).end) : undefined,
+      scopedToReferenceDay ? gte(run.sourceId ? jobs.publishedAt : jobs.firstSeenAt, saoPauloWindow(run.referenceDate).start) : undefined,
+      scopedToReferenceDay ? lt(run.sourceId ? jobs.publishedAt : jobs.firstSeenAt, saoPauloWindow(run.referenceDate).end) : undefined,
       run.sourceId ? eq(jobs.sourceId, run.sourceId) : undefined,
       run.reprocess ? undefined : isNull(userJobAnalyses.jobId),
     ))
