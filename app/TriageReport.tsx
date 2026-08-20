@@ -44,7 +44,8 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
     } catch { setMessage("Não foi possível carregar as avaliações da triagem."); }
   };
   useEffect(() => {
-    void loadHistory();
+    const timer = window.setTimeout(() => { void loadHistory(); }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
   const date = (v: string) =>
     new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(v));
