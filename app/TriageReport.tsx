@@ -29,7 +29,6 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
   const loadHistory = async () => {
     try {
       const response = await fetch("/api/triage/history");
-      const data = await response.json() as { items?: HistoryItem[]; batches?: Batch[]; operational?: Operational };
       if (!response.ok) {
         const legacyResponse = await fetch("/api/admin/triage");
         const legacy = await legacyResponse.json() as { items?: LegacyItem[] };
@@ -38,6 +37,7 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
         setHistory(items); setBatches([]); setOperational(null); setMessage(items.length ? "Exibindo avaliações já registradas no Radar." : "Nenhuma vaga avaliada foi encontrada.");
         return;
       }
+      const data = await response.json() as { items?: HistoryItem[]; batches?: Batch[]; operational?: Operational };
       const items = data.items ?? [];
       setHistory(items); setBatches(data.batches ?? []); setOperational(data.operational ?? null);
       setMessage(items.length ? "" : "Nenhuma vaga foi triada ainda. Use “Analisar vagas agora” para iniciar.");
