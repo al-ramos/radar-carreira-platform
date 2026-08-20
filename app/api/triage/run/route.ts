@@ -75,7 +75,7 @@ export async function POST(request: Request) {
     id: batchId, userId: user.userId, trigger, scope: run.reprocess ? "reprocess" : "unreviewed", status: "running", startedAt: now, createdAt: now,
   });
 
-  const processed: Array<{ jobId: string; verdict: string; label: string; blocker: string | null }> = [];
+  const processed: Array<{ jobId: string; title: string; company: string; reference: string | null; contactEligible: boolean; verdict: string; label: string; blocker: string | null }> = [];
   let skipped = 0;
   try {
     for (const { job } of candidates) {
@@ -114,7 +114,7 @@ export async function POST(request: Request) {
       });
       await db.update(triageBatchItems).set({ status: "completed", historyId, leaseOwner: null, leaseUntil: null, updatedAt: now }).where(and(eq(triageBatchItems.batchId, batchId), eq(triageBatchItems.jobId, job.id)));
       await db.update(triageDeduplication).set({ status: "completed", historyId, leaseOwner: null, leaseUntil: null, updatedAt: now }).where(eq(triageDeduplication.idempotencyKey, key));
-      processed.push({ jobId: job.id, verdict: verdict.verdict, label: verdict.result.label, blocker: verdict.blocker });
+      processed.push({ jobId: job.id, title: job.title, company: job.company, reference: job.externalId, contactEligible: Boolean(job.contactEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(job.contactEmail.trim())), verdict: verdict.verdict, label: verdict.result.label, blocker: verdict.blocker });
     }
     await db.update(triageBatches).set({ status: "completed", completedAt: new Date() }).where(eq(triageBatches.id, batchId));
   } catch (error) {

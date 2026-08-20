@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 type Item = { jobId: string; veredito: string; motivo: string | null; processedAt: string; title: string; company: string; workMode: string | null; location: string | null; url: string };
 type Data = { counts: Record<string, number>; total: number; items: Item[] };
-type PilotResult = { batchId: string; processed: Array<{ jobId: string; verdict: string; label: string; blocker: string | null }>; skipped: number };
+type PilotResult = { batchId: string; processed: Array<{ jobId: string; title: string; company: string; reference: string | null; contactEligible: boolean; verdict: string; label: string; blocker: string | null }>; skipped: number };
 type HistoryItem = { id: string; batchId: string; verdict: string; label: string; blocker: string | null; source: string; confidence: number; processedAt: string; title: string; company: string; contactEmail: string | null; hasValidContactEmail: boolean; trigger: string };
 const rowClass: Record<string, string> = { "✅": "approved", "🟡": "partial", "❌": "rejected", "🔴": "rejected" };
 export default function TriageReport({ close }: { close: () => void }) {
@@ -75,8 +75,8 @@ export default function TriageReport({ close }: { close: () => void }) {
         <p className="eyebrow">TRIAGEM AUTOMÁTICA</p>
         <div className="triage-title">
           <div>
-            <h2>Vagas avaliadas por IA</h2>
-            <p>Veredito diário segundo os critérios de aderência .NET/C#.</p>
+            <h2>Triagem de vagas</h2>
+            <p>Primeiro pelas regras do seu perfil .NET/C#; IA somente quando necessária.</p>
             <div className="triage-run-panel">
               <div className="triage-run-settings">
                 <label>
@@ -108,18 +108,21 @@ export default function TriageReport({ close }: { close: () => void }) {
         </div>
         {message && <div className="notice">{message}</div>}
         {pilot && (
-          <div className="triage-list triage-current-run">
+          <section className="triage-current-run" aria-label="Resultado desta execução">
+            <div className="triage-section-heading"><h3>Resultado desta execução</h3><small>{pilot.processed.length} vaga(s) analisada(s) · regras</small></div>
+            <div className="triage-list">
             {pilot.processed.map((item) => (
               <article key={item.jobId} className={`triage-row ${item.verdict === "BATE" ? "approved" : item.verdict === "PROVAVEL" ? "partial" : "rejected"}`}>
                 <div>
-                  <small>Código {item.jobId}</small>
-                  <b>{item.label}</b>
-                  {item.blocker && <span>{item.blocker}</span>}
+                  <small>{item.company}{item.reference ? ` · Código ${item.reference}` : ""}</small>
+                  <b>{item.title}</b>
+                  <span>{item.label}{item.blocker ? ` · ${item.blocker}` : ""}{item.contactEligible ? " · E-mail válido cadastrado" : " · Sem e-mail válido"}</span>
                 </div>
                 <strong>{item.verdict === "BATE" ? "✅" : item.verdict === "PROVAVEL" ? "🟡" : "❌"}</strong>
               </article>
             ))}
-          </div>
+            </div>
+          </section>
         )}
         {history.length > 0 && (
           <section className="triage-history" aria-label="Histórico persistido da nova triagem">
