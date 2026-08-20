@@ -43,6 +43,7 @@ export async function GET() {
     status: triageBatches.status,
     startedAt: triageBatches.startedAt,
     completedAt: triageBatches.completedAt,
+    error: triageBatches.error,
     createdAt: triageBatches.createdAt,
   }).from(triageBatches)
     .where(eq(triageBatches.userId, user.userId))

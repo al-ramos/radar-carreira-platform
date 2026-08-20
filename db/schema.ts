@@ -81,7 +81,7 @@ export const userJobAnalyses = sqliteTable("user_job_analyses", {
 export const triageBatches = sqliteTable("triage_batches", {
   id: text("id").primaryKey(), userId: text("user_id").notNull(), trigger: text("trigger", { enum: ["manual", "scheduled", "assistant"] }).notNull(),
   scope: text("scope").notNull(), status: text("status", { enum: ["queued", "running", "completed", "failed", "cancelled"] }).notNull().default("queued"),
-  startedAt: integer("started_at", { mode: "timestamp_ms" }), completedAt: integer("completed_at", { mode: "timestamp_ms" }),
+  startedAt: integer("started_at", { mode: "timestamp_ms" }), completedAt: integer("completed_at", { mode: "timestamp_ms" }), error: text("error"),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 }, t => [index("triage_batches_user_created_idx").on(t.userId, t.createdAt)]);
 

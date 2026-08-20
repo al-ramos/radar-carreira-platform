@@ -140,10 +140,11 @@ export async function POST(request: Request) {
       }
       processed.push({ jobId: job.id, title: job.title, company: job.company, reference: job.externalId, contactEligible: Boolean(job.contactEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(job.contactEmail.trim())), verdict: verdict.verdict, label: verdict.result.label, blocker: verdict.blocker });
     }
-    await db.update(triageBatches).set({ status: "completed", completedAt: new Date() }).where(eq(triageBatches.id, batchId));
+    await db.update(triageBatches).set({ status: "completed", completedAt: new Date(), error: null }).where(eq(triageBatches.id, batchId));
   } catch (error) {
-    await db.update(triageBatches).set({ status: "failed", completedAt: new Date() }).where(eq(triageBatches.id, batchId));
-    return NextResponse.json({ error: "Falha no lote; nenhum rascunho foi criado.", batchId, processed, detail: error instanceof Error ? error.message : "Erro desconhecido" }, { status: 500 });
+    const detail = error instanceof Error ? error.message.slice(0, 1000) : "Erro desconhecido";
+    await db.update(triageBatches).set({ status: "failed", completedAt: new Date(), error: detail }).where(eq(triageBatches.id, batchId));
+    return NextResponse.json({ error: "Falha no lote; nenhum rascunho foi criado.", batchId, processed, detail }, { status: 500 });
   }
 
   return NextResponse.json({ ok: true, batchId, referenceDate: run.referenceDate, processed, skipped, draftsCreated: 0, aiUsed: false });

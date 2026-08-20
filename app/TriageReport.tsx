@@ -4,7 +4,7 @@ type Item = { jobId: string; veredito: string; motivo: string | null; processedA
 type Data = { counts: Record<string, number>; total: number; items: Item[] };
 type PilotResult = { batchId: string; processed: Array<{ jobId: string; title: string; company: string; reference: string | null; contactEligible: boolean; verdict: string; label: string; blocker: string | null }>; skipped: number };
 type HistoryItem = { id: string; batchId: string; verdict: string; label: string; blocker: string | null; source: string; confidence: number; processedAt: string; title: string; company: string; contactEmail: string | null; hasValidContactEmail: boolean; trigger: string };
-type Batch = { id: string; trigger: "manual" | "scheduled" | "assistant"; scope: string; status: string; startedAt: string | null; completedAt: string | null; createdAt: string; total: number; completed: number; failed: number; eligible: number; eligibleWithoutContact: number; draftsPending: number; draftsReady: number; draftsFailed: number };
+type Batch = { id: string; trigger: "manual" | "scheduled" | "assistant"; scope: string; status: string; startedAt: string | null; completedAt: string | null; createdAt: string; error: string | null; total: number; completed: number; failed: number; eligible: number; eligibleWithoutContact: number; draftsPending: number; draftsReady: number; draftsFailed: number };
 const rowClass: Record<string, string> = { "✅": "approved", "🟡": "partial", "❌": "rejected", "🔴": "rejected" };
 export default function TriageReport({ close, sourceId, sourceLabel }: { close: () => void; sourceId?: string; sourceLabel?: string }) {
   const [data, setData] = useState<Data | null>(null),
@@ -144,6 +144,7 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
               <span>{date(latestScheduled.completedAt ?? latestScheduled.startedAt ?? latestScheduled.createdAt)} · {latestScheduled.completed}/{latestScheduled.total} vaga(s) concluída(s)</span>
               <span>{scheduledSummary(latestScheduled)}</span>
               <span>{latestScheduled.draftsReady} rascunho(s) pronto(s) · {latestScheduled.draftsPending} aguardando criação · {latestScheduled.draftsFailed} falha(s)</span>
+              {latestScheduled.error && <span className="triage-automation-error">Falha registrada: {latestScheduled.error}</span>}
             </div>
           ) : <p className="triage-automation-empty">Ainda não houve execução agendada registrada. A primeira rotina diária aparecerá aqui.</p>}
         </section>
