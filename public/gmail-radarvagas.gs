@@ -71,6 +71,20 @@ function criarRascunhosRadar() {
   console.log(`Rascunhos processados: ${(payload.drafts || []).length}. Nenhum e-mail foi enviado.`);
 }
 
+// Agenda somente a criação de rascunhos pendentes já aprovados pelo Radar.
+// O horário padrão é 9h; a função não envia e-mails e pode ser removida a
+// qualquer momento com removerAgendamentoRascunhosRadar().
+function instalarAgendamentoRascunhosRadar() {
+  removerAgendamentoRascunhosRadar();
+  ScriptApp.newTrigger('criarRascunhosRadar').timeBased().everyDays(1).atHour(9).create();
+}
+
+function removerAgendamentoRascunhosRadar() {
+  ScriptApp.getProjectTriggers()
+    .filter(trigger => trigger.getHandlerFunction() === 'criarRascunhosRadar')
+    .forEach(trigger => ScriptApp.deleteTrigger(trigger));
+}
+
 function confirmarRascunhoRadar(secret, outboxId, gmailDraftId) {
   return UrlFetchApp.fetch(`${radarUrl()}/api/cron/drafts`, {
     method:'post',contentType:'application/json',headers:{Authorization:`Bearer ${secret}`},
