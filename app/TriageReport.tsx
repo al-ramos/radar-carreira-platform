@@ -3,14 +3,12 @@ import { useEffect, useState } from "react";
 type Item = { jobId: string; veredito: string; motivo: string | null; processedAt: string; title: string; company: string; workMode: string | null; location: string | null; url: string };
 type Data = { counts: Record<string, number>; total: number; items: Item[] };
 type PilotResult = { batchId: string; processed: Array<{ jobId: string; title: string; company: string; reference: string | null; contactEligible: boolean; aiEligible: boolean; aiStatus: string; verdict: string; label: string; blocker: string | null }>; skipped: number; aiCompleted?: number };
-type HistoryItem = { id: string; batchId: string; verdict: string; label: string; blocker: string | null; source: string; confidence: number; rows: string; processedAt: string; title: string; company: string; contactEmail: string | null; hasValidContactEmail: boolean; draftStatus: "pending" | "drafted" | "failed" | "cancelled" | null; draftSubject: string; draftError: string | null; draftUpdatedAt: string | null; trigger: string };
+type HistoryItem = { id: string; batchId: string; jobId: string; verdict: string; label: string; blocker: string | null; source: string; confidence: number; rows: string; processedAt: string; title: string; company: string; externalId: string | null; jobSource: string | null; workMode: string | null; location: string | null; sourcePublishedAt: string | null; receivedAt: string; url: string; contactEmail: string | null; hasValidContactEmail: boolean; draftStatus: "pending" | "drafted" | "failed" | "cancelled" | null; draftSubject: string; draftError: string | null; draftUpdatedAt: string | null; trigger: string };
 type Batch = { id: string; trigger: "manual" | "scheduled" | "assistant"; scope: string; status: string; startedAt: string | null; completedAt: string | null; createdAt: string; error: string | null; total: number; completed: number; failed: number; eligible: number; eligibleWithoutContact: number; draftsPending: number; draftsReady: number; draftsFailed: number };
 type Operational = { pendingDrafts: number; readyDrafts: number; failedDrafts: number; oldestPendingAt: string | null; alerts: Array<{ level: "warning" | "error"; message: string }> };
 const rowClass: Record<string, string> = { "✅": "approved", "🟡": "partial", "❌": "rejected", "🔴": "rejected" };
 export default function TriageReport({ close, sourceId, sourceLabel }: { close: () => void; sourceId?: string; sourceLabel?: string }) {
-  const [data, setData] = useState<Data | null>(null),
-    [includeBacklog, setIncludeBacklog] = useState(false),
-    [message, setMessage] = useState("Carregando avaliações…"),
+  const [message, setMessage] = useState("Carregando avaliações…"),
     [runningPilot, setRunningPilot] = useState(false),
     [queueingDrafts, setQueueingDrafts] = useState(false),
     [pilot, setPilot] = useState<PilotResult | null>(null),
@@ -22,28 +20,35 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
     [verdictFilter, setVerdictFilter] = useState("all"),
     [sourceFilter, setSourceFilter] = useState("all"),
     [draftFilter, setDraftFilter] = useState("all"),
+    [jobSourceFilter, setJobSourceFilter] = useState("all"),
+    [sortKey, setSortKey] = useState<"processedAt" | "company" | "title" | "verdict" | "draft">("processedAt"),
+    [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc"),
     [historyPage, setHistoryPage] = useState(0);
   const loadHistory = () => fetch("/api/triage/history")
     .then(async (r) => ({ ok: r.ok, data: await r.json() as { items?: HistoryItem[]; batches?: Batch[]; operational?: Operational } }))
     .then(({ ok, data }) => { if (ok) { setHistory(data.items ?? []); setBatches(data.batches ?? []); setOperational(data.operational ?? null); } });
   useEffect(() => {
-    fetch(`/api/admin/triage${includeBacklog ? "?includeBacklog=1" : ""}`)
-      .then(async (r) => ({ ok: r.ok, data: await r.json() }))
-      .then(({ ok, data }) => {
-        if (ok) {
-          setData(data);
-          setMessage(data.items.length ? "" : "Nenhuma vaga avaliada ainda.");
-        } else setMessage("Acesso exclusivo para o proprietário.");
-      });
     void loadHistory();
-  }, [includeBacklog]);
+  }, []);
   const date = (v: string) =>
     new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(v));
-  const rejected = (data?.counts["❌"] ?? 0) + (data?.counts["🔴"] ?? 0);
   const latestScheduled = batches.find((batch) => batch.trigger === "scheduled");
-  const filteredHistory = history.filter((item) => (verdictFilter === "all" || item.verdict === verdictFilter) && (sourceFilter === "all" || item.source === sourceFilter) && (draftFilter === "all" || item.draftStatus === draftFilter));
+  const latestByJob = new Map<string, HistoryItem>();
+  for (const item of history) if (!latestByJob.has(item.jobId)) latestByJob.set(item.jobId, item);
+  const currentAssessments = [...latestByJob.values()];
+  const jobSources = [...new Set(currentAssessments.map((item) => item.jobSource).filter(Boolean))] as string[];
+  const filteredHistory = currentAssessments.filter((item) => (verdictFilter === "all" || item.verdict === verdictFilter) && (sourceFilter === "all" || item.source === sourceFilter) && (draftFilter === "all" || item.draftStatus === draftFilter) && (jobSourceFilter === "all" || item.jobSource === jobSourceFilter));
+  const sortHistory = (key: typeof sortKey) => {
+    if (key === sortKey) setSortDirection((value) => value === "asc" ? "desc" : "asc");
+    else { setSortKey(key); setSortDirection("asc"); }
+    setHistoryPage(0);
+  };
+  const orderedHistory = [...filteredHistory].sort((a, b) => {
+    const fields = { processedAt: [a.processedAt, b.processedAt], company: [a.company, b.company], title: [a.title, b.title], verdict: [a.verdict, b.verdict], draft: [a.draftStatus ?? "", b.draftStatus ?? ""] } as const;
+    return fields[sortKey][0].localeCompare(fields[sortKey][1], "pt-BR", { numeric: true }) * (sortDirection === "asc" ? 1 : -1);
+  });
   const historyPageSize = 10;
-  const visibleHistory = filteredHistory.slice(historyPage * historyPageSize, (historyPage + 1) * historyPageSize);
+  const visibleHistory = orderedHistory.slice(historyPage * historyPageSize, (historyPage + 1) * historyPageSize);
   const draftItems = history.filter((item) => item.draftStatus && ["pending", "drafted", "failed"].includes(item.draftStatus));
   const scheduledSummary = (batch: Batch) => {
     if (batch.total === 0) return "Nenhuma vaga nova pendente de avaliação foi encontrada para este dia.";
@@ -130,14 +135,6 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
               <small>{sourceId ? `Exceção manual: somente vagas de hoje da fonte ${sourceLabel ?? sourceId}. ` : ""}A fila exige vaga aprovada ou provável, análise atual e e-mail de contato válido. Esta ação não cria nem envia e-mails.</small>
             </div>
           </div>
-          <label className="triage-toggle">
-            <input
-              type="checkbox"
-              checked={includeBacklog}
-              onChange={(e) => setIncludeBacklog(e.target.checked)}
-            />
-            Incluir não avaliadas (⚪)
-          </label>
         </div>
         {message && <div className="notice">{message}</div>}
         {pilot && (
@@ -193,65 +190,18 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
             <small>Resultados gravados no sistema. A IA só refina vagas ambíguas; rascunhos exigem e-mail de contato válido.</small>
             </div>
             <div className="triage-list">
-              <div className="triage-run-settings">
+              <div className="triage-run-settings triage-table-filters">
                 <label>Veredito<select value={verdictFilter} onChange={(e) => { setVerdictFilter(e.target.value); setHistoryPage(0); }}><option value="all">Todos</option><option value="✅">Aprovadas</option><option value="🟡">Prováveis</option><option value="❌">Reprovadas</option></select></label>
                 <label>Origem<select value={sourceFilter} onChange={(e) => { setSourceFilter(e.target.value); setHistoryPage(0); }}><option value="all">Regras e IA</option><option value="rules">Regras</option><option value="ai">IA</option></select></label>
+                <label>Fonte<select value={jobSourceFilter} onChange={(e) => { setJobSourceFilter(e.target.value); setHistoryPage(0); }}><option value="all">Todas</option>{jobSources.map((source) => <option key={source} value={source}>{source}</option>)}</select></label>
                 <label>Rascunho<select value={draftFilter} onChange={(e) => { setDraftFilter(e.target.value); setHistoryPage(0); }}><option value="all">Todos</option><option value="pending">Na fila</option><option value="drafted">Pronto</option><option value="failed">Com falha</option></select></label>
               </div>
-              {visibleHistory.map((item) => (
-                <article key={item.id} className={`triage-row ${rowClass[item.verdict] ?? "backlog"}`}>
-                  <div>
-                    <small>{item.company} · {date(item.processedAt)} · {item.source === "ai" ? "IA" : "Regras"}</small>
-                    <b>{item.title}</b>
-                    <span>{item.label}{item.blocker ? ` · ${item.blocker}` : ""}{item.hasValidContactEmail ? " · E-mail de contato válido" : " · Sem e-mail de contato válido"}{item.draftStatus === "drafted" ? " · Rascunho pronto" : item.draftStatus === "pending" ? " · Rascunho aguardando criação" : item.draftStatus === "failed" ? " · Falha ao criar rascunho" : ""}</span>
-                    {item.source === "ai" && <details><summary>Ver evidências e decisão refinada</summary><pre>{item.rows}</pre></details>}
-                  </div>
-                  <strong>{item.verdict}</strong>
-                </article>
-              ))}
+              <div className="triage-table-wrap"><table className="triage-table"><thead><tr><th><button onClick={() => sortHistory("verdict")}>Veredito</button></th><th><button onClick={() => sortHistory("title")}>Vaga</button></th><th><button onClick={() => sortHistory("company")}>Empresa</button></th><th>Fonte / código</th><th>Local e modalidade</th><th>Publicada / recebida</th><th>Contato</th><th><button onClick={() => sortHistory("draft")}>Rascunho</button></th><th><button onClick={() => sortHistory("processedAt")}>Analisada</button></th></tr></thead><tbody>{visibleHistory.map((item) => <tr key={item.id} className={rowClass[item.verdict] ?? "backlog"}><td className="triage-verdict">{item.verdict}<small>{item.source === "ai" ? "IA" : "Regras"}</small></td><td><a href={item.url} target="_blank" rel="noreferrer"><b>{item.title}</b></a><span>{item.label}{item.blocker ? ` · ${item.blocker}` : ""}</span>{item.source === "ai" && <details><summary>Evidências</summary><pre>{item.rows}</pre></details>}</td><td>{item.company}</td><td>{item.jobSource ?? "Não informada"}<small>{item.externalId ? `Código ${item.externalId}` : "Sem código"}</small></td><td>{item.workMode ?? "—"}<small>{item.location ?? "Local não informado"}</small></td><td>{item.sourcePublishedAt ? date(item.sourcePublishedAt) : "Não informada"}<small>Recebida: {date(item.receivedAt)}</small></td><td>{item.hasValidContactEmail ? item.contactEmail : "Manual / sem e-mail"}</td><td>{item.draftStatus === "drafted" ? "Pronto" : item.draftStatus === "pending" ? "Na fila" : item.draftStatus === "failed" ? "Falhou" : "—"}</td><td>{date(item.processedAt)}</td></tr>)}</tbody></table></div>
             </div>
             {filteredHistory.length > historyPageSize && <div className="triage-run-settings"><button disabled={historyPage === 0} onClick={() => setHistoryPage(page => page - 1)}>Anterior</button><small>Página {historyPage + 1} de {Math.ceil(filteredHistory.length / historyPageSize)}</small><button disabled={(historyPage + 1) * historyPageSize >= filteredHistory.length} onClick={() => setHistoryPage(page => page + 1)}>Próxima</button></div>}
           </section>
         )}
-        {data && (
-          <>
-            <div className="triage-summary">
-              <article className="approved">
-                <small>Aprovadas ✅</small>
-                <strong>{data.counts["✅"] ?? 0}</strong>
-              </article>
-              <article className="partial">
-                <small>Parciais 🟡</small>
-                <strong>{data.counts["🟡"] ?? 0}</strong>
-              </article>
-              <article className="rejected">
-                <small>Reprovadas ❌/🔴</small>
-                <strong>{rejected}</strong>
-              </article>
-              <article>
-                <small>Total na base</small>
-                <strong>{data.total}</strong>
-              </article>
-            </div>
-            <div className="triage-list">
-              {data.items.map((item) => (
-                <article key={item.jobId} className={`triage-row ${rowClass[item.veredito] ?? "backlog"}`}>
-                  <div>
-                    <small>
-                      {item.company} · {item.workMode ?? "Modalidade não informada"} ·{" "}
-                      {item.location ?? "Local não informado"} · {date(item.processedAt)}
-                    </small>
-                    <a href={item.url} target="_blank" rel="noreferrer">
-                      <b>{item.title}</b>
-                    </a>
-                    {item.motivo && <span>{item.motivo}</span>}
-                  </div>
-                  <strong>{item.veredito}</strong>
-                </article>
-              ))}
-            </div>
-          </>
-        )}
+        {history.length > 0 && <div className="triage-summary"><article className="approved"><small>Aprovadas (atuais)</small><strong>{currentAssessments.filter((item) => item.verdict === "✅").length}</strong></article><article className="partial"><small>Prováveis (atuais)</small><strong>{currentAssessments.filter((item) => item.verdict === "🟡").length}</strong></article><article className="rejected"><small>Não aderentes (atuais)</small><strong>{currentAssessments.filter((item) => item.verdict === "❌" || item.verdict === "🔴").length}</strong></article><article><small>Vagas analisadas</small><strong>{currentAssessments.length}</strong></article></div>}
       </section>
     </div>
   );

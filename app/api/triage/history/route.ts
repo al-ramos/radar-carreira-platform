@@ -2,7 +2,7 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db/index";
-import { draftOutbox, jobs, triageBatchItems, triageBatches, triageHistory } from "../../../../db/schema";
+import { draftOutbox, jobSources, jobs, triageBatchItems, triageBatches, triageHistory } from "../../../../db/schema";
 import { hasValidContactEmail } from "../../../../lib/contact-email";
 
 export const dynamic = "force-dynamic";
@@ -26,7 +26,14 @@ export async function GET() {
       processedAt: triageHistory.createdAt,
       title: jobs.title,
       company: jobs.company,
+      jobId: jobs.id,
       externalId: jobs.externalId,
+      jobSource: jobSources.name,
+      workMode: jobs.workMode,
+      location: jobs.location,
+      sourcePublishedAt: jobs.sourcePublishedAt,
+      receivedAt: jobs.firstSeenAt,
+      url: jobs.url,
       contactEmail: jobs.contactEmail,
       contactSubject: jobs.contactSubject,
       draftStatus: draftOutbox.status,
@@ -36,6 +43,7 @@ export async function GET() {
     })
     .from(triageHistory)
     .innerJoin(jobs, eq(triageHistory.jobId, jobs.id))
+    .leftJoin(jobSources, eq(jobs.sourceId, jobSources.id))
     .innerJoin(triageBatches, eq(triageHistory.batchId, triageBatches.id))
     .leftJoin(draftOutbox, and(eq(draftOutbox.historyId, triageHistory.id), eq(draftOutbox.userId, user.userId)))
     .where(eq(triageHistory.userId, user.userId))
