@@ -22,5 +22,13 @@
   ],
   "images": {
     "binding": "IMAGES"
+  },
+  "queues": {
+    "producers": [
+      {
+        "binding": "TRIAGE_QUEUE",
+        "queue": "radar-carreira-triage"
+      }
+    ]
   }
 }
