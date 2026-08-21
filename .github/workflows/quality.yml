@@ -51,6 +51,7 @@ jobs:
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      RADAR_CODEX_MCP_TOKEN: ${{ secrets.RADAR_CODEX_MCP_TOKEN }}
     steps:
       - name: Baixar código
         uses: actions/checkout@v5
@@ -77,5 +78,13 @@ jobs:
           npx wrangler queues create radar-carreira-ai-review-dlq || true
       - name: Gerar Worker de produção
         run: npm run build
+      - name: Configurar acesso privado do Codex
+        shell: bash
+        run: |
+          if [ -z "$RADAR_CODEX_MCP_TOKEN" ]; then
+            echo "RADAR_CODEX_MCP_TOKEN não configurado nos secrets do repositório." >&2
+            exit 1
+          fi
+          printf '%s' "$RADAR_CODEX_MCP_TOKEN" | npx wrangler secret put RADAR_CODEX_MCP_TOKEN
       - name: Publicar Worker
         run: npx wrangler deploy
