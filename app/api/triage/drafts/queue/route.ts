@@ -152,8 +152,19 @@ export async function POST(request: Request) {
     if (requestedJobIds?.length === 1) priorityOutboxIds.push(outboxId);
   }
 
+  const individualUnavailableReason = latestByJob.size === 0
+    ? "A vaga não possui uma avaliação de triagem utilizável para gerar rascunho."
+    : outdated
+      ? "A triagem desta vaga está desatualizada; analise-a novamente antes de criar o rascunho."
+      : noValidContact
+        ? "A vaga não tem e-mail de contato válido."
+        : notEligible
+          ? "As regras atuais de segurança não permitem criar rascunho para esta vaga."
+          : alreadyPresent
+            ? "Já existe um rascunho ou item de fila para esta vaga; atualize a tela para ver o status."
+            : "A vaga não está disponível para criação imediata.";
   const immediateDraft = requestedJobIds?.length === 1 && priorityOutboxIds.length
     ? await requestImmediateDraftCreation(priorityOutboxIds)
-    : { requested: false, reason: requestedJobIds?.length === 1 ? "A vaga não está disponível para criação imediata." : "A criação imediata é reservada para uma vaga avulsa." };
+    : { requested: false, reason: requestedJobIds?.length === 1 ? individualUnavailableReason : "A criação imediata é reservada para uma vaga avulsa." };
   return NextResponse.json({ ok: true, considered: latestByJob.size, queued: queued.length, queuedJobIds: queued, noValidContact, notEligible, outdated, alreadyPresent, gmailDraftsCreated: immediateDraft.created ?? 0, immediateDraft });
 }

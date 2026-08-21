@@ -14,6 +14,8 @@ test("rascunho avulso pede criação imediata sem enviar e-mail", async () => {
     read("../app/TriageReport.tsx"),
   ]);
   assert.match(queue, /requestImmediateDraftCreation\(priorityOutboxIds\)/);
+  assert.match(queue, /triagem desta vaga está desatualizada/);
+  assert.match(queue, /regras atuais de segurança não permitem/);
   assert.match(queue, /requestedJobIds\?\.length === 1/);
   assert.match(cron, /outboxIds\?: string\[\]/);
   assert.match(cron, /inArray\(draftOutbox\.id, requestedOutboxIds\)/);
