@@ -3004,7 +3004,20 @@ export default function Dashboard() {
                           >
                             {j.contactEmail}
                           </a>
-                        ) : "—"}
+                        ) : (
+                          <button
+                            type="button"
+                            className="analysis-toggle-btn"
+                            disabled={contactCapturing}
+                            title={`Busca um e-mail já cadastrado para ${j.company} e o vincula a esta vaga.`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void reuseCompanyContact(j);
+                            }}
+                          >
+                            Usar e-mail da empresa
+                          </button>
+                        )}
                       </span>
                       <span role="cell" className="job-table-cell job-table-cell-date">
                         {j.sourcePublishedAt ? formatJobDateTime(j.sourcePublishedAt) : j.age}
