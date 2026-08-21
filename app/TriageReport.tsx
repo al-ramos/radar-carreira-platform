@@ -53,6 +53,7 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
     [batches, setBatches] = useState<Batch[]>([]),
     [batchItems, setBatchItems] = useState<BatchItem[]>([]),
     [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null),
+    [syncingBatch, setSyncingBatch] = useState(false),
     [operational, setOperational] = useState<Operational | null>(null),
     [verdictFilter, setVerdictFilter] = useState("all"),
     [sourceFilter, setSourceFilter] = useState("all"),
@@ -75,14 +76,15 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
         if (!legacyResponse.ok) throw new Error("Falha ao consultar as avaliações existentes.");
         const items = (legacy.items ?? []).map((item): HistoryItem => ({ id: `legacy-${item.jobId}`, batchId: "legacy", jobId: item.jobId, verdict: item.veredito, label: item.motivo ?? "Avaliação registrada", blocker: null, source: "legacy", confidence: 0, rows: "", processedAt: item.processedAt, title: item.title, company: item.company, externalId: item.externalId, jobSource: item.sourceId, workMode: item.workMode, location: item.location, sourcePublishedAt: item.sourcePublishedAt, receivedAt: item.receivedAt, url: item.url, contactEmail: item.contactEmail, hasValidContactEmail: Boolean(item.contactEmail?.includes("@")), draftStatus: null, draftSubject: "", draftError: null, draftUpdatedAt: null, sentAt: null, trigger: "legacy" }));
         setHistory(items); setBatches([]); setOperational(null); setMessage(items.length ? "Exibindo avaliações já registradas no Radar." : "Nenhuma vaga avaliada foi encontrada.");
-        return;
+        return true;
       }
       const data = await response.json() as { items?: HistoryItem[]; batches?: Batch[]; batchItems?: BatchItem[]; operational?: Operational };
       const items = data.items ?? [];
       setHistory(items); setBatches(data.batches ?? []); setBatchItems(data.batchItems ?? []); setOperational(data.operational ?? null); setLastSyncedAt(new Date());
       if (!items.length) setMessage("Nenhuma vaga foi triada ainda. Use “Analisar vagas do recorte” para iniciar.");
       else setMessage((current) => current === "Carregando avaliações…" ? "" : current);
-    } catch { setMessage("Não foi possível carregar as avaliações da triagem."); }
+      return true;
+    } catch { setMessage("Não foi possível carregar as avaliações da triagem."); return false; }
   };
   const loadCodexQueue = async () => {
     try {
@@ -162,7 +164,7 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
   const toggleHistoryJob = (jobId: string) => setSelectedHistoryJobIds((current) => current.includes(jobId) ? current.filter((id) => id !== jobId) : [...current, jobId]);
   const toggleVisibleHistory = () => setSelectedHistoryJobIds((current) => allVisibleSelected ? current.filter((id) => !visibleHistory.some((item) => item.jobId === id)) : [...new Set([...current, ...visibleHistory.map((item) => item.jobId)])]);
   const draftActionBlocker = (item: HistoryItem) => {
-    if (item.draftStatus) return item.draftStatus === "sent" ? "Enviado" : item.draftStatus === "drafted" ? "Rascunho pronto" : item.draftStatus === "pending" ? "Já está na fila" : "Reveja a falha antes";
+    if (item.draftStatus) return item.draftStatus === "sent" ? "Enviado" : item.draftStatus === "drafted" ? "Rascunho pronto" : item.draftStatus === "pending" ? `Aguardando criação no Gmail — próxima sincronização agendada. Fila atualizada: ${date(item.draftUpdatedAt ?? item.processedAt)}` : "Reveja a falha antes";
     if (item.jobSource === "linkedin-extension") return "LinkedIn não permite rascunho";
     if (item.verdict !== "✅" && item.verdict !== "🟡") return "Exige vaga aderente ou provável";
     if (!item.hasValidContactEmail) return "E-mail válido exigido";
@@ -176,6 +178,7 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
   const actionCandidateCount = actionCandidate?.key === actionSelectionKey && actionSourceId ? actionCandidate.count : null;
   const actionCandidateTotal = actionCandidate?.key === actionSelectionKey && actionSourceId ? actionCandidate.total : null;
   const manualSummary = (batch: Batch) => {
+    if (batch.total === 0) return "Nenhuma vaga ficou pendente neste recorte. Escolha outro período ou atualize os filtros para iniciar uma nova triagem.";
     if (batch.status === "queued") return `${batch.total} vaga(s) na fila. O Radar iniciará o processamento em instantes.`;
     if (batch.status === "running") return `Processando: ${batch.completed + batch.failed}/${batch.total} vaga(s).`;
     if (batch.status === "failed") return `Falhou em ${batch.failed} de ${batch.total} vaga(s). Veja o histórico antes de preparar rascunhos.`;
@@ -183,6 +186,13 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
     return `${batch.completed}/${batch.total} vaga(s) registradas.`;
   };
   const batchItemStatus = (item: BatchItem) => item.status === "queued" ? "Aguardando na fila" : item.status === "processing" ? "Em processamento" : item.status === "completed" ? "Concluída" : item.status === "skipped" ? "Ignorada" : "Falhou";
+  const syncManualBatch = async () => {
+    setSyncingBatch(true);
+    setMessage("Sincronizando o status do lote…");
+    const updated = await loadHistory();
+    if (updated) setMessage("Status do lote sincronizado com a fila.");
+    setSyncingBatch(false);
+  };
   const scheduledSummary = (batch: Batch) => {
     if (batch.total === 0) return "Nenhuma vaga nova pendente de avaliação foi encontrada para este dia.";
     if (batch.eligible === 0) return "Nenhuma vaga aderente ou provável foi encontrada neste lote.";
@@ -572,8 +582,8 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
           </section>
         )}
         <section className="triage-manual-status" aria-live="polite" aria-label="Acompanhamento do lote manual">
-          <div><p className="eyebrow">SEU ÚLTIMO LOTE</p><h3>{latestManual ? latestManual.status === "completed" ? "Triagem concluída" : latestManual.status === "failed" ? "Triagem com falha" : latestManual.status === "running" ? "Triagem em andamento" : "Triagem na fila" : "Nenhum lote manual iniciado"}</h3>{latestManual && <small className="triage-sync-status">{manualIsActive ? "Sincronização automática a cada 4 segundos" : "Estado final sincronizado"}{lastSyncedAt ? ` · atualizado às ${date(lastSyncedAt.toISOString())}` : ""}</small>}</div>
-          {latestManual ? <><div className="triage-manual-progress"><p>{manualSummary(latestManual)}</p><div className="triage-progress-bar" aria-label={`${manualItemCounts.completed + manualItemCounts.failed + manualItemCounts.skipped} de ${latestManual.total} vagas finalizadas`}><span style={{ width: `${latestManual.total ? Math.round(((manualItemCounts.completed + manualItemCounts.failed + manualItemCounts.skipped) / latestManual.total) * 100) : 0}%` }} /></div><div className="triage-progress-counts"><span>{manualItemCounts.queued} na fila</span><span>{manualItemCounts.processing} em análise</span><span>{manualItemCounts.completed} concluídas</span>{manualItemCounts.skipped > 0 && <span>{manualItemCounts.skipped} ignoradas</span>}{manualItemCounts.failed > 0 && <span className="failed">{manualItemCounts.failed} falhas</span>}</div>{latestManual.error && <p className="triage-batch-error">{latestManual.error}</p>}<details className="triage-batch-log"><summary>Ver log do lote ({latestManualItems.length} vaga(s))</summary><ol>{latestManualItems.map((item) => <li key={item.jobId} className={item.status}><b>{batchItemStatus(item)}</b><span>{item.title} · {item.company}{item.externalId ? ` · código ${item.externalId}` : ""}</span><small>{item.attemptCount} tentativa(s) · atualização: {date(item.updatedAt)}{item.leaseUntil && item.status === "processing" ? ` · reserva até ${date(item.leaseUntil)}` : ""}</small>{item.error && <em>{item.error}</em>}</li>)}</ol></details></div><div><button type="button" className="triage-card-action" onClick={() => void loadHistory()}>Sincronizar agora</button><button type="button" className="triage-card-action secondary" onClick={() => openHistory()}>Ver resultados</button></div></> : <p>Escolha o recorte acima e use a etapa 1. O andamento e o resultado aparecerão aqui.</p>}
+          <div><p className="eyebrow">SEU ÚLTIMO LOTE</p><h3>{latestManual ? latestManual.total === 0 ? "Nenhuma vaga pendente" : latestManual.status === "completed" ? "Triagem concluída" : latestManual.status === "failed" ? "Triagem com falha" : latestManual.status === "running" ? "Triagem em andamento" : "Triagem na fila" : "Nenhum lote manual iniciado"}</h3>{latestManual && <small className="triage-sync-status">{manualIsActive ? "Sincronização automática a cada 4 segundos" : "Estado final sincronizado"}{lastSyncedAt ? ` · atualizado às ${date(lastSyncedAt.toISOString())}` : ""}</small>}</div>
+          {latestManual ? <><div className="triage-manual-progress"><p>{manualSummary(latestManual)}</p>{latestManual.total > 0 && <><div className="triage-progress-bar" aria-label={`${manualItemCounts.completed + manualItemCounts.failed + manualItemCounts.skipped} de ${latestManual.total} vagas finalizadas`}><span style={{ width: `${Math.round(((manualItemCounts.completed + manualItemCounts.failed + manualItemCounts.skipped) / latestManual.total) * 100)}%` }} /></div><div className="triage-progress-counts"><span>{manualItemCounts.queued} na fila</span><span>{manualItemCounts.processing} em análise</span><span>{manualItemCounts.completed} concluídas</span>{manualItemCounts.skipped > 0 && <span>{manualItemCounts.skipped} ignoradas</span>}{manualItemCounts.failed > 0 && <span className="failed">{manualItemCounts.failed} falhas</span>}</div>{latestManual.error && <p className="triage-batch-error">{latestManual.error}</p>}<details className="triage-batch-log"><summary>Ver log do lote ({latestManualItems.length} vaga(s))</summary><ol>{latestManualItems.map((item) => <li key={item.jobId} className={item.status}><b>{batchItemStatus(item)}</b><span>{item.title} · {item.company}{item.externalId ? ` · código ${item.externalId}` : ""}</span><small>{item.attemptCount} tentativa(s) · atualização: {date(item.updatedAt)}{item.leaseUntil && item.status === "processing" ? ` · reserva até ${date(item.leaseUntil)}` : ""}</small>{item.error && <em>{item.error}</em>}</li>)}</ol></details></>}</div><div><button type="button" className="triage-card-action" disabled={syncingBatch} onClick={() => void syncManualBatch()}>{syncingBatch ? "Sincronizando…" : "Sincronizar agora"}</button><button type="button" className="triage-card-action secondary" onClick={() => openHistory()}>Ver resultados</button></div></> : <p>Escolha o recorte acima e use a etapa 1. O andamento e o resultado aparecerão aqui.</p>}
         </section>
       </section>
     </div>
