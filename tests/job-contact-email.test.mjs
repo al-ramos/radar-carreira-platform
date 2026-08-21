@@ -54,3 +54,15 @@ test("contato capturado permanece no campo da vaga e a API persiste a primeira g
   assert.match(route, /\.set\(\{ contactEmail, contactSubject:/);
   assert.match(route, /or\(isNull\(jobs\.contactEmail\), eq\(jobs\.contactEmail, ""\)\)/);
 });
+
+test("revalidação APInfo só completa domínio de e-mail salvo incompleto", async () => {
+  const [dashboard, route] = await Promise.all([
+    readFile(new URL("../app/Dashboard.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/jobs/[id]/contact/route.ts", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(dashboard, /Verificar no APInfo/);
+  assert.match(dashboard, /captureApinfoContact\(selectedJob, true\)/);
+  assert.match(route, /correctTruncated/);
+  assert.match(route, /contactEmail\.startsWith/);
+});

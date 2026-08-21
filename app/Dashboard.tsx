@@ -555,7 +555,7 @@ export default function Dashboard() {
   const [contactCapturing, setContactCapturing] = useState(false);
   const [contactPasteReady, setContactPasteReady] = useState(false);
   const [contactCaptureMsg, setContactCaptureMsg] = useState<{ text: string; error: boolean } | null>(null);
-  const contactRequestRef = useRef<{ requestId: string; jobId: string } | null>(null);
+  const contactRequestRef = useRef<{ requestId: string; jobId: string; correctTruncated?: boolean } | null>(null);
   const contactRequestTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Captura de contato do APinfo EM LOTE — ver captureApinfoContactsBatch e
   // o useEffect que escuta RADAR_CAPTURE_CONTACTS_BATCH_PROGRESS/_RESULT.
@@ -1842,11 +1842,11 @@ export default function Dashboard() {
     ].filter(Boolean).join("&");
     return `mailto:${job.contactEmail}?${query}`;
   }
-  async function saveApinfoContact(jobId: string, contactEmail: string, contactSubject?: string) {
+  async function saveApinfoContact(jobId: string, contactEmail: string, contactSubject?: string, correctTruncated = false) {
     const r = await fetch(`/api/jobs/${jobId}/contact`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ contactEmail, contactSubject }),
+      body: JSON.stringify({ contactEmail, contactSubject, correctTruncated }),
     });
     const data = await r.json().catch(() => null) as { contactEmail?: string; contactSubject?: string } | null;
     if (!r.ok) {
@@ -1910,17 +1910,19 @@ export default function Dashboard() {
    * abrir, depois de a pessoa logar manualmente lá. O Radar não tem acesso
    * a outras abas do navegador sozinho; só a extensão consegue.
    */
-  function captureApinfoContact(job: Job) {
+  function captureApinfoContact(job: Job, correctTruncated = false) {
     if (job.contactEmail) {
-      setContactCaptureMsg({ text: `Contato já cadastrado: ${job.contactEmail}`, error: false });
-      return;
+      if (!correctTruncated) {
+        setContactCaptureMsg({ text: `Contato já cadastrado: ${job.contactEmail}`, error: false });
+        return;
+      }
     }
     if (!job.externalId) {
       setContactCaptureMsg({ text: "Esta vaga não tem código do APinfo identificado.", error: true });
       return;
     }
     const requestId = crypto.randomUUID();
-    contactRequestRef.current = { requestId, jobId: job.id };
+    contactRequestRef.current = { requestId, jobId: job.id, correctTruncated };
     setContactCapturing(true);
     setContactPasteReady(false);
     setContactCaptureMsg({ text: "Lendo a aba do APinfo…", error: false });
@@ -1974,7 +1976,7 @@ export default function Dashboard() {
       }
 
       if (data.email) {
-        void saveApinfoContact(pending.jobId, data.email, data.assunto);
+        void saveApinfoContact(pending.jobId, data.email, data.assunto, pending.correctTruncated);
         return;
       }
       setContactPasteReady(true);
@@ -3305,42 +3307,29 @@ export default function Dashboard() {
                   Candidatar
                 </button>
                 {isApinfoJob(selectedJob) && (
-                  <button
-                    type="button"
-                    className="analysis-toggle-btn"
-                    disabled={contactCapturing}
-                    title={
-                      selectedJob.contactEmail
-                        ? `Copiar ${selectedJob.contactEmail}`
-                        : contactPasteReady
-                          ? "Tentar novamente a captura automática na aba do APinfo"
-                        : "Clique em Candidatar, faça login no APinfo até ver Empresa/Email na tela, e clique aqui"
-                    }
-                    onClick={() => {
-                      if (selectedJob.contactEmail) {
-                        void updateApplicationStatus(
-                          selectedJob,
-                          "generated",
-                          AUTOMATIC_ACTION_STAGE.copy_email,
-                          "E-mail copiado e vaga salva no acompanhamento.",
-                        );
-                        void navigator.clipboard.writeText(selectedJob.contactEmail).then(
-                          () => undefined,
-                          () => setMessage(`E-mail cadastrado: ${selectedJob.contactEmail}. Não foi possível copiá-lo automaticamente.`),
-                        );
-                        return;
-                      }
-                      captureApinfoContact(selectedJob);
-                    }}
-                  >
-                    {selectedJob.contactEmail
-                      ? "Copiar e-mail"
-                      : contactCapturing
-                        ? "Capturando…"
-                        : contactPasteReady
-                          ? "Tentar captura novamente"
-                          : "Capturar e-mail"}
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      className="analysis-toggle-btn"
+                      disabled={contactCapturing}
+                      title={selectedJob.contactEmail ? `Copiar ${selectedJob.contactEmail}` : contactPasteReady ? "Tentar novamente a captura automática na aba do APinfo" : "Clique em Candidatar, faça login no APinfo até ver Empresa/Email na tela, e clique aqui"}
+                      onClick={() => {
+                        if (selectedJob.contactEmail) {
+                          void updateApplicationStatus(selectedJob, "generated", AUTOMATIC_ACTION_STAGE.copy_email, "E-mail copiado e vaga salva no acompanhamento.");
+                          void navigator.clipboard.writeText(selectedJob.contactEmail).then(() => undefined, () => setMessage(`E-mail cadastrado: ${selectedJob.contactEmail}. Não foi possível copiá-lo automaticamente.`));
+                          return;
+                        }
+                        captureApinfoContact(selectedJob);
+                      }}
+                    >
+                      {selectedJob.contactEmail ? "Copiar e-mail" : contactCapturing ? "Capturando…" : contactPasteReady ? "Tentar captura novamente" : "Capturar e-mail"}
+                    </button>
+                    {selectedJob.contactEmail && (
+                      <button type="button" className="analysis-toggle-btn" disabled={contactCapturing} title="Lê novamente o contato da aba APInfo e corrige somente um domínio que tenha sido salvo incompleto." onClick={() => captureApinfoContact(selectedJob, true)}>
+                        {contactCapturing ? "Verificando…" : "Verificar no APInfo"}
+                      </button>
+                    )}
+                  </>
                 )}
                 {isApinfoJob(selectedJob) && !selectedJob.contactEmail && contactPasteReady && (
                   <button

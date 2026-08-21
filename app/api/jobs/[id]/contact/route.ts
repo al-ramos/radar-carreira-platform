@@ -20,14 +20,21 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (!user) return NextResponse.json({ error: "Autenticação necessária" }, { status: 401 });
 
   const { id } = await params;
-  const body = (await request.json().catch(() => null)) as { contactEmail?: string; contactSubject?: string } | null;
+  const body = (await request.json().catch(() => null)) as { contactEmail?: string; contactSubject?: string; correctTruncated?: boolean } | null;
   const contactEmail = normalizeContactEmail(body?.contactEmail);
   if (!contactEmail) return NextResponse.json({ error: "Informe um único e-mail de contato válido" }, { status: 400 });
 
   const db = getDb();
   const job = (await db.select({ id: jobs.id, contactEmail: jobs.contactEmail }).from(jobs).where(eq(jobs.id, id)).limit(1))[0];
   if (!job) return NextResponse.json({ error: "Vaga não encontrada" }, { status: 404 });
-  if (job.contactEmail) {
+  const existingEmail = normalizeContactEmail(job.contactEmail);
+  // Correção estritamente conservadora: permite completar apenas um domínio
+  // previamente salvo sem o sufixo final (ex.: "empresa.com" ->
+  // "empresa.com.br"). Não permite trocar destinatário já cadastrado.
+  const canCorrectTruncated = Boolean(
+    body?.correctTruncated && existingEmail && contactEmail.startsWith(`${existingEmail}.`),
+  );
+  if (existingEmail && !canCorrectTruncated) {
     return NextResponse.json(
       { error: "Esta vaga já possui e-mail de contato cadastrado", contactEmail: job.contactEmail },
       { status: 409 },
@@ -38,7 +45,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const updated = await db
     .update(jobs)
     .set({ contactEmail, contactSubject: body?.contactSubject?.trim() || null, updatedAt: new Date() })
-    .where(and(eq(jobs.id, id), contactIsMissing))
+    .where(canCorrectTruncated ? and(eq(jobs.id, id), eq(jobs.contactEmail, existingEmail!)) : and(eq(jobs.id, id), contactIsMissing))
     .returning({ id: jobs.id, contactEmail: jobs.contactEmail, contactSubject: jobs.contactSubject });
 
   if (!updated.length) {
