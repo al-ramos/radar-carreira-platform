@@ -61,6 +61,8 @@ test("a tela explica a ordem das ações e acompanha o último lote manual", asy
   assert.match(ui, /Triar por regras/);
   assert.match(ui, /Use após a etapa 1 concluir/);
   assert.match(ui, /SEU ÚLTIMO LOTE/);
-  assert.match(ui, /Atualizar status/);
+  assert.match(ui, /Sincronizar agora/);
   assert.match(ui, /manualIsActive/);
+  assert.match(ui, /Sincronização automática a cada 4 segundos/);
+  assert.match(ui, /Ver log do lote/);
 });

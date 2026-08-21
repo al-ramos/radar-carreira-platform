@@ -78,8 +78,13 @@ export async function GET() {
       createdAt: triageBatches.createdAt,
       error: triageBatches.error,
     }).from(triageBatches).where(eq(triageBatches.userId, user.userId)).orderBy(desc(triageBatches.createdAt)).limit(30),
-    db.select({ batchId: triageBatchItems.batchId, status: triageBatchItems.status }).from(triageBatchItems)
+    db.select({
+      batchId: triageBatchItems.batchId, jobId: triageBatchItems.jobId, status: triageBatchItems.status,
+      error: triageBatchItems.error, attemptCount: triageBatchItems.attemptCount, updatedAt: triageBatchItems.updatedAt,
+      leaseUntil: triageBatchItems.leaseUntil, title: jobs.title, company: jobs.company, externalId: jobs.externalId,
+    }).from(triageBatchItems)
       .innerJoin(triageBatches, eq(triageBatchItems.batchId, triageBatches.id))
+      .innerJoin(jobs, eq(triageBatchItems.jobId, jobs.id))
       .where(eq(triageBatches.userId, user.userId)),
     db.select({ status: draftOutbox.status, createdAt: draftOutbox.createdAt, sentAt: draftOutbox.sentAt }).from(draftOutbox).where(eq(draftOutbox.userId, user.userId)),
     db.select({ batchId: triageHistory.batchId, status: draftOutbox.status }).from(draftOutbox)
@@ -146,6 +151,9 @@ export async function GET() {
         draftsFailed: drafts.failed,
       };
     }),
+    // Diário operacional persistido: explica espera, tentativa, erro e a
+    // última alteração sem depender de logs efêmeros da Queue.
+    batchItems: batchItemRows,
     operational: {
       pendingDrafts: pendingDrafts.length,
       readyDrafts: readyDrafts.length,
