@@ -917,7 +917,7 @@
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
-  gap: 16px 32px;
+  gap: 18px 28px;
 }
 .radar-filter-panel .compact-filter-group {
   display: flex;
@@ -927,10 +927,7 @@
   min-width: 0;
 }
 .radar-filter-panel .quick-filter-row .compact-filter-group {
-  flex: 1 1 180px;
-}
-.radar-filter-panel .quick-filter-row .contact-filter-group {
-  flex: 2 1 320px;
+  flex: 0 1 auto;
 }
 .radar-filter-panel .compact-filter-label {
   padding-top: 0;
