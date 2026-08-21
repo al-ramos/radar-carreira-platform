@@ -15,7 +15,8 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
     [runningApinfo, setRunningApinfo] = useState(false),
     [queueingDrafts, setQueueingDrafts] = useState(false),
     [pilot, setPilot] = useState<PilotResult | null>(null),
-    [batchSize, setBatchSize] = useState(10),
+    [batchSize, setBatchSize] = useState("50"),
+    [todayReceived, setTodayReceived] = useState(0),
     [reprocess, setReprocess] = useState(false),
     [history, setHistory] = useState<HistoryItem[]>([]),
     [batches, setBatches] = useState<Batch[]>([]),
@@ -42,9 +43,9 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
         setHistory(items); setBatches([]); setOperational(null); setMessage(items.length ? "Exibindo avaliações já registradas no Radar." : "Nenhuma vaga avaliada foi encontrada.");
         return;
       }
-      const data = await response.json() as { items?: HistoryItem[]; batches?: Batch[]; operational?: Operational };
+      const data = await response.json() as { items?: HistoryItem[]; batches?: Batch[]; operational?: Operational; todayReceived?: number };
       const items = data.items ?? [];
-      setHistory(items); setBatches(data.batches ?? []); setOperational(data.operational ?? null);
+      setHistory(items); setBatches(data.batches ?? []); setOperational(data.operational ?? null); setTodayReceived(data.todayReceived ?? 0);
       setMessage(items.length ? "" : "Nenhuma vaga foi triada ainda. Use “Analisar vagas agora” para iniciar.");
     } catch { setMessage("Não foi possível carregar as avaliações da triagem."); }
   };
@@ -80,6 +81,7 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
     if (batch.eligibleWithoutContact === batch.eligible) return "As vagas elegíveis continuam sem e-mail de contato válido; nenhum rascunho foi preparado.";
     return `${batch.eligible} vaga(s) elegível(is); somente as que têm contato válido podem gerar rascunho.`;
   };
+  const selectedBatchSize = batchSize === "today" ? todayReceived : Number(batchSize);
   const runPilot = async () => {
     setRunningPilot(true);
     setMessage("Executando piloto determinístico de até 10 vagas…");
@@ -87,7 +89,7 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
       const response = await fetch("/api/triage/run", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ trigger: sourceId ? "gpt" : "portal", sourceId, batchSize, reprocess, aiMode: "ambiguous", createDrafts: false }),
+        body: JSON.stringify({ trigger: sourceId ? "gpt" : "portal", sourceId, dateScope: "received", batchSize: selectedBatchSize, reprocess, aiMode: "ambiguous", createDrafts: false }),
       });
       const result = await response.json() as PilotResult & { error?: string };
       if (!response.ok) throw new Error(result.error ?? "Não foi possível concluir o piloto.");
@@ -128,12 +130,12 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
   };
   const runLinkedInToday = async () => {
     setRunningLinkedIn(true);
-    setMessage(`Analisando até ${batchSize} vagas do LinkedIn recebidas hoje pelo Radar…`);
+    setMessage(`Analisando até ${selectedBatchSize} vagas do LinkedIn recebidas hoje pelo Radar…`);
     try {
       const response = await fetch("/api/triage/run", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ trigger: "portal", sourceId: "linkedin-extension", dateScope: "received", batchSize, reprocess, aiMode: "off", createDrafts: false }),
+        body: JSON.stringify({ trigger: "portal", sourceId: "linkedin-extension", dateScope: "received", batchSize: selectedBatchSize, reprocess, aiMode: "off", createDrafts: false }),
       });
       const result = await response.json() as PilotResult & { error?: string };
       if (!response.ok) throw new Error(result.error ?? "Não foi possível analisar as vagas do LinkedIn.");
@@ -148,12 +150,12 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
   };
   const runApinfoToday = async () => {
     setRunningApinfo(true);
-    setMessage(`Analisando até ${batchSize} vagas APInfo publicadas hoje…`);
+    setMessage(`Analisando até ${selectedBatchSize} vagas APInfo publicadas hoje…`);
     try {
       const response = await fetch("/api/triage/run", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ trigger: "portal", sourceId: "apinfo-extension", dateScope: "published", batchSize, reprocess, aiMode: "ambiguous", createDrafts: false }),
+        body: JSON.stringify({ trigger: "portal", sourceId: "apinfo-extension", dateScope: "published", batchSize: selectedBatchSize, reprocess, aiMode: "ambiguous", createDrafts: false }),
       });
       const result = await response.json() as PilotResult & { error?: string };
       if (!response.ok) throw new Error(result.error ?? "Não foi possível analisar as vagas APInfo.");
@@ -196,7 +198,10 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
                 <div className="triage-run-settings">
                   <label>
                     Quantidade
-                    <input aria-label="Quantidade de vagas" type="number" min="1" max="100" value={batchSize} onChange={(e) => setBatchSize(Math.max(1, Math.min(100, Number(e.target.value) || 1)))} disabled={runningPilot} />
+                    <select aria-label="Quantidade de vagas" value={batchSize} onChange={(e) => setBatchSize(e.target.value)} disabled={runningPilot}>
+                      <option value="10">10 vagas</option><option value="25">25 vagas</option><option value="50">50 vagas</option><option value="100">100 vagas</option>
+                      {todayReceived > 0 && todayReceived <= 100 && <option value="today">Todas as vagas de hoje ({todayReceived})</option>}
+                    </select>
                   </label>
                   <label className="triage-reprocess">
                     <input type="checkbox" checked={reprocess} onChange={(e) => setReprocess(e.target.checked)} disabled={runningPilot} />
@@ -204,7 +209,7 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
                   </label>
                 </div>
                 <button className="primary triage-run-button" disabled={runningPilot} onClick={runPilot}>
-                  {runningPilot ? "Analisando vagas…" : `Analisar ${batchSize} vagas agora`}
+                  {runningPilot ? "Analisando vagas…" : `Analisar ${selectedBatchSize} vaga${selectedBatchSize === 1 ? "" : "s"} de hoje`}
                 </button>
                 {!sourceId && <>
                   <button className="triage-queue-button" disabled={runningApinfo || runningLinkedIn || runningPilot} onClick={runApinfoToday}>
