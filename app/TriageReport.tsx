@@ -29,6 +29,7 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
     [aiPromptOpen, setAiPromptOpen] = useState(false),
     [aiPrompt, setAiPrompt] = useState("Analise a aderência de cada vaga ao meu perfil, destaque evidências, lacunas e priorize as oportunidades. Não altere candidaturas nem gere rascunhos."),
     [aiReviewLoading, setAiReviewLoading] = useState(false),
+    [codexQueueLoading, setCodexQueueLoading] = useState(false),
     [aiReview, setAiReview] = useState<AiReview | null>(null),
     [aiProfile, setAiProfile] = useState<AiProfile | null>(null),
     [aiProfileLoading, setAiProfileLoading] = useState(false),
@@ -209,6 +210,26 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
       setAiReviewLoading(false);
     }
   };
+  const prepareCodexReview = async () => {
+    if (!actionSourceId || !actionCandidateCount || actionCandidateCount > MAX_AI_REVIEW_JOBS || aiPrompt.trim().length < 8) return;
+    setCodexQueueLoading(true);
+    setMessage(`Preparando ${actionCandidateCount} vaga(s) para a análise no Codex…`);
+    try {
+      const response = await fetch("/api/triage/codex-queue", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ sourceId: actionSourceId, homePeriod: actionPeriod, roleArea: actionArea, ingestionChannel: actionChannel, includeTriaged: reprocess, prompt: aiPrompt }),
+      });
+      const result = await response.json() as { queued?: number; error?: string };
+      if (!response.ok) throw new Error(result.error ?? "Não foi possível preparar a análise para o Codex.");
+      setAiPromptOpen(false);
+      setMessage(`${result.queued ?? actionCandidateCount} vaga(s) foram preparadas. Nesta conversa, basta pedir: “Analise a última triagem preparada para o Codex”. Nenhuma decisão do portal foi alterada.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Não foi possível preparar a análise para o Codex.");
+    } finally {
+      setCodexQueueLoading(false);
+    }
+  };
   const openAiPrompt = async () => {
     setAiPromptOpen(true);
     if (aiProfile || aiProfileLoading) return;
@@ -301,7 +322,7 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
                   </article>
                   <article className="triage-action-step triage-ai-step">
                     <span>IA</span><div><b>Consulta à IA <em>opcional</em></b><small>Faz uma leitura consultiva; não muda a triagem nem cria rascunhos.</small></div>
-                    <button className="triage-queue-button" disabled={runningPilot || aiReviewLoading || !actionCandidateCount || actionCandidateCount > MAX_AI_REVIEW_JOBS} onClick={openAiPrompt}>{aiReviewLoading ? "Consultando…" : "Consultar"}</button>
+                    <button className="triage-queue-button" disabled={runningPilot || aiReviewLoading || codexQueueLoading || !actionCandidateCount || actionCandidateCount > MAX_AI_REVIEW_JOBS} onClick={openAiPrompt}>{aiReviewLoading || codexQueueLoading ? "Preparando…" : "Escolher"}</button>
                   </article>
                   <article className={`triage-action-step ${manualIsActive ? "waiting" : ""}`}>
                     <span>2</span><div><b>Preparar rascunhos</b><small>Use após a etapa 1 concluir. Separa apenas vagas ✅/🟡 com e-mail válido; não envia nada.</small></div>
@@ -331,9 +352,9 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
                     <div className="triage-ai-profile-wide"><dt>Projeto ou experiência-âncora</dt><dd>{aiProfile.careerRules.anchorProject || "Não informado"}</dd></div>
                     <div><dt>Score mínimo do Radar</dt><dd>{aiProfile.minScore}</dd></div>
                   </dl>}
-                  <div className="triage-ai-prompt-heading"><b>O que você quer que a IA avalie?</b><small>Você pode alterar o texto abaixo para orientar a leitura. A resposta é apenas consultiva.</small></div>
-                  <textarea aria-label="Instrução para a IA" value={aiPrompt} onChange={(event) => setAiPrompt(event.target.value)} maxLength={1200} disabled={aiReviewLoading} />
-                  <div><button type="button" className="triage-queue-button" onClick={() => setAiPromptOpen(false)} disabled={aiReviewLoading}>Cancelar</button><button type="button" className="primary" onClick={requestAiReview} disabled={aiReviewLoading || aiPrompt.trim().length < 8}>Solicitar análise</button></div>
+                  <div className="triage-ai-prompt-heading"><b>O que você quer que a IA avalie?</b><small>Escolha se quer receber a leitura agora no portal ou preparar este mesmo recorte para conversar com o Codex aqui.</small></div>
+                  <textarea aria-label="Instrução para a IA" value={aiPrompt} onChange={(event) => setAiPrompt(event.target.value)} maxLength={1200} disabled={aiReviewLoading || codexQueueLoading} />
+                  <div><button type="button" className="triage-queue-button" onClick={() => setAiPromptOpen(false)} disabled={aiReviewLoading || codexQueueLoading}>Cancelar</button><button type="button" className="triage-queue-button" onClick={prepareCodexReview} disabled={aiReviewLoading || codexQueueLoading || aiPrompt.trim().length < 8}>{codexQueueLoading ? "Preparando…" : "Preparar para o Codex"}</button><button type="button" className="primary" onClick={requestAiReview} disabled={aiReviewLoading || codexQueueLoading || aiPrompt.trim().length < 8}>{aiReviewLoading ? "Analisando…" : "Analisar no portal"}</button></div>
                 </section>}
                 {aiReview && <section className="triage-ai-review" aria-label="Resultado da análise da IA"><div><h3>Análise da IA</h3><small>{aiReview.jobs.length} vagas · {aiReview.provider} · {aiReview.model}</small></div><p>{aiReview.response}</p></section>}
                 <small>Acompanhe o resultado no cartão “Último lote manual”, logo abaixo. Depois de preparar, o Gmail cria os rascunhos pendentes na rotina configurada; eles nunca são enviados automaticamente. A consulta à IA é opcional e não altera o fluxo.</small>

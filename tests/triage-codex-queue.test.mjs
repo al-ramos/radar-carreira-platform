@@ -1,0 +1,22 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { readFile } from "node:fs/promises";
+
+test("fila de análise pelo Codex persiste o recorte e oferece consumo protegido", async () => {
+  const [route, screen, schema, migration] = await Promise.all([
+    readFile(new URL("../app/api/triage/codex-queue/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/TriageReport.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../db/schema.ts", import.meta.url), "utf8"),
+    readFile(new URL("../drizzle/0029_triage_codex_queue.sql", import.meta.url), "utf8"),
+  ]);
+  assert.match(route, /export async function GET/);
+  assert.match(route, /export async function POST/);
+  assert.match(route, /export async function PATCH/);
+  assert.match(route, /destination: "codex"/);
+  assert.match(route, /codexStatus: "pending"/);
+  assert.match(route, /profile: canonicalizeProfile\(profile\)/);
+  assert.match(screen, /Preparar para o Codex/);
+  assert.match(screen, /\/api\/triage\/codex-queue/);
+  assert.match(schema, /codexStatus/);
+  assert.match(migration, /triage_ai_reviews_codex_queue_idx/);
+});

@@ -106,7 +106,10 @@ export const triageAiReviews = sqliteTable("triage_ai_reviews", {
   id: text("id").primaryKey(), userId: text("user_id").notNull(), prompt: text("prompt").notNull(), selection: text("selection").notNull(),
   response: text("response"), status: text("status", { enum: ["running", "completed", "failed", "blocked"] }).notNull().default("running"), error: text("error"),
   provider: text("provider"), model: text("model"), inputTokens: integer("input_tokens").notNull().default(0), outputTokens: integer("output_tokens").notNull().default(0), createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-}, t => [index("triage_ai_reviews_user_created_idx").on(t.userId, t.createdAt)]);
+  destination: text("destination", { enum: ["portal", "codex"] }).notNull().default("portal"),
+  codexStatus: text("codex_status", { enum: ["pending", "claimed", "completed", "failed"] }),
+  codexClaimedAt: integer("codex_claimed_at", { mode: "timestamp_ms" }), codexCompletedAt: integer("codex_completed_at", { mode: "timestamp_ms" }),
+}, t => [index("triage_ai_reviews_user_created_idx").on(t.userId, t.createdAt), index("triage_ai_reviews_codex_queue_idx").on(t.userId, t.destination, t.codexStatus, t.createdAt)]);
 
 /** Chave global que impede o mesmo perfil/vaga/versões de ser processado duas vezes. */
 export const triageDeduplication = sqliteTable("triage_deduplication", {
