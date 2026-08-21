@@ -24,10 +24,14 @@ test("triagem permite ações avulsas por vaga sem contornar os guardrails", asy
   assert.match(screen, /queueDrafts\(\[item\.jobId\]\)/);
   assert.match(screen, /requestAiReview\(\[item\.jobId\]\)/);
   assert.match(screen, /prepareCodexReview\(\[item\.jobId\]\)/);
+  assert.match(screen, /\/api\/triage\/codex-queue\?state=all/);
+  assert.match(screen, /Preparado; aguardando seu pedido no Codex/);
+  assert.match(screen, /Copiar pedido/);
+  assert.match(screen, /Na fila da IA; atualiza automaticamente/);
   assert.match(screen, /openJobInRadar\(item\)/);
   assert.match(screen, /triage-job-link/);
   assert.match(screen, /Analisa esta vaga agora no portal/);
-  assert.match(screen, /sem abrir a tela de configuração/);
+  assert.match(screen, /não inicia uma análise automática/);
   assert.match(screen, /actions\.open = true/);
   assert.match(screen, /aiPromptRef\.current\?\.scrollIntoView/);
   assert.match(screen, /ref=\{aiPromptRef\}/);
