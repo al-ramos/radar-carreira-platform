@@ -503,6 +503,7 @@ export default function Dashboard() {
   const loadedJobsRef = useRef<Job[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [loadingMore, setLoadingMore] = useState(false);
+  const pendingTriageJobIdRef = useRef<string | null>(null);
   /** Quando o avanço automático de triagem precisa virar a página, sinaliza
    * para o efeito abaixo selecionar a primeira vaga assim que ela carregar. */
   const pendingAutoAdvanceRef = useRef(false);
@@ -769,8 +770,10 @@ export default function Dashboard() {
         if (next.length) {
           try {
             const savedId = sessionStorage.getItem("radar_selectedJobId");
+            const triageJob = pendingTriageJobIdRef.current ? next.find((j: Job) => j.id === pendingTriageJobIdRef.current) : null;
             const restored = savedId ? next.find((j: Job) => j.id === savedId) : null;
-            const first = restored ?? next[0];
+            const first = triageJob ?? restored ?? next[0];
+            pendingTriageJobIdRef.current = null;
             setSelected(first);
             void loadJobDetail(first);
           } catch {
@@ -3663,6 +3666,24 @@ export default function Dashboard() {
       {auditOpen && <AuditTrail close={() => setAuditOpen(false)} />}
       {triageOpen && isOwner && <TriageReport
         close={() => setTriageOpen(false)}
+        openJobInRadar={(job) => {
+          pendingTriageJobIdRef.current = job.jobId;
+          setTriageOpen(false);
+          setViewMode("table");
+          setFitFilter(0);
+          setRequestedMinScore(0);
+          setVerdictFilter("all");
+          setPipelineFilter("all");
+          setAreaFilter("all");
+          setChannelFilter("all");
+          setImportRunFilter("all");
+          setIngestionMode("all");
+          setReceivedFrom("");
+          setReceivedTo("");
+          setPeriod("all");
+          setSourceFilter(job.jobSource ?? "all");
+          setQuery(job.externalId ?? job.jobId);
+        }}
         sourceId={sourceFilter === "all" ? undefined : sourceFilter}
         sourceLabel={sourceFilter === "all" ? undefined : jobFilterOptions.sources.find(option => option.id === sourceFilter)?.label}
         sourceOptions={jobFilterOptions.sources}
