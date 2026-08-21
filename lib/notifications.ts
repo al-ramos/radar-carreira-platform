@@ -1,7 +1,7 @@
 import { getDb } from "../db/index";
 import { notifications } from "../db/schema";
 
-export type NotificationType = "import" | "report" | "digest" | "pipeline";
+export type NotificationType = "import" | "report" | "digest" | "pipeline" | "application";
 export type NotificationSeverity = "success" | "error" | "info";
 
 export type CreateNotificationInput = {
@@ -79,5 +79,32 @@ export async function notifyImportRun(db: ReturnType<typeof getDb>, outcome: Imp
     body: parts.join(" · "),
     link: "/?open=importacoes",
     metadata: { runId: outcome.runId, source: outcome.source, received: outcome.received, valid: outcome.valid ?? null, invalid: outcome.invalid ?? 0, invalidReasons: outcome.invalidReasons ?? {}, rejectedProfile: outcome.rejectedProfile ?? 0, inserted: outcome.inserted, updated: outcome.updated, duplicates: outcome.duplicates ?? 0, error: outcome.error ?? null },
+  });
+}
+
+export type DraftSentOutcome = {
+  outboxId: string;
+  title: string;
+  company: string;
+  externalId?: string | null;
+  to: string;
+  sentAt: Date;
+};
+
+/**
+ * Notificação disparada quando `reconcileSent` confirma, por evidência da
+ * pasta "Enviados" do Gmail, que um rascunho da outbox já foi enviado
+ * manualmente pelo usuário. Não representa nenhum envio feito pelo Radar —
+ * só o registro de algo que o usuário já fez fora do portal. Ver ADR-007
+ * (nenhum envio automático de candidatura).
+ */
+export async function notifyDraftSent(db: ReturnType<typeof getDb>, outcome: DraftSentOutcome) {
+  await createNotification(db, {
+    type: "application",
+    severity: "success",
+    title: `Candidatura enviada — ${outcome.company}`,
+    body: `${outcome.title}${outcome.externalId ? ` (vaga ${outcome.externalId})` : ""} · para ${outcome.to}`,
+    link: "/?open=triagem",
+    metadata: { outboxId: outcome.outboxId, title: outcome.title, company: outcome.company, externalId: outcome.externalId ?? null, to: outcome.to, sentAt: outcome.sentAt.toISOString() },
   });
 }

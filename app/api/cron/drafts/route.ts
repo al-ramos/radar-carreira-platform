@@ -8,6 +8,7 @@ import { canonicalizeProfile, profileIsReadyForTriage } from "../../../../lib/ca
 import { normalizeContactEmail } from "../../../../lib/contact-email";
 import { evaluateDeterministicTriage } from "../../../../lib/deterministic-triage";
 import { isDraftAllowedForSource, isSafeForDraft } from "../../../../lib/draft-eligibility";
+import { notifyDraftSent } from "../../../../lib/notifications";
 
 export const dynamic = "force-dynamic";
 
@@ -92,6 +93,7 @@ export async function POST(request: Request) {
       contactEmail: jobs.contactEmail,
       contactSubject: jobs.contactSubject,
       title: jobs.title,
+      company: jobs.company,
       externalId: jobs.externalId,
     }).from(draftOutbox).innerJoin(jobs, eq(draftOutbox.jobId, jobs.id))
       .where(and(eq(draftOutbox.id, body.outboxId), eq(draftOutbox.userId, owner.userId))).limit(1))[0];
@@ -108,6 +110,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "A mensagem enviada não corresponde ao destinatário, assunto e data esperados" }, { status: 409 });
     }
     await db.update(draftOutbox).set({ status: "sent", gmailSentId: body.gmailSentId.slice(0, 500), sentAt, error: null, updatedAt: new Date() }).where(eq(draftOutbox.id, item.id));
+    // Falha ao notificar não deve reverter nem repetir a reconciliação já
+    // gravada — o estado "sent" já é a fonte de verdade; a notificação é só
+    // um aviso complementar no sino do portal.
+    await notifyDraftSent(db, { outboxId: item.id, title: item.title, company: item.company, externalId: item.externalId, to: expectedTo, sentAt }).catch((error) => {
+      console.error(`Falha ao notificar envio confirmado de ${item.id}:`, error);
+    });
     return NextResponse.json({ ok: true, changed: true, status: "sent", sentAt });
   }
 
@@ -143,6 +151,7 @@ export async function POST(request: Request) {
     externalId: jobs.externalId,
     contactEmail: jobs.contactEmail,
     contactSubject: jobs.contactSubject,
+    draftSubject: draftOutbox.draftSubject,
     description: jobs.description,
     stack: jobs.stack,
     seniority: jobs.seniority,
