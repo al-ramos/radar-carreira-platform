@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, isNull, like, lte, notInArray, notLike, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, like, lte, notInArray, notLike, or, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../chatgpt-auth";
 import { getDb } from "../../../db/index";
@@ -238,7 +238,7 @@ sources: sql<number>`count(distinct ${jobs.sourceId})`,
 }).from(jobs).where(baseCondition),
 getDb().select({ id: jobs.sourceId, label: jobSources.name, count: sql<number>`count(*)` })
   .from(jobs).leftJoin(jobSources, eq(jobs.sourceId, jobSources.id)).where(baseCondition)
-  .groupBy(jobs.sourceId, jobSources.name).orderBy(desc(sql`count(*)`)),
+  .groupBy(jobs.sourceId, jobSources.name).orderBy(asc(jobSources.name)),
 getDb().select({ id: jobs.roleArea, count: sql<number>`count(*)` }).from(jobs).where(baseCondition).groupBy(jobs.roleArea),
 getDb().select({ id: jobs.ingestionChannel, count: sql<number>`count(*)` }).from(jobs).where(baseCondition).groupBy(jobs.ingestionChannel),
 getDb().select({ id: importRuns.id, source: importRuns.source, sourceId: importRuns.sourceId, channel: importRuns.channel, startedAt: importRuns.startedAt, received: importRuns.received, inserted: importRuns.inserted, updated: importRuns.updated, jobs: sql<number>`count(distinct ${jobImportRuns.jobId})` })
