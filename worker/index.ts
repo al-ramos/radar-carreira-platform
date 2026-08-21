@@ -29,15 +29,26 @@ interface ExecutionContext {
 const worker = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+    const protectedCronPaths = ["/api/cron/collect", "/api/cron/enrich", "/api/cron/lifecycle"];
+    const triageSchedulePath = url.pathname === "/api/triage/run";
+    const originalInternalHeader = request.headers.get("x-radar-collector-authenticated");
+    const headers = new Headers(request.headers);
+    // Este cabeçalho só é confiável quando o próprio Worker o injeta após
+    // validar COLLECTOR_SECRET. Remove qualquer tentativa vinda da internet.
+    headers.delete("x-radar-collector-authenticated");
 
-    if (["/api/cron/collect", "/api/cron/enrich", "/api/cron/lifecycle"].includes(url.pathname)) {
-      const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
+    const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
+    // A mesma rota aceita sessões do portal. Somente uma chamada com bearer
+    // é tratada como agenda interna; sem bearer ela segue para autenticação
+    // normal do aplicativo, mas sempre com o cabeçalho interno removido.
+    if (protectedCronPaths.includes(url.pathname) || (triageSchedulePath && token)) {
       if (!token || token !== env.COLLECTOR_SECRET)
         return Response.json({ error: "Não autorizado" }, { status: 401 });
 
-      const headers = new Headers(request.headers);
       headers.delete("authorization");
       headers.set("x-radar-collector-authenticated", "1");
+      request = new Request(request, { headers });
+    } else if (originalInternalHeader) {
       request = new Request(request, { headers });
     }
 

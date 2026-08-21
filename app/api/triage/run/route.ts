@@ -15,7 +15,6 @@ import { normalizeCareerRules } from "../../../../lib/profile-options";
 import { applyAiRefinement } from "../../../../lib/triage-ai-refinement";
 
 export const dynamic = "force-dynamic";
-const digest = async (value: string) => Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)))).map((byte) => byte.toString(16).padStart(2, "0")).join("");
 const AI_FACTS_VERSION = "job-facts-v1";
 const RESERVED_OUTPUT_TOKENS = 1200;
 const MAX_AI_PER_BATCH = 10;
@@ -37,10 +36,10 @@ function parseStack(value: string): string[] {
  */
 export async function POST(request: Request) {
   const user = await getChatGPTUser();
-  const bearer = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
-  const source = bearer ? (await getDb().select().from(jobSources).where(eq(jobSources.id, "gmail-radarvagas")).limit(1))[0] : null;
+  const schedulerAuthenticated = request.headers.get("x-radar-collector-authenticated") === "1";
+  const source = schedulerAuthenticated ? (await getDb().select().from(jobSources).where(eq(jobSources.id, "gmail-radarvagas")).limit(1))[0] : null;
   let scheduledUserId: string | null = null;
-  try { const config = source ? JSON.parse(source.externalRef) as { hash?: string; userId?: string } : null; if (config?.hash && config.userId && bearer && await digest(bearer) === config.hash) scheduledUserId = config.userId; } catch { /* autenticação normal permanece disponível */ }
+  try { const config = source ? JSON.parse(source.externalRef) as { userId?: string } : null; if (config?.userId) scheduledUserId = config.userId; } catch { /* a sessão normal permanece disponível */ }
   const userId = user?.userId ?? scheduledUserId;
   if (!userId) return NextResponse.json({ error: "Autenticação necessária" }, { status: 401 });
 
@@ -65,7 +64,8 @@ export async function POST(request: Request) {
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Parâmetros inválidos" }, { status: 400 });
   }
-  if (scheduledUserId && run.trigger !== "schedule") return NextResponse.json({ error: "A chave de agenda só pode iniciar a rotina agendada." }, { status: 403 });
+  if (schedulerAuthenticated && run.trigger !== "schedule") return NextResponse.json({ error: "A chave de agenda só pode iniciar a rotina agendada." }, { status: 403 });
+  if (!schedulerAuthenticated && run.trigger === "schedule") return NextResponse.json({ error: "A rotina agendada só pode ser iniciada pelo backend do Radar." }, { status: 403 });
   if (run.aiMode === "all") return NextResponse.json({ error: "A IA só pode processar vagas ambíguas; o modo all não é permitido." }, { status: 400 });
 
   const db = getDb();
