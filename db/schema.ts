@@ -250,7 +250,7 @@ export const alertDeliveries = sqliteTable("alert_deliveries", {
  */
 export const notifications = sqliteTable("notifications", {
   id: text("id").primaryKey(),
-  type: text("type", { enum: ["import", "report", "digest", "pipeline"] }).notNull(),
+  type: text("type", { enum: ["import", "report", "digest", "pipeline", "application"] }).notNull(),
   severity: text("severity", { enum: ["success", "error", "info"] }).notNull().default("info"),
   title: text("title").notNull(),
   body: text("body").notNull().default(""),

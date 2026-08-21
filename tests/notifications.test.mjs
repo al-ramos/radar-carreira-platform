@@ -11,22 +11,41 @@ test("schema e migration registram a tabela de notificações", async () => {
     read("../drizzle/meta/_journal.json"),
   ]);
   assert.match(schema, /export const notifications = sqliteTable\("notifications"/);
-  assert.match(schema, /type: text\("type", \{ enum: \["import", "report", "digest", "pipeline"\] \}\)/);
+  assert.match(schema, /type: text\("type", \{ enum: \["import", "report", "digest", "pipeline", "application"\] \}\)/);
   assert.match(schema, /severity: text\("severity", \{ enum: \["success", "error", "info"\] \}\)/);
   assert.match(migration, /CREATE TABLE `notifications`/);
   assert.match(migration, /CREATE INDEX `notifications_created_at_idx`/);
   assert.match(journal, /"0022_notifications"/);
 });
 
-test("lib/notifications expõe createNotification e notifyImportRun sem depender de userId", async () => {
+test("lib/notifications expõe createNotification, notifyImportRun e notifyDraftSent sem depender de userId", async () => {
   const lib = await read("../lib/notifications.ts");
   assert.match(lib, /export async function createNotification/);
   assert.match(lib, /export async function notifyImportRun/);
+  assert.match(lib, /export async function notifyDraftSent/);
   // A notificação é global (ver comentário em db/schema.ts): nada aqui deve
   // gravar ou exigir um userId — só o texto explicativo pode mencionar a
   // palavra, por isso a checagem é no valor gravado, não no arquivo inteiro.
   assert.doesNotMatch(lib, /userId:\s*input/);
   assert.doesNotMatch(lib, /input\.userId/);
+});
+
+test("envio confirmado por reconcileSent notifica o histórico sem alterar o resultado da reconciliação", async () => {
+  const [lib, route] = await Promise.all([
+    read("../lib/notifications.ts"),
+    read("../app/api/cron/drafts/route.ts"),
+  ]);
+  // notifyDraftSent só descreve algo que o usuário já fez fora do portal —
+  // nunca deve chamar Gmail nem qualquer API de envio.
+  assert.doesNotMatch(lib, /GmailApp|sendEmail|createDraft/);
+  assert.match(lib, /type: "application"/);
+  assert.match(route, /import \{ notifyDraftSent \} from "\.\.\/\.\.\/\.\.\/\.\.\/lib\/notifications"/);
+  const reconcileSent = route.split('body.action === "reconcileSent"')[1]?.split('body.action === "confirm"')[0] ?? "";
+  assert.match(reconcileSent, /status:\s*"sent"/);
+  assert.match(reconcileSent, /notifyDraftSent\(/);
+  // A notificação é best-effort: uma falha ao notificar não pode reverter
+  // nem repetir a reconciliação já gravada em draftOutbox.
+  assert.match(reconcileSent, /notifyDraftSent\(db,[^)]*\)\.catch\(/s);
 });
 
 test("API de notificações restringe leitura e escrita à proprietária", async () => {
