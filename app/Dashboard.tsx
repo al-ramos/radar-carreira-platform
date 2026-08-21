@@ -2676,14 +2676,59 @@ export default function Dashboard() {
           </div>
         )}
         <div id="radar-filter-panel" className="radar-filter-panel" hidden={!filtersOpen} aria-label="Filtros de vagas">
-          <div className="compact-filter-group">
-            <span className="compact-filter-label">Área profissional</span>
-            <select className="area-filter-select" aria-label="Filtrar por área profissional" value={areaFilter} onChange={(event) => setAreaFilter(event.target.value)}>
-              <option value="all">Todas as áreas</option>
-              {jobFilterOptions.areas.filter(option => option.count > 0).map(option => <option key={option.id} value={option.id}>{option.label} ({option.count})</option>)}
-            </select>
+          <div className="quick-filter-row">
+            <div className="compact-filter-group">
+              <span className="compact-filter-label">Área profissional</span>
+              <select className="area-filter-select" aria-label="Filtrar por área profissional" value={areaFilter} onChange={(event) => setAreaFilter(event.target.value)}>
+                <option value="all">Todas as áreas</option>
+                {jobFilterOptions.areas.filter(option => option.count > 0).map(option => <option key={option.id} value={option.id}>{option.label} ({option.count})</option>)}
+              </select>
+            </div>
+            <div className="compact-filter-group">
+              <span className="compact-filter-label">Status</span>
+              <div className="compact-pills" role="group" aria-label="Filtrar por estágio do pipeline">
+                <select
+                  className="pipeline-filter-select"
+                  value={pipelineFilter}
+                  onChange={(event) => setPipelineFilter(event.target.value as typeof pipelineFilter)}
+                  aria-label="Filtrar por estágio do pipeline"
+                >
+                {([
+                  { id: "all", label: "Todas as vagas" },
+                  { id: "unseen", label: "Não vistas" },
+                  { id: "viewed", label: "Vistas" },
+                  { id: "saved", label: "Salvas" },
+                  { id: "applied", label: "Candidaturas" },
+                  { id: "interview", label: "Entrevistas" },
+                  { id: "rejected", label: "Encerradas" },
+                ] as const).map(({ id, label }) => {
+                  const count = id === "all"
+                    ? items.length
+                    : id === "unseen"
+                      ? items.filter((j) => !pipelineStageMap.has(j.id)).length
+                      : items.filter((j) => pipelineStageMap.get(j.id) === id).length;
+                  return <option key={id} value={id}>{count > 0 ? `${label} (${count})` : label}</option>;
+                })}
+                </select>
+              </div>
+            </div>
+            <div className="compact-filter-group">
+              <span className="compact-filter-label">Contato</span>
+              <label className="has-email-filter-check">
+                <input
+                  type="checkbox"
+                  checked={hasEmailFilter === "yes"}
+                  onChange={(event) => setHasEmailFilter(event.target.checked ? "yes" : "all")}
+                />
+                Somente vagas com e-mail
+              </label>
+              {hasEmailFilter === "all" && emailMissingCount > 0 && (
+                <small className="list-head-dim">
+                  {emailMissingCount} {emailMissingCount === 1 ? "vaga sem e-mail" : "vagas sem e-mail"} cadastrado{emailMissingCount === 1 ? "" : "s"} (dentro dos filtros atuais).
+                </small>
+              )}
+            </div>
           </div>
-          <div className="compact-filter-divider" aria-hidden="true" />
           <div className="compact-filter-group ingestion-filter-group">
             <span className="compact-filter-label">Importação e recebimento</span>
             <div className="ingestion-filter-subgroup">
@@ -2751,52 +2796,6 @@ export default function Dashboard() {
               </small>
             </div>
           </div>
-          <div className="compact-filter-divider" aria-hidden="true" />
-          <div className="compact-filter-group">
-            <span className="compact-filter-label">Contato</span>
-            <label className="has-email-filter-check">
-              <input
-                type="checkbox"
-                checked={hasEmailFilter === "yes"}
-                onChange={(event) => setHasEmailFilter(event.target.checked ? "yes" : "all")}
-              />
-              Somente vagas com e-mail
-            </label>
-            {hasEmailFilter === "all" && emailMissingCount > 0 && (
-              <small className="list-head-dim">
-                {emailMissingCount} {emailMissingCount === 1 ? "vaga sem e-mail" : "vagas sem e-mail"} cadastrado{emailMissingCount === 1 ? "" : "s"} (dentro dos filtros atuais).
-              </small>
-            )}
-          </div>
-          <div className="compact-filter-divider" aria-hidden="true" />
-          <div className="compact-filter-group">
-            <span className="compact-filter-label">Status</span>
-            <div className="compact-pills" role="group" aria-label="Filtrar por estágio do pipeline">
-              <select
-                className="pipeline-filter-select"
-                value={pipelineFilter}
-                onChange={(event) => setPipelineFilter(event.target.value as typeof pipelineFilter)}
-                aria-label="Filtrar por estágio do pipeline"
-              >
-              {([
-                { id: "all", label: "Todas as vagas" },
-                { id: "unseen", label: "Não vistas" },
-                { id: "viewed", label: "Vistas" },
-                { id: "saved", label: "Salvas" },
-                { id: "applied", label: "Candidaturas" },
-                { id: "interview", label: "Entrevistas" },
-                { id: "rejected", label: "Encerradas" },
-              ] as const).map(({ id, label }) => {
-                const count = id === "all"
-                  ? items.length
-                  : id === "unseen"
-                    ? items.filter((j) => !pipelineStageMap.has(j.id)).length
-                    : items.filter((j) => pipelineStageMap.get(j.id) === id).length;
-                return <option key={id} value={id}>{count > 0 ? `${label} (${count})` : label}</option>;
-              })}
-              </select>
-            </div>
-          </div>
           {personalizationPending ? (
             <div className="compact-filter-group" role="status">
               <span className="compact-filter-label">Personalização</span>
@@ -2807,34 +2806,33 @@ export default function Dashboard() {
               </span>
             </div>
           ) : currentUser && profileMasteredSkills.length > 0 && verdictMap.size > 0 && (
-            <>
-              <div className="compact-filter-divider" aria-hidden="true" />
-              <div className="compact-filter-group">
-                <span className="compact-filter-label">Veredito</span>
-                <div className="compact-pills" role="group" aria-label="Filtrar por veredito">
-                  {(["all", "✅", "🟡", "🔴", "❌"] as const).map((v) => {
-                    const label = v === "all" ? "Todos" : v === "✅" ? "Bate" : v === "🟡" ? "Provável" : v === "🔴" ? "Não bate" : "Bloqueado";
-                    const count = v === "all" ? items.length : [...verdictMap.values()].filter((r) => r.emoji === v).length;
-                    return (
-                      <button
-                        key={v}
-                        type="button"
-                        className={verdictFilter === v ? "active" : ""}
-                        onClick={() => handleVerdictFilterChange(v)}
-                        aria-pressed={verdictFilter === v}
-                      >
-                        {v !== "all" && <>{v} </>}{label}{count > 0 && <span>{count}</span>}
-                      </button>
-                    );
-                  })}
-                </div>
+            <div className="compact-filter-group">
+              <span className="compact-filter-label">Veredito</span>
+              <div className="compact-pills" role="group" aria-label="Filtrar por veredito">
+                {(["all", "✅", "🟡", "🔴", "❌"] as const).map((v) => {
+                  const label = v === "all" ? "Todos" : v === "✅" ? "Bate" : v === "🟡" ? "Provável" : v === "🔴" ? "Não bate" : "Bloqueado";
+                  const count = v === "all" ? items.length : [...verdictMap.values()].filter((r) => r.emoji === v).length;
+                  return (
+                    <button
+                      key={v}
+                      type="button"
+                      className={verdictFilter === v ? "active" : ""}
+                      onClick={() => handleVerdictFilterChange(v)}
+                      aria-pressed={verdictFilter === v}
+                    >
+                      {v !== "all" && <>{v} </>}{label}{count > 0 && <span>{count}</span>}
+                    </button>
+                  );
+                })}
               </div>
-            </>
+            </div>
           )}
           {activeFilterCount > 0 && (
-            <button type="button" className="clear-radar-filters" onClick={clearRadarFilters}>
-              Limpar filtros
-            </button>
+            <div className="radar-filter-panel-footer">
+              <button type="button" className="clear-radar-filters" onClick={clearRadarFilters}>
+                Limpar filtros
+              </button>
+            </div>
           )}
         </div>
         {totalJobs != null && totalJobs > 50 && (

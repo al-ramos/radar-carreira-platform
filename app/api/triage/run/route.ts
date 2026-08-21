@@ -148,6 +148,16 @@ export async function POST(request: Request) {
       const retryAi = run.aiMode === "ambiguous" && analysis?.source === "rules" && analysis.confidence < 100 && !analysis.blocker;
       if (claimed?.status === "completed" && !run.reprocess && !retryAi) {
         skipped += 1;
+        // A idempotência barra o reprocessamento, mas o item deste lote
+        // precisa refletir o resultado já existente — senão fica "queued"
+        // para sempre (nenhum lote futuro vai reprocessar essa vaga) e o
+        // lote nunca fecha. Ver incidente do lote 8617af56 (21/08/2026).
+        await db.insert(triageBatchItems).values({
+          batchId, jobId: job.id, status: "completed", historyId: claimed.historyId, attemptCount: 1, leaseOwner: null, leaseUntil: null, updatedAt: now,
+        }).onConflictDoUpdate({
+          target: [triageBatchItems.batchId, triageBatchItems.jobId],
+          set: { status: "completed", historyId: claimed.historyId, error: null, leaseOwner: null, leaseUntil: null, updatedAt: now },
+        });
         continue;
       }
 
