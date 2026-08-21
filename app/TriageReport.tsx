@@ -154,6 +154,19 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
     setHistoryPage(0);
     window.setTimeout(() => document.getElementById("triage-history")?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
   };
+  // Os cartões operacionais representam toda a fila pessoal, não somente o
+  // recorte padrão da Home (fonte APinfo + vagas publicadas hoje). Ao abrir
+  // um deles, removemos esse recorte para que o total do cartão e a lista
+  // exibida usem exatamente a mesma população.
+  const openDraftQueue = (nextDraftFilter: "pending" | "drafted" | "failed") => {
+    setVerdictFilter("all");
+    setSourceFilter("all");
+    setJobSourceFilter("all");
+    setPublishedDateFilter("");
+    setReceivedDateFilter("");
+    setAnalysedDateFilter("");
+    openHistory(nextDraftFilter);
+  };
   const openAutomationActions = () => {
     const actions = document.querySelector<HTMLDetailsElement>(".triage-actions");
     if (actions) {
@@ -263,9 +276,9 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
           {operational && <div className="triage-operations-inline">
             <div className="triage-operations-heading"><strong>Rascunhos de candidatura</strong><small>{operational.alerts.length ? `${operational.alerts.length} aviso sobre a automação` : "Automação e rascunhos em dia."}</small></div>
             <div className="triage-operations-metrics">
-              <button type="button" onClick={() => openHistory("pending")}><b>{operational.pendingDrafts}</b> aguardando criação</button>
-              <button type="button" onClick={() => openHistory("drafted")}><b>{operational.readyDrafts}</b> prontos para revisar</button>
-              <button type="button" className={operational.failedDrafts ? "has-failures" : ""} onClick={() => openHistory("failed")}><b>{operational.failedDrafts}</b> falhas para corrigir</button>
+              <button type="button" onClick={() => openDraftQueue("pending")}><b>{operational.pendingDrafts}</b> aguardando criação</button>
+              <button type="button" onClick={() => openDraftQueue("drafted")}><b>{operational.readyDrafts}</b> prontos para revisar</button>
+              <button type="button" className={operational.failedDrafts ? "has-failures" : ""} onClick={() => openDraftQueue("failed")}><b>{operational.failedDrafts}</b> falhas para corrigir</button>
             </div>
             {operational.alerts.length > 0 && <ul>{operational.alerts.map((alert) => <li key={alert.message} className={alert.level}>{alert.message}</li>)}</ul>}
           </div>}

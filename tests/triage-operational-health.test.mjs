@@ -21,6 +21,10 @@ test("histórico expõe saúde operacional sem executar triagem ou Gmail", async
   assert.doesNotMatch(route, /fetch\(|GmailApp/);
   assert.match(screen, /Rascunhos de candidatura/);
   assert.match(screen, /prontos para revisar/);
+  assert.match(screen, /const openDraftQueue/);
+  assert.match(screen, /setJobSourceFilter\("all"\)/);
+  assert.match(screen, /setPublishedDateFilter\(""\)/);
+  assert.match(screen, /openDraftQueue\("drafted"\)/);
   assert.match(screen, /<details className="triage-actions">/);
   assert.match(screen, /Exibir ações de automação/);
   assert.match(screen, /triage-pagination/);
