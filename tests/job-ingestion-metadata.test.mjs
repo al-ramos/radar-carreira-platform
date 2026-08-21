@@ -22,6 +22,22 @@ test("API filtra importações pelo modo e pelo horário exato de recebimento", 
   assert.match(route, /lte\(jobs\.firstSeenAt, receivedTo\)/);
   assert.match(route, /sourcePublishedAt: jobs\.sourcePublishedAt/);
   assert.match(route, /sourceName: jobSources\.name/);
+  assert.match(route, /gte\(jobs\.firstSeenAt, cutoff\)/);
+});
+
+test("o período da Home e as ações da triagem usam a entrada da vaga no Radar", async () => {
+  const [jobsRoute, preview, queue, run, aiReview, dashboard, triage] = await Promise.all([
+    read("../app/api/jobs/route.ts"),
+    read("../app/api/triage/preview/route.ts"),
+    read("../app/api/triage/queue/route.ts"),
+    read("../app/api/triage/run/route.ts"),
+    read("../app/api/triage/ai-review/route.ts"),
+    read("../app/Dashboard.tsx"),
+    read("../app/TriageReport.tsx"),
+  ]);
+  for (const route of [jobsRoute, preview, queue, run, aiReview]) assert.match(route, /gte\(jobs\.firstSeenAt, (cutoff|homeCutoff)\)/);
+  assert.match(dashboard, /Recebidas 24h/);
+  assert.match(triage, /Recebidas nas últimas 24h/);
 });
 
 test("interface oferece filtro automático e mostra as duas datas", async () => {

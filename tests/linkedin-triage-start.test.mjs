@@ -16,7 +16,7 @@ test("acionamento manual respeita os filtros ativos da Home", async () => {
   assert.match(route, /run\.roleArea \? eq\(jobs\.roleArea, run\.roleArea\)/);
   assert.match(route, /run\.ingestionChannel \? eq\(jobs\.ingestionChannel, run\.ingestionChannel\)/);
   assert.match(ui, /fetch\("\/api\/triage\/queue"/);
-  assert.match(ui, /sourceId: actionSourceId, dateScope: "published", homePeriod: actionPeriod, roleArea: actionArea, ingestionChannel: actionChannel/);
+  assert.match(ui, /sourceId: actionSourceId, dateScope: "received", homePeriod: actionPeriod, roleArea: actionArea, ingestionChannel: actionChannel/);
   assert.match(asyncRoute, /TRIAGE_QUEUE/);
   assert.match(asyncRoute, /triageBatchItems/);
   assert.match(asyncRoute, /type QueueMessage = \{ body: QueuePayload \}/);
@@ -34,7 +34,7 @@ test("acionamento manual respeita os filtros ativos da Home", async () => {
   assert.match(ui, /Projeto ou experiência-âncora/);
   assert.match(ui, /Restrições/);
   assert.match(preview, /eq\(jobs\.sourceId, sourceId\)/);
-  assert.match(preview, /gte\(jobs\.publishedAt, cutoff\)/);
+  assert.match(preview, /gte\(jobs\.firstSeenAt, cutoff\)/);
   assert.match(preview, /count\(userJobAnalyses\.jobId\)/);
   assert.match(queue, /isDraftAllowedForSource\(row\.job\.sourceId\)/);
   assert.match(cron, /isDraftAllowedForSource\(row\.sourceId\)/);

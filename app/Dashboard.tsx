@@ -961,7 +961,7 @@ export default function Dashboard() {
   if (effectivePeriod && effectivePeriod !== "all") {
     activeFilterChips.push({
       id: "period",
-      label: effectivePeriod === "24" ? "Últimas 24h" : effectivePeriod === "72" ? "Últimos 3 dias" : "Últimos 7 dias",
+      label: effectivePeriod === "24" ? "Recebidas nas últimas 24h" : effectivePeriod === "72" ? "Recebidas nos últimos 3 dias" : "Recebidas nos últimos 7 dias",
       remove: () => handlePeriodChange("all"),
     });
   }
@@ -2340,11 +2340,11 @@ export default function Dashboard() {
             <p className="eyebrow">
               RADAR ·{" "}
               {effectivePeriod === "24"
-                ? "ÚLTIMAS 24 HORAS"
+                ? "RECEBIDAS NAS ÚLTIMAS 24 HORAS"
                 : effectivePeriod === "72"
-                  ? "ÚLTIMOS 3 DIAS"
+                  ? "RECEBIDAS NOS ÚLTIMOS 3 DIAS"
                   : effectivePeriod === "168"
-                    ? "ÚLTIMOS 7 DIAS"
+                    ? "RECEBIDAS NOS ÚLTIMOS 7 DIAS"
                     : "TODAS AS VAGAS"}
               {sourcesCount !== null && sourcesCount > 0
                 ? ` · ${sourcesCount} FONTE${sourcesCount !== 1 ? "S" : ""} ATIVA${sourcesCount !== 1 ? "S" : ""}`
@@ -2457,9 +2457,9 @@ export default function Dashboard() {
               onChange={(e) => handlePeriodChange(e.target.value)}
               value={effectivePeriod}
             >
-              <option value="24">Últimas 24h</option>
-              <option value="72">Últimos 3 dias</option>
-              <option value="168">Últimos 7 dias</option>
+              <option value="24">Recebidas 24h</option>
+              <option value="72">Recebidas 3 dias</option>
+              <option value="168">Recebidas 7 dias</option>
               <option value="all">Todas</option>
             </select>
             <button

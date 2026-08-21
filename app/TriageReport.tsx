@@ -13,7 +13,7 @@ const rowClass: Record<string, string> = { "✅": "approved", "🟡": "partial",
 const MAX_AI_REVIEW_JOBS = 20;
 const saoPauloToday = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
 const sourceName = (source: string) => source === "apinfo-extension" ? "APInfo" : source === "linkedin-extension" ? "LinkedIn" : source;
-const homePeriodLabel = (period: string) => period === "24" ? "Últimas 24h" : period === "72" ? "Últimos 3 dias" : period === "168" ? "Últimos 7 dias" : "Todas as vagas";
+const homePeriodLabel = (period: string) => period === "24" ? "recebidas nas últimas 24h" : period === "72" ? "recebidas nos últimos 3 dias" : period === "168" ? "recebidas nos últimos 7 dias" : "todas as vagas";
 const profileList = (values: string[], fallback: string) => values.length ? values.join(" · ") : fallback;
 export default function TriageReport({ close, sourceId, sourceLabel, sourceOptions = [], areaOptions = [], channelOptions = [], initialArea = "all", initialChannel = "all", homePeriod = "24" }: { close: () => void; sourceId?: string; sourceLabel?: string; sourceOptions?: FilterOption[]; areaOptions?: FilterOption[]; channelOptions?: FilterOption[]; initialArea?: string; initialChannel?: string; homePeriod?: "24" | "72" | "168" | "all" }) {
   const [message, setMessage] = useState("Carregando avaliações…"),
@@ -140,7 +140,7 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
       const response = await fetch("/api/triage/queue", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ sourceId: actionSourceId, dateScope: "published", homePeriod: actionPeriod, roleArea: actionArea, ingestionChannel: actionChannel, batchSize: actionCandidateCount, reprocess, aiMode: "off" }),
+        body: JSON.stringify({ sourceId: actionSourceId, dateScope: "received", homePeriod: actionPeriod, roleArea: actionArea, ingestionChannel: actionChannel, batchSize: actionCandidateCount, reprocess, aiMode: "off" }),
       });
       const result = await response.json() as { batchId: string | null; queued?: number; error?: string };
       if (!response.ok) throw new Error(result.error ?? "Não foi possível iniciar a fila de triagem.");
@@ -276,9 +276,9 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
                   <label>
                     Período da triagem
                     <select aria-label="Período das vagas a analisar" value={actionPeriod} onChange={(e) => setActionPeriod(e.target.value as "24" | "72" | "168" | "all")} disabled={runningPilot}>
-                      <option value="24">Últimas 24h</option>
-                      <option value="72">Últimos 3 dias</option>
-                      <option value="168">Últimos 7 dias</option>
+                      <option value="24">Recebidas nas últimas 24h</option>
+                      <option value="72">Recebidas nos últimos 3 dias</option>
+                      <option value="168">Recebidas nos últimos 7 dias</option>
                       <option value="all">Todas as vagas</option>
                     </select>
                   </label>

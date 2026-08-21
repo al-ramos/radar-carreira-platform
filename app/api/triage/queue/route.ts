@@ -53,7 +53,7 @@ export async function POST(request: Request) {
       eq(jobs.status, "active"),
       scopedToReferenceDay ? gte(dateColumn, saoPauloDayWindow(run.referenceDate).start) : undefined,
       scopedToReferenceDay ? lt(dateColumn, saoPauloDayWindow(run.referenceDate).end) : undefined,
-      homeCutoff ? gte(jobs.publishedAt, homeCutoff) : undefined,
+      homeCutoff ? gte(jobs.firstSeenAt, homeCutoff) : undefined,
       run.sourceId ? eq(jobs.sourceId, run.sourceId) : undefined,
       run.roleArea ? eq(jobs.roleArea, run.roleArea) : undefined,
       run.ingestionChannel ? eq(jobs.ingestionChannel, run.ingestionChannel) : undefined,

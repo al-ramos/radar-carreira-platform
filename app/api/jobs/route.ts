@@ -81,8 +81,11 @@ return Number.isFinite(parsed.getTime()) ? parsed : null;
 const receivedFrom = parseDateParam("receivedFrom");
 const receivedTo = parseDateParam("receivedTo");
 const cutoff = hours ? new Date(Date.now() - hours * 36e5) : null;
-const publicationCondition = cutoff
-? and(eq(jobs.status, "active"), gte(jobs.publishedAt, cutoff))
+// O período da Home representa quando a vaga entrou no Radar. A data de
+// publicação é preservada para contexto, mas fontes que a omitem usam o
+// horário da coleta como fallback e poderiam trazer vagas antigas de volta.
+const receivedInPeriodCondition = cutoff
+? and(eq(jobs.status, "active"), gte(jobs.firstSeenAt, cutoff))
 : eq(jobs.status, "active");
 const ingestionCondition = ingestionMode === "automatic"
 ? eq(jobs.ingestionMode, "automatic")
@@ -93,7 +96,7 @@ const receivedCondition = and(
 receivedFrom ? gte(jobs.firstSeenAt, receivedFrom) : undefined,
 receivedTo ? lte(jobs.firstSeenAt, receivedTo) : undefined,
 );
-const baseCondition = and(publicationCondition, ingestionCondition, receivedCondition);
+const baseCondition = and(receivedInPeriodCondition, ingestionCondition, receivedCondition);
 const linkedInCondition = and(baseCondition, like(jobs.url, "%linkedin.com%"));
 const apinfoCondition = and(
 baseCondition,

@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
     .where(and(
       eq(jobs.status, "active"),
       eq(jobs.sourceId, sourceId),
-      cutoff ? gte(jobs.publishedAt, cutoff) : undefined,
+      cutoff ? gte(jobs.firstSeenAt, cutoff) : undefined,
       roleArea && roleArea !== "all" ? eq(jobs.roleArea, roleArea) : undefined,
       ingestionChannel ? eq(jobs.ingestionChannel, ingestionChannel as "extension" | "email" | "connector" | "file" | "api") : undefined,
     ));

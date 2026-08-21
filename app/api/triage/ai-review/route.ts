@@ -37,7 +37,7 @@ export async function POST(request: Request) {
   const selected = await db.select({ id: jobs.id, title: jobs.title, company: jobs.company, location: jobs.location, url: jobs.url, description: jobs.description, publishedAt: jobs.publishedAt })
     .from(jobs)
     .leftJoin(userJobAnalyses, and(eq(userJobAnalyses.userId, user.userId), eq(userJobAnalyses.jobId, jobs.id)))
-    .where(and(eq(jobs.status, "active"), eq(jobs.sourceId, sourceId), cutoff ? gte(jobs.publishedAt, cutoff) : undefined, roleArea && roleArea !== "all" ? eq(jobs.roleArea, roleArea) : undefined, ingestionChannel ? eq(jobs.ingestionChannel, ingestionChannel as "extension" | "email" | "connector" | "file" | "api") : undefined, includeTriaged ? undefined : isNull(userJobAnalyses.jobId)))
+    .where(and(eq(jobs.status, "active"), eq(jobs.sourceId, sourceId), cutoff ? gte(jobs.firstSeenAt, cutoff) : undefined, roleArea && roleArea !== "all" ? eq(jobs.roleArea, roleArea) : undefined, ingestionChannel ? eq(jobs.ingestionChannel, ingestionChannel as "extension" | "email" | "connector" | "file" | "api") : undefined, includeTriaged ? undefined : isNull(userJobAnalyses.jobId)))
     .orderBy(desc(jobs.firstSeenAt), desc(jobs.createdAt))
     .limit(MAX_AI_REVIEW_JOBS + 1);
   if (!selected.length) return NextResponse.json({ error: "Nenhuma vaga corresponde ao recorte atual." }, { status: 404 });

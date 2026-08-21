@@ -21,8 +21,8 @@ test("dashboard oferece radar, perfil e pipeline persistente", async () => {
   assert.match(dashboard, /limit:\s*"50"/);
   assert.match(dashboard, /fetch\(`\/api\/jobs\?\$\{buildJobsParams\(1\)\}`\)/);
   assert.match(dashboard, /fetchJobsWithRetry\(`\/api\/jobs\?\$\{buildJobsParams\(page\)\}/);
-  assert.match(dashboard, /Últimas 24h/);
-  assert.match(dashboard, /Últimos 7 dias/);
+  assert.match(dashboard, /Recebidas 24h/);
+  assert.match(dashboard, /Recebidas 7 dias/);
   assert.match(dashboard, /Sem corte/);
   assert.match(dashboard, /Usar meu perfil \(/);
   assert.match(dashboard, /80% ou mais/);
