@@ -2512,16 +2512,29 @@ export default function Dashboard() {
             </div>
             {(apinfoContactsPendingCount > 0 || contactBatchState) && (
               contactBatchState ? (
-                <button
-                  type="button"
-                  className="filter-trigger active"
-                  onClick={cancelApinfoContactsBatch}
-                  title="Cancela a captura em lote — o que já foi encontrado até agora fica salvo."
-                >
-                  Capturando {contactBatchState.done}/{contactBatchState.total}
-                  {contactBatchState.found > 0 && ` · ${contactBatchState.found} ✓`}
-                  {" · Cancelar"}
-                </button>
+                <div className="contact-batch-progress" role="status" aria-live="polite">
+                  <div className="contact-batch-progress-copy">
+                    <strong>Capturando e-mails do APInfo</strong>
+                    <span>
+                      {contactBatchState.done === 0
+                        ? `Preparando a vaga 1 de ${contactBatchState.total}…`
+                        : `${contactBatchState.done} de ${contactBatchState.total} concluídas · ${contactBatchState.found} e-mail${contactBatchState.found === 1 ? "" : "s"} encontrado${contactBatchState.found === 1 ? "" : "s"}`}
+                    </span>
+                  </div>
+                  <div className="contact-batch-progress-actions">
+                    <span className="contact-batch-progress-count" aria-label={`${contactBatchState.done} de ${contactBatchState.total} vagas concluídas`}>
+                      {contactBatchState.done}/{contactBatchState.total}
+                    </span>
+                    <button
+                      type="button"
+                      className="contact-batch-cancel"
+                      onClick={cancelApinfoContactsBatch}
+                      title="Cancela a captura em lote — o que já foi encontrado até agora fica salvo."
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
               ) : (
                 <>
                   {selectedApinfoContactsPendingCount > 0 && (

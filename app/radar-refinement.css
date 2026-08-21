@@ -724,6 +724,34 @@
   font-size: 9px;
 }
 
+.contact-batch-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 42px;
+  padding: 7px 8px 7px 12px;
+  background: #f5f3ff;
+  border: 1px solid #b8a7ff;
+  border-radius: 10px;
+  color: #18264d;
+}
+.contact-batch-progress-copy { display: grid; gap: 2px; line-height: 1.2; }
+.contact-batch-progress-copy strong { font-size: 11px; }
+.contact-batch-progress-copy span { color: #5b5f78; font-size: 10px; }
+.contact-batch-progress-actions { display: inline-flex; align-items: center; gap: 8px; }
+.contact-batch-progress-count { color: #5b5f78; font-size: 10px; font-weight: 750; white-space: nowrap; }
+.contact-batch-cancel {
+  min-height: 28px;
+  padding: 0 9px;
+  background: #fff;
+  border: 1px solid #b8a7ff;
+  border-radius: 7px;
+  color: #493d88;
+  font-size: 10px;
+  font-weight: 750;
+}
+.contact-batch-cancel:hover { background: #ede9fe; border-color: #8b78df; }
+
 /* ─── Toggle Lista/Tabela ─────────────────────────────────────── */
 .view-mode-toggle {
   display: inline-flex;

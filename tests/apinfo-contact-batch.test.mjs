@@ -36,3 +36,11 @@ test("a captura avulsa respeita apenas os registros marcados na tabela", async (
   assert.match(dashboard, /Capturar selecionadas/);
   assert.match(dashboard, /captureApinfoContactsBatch\(true\)/);
 });
+
+test("a captura em lote explica a preparação antes do primeiro resultado", async () => {
+  const dashboard = await readFile(new URL("../app/Dashboard.tsx", import.meta.url), "utf8");
+
+  assert.match(dashboard, /Capturando e-mails do APInfo/);
+  assert.match(dashboard, /Preparando a vaga 1 de \$\{contactBatchState\.total\}…/);
+  assert.match(dashboard, /contact-batch-cancel/);
+});
