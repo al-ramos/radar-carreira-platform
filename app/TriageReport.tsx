@@ -4,9 +4,11 @@ type PilotResult = { batchId: string; processed: Array<{ jobId: string; title: s
 type HistoryItem = { id: string; batchId: string; jobId: string; verdict: string; label: string; blocker: string | null; source: string; confidence: number; rows: string; processedAt: string; title: string; company: string; externalId: string | null; jobSource: string | null; workMode: string | null; location: string | null; sourcePublishedAt: string | null; receivedAt: string; url: string; contactEmail: string | null; hasValidContactEmail: boolean; draftStatus: "pending" | "drafted" | "failed" | "cancelled" | null; draftSubject: string; draftError: string | null; draftUpdatedAt: string | null; trigger: string };
 type Batch = { id: string; trigger: "manual" | "scheduled" | "assistant"; scope: string; status: string; startedAt: string | null; completedAt: string | null; createdAt: string; error: string | null; total: number; completed: number; failed: number; eligible: number; eligibleWithoutContact: number; draftsPending: number; draftsReady: number; draftsFailed: number };
 type Operational = { pendingDrafts: number; readyDrafts: number; failedDrafts: number; oldestPendingAt: string | null; alerts: Array<{ level: "warning" | "error"; message: string }> };
+type AiReview = { id: string; response: string; jobs: Array<{ id: string; title: string; company: string }>; provider: string; model: string };
 type LegacyItem = { jobId: string; veredito: string; motivo: string | null; processedAt: string; title: string; company: string; externalId: string | null; sourceId: string | null; workMode: string | null; location: string | null; sourcePublishedAt: string | null; receivedAt: string; url: string; contactEmail: string | null };
 type FilterOption = { id: string; label: string; count: number };
 const rowClass: Record<string, string> = { "✅": "approved", "🟡": "partial", "❌": "rejected", "🔴": "rejected" };
+const MAX_AI_REVIEW_JOBS = 20;
 const saoPauloToday = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
 const sourceName = (source: string) => source === "apinfo-extension" ? "APInfo" : source === "linkedin-extension" ? "LinkedIn" : source;
 const homePeriodLabel = (period: string) => period === "24" ? "Últimas 24h" : period === "72" ? "Últimos 3 dias" : period === "168" ? "Últimos 7 dias" : "Todas as vagas";
@@ -21,6 +23,10 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
     [actionPeriod, setActionPeriod] = useState<"24" | "72" | "168" | "all">(homePeriod),
     [actionCandidate, setActionCandidate] = useState<{ key: string; count: number; total: number; triaged: number } | null>(null),
     [reprocess, setReprocess] = useState(false),
+    [aiPromptOpen, setAiPromptOpen] = useState(false),
+    [aiPrompt, setAiPrompt] = useState("Analise a aderência de cada vaga ao meu perfil, destaque evidências, lacunas e priorize as oportunidades. Não altere candidaturas nem gere rascunhos."),
+    [aiReviewLoading, setAiReviewLoading] = useState(false),
+    [aiReview, setAiReview] = useState<AiReview | null>(null),
     [history, setHistory] = useState<HistoryItem[]>([]),
     [batches, setBatches] = useState<Batch[]>([]),
     [operational, setOperational] = useState<Operational | null>(null),
@@ -161,6 +167,27 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
     } catch (error) { setMessage(error instanceof Error ? error.message : "Não foi possível retomar os rascunhos."); }
     finally { setQueueingDrafts(false); }
   };
+  const requestAiReview = async () => {
+    if (!actionSourceId || !actionCandidateCount || actionCandidateCount > MAX_AI_REVIEW_JOBS || aiPrompt.trim().length < 8) return;
+    setAiReviewLoading(true);
+    setMessage(`Enviando o recorte de ${actionCandidateCount} vaga(s) para a análise da IA…`);
+    try {
+      const response = await fetch("/api/triage/ai-review", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ sourceId: actionSourceId, homePeriod: actionPeriod, roleArea: actionArea, ingestionChannel: actionChannel, includeTriaged: reprocess, prompt: aiPrompt }),
+      });
+      const result = await response.json() as AiReview & { error?: string };
+      if (!response.ok) throw new Error(result.error ?? "Não foi possível solicitar a análise da IA.");
+      setAiReview(result);
+      setAiPromptOpen(false);
+      setMessage(`Análise da IA concluída para ${actionCandidateCount} vaga(s). Nenhum veredito, rascunho ou candidatura foi alterado.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Não foi possível solicitar a análise da IA.");
+    } finally {
+      setAiReviewLoading(false);
+    }
+  };
   const openHistory = (nextDraftFilter = "all") => {
     setDraftFilter(nextDraftFilter);
     setHistoryPage(0);
@@ -227,16 +254,25 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
                 <div className="triage-run-selection" aria-live="polite">
                   {actionCandidateCount === null ? "Selecione uma fonte para consultar o recorte da triagem." : actionCandidateCount === 0 && actionCandidateTotal ? `Há ${actionCandidateTotal} vaga${actionCandidateTotal === 1 ? "" : "s"} no recorte ${homePeriodLabel(actionPeriod)}, mas todas já foram triadas.` : actionCandidateCount === 0 ? `Nenhuma vaga corresponde aos filtros da triagem em ${homePeriodLabel(actionPeriod)}.` : `${actionCandidateCount} vaga${actionCandidateCount === 1 ? "" : "s"} aguardando triagem, de ${actionCandidateTotal} no recorte ${homePeriodLabel(actionPeriod)}.`}
                   {actionCandidateCount === 0 && Boolean(actionCandidateTotal) && !reprocess && <span>Marque “Incluir vagas já triadas” para reavaliar as vagas desse recorte.</span>}
-                  {actionCandidateCount !== null && actionCandidateCount > 100 && <span>O lote será processado em segundo plano, em blocos controlados.</span>}
+                  {actionCandidateCount !== null && actionCandidateCount > 100 && <span>O lote por regras será processado em segundo plano, em blocos controlados.</span>}
+                  {actionCandidateCount !== null && actionCandidateCount > MAX_AI_REVIEW_JOBS && <span>A análise com IA aceita até {MAX_AI_REVIEW_JOBS} vagas por vez; refine o recorte para solicitar a leitura.</span>}
                 </div>
-                <button className="primary triage-run-button" disabled={runningPilot || !actionCandidateCount} onClick={runToday}>
-                  {runningPilot ? "Iniciando fila…" : `Analisar vagas do recorte${actionCandidateCount ? ` (${actionCandidateCount})` : ""}`}
+                <button className="primary triage-run-button" disabled={runningPilot || aiReviewLoading || !actionCandidateCount || actionCandidateCount > MAX_AI_REVIEW_JOBS} onClick={() => setAiPromptOpen(true)}>
+                  {aiReviewLoading ? "Consultando IA…" : `Solicitar análise à IA${actionCandidateCount ? ` (${actionCandidateCount})` : ""}`}
                 </button>
+                <button className="triage-queue-button" disabled={runningPilot || aiReviewLoading || !actionCandidateCount} onClick={runToday}>Triar por regras{actionCandidateCount ? ` (${actionCandidateCount})` : ""}</button>
+                {aiPromptOpen && <section className="triage-ai-prompt" aria-label="Prompt para análise de vagas pela IA">
+                  <b>O que você quer que a IA avalie?</b>
+                  <small>Ela receberá um snapshot das {actionCandidateCount ?? 0} vagas deste recorte e do seu perfil. A resposta é apenas consultiva.</small>
+                  <textarea aria-label="Instrução para a IA" value={aiPrompt} onChange={(event) => setAiPrompt(event.target.value)} maxLength={1200} disabled={aiReviewLoading} />
+                  <div><button type="button" className="triage-queue-button" onClick={() => setAiPromptOpen(false)} disabled={aiReviewLoading}>Cancelar</button><button type="button" className="primary" onClick={requestAiReview} disabled={aiReviewLoading || aiPrompt.trim().length < 8}>Solicitar análise</button></div>
+                </section>}
+                {aiReview && <section className="triage-ai-review" aria-label="Resultado da análise da IA"><div><h3>Análise da IA</h3><small>{aiReview.jobs.length} vagas · {aiReview.provider} · {aiReview.model}</small></div><p>{aiReview.response}</p></section>}
                 <button className="triage-queue-button" disabled={queueingDrafts || runningPilot} onClick={queueDrafts}>
                   {queueingDrafts ? "Preparando fila…" : "Preparar rascunhos elegíveis"}
                 </button>
                 <button className="triage-queue-button" disabled={queueingDrafts || runningPilot || draftCounts.failed === 0} onClick={retryFailedDrafts} title={draftCounts.failed === 0 ? "Não há falhas para reprocessar" : undefined}>Reprocessar falhas de rascunho{draftCounts.failed ? ` (${draftCounts.failed})` : ""}</button>
-                <small>A consulta inicia com Fonte, Área, Canal e Período ativos na Home; o período pode ser ajustado aqui e considera a data de publicação da vaga, como na lista principal. Por padrão, somente vagas ainda não triadas entram no recorte. A triagem ocorre em segundo plano; rascunhos exigem vaga aprovada ou provável, análise atual e e-mail de contato válido.</small>
+                <small>A consulta inicia com Fonte, Área, Canal e Período ativos na Home; o período pode ser ajustado aqui e considera a data de publicação da vaga, como na lista principal. A análise com IA é consultiva e salva o prompt e o snapshot do recorte, sem alterar vereditos, rascunhos ou candidaturas. A triagem por regras ocorre em segundo plano; rascunhos exigem vaga aprovada ou provável, análise atual e e-mail de contato válido.</small>
               </div>
             </details>
           </div>

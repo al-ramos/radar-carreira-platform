@@ -24,6 +24,8 @@ test("acionamento manual respeita os filtros ativos da Home", async () => {
   assert.match(ui, /Fonte das vagas a analisar/);
   assert.match(ui, /Incluir vagas já triadas/);
   assert.match(ui, /Período das vagas a analisar/);
+  assert.match(ui, /Solicitar análise à IA/);
+  assert.match(ui, /\/api\/triage\/ai-review/);
   assert.match(preview, /eq\(jobs\.sourceId, sourceId\)/);
   assert.match(preview, /gte\(jobs\.publishedAt, cutoff\)/);
   assert.match(preview, /count\(userJobAnalyses\.jobId\)/);
@@ -39,5 +41,6 @@ test("painel inicia a fila para recortes grandes sem bloquear a ação manual", 
   assert.doesNotMatch(ui, /MAX_MANUAL_TRIAGE_JOBS/);
   assert.match(ui, /processado em segundo plano/);
   assert.match(orchestrator, /MAX_ASYNC_TRIAGE_JOBS = 1000/);
-  assert.match(ui, /Analisar vagas do recorte/);
+  assert.match(ui, /MAX_AI_REVIEW_JOBS = 20/);
+  assert.match(ui, /Triar por regras/);
 });

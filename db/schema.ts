@@ -101,6 +101,13 @@ export const triageBatchItems = sqliteTable("triage_batch_items", {
   leaseOwner: text("lease_owner"), leaseUntil: integer("lease_until", { mode: "timestamp_ms" }), updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
 }, t => [primaryKey({ columns: [t.batchId, t.jobId] }), index("triage_batch_items_status_idx").on(t.batchId, t.status)]);
 
+/** Consulta livre da IA sobre um recorte congelado, sem efeito operacional. */
+export const triageAiReviews = sqliteTable("triage_ai_reviews", {
+  id: text("id").primaryKey(), userId: text("user_id").notNull(), prompt: text("prompt").notNull(), selection: text("selection").notNull(),
+  response: text("response"), status: text("status", { enum: ["running", "completed", "failed", "blocked"] }).notNull().default("running"), error: text("error"),
+  provider: text("provider"), model: text("model"), inputTokens: integer("input_tokens").notNull().default(0), outputTokens: integer("output_tokens").notNull().default(0), createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+}, t => [index("triage_ai_reviews_user_created_idx").on(t.userId, t.createdAt)]);
+
 /** Chave global que impede o mesmo perfil/vaga/versões de ser processado duas vezes. */
 export const triageDeduplication = sqliteTable("triage_deduplication", {
   idempotencyKey: text("idempotency_key").primaryKey(), userId: text("user_id").notNull(), jobId: text("job_id").notNull().references(() => jobs.id),
@@ -150,7 +157,7 @@ export const aiUsageEvents = sqliteTable("ai_usage_events", {
   id: text("id").primaryKey(),
   userId: text("user_id").notNull(),
   jobId: text("job_id").references(() => jobs.id),
-  operation: text("operation", { enum: ["extract_job", "resolve_ambiguity", "generate_email"] }).notNull(),
+  operation: text("operation", { enum: ["extract_job", "resolve_ambiguity", "review_selection", "generate_email"] }).notNull(),
   provider: text("provider").notNull(),
   model: text("model").notNull(),
   inputTokens: integer("input_tokens").notNull().default(0),
