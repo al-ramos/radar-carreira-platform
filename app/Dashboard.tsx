@@ -475,7 +475,7 @@ export default function Dashboard() {
     // dependendo da última vaga vista normalmente.
     [tableDrawerOpen, setTableDrawerOpen] = useState(false),
     [simplifiedList, setSimplifiedList] = useState(false),
-    [period, setPeriod] = useState<string | null>(null),
+    [period, setPeriod] = useState<string>("24"),
     [mode, setMode] = useState("loading"),
     [importing, setImporting] = useState(false),
     [sourcesOpen, setSourcesOpen] = useState(false),
@@ -781,7 +781,6 @@ export default function Dashboard() {
         setTotalJobs(typeof data.total === "number" ? data.total : next.length);
         setSourcesCount(typeof data.sourcesCount === "number" ? data.sourcesCount : null);
         if (data.filterOptions) setJobFilterOptions(data.filterOptions);
-        setPeriod((current) => current ?? String(data.period ?? "24"));
         setLoadedMinScore(requestedMinScore);
         setSimplifiedList(Boolean(data.degraded));
         setMode("database");
@@ -2421,7 +2420,7 @@ export default function Dashboard() {
             <select
               aria-label="Período das vagas"
               onChange={(e) => handlePeriodChange(e.target.value)}
-              value={effectivePeriod ?? "24"}
+              value={effectivePeriod}
             >
               <option value="24">Últimas 24h</option>
               <option value="72">Últimos 3 dias</option>
@@ -3613,7 +3612,7 @@ export default function Dashboard() {
         channelOptions={jobFilterOptions.channels}
         initialArea={areaFilter}
         initialChannel={channelFilter}
-        homePeriod={effectivePeriod ?? "24"}
+        homePeriod={effectivePeriod}
       />}
       {importReportRunId && <ImportRunReport runId={importReportRunId} close={() => setImportReportRunId(null)} />}
       {monitorOpen && <Monitoring close={() => setMonitorOpen(false)} />}

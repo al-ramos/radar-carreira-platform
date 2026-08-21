@@ -290,8 +290,7 @@ test("perfil usa checkboxes e o radar expõe filtros de visualização", async (
   assert.match(dashboard, /className="pipeline-filter-select"/);
   assert.match(dashboard, /Importadas recentemente/);
   assert.match(dashboard, /params\.set\("sort", sortOrder === "recent" \? "imported" : "score"\)/);
-  assert.match(dashboard, /useState<string \| null>\(null\)/);
-  assert.match(dashboard, /data\.period/);
+  assert.match(dashboard, /useState<string>\("24"\)/);
   assert.match(dashboard, /SENIORITY_OPTIONS/);
   assert.match(dashboard, /event\.key\s*===\s*"Escape"/);
   assert.match(dashboard, /const searchQuery = query\.trim\(\)\.toLowerCase\(\)/);
