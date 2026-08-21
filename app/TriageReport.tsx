@@ -119,6 +119,7 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
     : sourceOptions;
   const actionCandidateCount = actionCandidate?.key === actionSelectionKey && actionSourceId ? actionCandidate.count : null;
   const actionCandidateTotal = actionCandidate?.key === actionSelectionKey && actionSourceId ? actionCandidate.total : null;
+  const canPrepareDrafts = !manualIsActive && scopedHistory.some((item) => (item.verdict === "✅" || item.verdict === "🟡") && item.hasValidContactEmail && !item.draftStatus);
   const manualSummary = (batch: Batch) => {
     if (batch.status === "queued") return `${batch.total} vaga(s) na fila. O Radar iniciará o processamento em instantes.`;
     if (batch.status === "running") return `Processando: ${batch.completed + batch.failed}/${batch.total} vaga(s).`;
@@ -296,11 +297,11 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
                   </article>
                   <article className="triage-action-step triage-ai-step">
                     <span>IA</span><div><b>Consulta à IA <em>opcional</em></b><small>Faz uma leitura consultiva; não muda a triagem nem cria rascunhos.</small></div>
-                    <button className="triage-queue-button" disabled={runningPilot || aiReviewLoading || !actionCandidateCount || actionCandidateCount > MAX_AI_REVIEW_JOBS} onClick={openAiPrompt}>{aiReviewLoading ? "Consultando…" : "Consultar"}</button>
+                    <button className="triage-queue-button" disabled={runningPilot || aiReviewLoading || !actionCandidateCount || actionCandidateCount > MAX_AI_REVIEW_JOBS} onClick={openAiPrompt} title={!actionCandidateCount ? "Não há vagas no recorte para consultar." : actionCandidateCount > MAX_AI_REVIEW_JOBS ? `Refine o recorte para até ${MAX_AI_REVIEW_JOBS} vagas.` : undefined}>{aiReviewLoading ? "Consultando…" : "Consultar"}</button>
                   </article>
                   <article className={`triage-action-step ${manualIsActive ? "waiting" : ""}`}>
                     <span>2</span><div><b>Preparar rascunhos</b><small>Use após a etapa 1 concluir. Separa apenas vagas ✅/🟡 com e-mail válido; não envia nada.</small></div>
-                    <button className="triage-queue-button" disabled={queueingDrafts || runningPilot || manualIsActive} onClick={queueDrafts} title={manualIsActive ? "Aguarde a triagem concluir antes de preparar rascunhos." : undefined}>{queueingDrafts ? "Preparando…" : "Preparar"}</button>
+                    <button className="triage-queue-button" disabled={queueingDrafts || runningPilot || !canPrepareDrafts} onClick={queueDrafts} title={!canPrepareDrafts ? "Conclua a triagem e tenha uma vaga aprovada ou provável com e-mail válido." : undefined}>{queueingDrafts ? "Preparando…" : "Preparar"}</button>
                   </article>
                   <article className="triage-action-step triage-retry-step">
                     <span>↻</span><div><b>Reprocessar falhas</b><small>Use somente se a fila de rascunhos informar falha.</small></div>
