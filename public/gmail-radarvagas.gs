@@ -102,23 +102,16 @@ function verificarConectorRascunhosRadar() {
 // qualquer momento com removerAgendamentoRascunhosRadar().
 function instalarAgendamentoRascunhosRadar() {
   removerAgendamentoRascunhosRadar();
-  ScriptApp.newTrigger('executarTriagemDiariaERascunhos').timeBased().everyDays(1).atHour(9).create();
+  ScriptApp.newTrigger('executarRascunhosPendentesRadar').timeBased().everyDays(1).atHour(9).create();
 }
 
 function removerAgendamentoRascunhosRadar() {
   ScriptApp.getProjectTriggers()
-    .filter(trigger => trigger.getHandlerFunction() === 'executarTriagemDiariaERascunhos')
+    .filter(trigger => ['executarTriagemDiariaERascunhos', 'executarRascunhosPendentesRadar'].includes(trigger.getHandlerFunction()))
     .forEach(trigger => ScriptApp.deleteTrigger(trigger));
 }
 
-function executarTriagemDiariaERascunhos() {
-  const secret = PropertiesService.getScriptProperties().getProperty('RADAR_SECRET');
-  if (!secret) throw new Error('Configure RADAR_SECRET nas propriedades do script.');
-  const response = UrlFetchApp.fetch(`${radarUrl()}/api/triage/run`, {
-    method:'post',contentType:'application/json',headers:{Authorization:`Bearer ${secret}`},
-    payload:JSON.stringify({trigger:'schedule',batchSize:100,aiMode:'ambiguous',createDrafts:false}),muteHttpExceptions:true
-  });
-  if (response.getResponseCode() >= 300) throw new Error(response.getContentText());
+function executarRascunhosPendentesRadar() {
   criarRascunhosRadar();
 }
 
