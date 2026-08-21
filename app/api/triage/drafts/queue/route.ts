@@ -7,6 +7,7 @@ import { getAnalysisVersions } from "../../../../../lib/analysis-versions";
 import { canonicalizeProfile, profileIsReadyForTriage } from "../../../../../lib/canonical-profile";
 import { evaluateDeterministicTriage } from "../../../../../lib/deterministic-triage";
 import { isDraftAllowedForSource, isSafeForDraft } from "../../../../../lib/draft-eligibility";
+import { requestImmediateDraftCreation } from "../../../../../lib/gmail-draft-priority";
 
 function parseStack(value: string): string[] {
   try {
@@ -84,21 +85,27 @@ export async function POST(request: Request) {
         cutoff ? gte(jobs.firstSeenAt, cutoff) : undefined,
       ))
       .orderBy(desc(triageHistory.createdAt)),
-    db.select({ jobId: draftOutbox.jobId, status: draftOutbox.status }).from(draftOutbox).where(eq(draftOutbox.userId, user.userId)),
+    db.select({ id: draftOutbox.id, jobId: draftOutbox.jobId, status: draftOutbox.status }).from(draftOutbox).where(eq(draftOutbox.userId, user.userId)),
   ]);
 
-  const alreadyQueued = new Set(existingOutbox.map((row) => row.jobId));
+  const existingOutboxByJob = new Map(existingOutbox.map((row) => [row.jobId, row]));
   const latestByJob = new Map<string, typeof historyRows[number]>();
   for (const row of historyRows) if (!latestByJob.has(row.jobId)) latestByJob.set(row.jobId, row);
 
   const now = new Date();
   const queued: string[] = [];
+  const priorityOutboxIds: string[] = [];
   let noValidContact = 0;
   let notEligible = 0;
   let outdated = 0;
   let alreadyPresent = 0;
   for (const row of latestByJob.values()) {
-    if (alreadyQueued.has(row.jobId)) { alreadyPresent += 1; continue; }
+    const existing = existingOutboxByJob.get(row.jobId);
+    if (existing) {
+      alreadyPresent += 1;
+      if (requestedJobIds?.length === 1 && existing.status === "pending") priorityOutboxIds.push(existing.id);
+      continue;
+    }
     if (!isDraftAllowedForSource(row.job.sourceId)) { notEligible += 1; continue; }
     const sameVersion = row.profileRevision === versions.profileRevision && row.rulesRevision === versions.rulesRevision && row.instructionsRevision === versions.instructionsRevision;
     if (!sameVersion) { outdated += 1; continue; }
@@ -128,9 +135,14 @@ export async function POST(request: Request) {
       else notEligible += 1;
       continue;
     }
-    await db.insert(draftOutbox).values({ id: crypto.randomUUID(), userId: user.userId, jobId: row.jobId, historyId: row.id, status: "pending", createdAt: now, updatedAt: now });
+    const outboxId = crypto.randomUUID();
+    await db.insert(draftOutbox).values({ id: outboxId, userId: user.userId, jobId: row.jobId, historyId: row.id, status: "pending", createdAt: now, updatedAt: now });
     queued.push(row.jobId);
+    if (requestedJobIds?.length === 1) priorityOutboxIds.push(outboxId);
   }
 
-  return NextResponse.json({ ok: true, considered: latestByJob.size, queued: queued.length, queuedJobIds: queued, noValidContact, notEligible, outdated, alreadyPresent, gmailDraftsCreated: 0 });
+  const immediateDraft = requestedJobIds?.length === 1 && priorityOutboxIds.length
+    ? await requestImmediateDraftCreation(priorityOutboxIds)
+    : { requested: false, reason: requestedJobIds?.length === 1 ? "A vaga não está disponível para criação imediata." : "A criação imediata é reservada para uma vaga avulsa." };
+  return NextResponse.json({ ok: true, considered: latestByJob.size, queued: queued.length, queuedJobIds: queued, noValidContact, notEligible, outdated, alreadyPresent, gmailDraftsCreated: immediateDraft.created ?? 0, immediateDraft });
 }

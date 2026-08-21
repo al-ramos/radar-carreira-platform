@@ -1,4 +1,4 @@
-import { and, eq, or } from "drizzle-orm";
+import { and, eq, inArray, or } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getDb } from "../../../../db/index";
 import { draftOutbox, jobSources, jobs, profiles, triageHistory, userJobAnalyses } from "../../../../db/schema";
@@ -44,7 +44,7 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => ({})) as {
     action?: "prepare" | "confirm" | "fail" | "health" | "sentCandidates" | "reconcileSent";
     outboxId?: string; gmailDraftId?: string; gmailSentId?: string; subject?: string; to?: string; sentAt?: string;
-    error?: string; limit?: number; retryFailed?: boolean; connectorVersion?: string;
+    error?: string; limit?: number; retryFailed?: boolean; connectorVersion?: string; outboxIds?: string[];
   };
   const db = getDb();
 
@@ -139,6 +139,8 @@ export async function POST(request: Request) {
   if (!profileIsReadyForTriage(canonicalProfile)) return NextResponse.json({ drafts: [], reason: "Perfil técnico não está pronto" });
   const versions = getAnalysisVersions(canonicalProfile);
   const limit = Math.max(1, Math.min(20, Math.floor(body.limit ?? 10)));
+  const requestedOutboxIds = Array.isArray(body.outboxIds) ? [...new Set(body.outboxIds.filter((id): id is string => typeof id === "string" && id.length > 0))].slice(0, 20) : null;
+  if (Array.isArray(body.outboxIds) && !requestedOutboxIds?.length) return NextResponse.json({ drafts: [], reason: "Nenhum item de rascunho válido foi informado." }, { status: 400 });
   const eligibleOutboxStatus = body.retryFailed
     ? or(eq(draftOutbox.status, "pending"), eq(draftOutbox.status, "failed"))
     : eq(draftOutbox.status, "pending");
@@ -172,7 +174,7 @@ export async function POST(request: Request) {
     .innerJoin(jobs, eq(draftOutbox.jobId, jobs.id))
     .innerJoin(triageHistory, eq(draftOutbox.historyId, triageHistory.id))
     .innerJoin(userJobAnalyses, and(eq(userJobAnalyses.userId, draftOutbox.userId), eq(userJobAnalyses.jobId, draftOutbox.jobId)))
-    .where(and(eq(draftOutbox.userId, owner.userId), eligibleOutboxStatus))
+    .where(and(eq(draftOutbox.userId, owner.userId), eligibleOutboxStatus, requestedOutboxIds ? inArray(draftOutbox.id, requestedOutboxIds) : undefined))
     .limit(limit);
 
   const drafts: Array<{ outboxId: string; to: string; subject: string; body: string }> = [];

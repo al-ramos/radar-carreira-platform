@@ -52,6 +52,8 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       RADAR_CODEX_MCP_TOKEN: ${{ secrets.RADAR_CODEX_MCP_TOKEN }}
+      GMAIL_DRAFTS_WEBHOOK_URL: ${{ secrets.GMAIL_DRAFTS_WEBHOOK_URL }}
+      GMAIL_DRAFTS_WEBHOOK_TOKEN: ${{ secrets.GMAIL_DRAFTS_WEBHOOK_TOKEN }}
     steps:
       - name: Baixar código
         uses: actions/checkout@v5
@@ -86,5 +88,11 @@ jobs:
             exit 1
           fi
           printf '%s' "$RADAR_CODEX_MCP_TOKEN" | npx wrangler secret put RADAR_CODEX_MCP_TOKEN
+          if [ -n "$GMAIL_DRAFTS_WEBHOOK_URL" ] && [ -n "$GMAIL_DRAFTS_WEBHOOK_TOKEN" ]; then
+            printf '%s' "$GMAIL_DRAFTS_WEBHOOK_URL" | npx wrangler secret put GMAIL_DRAFTS_WEBHOOK_URL
+            printf '%s' "$GMAIL_DRAFTS_WEBHOOK_TOKEN" | npx wrangler secret put GMAIL_DRAFTS_WEBHOOK_TOKEN
+          else
+            echo "Conector Gmail imediato ainda não configurado; mantendo a rotina diária como alternativa."
+          fi
       - name: Publicar Worker
         run: npx wrangler deploy

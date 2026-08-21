@@ -49,16 +49,17 @@ const RADAR_DRAFT_CONNECTOR_VERSION = 'radar-drafts-v2';
 
 // Executa manualmente ou por gatilho. Nunca envia mensagens: apenas cria ou
 // reaproveita rascunhos que já foram aprovados e enfileirados pelo Radar.
-function criarRascunhosRadar() {
+function criarRascunhosRadar(options) {
   const secret = PropertiesService.getScriptProperties().getProperty('RADAR_SECRET');
   if (!secret) throw new Error('Configure RADAR_SECRET nas propriedades do script.');
+  const outboxIds = options && Array.isArray(options.outboxIds) ? options.outboxIds.filter(id => typeof id === 'string' && id) : null;
   let processed = 0, scanned = 0;
   // 10 lotes de 10 cobrem com margem a rotina diária e preservam o limite
   // por chamada. Itens que deixaram de ser seguros são cancelados pelo Radar.
   for (let batch = 0; batch < 10; batch += 1) {
     const response = UrlFetchApp.fetch(`${radarUrl()}/api/cron/drafts`, {
       method:'post', contentType:'application/json', headers:{Authorization:`Bearer ${secret}`},
-      payload:JSON.stringify({action:'prepare',limit:10,retryFailed:true,connectorVersion:RADAR_DRAFT_CONNECTOR_VERSION}), muteHttpExceptions:true
+      payload:JSON.stringify({action:'prepare',limit:outboxIds ? Math.min(20, outboxIds.length) : 10,retryFailed:true,connectorVersion:RADAR_DRAFT_CONNECTOR_VERSION,outboxIds:outboxIds || undefined}), muteHttpExceptions:true
     });
     if (response.getResponseCode() >= 300) throw new Error(response.getContentText());
     const payload = JSON.parse(response.getContentText());
@@ -80,6 +81,26 @@ function criarRascunhosRadar() {
     if (!payload.hasMore) break;
   }
   console.log(`Rascunhos processados: ${processed}; itens verificados: ${scanned}. Nenhum e-mail foi enviado.`);
+  return { processed: processed, scanned: scanned };
+}
+
+// Web App autenticado pelo mesmo segredo do conector. O Radar chama apenas
+// esta ação para uma vaga escolhida manualmente; ela cria rascunho, nunca envia.
+function doPost(event) {
+  try {
+    const payload = JSON.parse(event && event.postData && event.postData.contents || '{}');
+    const secret = PropertiesService.getScriptProperties().getProperty('RADAR_SECRET');
+    if (!secret || payload.token !== secret) return responderWebhookRadar({ ok:false, error:'Não autorizado' });
+    if (payload.action !== 'prioritizeDrafts' || !Array.isArray(payload.outboxIds) || !payload.outboxIds.length) return responderWebhookRadar({ ok:false, error:'Ação de prioridade inválida' });
+    const result = criarRascunhosRadar({ outboxIds: payload.outboxIds });
+    return responderWebhookRadar({ ok:true, created: result.processed, scanned: result.scanned });
+  } catch (error) {
+    return responderWebhookRadar({ ok:false, error:String(error) });
+  }
+}
+
+function responderWebhookRadar(payload) {
+  return ContentService.createTextOutput(JSON.stringify(payload)).setMimeType(ContentService.MimeType.JSON);
 }
 
 // Diagnóstico seguro antes de uma operação manual: confirma URL, credencial e
