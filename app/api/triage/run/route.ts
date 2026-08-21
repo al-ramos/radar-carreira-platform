@@ -77,10 +77,12 @@ export async function POST(request: Request) {
 
   const canonicalProfile = canonicalizeProfile(profile);
   const versions = getAnalysisVersions(canonicalProfile);
-  // APInfo mantém o recorte excepcional por publicação. LinkedIn pode pedir
-  // explicitamente o dia de recebimento pelo Radar, sem misturar os dois.
-  const scopedToReferenceDay = run.trigger === "schedule" || Boolean(run.sourceId) || run.dateScope === "received";
+  // A ação iniciada pela Home respeita exatamente o período ativo daquele
+  // filtro. As demais rotinas continuam usando o dia civil de São Paulo.
+  const usesHomePeriod = Boolean(run.homePeriod);
+  const scopedToReferenceDay = !usesHomePeriod && (run.trigger === "schedule" || Boolean(run.sourceId) || run.dateScope === "received");
   const dateColumn = run.dateScope === "received" ? jobs.firstSeenAt : jobs.publishedAt;
+  const homeCutoff = run.homePeriod && run.homePeriod !== "all" ? new Date(Date.now() - Number(run.homePeriod) * 36e5) : null;
   const candidates = await db
     .select({ job: jobs, analysis: userJobAnalyses })
     .from(jobs)
@@ -89,6 +91,7 @@ export async function POST(request: Request) {
       eq(jobs.status, "active"),
       scopedToReferenceDay ? gte(dateColumn, saoPauloDayWindow(run.referenceDate).start) : undefined,
       scopedToReferenceDay ? lt(dateColumn, saoPauloDayWindow(run.referenceDate).end) : undefined,
+      homeCutoff ? gte(jobs.publishedAt, homeCutoff) : undefined,
       run.sourceId ? eq(jobs.sourceId, run.sourceId) : undefined,
       run.roleArea ? eq(jobs.roleArea, run.roleArea) : undefined,
       run.ingestionChannel ? eq(jobs.ingestionChannel, run.ingestionChannel) : undefined,
@@ -104,7 +107,7 @@ export async function POST(request: Request) {
   const trigger = run.trigger === "portal" ? "manual" : run.trigger === "schedule" ? "scheduled" : "assistant";
   await db.insert(triageBatches).values({
     id: batchId, userId, trigger,
-    scope: run.sourceId ? `source-${run.dateScope}-day:${run.sourceId}` : run.trigger === "schedule" ? "schedule-day" : run.reprocess ? "reprocess" : "unreviewed",
+    scope: run.sourceId ? (run.homePeriod ? `source-home-period:${run.sourceId}:${run.homePeriod}` : `source-${run.dateScope}-day:${run.sourceId}`) : run.trigger === "schedule" ? "schedule-day" : run.reprocess ? "reprocess" : "unreviewed",
     status: "running", startedAt: now, createdAt: now,
   });
 

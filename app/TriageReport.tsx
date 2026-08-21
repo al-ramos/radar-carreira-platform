@@ -10,15 +10,16 @@ const rowClass: Record<string, string> = { "✅": "approved", "🟡": "partial",
 const MAX_MANUAL_TRIAGE_JOBS = 100;
 const saoPauloToday = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
 const sourceName = (source: string) => source === "apinfo-extension" ? "APInfo" : source === "linkedin-extension" ? "LinkedIn" : source;
-export default function TriageReport({ close, sourceId, sourceLabel, sourceOptions = [], areaOptions = [], channelOptions = [] }: { close: () => void; sourceId?: string; sourceLabel?: string; sourceOptions?: FilterOption[]; areaOptions?: FilterOption[]; channelOptions?: FilterOption[] }) {
+const homePeriodLabel = (period: string) => period === "24" ? "Últimas 24h" : period === "72" ? "Últimos 3 dias" : period === "168" ? "Últimos 7 dias" : "Todas as vagas";
+export default function TriageReport({ close, sourceId, sourceLabel, sourceOptions = [], areaOptions = [], channelOptions = [], initialArea = "all", initialChannel = "all", homePeriod = "24" }: { close: () => void; sourceId?: string; sourceLabel?: string; sourceOptions?: FilterOption[]; areaOptions?: FilterOption[]; channelOptions?: FilterOption[]; initialArea?: string; initialChannel?: string; homePeriod?: "24" | "72" | "168" | "all" }) {
   const [message, setMessage] = useState("Carregando avaliações…"),
     [runningPilot, setRunningPilot] = useState(false),
     [queueingDrafts, setQueueingDrafts] = useState(false),
     [pilot, setPilot] = useState<PilotResult | null>(null),
     [actionSourceId, setActionSourceId] = useState(sourceId ?? ""),
-    [actionArea, setActionArea] = useState("all"),
-    [actionChannel, setActionChannel] = useState("all"),
-    [actionCandidate, setActionCandidate] = useState<{ key: string; count: number } | null>(null),
+    [actionArea, setActionArea] = useState(initialArea),
+    [actionChannel, setActionChannel] = useState(initialChannel),
+    [actionCandidate, setActionCandidate] = useState<{ key: string; count: number; total: number; triaged: number } | null>(null),
     [reprocess, setReprocess] = useState(false),
     [history, setHistory] = useState<HistoryItem[]>([]),
     [batches, setBatches] = useState<Batch[]>([]),
@@ -55,19 +56,19 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
     const timer = window.setTimeout(() => { void loadHistory(); }, 0);
     return () => window.clearTimeout(timer);
   }, []);
-  const actionSelectionKey = `${actionSourceId}|${actionArea}|${actionChannel}|${reprocess}`;
+  const actionSelectionKey = `${actionSourceId}|${actionArea}|${actionChannel}|${homePeriod}|${reprocess}`;
   useEffect(() => {
     if (!actionSourceId) return;
     const controller = new AbortController();
-    const query = new URLSearchParams({ sourceId: actionSourceId, includeTriaged: String(reprocess) });
+    const query = new URLSearchParams({ sourceId: actionSourceId, includeTriaged: String(reprocess), period: homePeriod });
     if (actionArea !== "all") query.set("roleArea", actionArea);
     if (actionChannel !== "all") query.set("ingestionChannel", actionChannel);
     void fetch(`/api/triage/preview?${query}`, { signal: controller.signal })
-      .then(async (response) => response.ok ? response.json() as Promise<{ count?: number }> : Promise.reject(new Error("Falha ao consultar vagas de hoje.")))
-      .then((data) => setActionCandidate({ key: actionSelectionKey, count: typeof data.count === "number" ? data.count : 0 }))
-      .catch((error: unknown) => { if (!(error instanceof DOMException && error.name === "AbortError")) setActionCandidate({ key: actionSelectionKey, count: 0 }); });
+      .then(async (response) => response.ok ? response.json() as Promise<{ count?: number; total?: number; triaged?: number }> : Promise.reject(new Error("Falha ao consultar as vagas do recorte da Home.")))
+      .then((data) => setActionCandidate({ key: actionSelectionKey, count: typeof data.count === "number" ? data.count : 0, total: typeof data.total === "number" ? data.total : 0, triaged: typeof data.triaged === "number" ? data.triaged : 0 }))
+      .catch((error: unknown) => { if (!(error instanceof DOMException && error.name === "AbortError")) setActionCandidate({ key: actionSelectionKey, count: 0, total: 0, triaged: 0 }); });
     return () => controller.abort();
-  }, [actionArea, actionChannel, actionSelectionKey, actionSourceId, reprocess]);
+  }, [actionArea, actionChannel, actionSelectionKey, actionSourceId, homePeriod, reprocess]);
   const date = (v: string) =>
     new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(v));
   const latestScheduled = batches.find((batch) => batch.trigger === "scheduled");
@@ -94,6 +95,7 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
     ? [{ id: sourceId, label: sourceLabel ?? sourceName(sourceId), count: 0 }, ...sourceOptions]
     : sourceOptions;
   const actionCandidateCount = actionCandidate?.key === actionSelectionKey && actionSourceId ? actionCandidate.count : null;
+  const actionCandidateTotal = actionCandidate?.key === actionSelectionKey && actionSourceId ? actionCandidate.total : null;
   const scheduledSummary = (batch: Batch) => {
     if (batch.total === 0) return "Nenhuma vaga nova pendente de avaliação foi encontrada para este dia.";
     if (batch.eligible === 0) return "Nenhuma vaga aderente ou provável foi encontrada neste lote.";
@@ -103,12 +105,12 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
   const runToday = async () => {
     if (!actionSourceId || !actionCandidateCount || actionCandidateCount > MAX_MANUAL_TRIAGE_JOBS) return;
     setRunningPilot(true);
-    setMessage(`Analisando ${actionCandidateCount} vaga(s) recebida(s) hoje…`);
+    setMessage(`Analisando ${actionCandidateCount} vaga(s) do recorte ${homePeriodLabel(homePeriod)}…`);
     try {
       const response = await fetch("/api/triage/run", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ trigger: "portal", sourceId: actionSourceId, dateScope: "received", roleArea: actionArea, ingestionChannel: actionChannel, batchSize: actionCandidateCount, reprocess, aiMode: "off", createDrafts: false }),
+        body: JSON.stringify({ trigger: "portal", sourceId: actionSourceId, dateScope: "published", homePeriod, roleArea: actionArea, ingestionChannel: actionChannel, batchSize: actionCandidateCount, reprocess, aiMode: "off", createDrafts: false }),
       });
       const result = await response.json() as PilotResult & { error?: string };
       if (!response.ok) throw new Error(result.error ?? "Não foi possível concluir o piloto.");
@@ -200,19 +202,24 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
                     <input type="checkbox" checked={reprocess} onChange={(e) => setReprocess(e.target.checked)} disabled={runningPilot} />
                     Incluir vagas já triadas
                   </label>
+                  <label>
+                    Período da Home
+                    <output>{homePeriodLabel(homePeriod)}</output>
+                  </label>
                 </div>
                 <div className="triage-run-selection" aria-live="polite">
-                  {actionCandidateCount === null ? "Selecione uma fonte para consultar as vagas recebidas hoje." : actionCandidateCount === 0 ? "Nenhuma vaga corresponde ao recorte de hoje." : `${actionCandidateCount} vaga${actionCandidateCount === 1 ? "" : "s"} recebida${actionCandidateCount === 1 ? "" : "s"} hoje.`}
+                  {actionCandidateCount === null ? "Selecione uma fonte para consultar o mesmo recorte da Home." : actionCandidateCount === 0 && actionCandidateTotal ? `Há ${actionCandidateTotal} vaga${actionCandidateTotal === 1 ? "" : "s"} no recorte ${homePeriodLabel(homePeriod)}, mas todas já foram triadas.` : actionCandidateCount === 0 ? `Nenhuma vaga corresponde aos filtros ativos da Home em ${homePeriodLabel(homePeriod)}.` : `${actionCandidateCount} vaga${actionCandidateCount === 1 ? "" : "s"} aguardando triagem, de ${actionCandidateTotal} no recorte ${homePeriodLabel(homePeriod)}.`}
+                  {actionCandidateCount === 0 && Boolean(actionCandidateTotal) && !reprocess && <span>Marque “Incluir vagas já triadas” para reavaliar as vagas desse recorte.</span>}
                   {actionCandidateCount !== null && actionCandidateCount > MAX_MANUAL_TRIAGE_JOBS && <span>Refine Área ou Canal para analisar até {MAX_MANUAL_TRIAGE_JOBS} vagas por vez.</span>}
                 </div>
                 <button className="primary triage-run-button" disabled={runningPilot || !actionCandidateCount || actionCandidateCount > MAX_MANUAL_TRIAGE_JOBS} onClick={runToday}>
-                  {runningPilot ? "Analisando vagas…" : `Analisar vagas de hoje${actionCandidateCount ? ` (${actionCandidateCount})` : ""}`}
+                  {runningPilot ? "Analisando vagas…" : `Analisar vagas do recorte${actionCandidateCount ? ` (${actionCandidateCount})` : ""}`}
                 </button>
                 <button className="triage-queue-button" disabled={queueingDrafts || runningPilot} onClick={queueDrafts}>
                   {queueingDrafts ? "Preparando fila…" : "Preparar rascunhos elegíveis"}
                 </button>
                 <button className="triage-queue-button" disabled={queueingDrafts || runningPilot} onClick={retryFailedDrafts}>Reprocessar falhas de rascunho</button>
-                <small>A consulta usa a data de entrada no Radar, sempre no dia atual de São Paulo. Por padrão, somente vagas ainda não triadas entram no recorte. A fila exige vaga aprovada ou provável, análise atual e e-mail de contato válido.</small>
+                <small>A consulta replica Fonte, Área, Canal e Período ativos na Home; o período considera a data de publicação da vaga, como na lista principal. Por padrão, somente vagas ainda não triadas entram no recorte. A fila exige vaga aprovada ou provável, análise atual e e-mail de contato válido.</small>
               </div>
             </details>
           </div>

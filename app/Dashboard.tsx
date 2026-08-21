@@ -3611,6 +3611,9 @@ export default function Dashboard() {
         sourceOptions={jobFilterOptions.sources}
         areaOptions={jobFilterOptions.areas}
         channelOptions={jobFilterOptions.channels}
+        initialArea={areaFilter}
+        initialChannel={channelFilter}
+        homePeriod={effectivePeriod ?? "24"}
       />}
       {importReportRunId && <ImportRunReport runId={importReportRunId} close={() => setImportReportRunId(null)} />}
       {monitorOpen && <Monitoring close={() => setMonitorOpen(false)} />}

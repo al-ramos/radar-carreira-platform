@@ -1,6 +1,7 @@
 export type TriageTrigger = "portal" | "schedule" | "gpt";
 export type TriageAiMode = "off" | "ambiguous" | "all";
 export type TriageDateScope = "received" | "published";
+export type TriageHomePeriod = "24" | "72" | "168" | "all";
 
 export type TriageRunRequest = {
   trigger: TriageTrigger;
@@ -12,17 +13,20 @@ export type TriageRunRequest = {
   /** Filtros opcionais do Radar para reduzir uma execução manual. */
   roleArea?: string;
   ingestionChannel?: "extension" | "email" | "connector" | "file" | "api";
+  /** Período ativo na Home, para que a execução manual use o mesmo recorte. */
+  homePeriod?: TriageHomePeriod;
   batchSize?: number;
   reprocess?: boolean;
   aiMode?: TriageAiMode;
   createDrafts?: boolean;
 };
 
-export type NormalizedTriageRunRequest = Required<Omit<TriageRunRequest, "referenceDate" | "sourceId" | "roleArea" | "ingestionChannel">> & {
+export type NormalizedTriageRunRequest = Required<Omit<TriageRunRequest, "referenceDate" | "sourceId" | "roleArea" | "ingestionChannel" | "homePeriod">> & {
   referenceDate: string;
   sourceId?: string;
   roleArea?: string;
   ingestionChannel?: TriageRunRequest["ingestionChannel"];
+  homePeriod?: TriageHomePeriod;
 };
 
 function saoPauloDate(now: Date): string {
@@ -44,13 +48,16 @@ export function normalizeTriageRunRequest(request: TriageRunRequest, now = new D
   const sourceId = request.sourceId?.trim();
   const roleArea = request.roleArea?.trim();
   const ingestionChannel = request.ingestionChannel;
+  const homePeriod = request.homePeriod;
   const dateScope = request.dateScope ?? (request.trigger === "schedule" ? "received" : "published");
   if (dateScope !== "received" && dateScope !== "published") throw new Error("dateScope deve ser received ou published");
+  if (homePeriod && !["24", "72", "168", "all"].includes(homePeriod)) throw new Error("homePeriod inválido");
   return {
     trigger: request.trigger, referenceDate, batchSize, reprocess: request.reprocess ?? false,
     aiMode: request.aiMode ?? "ambiguous", createDrafts: request.createDrafts ?? false, dateScope,
     ...(sourceId && sourceId !== "all" ? { sourceId } : {}),
     ...(roleArea && roleArea !== "all" ? { roleArea } : {}),
     ...(ingestionChannel && ingestionChannel !== "all" ? { ingestionChannel } : {}),
+    ...(homePeriod ? { homePeriod } : {}),
   };
 }
