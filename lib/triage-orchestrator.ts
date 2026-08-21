@@ -1,11 +1,14 @@
 export type TriageTrigger = "portal" | "schedule" | "gpt";
 export type TriageAiMode = "off" | "ambiguous" | "all";
+export type TriageDateScope = "received" | "published";
 
 export type TriageRunRequest = {
   trigger: TriageTrigger;
   referenceDate?: string;
   /** Fonte opcional para uma execução manual excepcional e auditável. */
   sourceId?: string;
+  /** Escolhe se o recorte diário usa entrada no Radar ou publicação na fonte. */
+  dateScope?: TriageDateScope;
   batchSize?: number;
   reprocess?: boolean;
   aiMode?: TriageAiMode;
@@ -31,9 +34,11 @@ export function normalizeTriageRunRequest(request: TriageRunRequest, now = new D
   if (!/^\d{4}-\d{2}-\d{2}$/.test(referenceDate)) throw new Error("referenceDate deve usar YYYY-MM-DD");
   const batchSize = Math.max(1, Math.min(100, Math.floor(request.batchSize ?? 10)));
   const sourceId = request.sourceId?.trim();
+  const dateScope = request.dateScope ?? (request.trigger === "schedule" ? "received" : "published");
+  if (dateScope !== "received" && dateScope !== "published") throw new Error("dateScope deve ser received ou published");
   return {
     trigger: request.trigger, referenceDate, batchSize, reprocess: request.reprocess ?? false,
-    aiMode: request.aiMode ?? "ambiguous", createDrafts: request.createDrafts ?? false,
+    aiMode: request.aiMode ?? "ambiguous", createDrafts: request.createDrafts ?? false, dateScope,
     ...(sourceId && sourceId !== "all" ? { sourceId } : {}),
   };
 }

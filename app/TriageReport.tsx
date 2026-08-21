@@ -7,10 +7,11 @@ type Operational = { pendingDrafts: number; readyDrafts: number; failedDrafts: n
 type LegacyItem = { jobId: string; veredito: string; motivo: string | null; processedAt: string; title: string; company: string; externalId: string | null; sourceId: string | null; workMode: string | null; location: string | null; sourcePublishedAt: string | null; receivedAt: string; url: string; contactEmail: string | null };
 const rowClass: Record<string, string> = { "✅": "approved", "🟡": "partial", "❌": "rejected", "🔴": "rejected" };
 const saoPauloToday = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
-const sourceName = (source: string) => source === "apinfo-extension" ? "APInfo" : source;
+const sourceName = (source: string) => source === "apinfo-extension" ? "APInfo" : source === "linkedin-extension" ? "LinkedIn" : source;
 export default function TriageReport({ close, sourceId, sourceLabel }: { close: () => void; sourceId?: string; sourceLabel?: string }) {
   const [message, setMessage] = useState("Carregando avaliações…"),
     [runningPilot, setRunningPilot] = useState(false),
+    [runningLinkedIn, setRunningLinkedIn] = useState(false),
     [queueingDrafts, setQueueingDrafts] = useState(false),
     [pilot, setPilot] = useState<PilotResult | null>(null),
     [batchSize, setBatchSize] = useState(10),
@@ -124,6 +125,26 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
     } catch (error) { setMessage(error instanceof Error ? error.message : "Não foi possível retomar os rascunhos."); }
     finally { setQueueingDrafts(false); }
   };
+  const runLinkedInToday = async () => {
+    setRunningLinkedIn(true);
+    setMessage(`Analisando até ${batchSize} vagas do LinkedIn recebidas hoje pelo Radar…`);
+    try {
+      const response = await fetch("/api/triage/run", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ trigger: "portal", sourceId: "linkedin-extension", dateScope: "received", batchSize, reprocess, aiMode: "off", createDrafts: false }),
+      });
+      const result = await response.json() as PilotResult & { error?: string };
+      if (!response.ok) throw new Error(result.error ?? "Não foi possível analisar as vagas do LinkedIn.");
+      setPilot(result);
+      setMessage(`Triagem LinkedIn concluída: ${result.processed.length} vagas recebidas hoje registradas. A fonte LinkedIn não entra na fila de rascunhos.`);
+      void loadHistory();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Não foi possível analisar as vagas do LinkedIn.");
+    } finally {
+      setRunningLinkedIn(false);
+    }
+  };
   const openHistory = (nextDraftFilter = "all") => {
     setDraftFilter(nextDraftFilter);
     setHistoryPage(0);
@@ -164,11 +185,14 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
                 <button className="primary triage-run-button" disabled={runningPilot} onClick={runPilot}>
                   {runningPilot ? "Analisando vagas…" : `Analisar ${batchSize} vagas agora`}
                 </button>
+                {!sourceId && <button className="triage-queue-button" disabled={runningLinkedIn || runningPilot} onClick={runLinkedInToday}>
+                  {runningLinkedIn ? "Analisando LinkedIn…" : "Analisar LinkedIn recebidas hoje"}
+                </button>}
                 <button className="triage-queue-button" disabled={queueingDrafts || runningPilot} onClick={queueDrafts}>
                   {queueingDrafts ? "Preparando fila…" : "Preparar rascunhos elegíveis"}
                 </button>
                 <button className="triage-queue-button" disabled={queueingDrafts || runningPilot} onClick={retryFailedDrafts}>Reprocessar falhas de rascunho</button>
-                <small>{sourceId ? `Exceção manual: somente vagas de hoje da fonte ${sourceLabel ?? sourceId}. ` : ""}A fila exige vaga aprovada ou provável, análise atual e e-mail de contato válido. Esta ação não cria nem envia e-mails.</small>
+                <small>{sourceId ? `Exceção manual: somente vagas de hoje da fonte ${sourceLabel ?? sourceId}. ` : ""}LinkedIn usa recebimento no Radar e nunca entra na fila de rascunhos. A fila exige vaga aprovada ou provável, análise atual e e-mail de contato válido.</small>
               </div>
             </details>
           </div>

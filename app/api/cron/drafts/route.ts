@@ -6,7 +6,7 @@ import { getAnalysisVersions } from "../../../../lib/analysis-versions";
 import { buildApinfoApplicationEmail } from "../../../../lib/application-email";
 import { canonicalizeProfile, profileIsReadyForTriage } from "../../../../lib/canonical-profile";
 import { evaluateDeterministicTriage } from "../../../../lib/deterministic-triage";
-import { isSafeForDraft } from "../../../../lib/draft-eligibility";
+import { isDraftAllowedForSource, isSafeForDraft } from "../../../../lib/draft-eligibility";
 
 export const dynamic = "force-dynamic";
 
@@ -67,6 +67,7 @@ export async function POST(request: Request) {
   const rows = await db.select({
     outboxId: draftOutbox.id,
     jobId: jobs.id,
+    sourceId: jobs.sourceId,
     title: jobs.title,
     company: jobs.company,
     externalId: jobs.externalId,
@@ -112,15 +113,18 @@ export async function POST(request: Request) {
       location: row.location,
       publishedAt: row.publishedAt,
     }, canonicalProfile);
-    const safe = versionsCurrent && isSafeForDraft({
+    const safe = isDraftAllowedForSource(row.sourceId) && versionsCurrent && isSafeForDraft({
       verdict: row.analysisVerdict,
       blocker: row.analysisBlocker,
       contactEmail: row.contactEmail,
+      sourceId: row.sourceId,
       deterministicVerdict: deterministic.verdict,
       deterministicBlocker: deterministic.blocker,
     });
     if (!safe) {
-      const reason = !versionsCurrent
+      const reason = !isDraftAllowedForSource(row.sourceId)
+        ? "A fonte LinkedIn é exclusiva para análise e não permite rascunhos."
+        : !versionsCurrent
         ? "Análise desatualizada; reavalie a vaga antes de criar rascunho."
         : !row.contactEmail?.trim()
           ? "E-mail de contato inválido ou ausente."

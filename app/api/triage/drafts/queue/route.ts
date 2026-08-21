@@ -6,7 +6,7 @@ import { draftOutbox, jobs, profiles, triageHistory, userJobAnalyses } from "../
 import { getAnalysisVersions } from "../../../../../lib/analysis-versions";
 import { canonicalizeProfile, profileIsReadyForTriage } from "../../../../../lib/canonical-profile";
 import { evaluateDeterministicTriage } from "../../../../../lib/deterministic-triage";
-import { isSafeForDraft } from "../../../../../lib/draft-eligibility";
+import { isDraftAllowedForSource, isSafeForDraft } from "../../../../../lib/draft-eligibility";
 
 function parseStack(value: string): string[] {
   try {
@@ -72,6 +72,7 @@ export async function POST(request: Request) {
   let alreadyPresent = 0;
   for (const row of latestByJob.values()) {
     if (alreadyQueued.has(row.jobId)) { alreadyPresent += 1; continue; }
+    if (!isDraftAllowedForSource(row.job.sourceId)) { notEligible += 1; continue; }
     const sameVersion = row.profileRevision === versions.profileRevision && row.rulesRevision === versions.rulesRevision && row.instructionsRevision === versions.instructionsRevision;
     if (!sameVersion) { outdated += 1; continue; }
     const analysisIsCurrent = row.analysis
@@ -92,6 +93,7 @@ export async function POST(request: Request) {
       verdict: row.analysis.verdict,
       blocker: row.analysis.blocker,
       contactEmail: row.job.contactEmail,
+      sourceId: row.job.sourceId,
       deterministicVerdict: current.verdict,
       deterministicBlocker: current.blocker,
     })) {

@@ -56,6 +56,7 @@ export async function POST(request: Request) {
       trigger: body.trigger ?? "portal",
       referenceDate: body.referenceDate,
       sourceId: body.sourceId,
+      dateScope: body.dateScope,
       batchSize: body.batchSize,
       reprocess: body.reprocess,
       aiMode: body.aiMode ?? "off",
@@ -74,18 +75,18 @@ export async function POST(request: Request) {
 
   const canonicalProfile = canonicalizeProfile(profile);
   const versions = getAnalysisVersions(canonicalProfile);
-  // Uma fonte informada transforma a execução manual em um recorte diário
-  // explícito pela publicação, que é o mesmo critério exibido no Radar. A
-  // rotina agendada preserva firstSeenAt, conforme a regra operacional.
+  // APInfo mantém o recorte excepcional por publicação. LinkedIn pode pedir
+  // explicitamente o dia de recebimento pelo Radar, sem misturar os dois.
   const scopedToReferenceDay = run.trigger === "schedule" || Boolean(run.sourceId);
+  const dateColumn = run.dateScope === "received" ? jobs.firstSeenAt : jobs.publishedAt;
   const candidates = await db
     .select({ job: jobs, analysis: userJobAnalyses })
     .from(jobs)
     .leftJoin(userJobAnalyses, and(eq(userJobAnalyses.userId, userId), eq(userJobAnalyses.jobId, jobs.id)))
     .where(and(
       eq(jobs.status, "active"),
-      scopedToReferenceDay ? gte(run.sourceId ? jobs.publishedAt : jobs.firstSeenAt, saoPauloDayWindow(run.referenceDate).start) : undefined,
-      scopedToReferenceDay ? lt(run.sourceId ? jobs.publishedAt : jobs.firstSeenAt, saoPauloDayWindow(run.referenceDate).end) : undefined,
+      scopedToReferenceDay ? gte(dateColumn, saoPauloDayWindow(run.referenceDate).start) : undefined,
+      scopedToReferenceDay ? lt(dateColumn, saoPauloDayWindow(run.referenceDate).end) : undefined,
       run.sourceId ? eq(jobs.sourceId, run.sourceId) : undefined,
       run.reprocess ? undefined : run.aiMode === "ambiguous"
         ? or(isNull(userJobAnalyses.jobId), and(eq(userJobAnalyses.source, "rules"), lt(userJobAnalyses.confidence, 100), isNull(userJobAnalyses.blocker)))
@@ -99,7 +100,7 @@ export async function POST(request: Request) {
   const trigger = run.trigger === "portal" ? "manual" : run.trigger === "schedule" ? "scheduled" : "assistant";
   await db.insert(triageBatches).values({
     id: batchId, userId, trigger,
-    scope: run.sourceId ? `source-day:${run.sourceId}` : run.trigger === "schedule" ? "schedule-day" : run.reprocess ? "reprocess" : "unreviewed",
+    scope: run.sourceId ? `source-${run.dateScope}-day:${run.sourceId}` : run.trigger === "schedule" ? "schedule-day" : run.reprocess ? "reprocess" : "unreviewed",
     status: "running", startedAt: now, createdAt: now,
   });
 
@@ -193,6 +194,7 @@ export async function POST(request: Request) {
         verdict: finalVerdict.result.emoji,
         blocker: finalVerdict.blocker,
         contactEmail: job.contactEmail,
+        sourceId: job.sourceId,
         deterministicVerdict: verdict.verdict,
         deterministicBlocker: verdict.blocker,
       })) {
