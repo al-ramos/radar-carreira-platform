@@ -8,8 +8,10 @@ test("dashboard oferece radar, perfil e pipeline persistente", async () => {
   const dashboard = await read("../app/Dashboard.tsx");
   assert.match(
     dashboard,
-    /const nav\s*=\s*\[\s*"Radar",\s*"Pipeline",\s*"Alertas",\s*"Métricas",\s*"Monitoramento",\s*"Auditoria",\s*"Triagem IA",\s*"Qualidade",\s*"Usuários",\s*"Extensão LinkedIn",\s*"Extensão APinfo",\s*"Gmail RadarVagas",\s*"Fontes",\s*"Importações",\s*"Configurações",?\s*\]/,
+    /const nav\s*=\s*\[\s*"Radar",\s*"Pipeline",\s*"Alertas",\s*"Métricas",?\s*\]/,
   );
+  assert.match(dashboard, /const operationalNav\s*=\s*\[/);
+  assert.match(dashboard, /Operação e integrações/);
   // Desde o commit 9239c98 (paginação no servidor após filtros), a URL de
   // /api/jobs é montada por buildJobsParams(page), não mais como string
   // literal — verifica a construção real em vez do texto antigo.

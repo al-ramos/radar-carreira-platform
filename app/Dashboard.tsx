@@ -322,6 +322,8 @@ const nav = [
   "Pipeline",
   "Alertas",
   "Métricas",
+];
+const operationalNav = [
   "Monitoramento",
   "Auditoria",
   "Triagem IA",
@@ -515,6 +517,7 @@ export default function Dashboard() {
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [profileMinScore, setProfileMinScore] = useState(60);
   const [gmailOpen, setGmailOpen] = useState(false);
+  const [operationsOpen, setOperationsOpen] = useState(false);
   const [alertsOpen, setAlertsOpen] = useState(false);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [monitorOpen, setMonitorOpen] = useState(false);
@@ -2146,7 +2149,7 @@ export default function Dashboard() {
   const isAdmin = currentUser?.role === "admin",
     isOwner = isOwnerEmail(currentUser?.email),
     canManageSources = isOwner,
-    visibleNav = nav.filter((item) => {
+    visibleOperationalNav = operationalNav.filter((item) => {
       if (item === "Fontes" || item === "Importações") return canManageSources;
       if (item === "Auditoria" || item === "Triagem IA" || item === "Extensão LinkedIn" || item === "Extensão APinfo") return isOwner;
       return (
@@ -2183,7 +2186,7 @@ export default function Dashboard() {
           </span>
         </div>
         <nav>
-          {visibleNav.map((n) => (
+          {nav.map((n) => (
             <button
               key={n}
               className={active === n ? "active" : ""}
@@ -2210,6 +2213,44 @@ export default function Dashboard() {
               {n === "Importações" && <em>ADMIN</em>}
             </button>
           ))}
+          {visibleOperationalNav.length > 0 && (
+            <div className="operations-nav">
+              <button
+                type="button"
+                className={operationsOpen ? "operations-toggle open" : "operations-toggle"}
+                aria-expanded={operationsOpen}
+                onClick={() => setOperationsOpen((open) => !open)}
+              >
+                <span aria-hidden="true">⚙</span>
+                Operação e integrações
+                <small aria-hidden="true">{operationsOpen ? "⌃" : "⌄"}</small>
+              </button>
+              {operationsOpen && visibleOperationalNav.map((n) => (
+                <button
+                  key={n}
+                  className={active === n ? "active operation-item" : "operation-item"}
+                  onClick={() => {
+                    setActive(n);
+                    if (n === "Monitoramento") setMonitorOpen(true);
+                    if (n === "Auditoria") setAuditOpen(true);
+                    if (n === "Triagem IA") setTriageOpen(true);
+                    if (n === "Qualidade") setQualityOpen(true);
+                    if (n === "Usuários") setUsersOpen(true);
+                    if (n === "Extensão LinkedIn") setLinkedInOpen(true);
+                    if (n === "Extensão APinfo") setApinfoOpen(true);
+                    if (n === "Gmail RadarVagas") setGmailOpen(true);
+                    if (n === "Importações") setImporting(true);
+                    if (n === "Fontes") setSourcesOpen(true);
+                    if (n === "Configurações") openProfile();
+                  }}
+                >
+                  <span>{icons[n]}</span>
+                  {n}
+                  {n === "Importações" && <em>ADMIN</em>}
+                </button>
+              ))}
+            </div>
+          )}
         </nav>
         <div className="sidebar-foot">
           <div className="avatar">{initials || "V"}</div>
