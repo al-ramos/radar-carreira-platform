@@ -558,7 +558,7 @@ export default function Dashboard() {
   // Radar — ver captureApinfoContact/buildContactMailto e o useEffect que
   // escuta a resposta da extensão (RADAR_CAPTURE_CONTACT_RESULT).
   const [contactCapturing, setContactCapturing] = useState(false);
-  const [companyContactReuseJobId, setCompanyContactReuseJobId] = useState<string | null>(null);
+  const [companyContactsReusing, setCompanyContactsReusing] = useState(false);
   const [contactPasteReady, setContactPasteReady] = useState(false);
   const [contactCaptureMsg, setContactCaptureMsg] = useState<{ text: string; error: boolean } | null>(null);
   const contactRequestRef = useRef<{ requestId: string; jobId: string; correctTruncated?: boolean } | null>(null);
@@ -1038,8 +1038,8 @@ export default function Dashboard() {
    * em Modalidade/Veredito/Fonte. Roda em cima da página já carregada
    * (client-side), não chama a API de novo. */
   const [tableColumnFilters, setTableColumnFilters] = useState<{
-    company: string; title: string; mode: string; verdict: string; stack: string; source: string; contactEmail: string;
-  }>({ company: "", title: "", mode: "", verdict: "", stack: "", source: "", contactEmail: "" });
+    company: string; title: string; mode: string; verdict: string; stack: string; source: string; contactEmail: string; missingContact: boolean;
+  }>({ company: "", title: "", mode: "", verdict: "", stack: "", source: "", contactEmail: "", missingContact: false });
   /** Seleção temporária para exportação. Ela não altera o card aberto, o
    * pipeline nem o status da vaga: serve exclusivamente ao relatório. */
   const [exportSelectionIds, setExportSelectionIds] = useState<Set<string>>(() => new Set());
@@ -1047,14 +1047,14 @@ export default function Dashboard() {
     setTableColumnFilters((current) => ({ ...current, [column]: value }));
   }, []);
   const clearTableColumnFilters = useCallback(() => {
-    setTableColumnFilters({ company: "", title: "", mode: "", verdict: "", stack: "", source: "", contactEmail: "" });
+    setTableColumnFilters({ company: "", title: "", mode: "", verdict: "", stack: "", source: "", contactEmail: "", missingContact: false });
   }, []);
   const activeTableColumnFilterCount = Object.values(tableColumnFilters).filter(Boolean).length;
   const tableJobs = useMemo(() => {
     const { column, direction } = tableSort;
     const factor = direction === "asc" ? 1 : -1;
     const filters = tableColumnFilters;
-    const filtered = filters.company || filters.title || filters.mode || filters.verdict || filters.stack || filters.source || filters.contactEmail
+    const filtered = filters.company || filters.title || filters.mode || filters.verdict || filters.stack || filters.source || filters.contactEmail || filters.missingContact
       ? orderedJobs.filter((j) => {
           if (filters.company && !j.company.toLowerCase().includes(filters.company.toLowerCase())) return false;
           if (filters.title && !j.title.toLowerCase().includes(filters.title.toLowerCase())) return false;
@@ -1067,6 +1067,7 @@ export default function Dashboard() {
           if (filters.stack && !j.stack.some((s) => s.toLowerCase().includes(filters.stack.toLowerCase()))) return false;
           if (filters.source && (j.sourceName ?? "") !== filters.source) return false;
           if (filters.contactEmail && !(j.contactEmail ?? "").toLowerCase().includes(filters.contactEmail.toLowerCase())) return false;
+          if (filters.missingContact && j.contactEmail) return false;
           return true;
         })
       : orderedJobs;
@@ -1878,27 +1879,35 @@ export default function Dashboard() {
     setContactCaptureMsg({ text: `E-mail capturado: ${savedEmail}`, error: false });
     return true;
   }
-  async function reuseCompanyContact(job: Job) {
-    if (job.contactEmail || companyContactReuseJobId) return;
-    setCompanyContactReuseJobId(job.id);
+  async function reuseCompanyContactsInTable() {
+    const pendingJobs = tableJobs.filter((job) => !job.contactEmail);
+    if (!pendingJobs.length || companyContactsReusing) return;
+    setCompanyContactsReusing(true);
     try {
-      const response = await fetch(`/api/jobs/${job.id}/contact`, {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ useCompanyContact: true }),
-      });
-      const data = await response.json().catch(() => null) as { contactEmail?: string; contactSubject?: string } | null;
-      const contactEmail = normalizeContactEmail(data?.contactEmail);
-      if (response.ok && contactEmail) {
+      const results = await Promise.allSettled(pendingJobs.map(async (job) => {
+        const response = await fetch(`/api/jobs/${job.id}/contact`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ useCompanyContact: true }),
+        });
+        const data = await response.json().catch(() => null) as { contactEmail?: string; contactSubject?: string } | null;
+        const contactEmail = response.ok ? normalizeContactEmail(data?.contactEmail) : undefined;
+        return contactEmail ? { id: job.id, contactEmail, contactSubject: data?.contactSubject } : null;
+      }));
+      const reused = results.flatMap((result) => result.status === "fulfilled" && result.value ? [result.value] : []);
+      if (reused.length) {
+        const byId = new Map(reused.map((result) => [result.id, result]));
         setItems((current) => current.map((item) =>
-          item.id === job.id ? { ...item, contactEmail, contactSubject: data?.contactSubject } : item,
+          byId.has(item.id) ? { ...item, contactEmail: byId.get(item.id)!.contactEmail, contactSubject: byId.get(item.id)!.contactSubject } : item,
         ));
-        setContactCaptureMsg({ text: `E-mail da empresa usado em ${job.title}.`, error: false });
-      } else {
-        setContactCaptureMsg({ text: "Esta empresa não possui e-mail cadastrado.", error: false });
       }
+      const unavailable = pendingJobs.length - reused.length;
+      setContactCaptureMsg({
+        text: `${reused.length} de ${pendingJobs.length} vaga${pendingJobs.length === 1 ? "" : "s"} atualizada${pendingJobs.length === 1 ? "" : "s"}${unavailable ? `; ${unavailable} sem e-mail cadastrado para a empresa.` : "."}`,
+        error: false,
+      });
     } finally {
-      setCompanyContactReuseJobId(null);
+      setCompanyContactsReusing(false);
     }
   }
   async function pasteApinfoContact(job: Job) {
@@ -2675,6 +2684,20 @@ export default function Dashboard() {
               {jobFilterOptions.areas.filter(option => option.count > 0).map(option => <option key={option.id} value={option.id}>{option.label} ({option.count})</option>)}
             </select>
           </div>
+          <div className="compact-filter-group contact-filter-group">
+            <span className="compact-filter-label">Contato</span>
+            <div className="contact-filter-content">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={tableColumnFilters.missingContact}
+                  onChange={(event) => setTableColumnFilters((current) => ({ ...current, missingContact: event.target.checked }))}
+                />
+                Somente vagas sem e-mail
+              </label>
+              <span className="list-head-dim">{tableJobs.filter((job) => !job.contactEmail).length} vagas sem e-mail cadastrados (dentro dos filtros atuais).</span>
+            </div>
+          </div>
           <div className="compact-filter-divider" aria-hidden="true" />
           <div className="compact-filter-group ingestion-filter-group">
             <span className="compact-filter-label">Importação e recebimento</span>
@@ -2761,7 +2784,7 @@ export default function Dashboard() {
             )}
           </div>
           <div className="compact-filter-divider" aria-hidden="true" />
-          <div className="compact-filter-group">
+          <div className="compact-filter-group status-filter-group">
             <span className="compact-filter-label">Status</span>
             <div className="compact-pills" role="group" aria-label="Filtrar por estágio do pipeline">
               <select
@@ -2947,6 +2970,11 @@ export default function Dashboard() {
                     <input type="text" placeholder="Filtrar e-mail…" value={tableColumnFilters.contactEmail} onChange={(e) => setTableColumnFilter("contactEmail", e.target.value)} aria-label="Filtrar por e-mail" />
                   </span>
                   <span role="cell" className="job-table-filter-cell job-table-filter-clear-cell">
+                    {tableJobs.some((job) => !job.contactEmail) && (
+                      <button type="button" className="analysis-toggle-btn job-table-reuse-company-contacts" disabled={companyContactsReusing} onClick={() => void reuseCompanyContactsInTable()} title="Verifica todas as vagas filtradas sem e-mail e usa o contato já cadastrado para cada empresa.">
+                        {companyContactsReusing ? "Verificando e-mails…" : "Usar e-mail da empresa (todos)"}
+                      </button>
+                    )}
                     {activeTableColumnFilterCount > 0 && <button type="button" className="job-table-filter-clear" onClick={clearTableColumnFilters}>Limpar ({activeTableColumnFilterCount})</button>}
                   </span>
                 </div>
@@ -3022,7 +3050,7 @@ export default function Dashboard() {
                       <span role="cell" className="job-table-cell job-table-cell-source">
                         {j.sourceName ?? "—"}
                       </span>
-                      <span role="cell" className="job-table-cell job-table-cell-email" onClick={(event) => event.stopPropagation()}>
+                      <span role="cell" className="job-table-cell job-table-cell-email">
                         {j.contactEmail ? (
                           <a
                             href={buildContactMailto(j) ?? `mailto:${j.contactEmail}`}
@@ -3031,17 +3059,7 @@ export default function Dashboard() {
                           >
                             {j.contactEmail}
                           </a>
-                        ) : (
-                          <button
-                            type="button"
-                            className="analysis-toggle-btn job-table-reuse-company-contact"
-                            disabled={companyContactReuseJobId !== null}
-                            onClick={() => void reuseCompanyContact(j)}
-                            title="Usa o e-mail já cadastrado para esta empresa nesta vaga"
-                          >
-                            {companyContactReuseJobId === j.id ? "Usando e-mail…" : "Usar e-mail da empresa"}
-                          </button>
-                        )}
+                        ) : "—"}
                       </span>
                       <span role="cell" className="job-table-cell job-table-cell-date">
                         {j.sourcePublishedAt ? formatJobDateTime(j.sourcePublishedAt) : j.age}

@@ -903,10 +903,10 @@
 
 .radar-filter-panel {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px 24px;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 16px;
   margin: 0 0 14px;
-  padding: 14px 18px;
+  padding: 18px;
   border: 1px solid #e4e5ed;
   border-radius: 14px;
   background: #fff;
@@ -915,7 +915,10 @@
 .radar-filter-panel[hidden] { display: none; }
 .radar-filter-panel .compact-filter-group {
   align-items: flex-start;
+  min-width: 0;
 }
+.radar-filter-panel > .compact-filter-group:not(.ingestion-filter-group) { grid-column: span 4; }
+.radar-filter-panel > .compact-filter-group:first-child { grid-column: 1 / -1; }
 .radar-filter-panel .compact-filter-label {
   min-width: 68px;
   padding-top: 4px;
@@ -946,8 +949,8 @@
   color: #18264d;
   font-size: 11px;
   font-weight: 700;
-  max-width: 320px;
-  min-width: 220px;
+  max-width: none;
+  min-width: 0;
   padding: 9px 12px;
 }
 .area-filter-grid button {
@@ -980,8 +983,9 @@
 .radar-filter-panel .ingestion-filter-group {
   grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: 150px 1fr;
-  gap: 8px 14px;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  padding-top: 2px;
 }
 .radar-filter-panel .ingestion-filter-group > .compact-filter-label {
   min-width: 0;
@@ -1005,7 +1009,7 @@
 }
 .ingestion-filter-controls {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
 }
 .ingestion-filter-controls-dates {
@@ -1048,6 +1052,18 @@
   height: 14px;
   accent-color: #18264d;
 }
+.contact-filter-group { grid-column: span 8 !important; }
+.status-filter-group { grid-column: span 4 !important; }
+.contact-filter-content {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  min-height: 34px;
+}
+.contact-filter-content .list-head-dim { font-size: 10px; }
+.contact-filter-content label { display: inline-flex; align-items: center; gap: 7px; color: #18264d; font-size: 10px; font-weight: 700; }
+.contact-filter-content input { width: 14px; height: 14px; accent-color: #6a5cf0; }
 .job-main .job-ingestion-meta,
 .job-ingestion-meta {
   color: #685ab5;
@@ -1128,6 +1144,7 @@
 @media (max-width: 850px) {
   .radar-controls { align-items: stretch; }
   .radar-filter-panel { grid-template-columns: 1fr; }
+  .radar-filter-panel > .compact-filter-group:not(.ingestion-filter-group), .contact-filter-group { grid-column: auto !important; }
   .score-controls { grid-template-columns: 1fr 1fr; }
   .score-controls-range { grid-column: 1 / -1; }
   .score-controls .fit-filter-profile-chip { justify-self: start; }
@@ -1422,6 +1439,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .job-table-filter-cell-disabled { pointer-events: none; }
 .job-table-cell-email a { display: block; color: #4f46c7; font-size: 10.5px; overflow: hidden; text-decoration: none; text-overflow: ellipsis; white-space: nowrap; }
 .job-table-cell-email a:hover { text-decoration: underline; }
+.job-table-reuse-company-contact { min-height: 28px; padding: 4px 7px; border-radius: 6px; font-size: 9.5px; line-height: 1.2; white-space: nowrap; }
 .job-table-empty { padding: 26px 16px; color: #69718b; font-size: 11px; text-align: center; }
 .detail-drawer-backdrop { position: fixed; inset: 0; z-index: 40; background: #07140e40; }
 .detail.detail-drawer { position: fixed; top: 0; right: 0; bottom: 0; z-index: 41; width: min(560px, 92vw); max-height: 100vh; border-radius: 0; border-left: 1px solid var(--line); box-shadow: -20px 0 60px #10182014; }
