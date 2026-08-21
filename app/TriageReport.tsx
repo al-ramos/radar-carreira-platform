@@ -123,6 +123,18 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
     } catch (error) { setMessage(error instanceof Error ? error.message : "Não foi possível retomar os rascunhos."); }
     finally { setQueueingDrafts(false); }
   };
+  const openHistory = (nextDraftFilter = "all") => {
+    setDraftFilter(nextDraftFilter);
+    setHistoryPage(0);
+    window.setTimeout(() => document.getElementById("triage-history")?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+  };
+  const openAutomationActions = () => {
+    const actions = document.querySelector<HTMLDetailsElement>(".triage-actions");
+    if (actions) {
+      actions.open = true;
+      actions.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  };
   return (
     <div className="modal-backdrop" onClick={close}>
       <section className="modal triage-modal" onClick={(e) => e.stopPropagation()}>
@@ -178,28 +190,36 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
             </div>
           </section>
         )}
-        <section className="triage-automation" aria-label="Status da automação diária">
-          <div>
+        <section className="triage-automation" aria-label="Automação diária e saúde operacional">
+          <div className="triage-automation-intro">
             <h3>Automação diária</h3>
             <small>Triagem por regras para as vagas recebidas no dia; rascunhos só entram na fila se houver e-mail válido.</small>
           </div>
-          {latestScheduled ? (
-            <div className="triage-automation-status">
-              <strong>{latestScheduled.status === "completed" ? "Última execução concluída" : `Última execução: ${latestScheduled.status}`}</strong>
-              <span>{date(latestScheduled.completedAt ?? latestScheduled.startedAt ?? latestScheduled.createdAt)} · {latestScheduled.completed}/{latestScheduled.total} vaga(s) concluída(s)</span>
-              <span>{scheduledSummary(latestScheduled)}</span>
-              <span>{latestScheduled.draftsReady} rascunho(s) pronto(s) · {latestScheduled.draftsPending} aguardando criação · {latestScheduled.draftsFailed} falha(s)</span>
-              {latestScheduled.error && <span className="triage-automation-error">Falha registrada: {latestScheduled.error}</span>}
+          <div className="triage-automation-main">
+            {latestScheduled ? (
+              <div className="triage-automation-status">
+                <strong>{latestScheduled.status === "completed" ? "Última execução concluída" : `Última execução: ${latestScheduled.status}`}</strong>
+                <span>{date(latestScheduled.completedAt ?? latestScheduled.startedAt ?? latestScheduled.createdAt)} · {latestScheduled.completed}/{latestScheduled.total} vaga(s) concluída(s)</span>
+                <span>{scheduledSummary(latestScheduled)}</span>
+                {latestScheduled.error && <span className="triage-automation-error">Falha registrada: {latestScheduled.error}</span>}
+              </div>
+            ) : <p className="triage-automation-empty">Ainda não há execução agendada registrada. Abra as ações para iniciar a primeira triagem.</p>}
+            <div className="triage-automation-actions">
+              {latestScheduled ? <button type="button" className="triage-card-action" onClick={() => openHistory()}>Ver histórico</button> : <button type="button" className="triage-card-action" onClick={openAutomationActions}>Abrir ações de automação</button>}
             </div>
-          ) : <p className="triage-automation-empty">Ainda não houve execução agendada registrada. A primeira rotina diária aparecerá aqui.</p>}
+          </div>
+          {operational && <div className="triage-operations-inline">
+            <div className="triage-operations-heading"><strong>Saúde operacional</strong><small>{operational.alerts.length ? `${operational.alerts.length} alerta(s) exige(m) atenção` : "Sem alertas operacionais."}</small></div>
+            <div className="triage-operations-metrics">
+              <button type="button" onClick={() => openHistory("pending")}><b>{operational.pendingDrafts}</b> na fila</button>
+              <button type="button" onClick={() => openHistory("drafted")}><b>{operational.readyDrafts}</b> prontos</button>
+              <button type="button" className={operational.failedDrafts ? "has-failures" : ""} onClick={() => openHistory("failed")}><b>{operational.failedDrafts}</b> com falha</button>
+            </div>
+            {operational.alerts.length > 0 && <ul>{operational.alerts.map((alert) => <li key={alert.message} className={alert.level}>{alert.message}</li>)}</ul>}
+          </div>}
         </section>
-        {operational && <section className="triage-operations" aria-label="Saúde operacional da triagem">
-          <div><h3>Saúde operacional</h3><small>Fila de rascunhos e rotina diária.</small></div>
-          <div className="triage-operations-metrics"><span><b>{operational.pendingDrafts}</b> na fila</span><span><b>{operational.readyDrafts}</b> prontos</span><span><b>{operational.failedDrafts}</b> com falha</span></div>
-          {operational.alerts.length > 0 ? <ul>{operational.alerts.map((alert) => <li key={alert.message} className={alert.level}>{alert.message}</li>)}</ul> : <p className="triage-operations-ok">Sem alertas operacionais.</p>}
-        </section>}
         {(
-          <section className="triage-history" aria-label="Histórico persistido da nova triagem">
+          <section id="triage-history" className="triage-history" aria-label="Histórico persistido da nova triagem">
             <div className="triage-history-heading">
               <div>
                 <h3>Histórico da triagem</h3>
