@@ -97,10 +97,11 @@ test("a página autenticada não renderiza o dashboard pesado no Worker", async 
   assert.match(shell, /ssr: false/);
 });
 
-test("vaga sem score não recebe veredito de aderência na lista", async () => {
+test("o Radar não calcula vereditos automaticamente na lista", async () => {
   const dashboard = await read("../app/Dashboard.tsx");
-  assert.match(dashboard, /if \(!job\.scored\) return;/);
-  assert.match(dashboard, /O veredito só complementa uma aderência calculada/);
+  assert.match(dashboard, /Vereditos não são gerados automaticamente no Radar/);
+  assert.match(dashboard, /return new Map<string, VerdictResult>\(\);/);
+  assert.match(dashboard, /verdictMap\.size > 0/);
 });
 
 test("contato existente vira ação de cópia e captura oferece fallback pela área de transferência", async () => {
