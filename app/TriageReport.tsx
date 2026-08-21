@@ -102,6 +102,8 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
   const latestByJob = new Map<string, HistoryItem>();
   for (const item of history) if (!latestByJob.has(item.jobId)) latestByJob.set(item.jobId, item);
   const currentAssessments = [...latestByJob.values()];
+  const aiTargetJobs = aiTargetJobIds ? currentAssessments.filter((item) => aiTargetJobIds.includes(item.jobId)) : [];
+  const isIndividualAiReview = aiTargetJobIds?.length === 1;
   const jobSources = [...new Set(currentAssessments.map((item) => item.jobSource).filter(Boolean))] as string[];
   const scopedHistory = currentAssessments.filter((item) => (verdictFilter === "all" || item.verdict === verdictFilter) && (sourceFilter === "all" || item.source === sourceFilter) && (jobSourceFilter === "all" || item.jobSource === jobSourceFilter) && (!publishedDateFilter || dayKey(item.sourcePublishedAt) === publishedDateFilter) && (!receivedDateFilter || dayKey(item.receivedAt) === receivedDateFilter) && (!analysedDateFilter || dayKey(item.processedAt) === analysedDateFilter));
   // Os contadores e a tabela devem falar sobre o mesmo recorte. O filtro de
@@ -305,7 +307,11 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
             <details className="triage-actions">
               <summary>Exibir ações de automação</summary>
               <div className="triage-run-panel">
-                <div className="triage-run-settings">
+                {aiPromptOpen && aiTargetJobIds ? <div className="triage-individual-ai-selection" aria-live="polite">
+                  <span>{isIndividualAiReview ? "Consulta individual" : `Consulta de ${aiTargetJobIds.length} vagas selecionadas`}</span>
+                  <b>{isIndividualAiReview ? aiTargetJobs[0] ? `${aiTargetJobs[0].title} — ${aiTargetJobs[0].company}` : "Vaga selecionada" : "Somente as vagas selecionadas serão processadas"}</b>
+                  <small>{isIndividualAiReview ? "A IA analisará somente esta vaga. Os filtros do recorte não serão usados." : "A IA analisará somente as vagas selecionadas. Os filtros do recorte não serão usados."}</small>
+                </div> : <div className="triage-run-settings">
                   <label>
                     Fonte
                     <select aria-label="Fonte das vagas a analisar" value={actionSourceId} onChange={(e) => setActionSourceId(e.target.value)} disabled={runningPilot}>
@@ -340,8 +346,8 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
                       <option value="all">Todas as vagas</option>
                     </select>
                   </label>
-                </div>
-                <div className="triage-run-selection" aria-live="polite">
+                </div>}
+                {!(aiPromptOpen && aiTargetJobIds) && <><div className="triage-run-selection" aria-live="polite">
                   {actionCandidateCount === null ? "Selecione uma fonte para consultar o recorte da triagem." : actionCandidateCount === 0 && actionCandidateTotal ? `Há ${actionCandidateTotal} vaga${actionCandidateTotal === 1 ? "" : "s"} no recorte ${homePeriodLabel(actionPeriod)}, mas todas já foram triadas.` : actionCandidateCount === 0 ? `Nenhuma vaga corresponde aos filtros da triagem em ${homePeriodLabel(actionPeriod)}.` : `${actionCandidateCount} vaga${actionCandidateCount === 1 ? "" : "s"} aguardando triagem, de ${actionCandidateTotal} no recorte ${homePeriodLabel(actionPeriod)}.`}
                   {actionCandidateCount === 0 && Boolean(actionCandidateTotal) && !reprocess && <span>Marque “Incluir vagas já triadas” para reavaliar as vagas desse recorte.</span>}
                   {actionCandidateCount !== null && actionCandidateCount > 100 && <span>O lote por regras será processado em segundo plano, em blocos controlados.</span>}
@@ -364,7 +370,7 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
                     <span>↻</span><div><b>Reprocessar falhas</b><small>Use somente se a fila de rascunhos informar falha.</small></div>
                     <button className="triage-queue-button" disabled={queueingDrafts || runningPilot || draftCounts.failed === 0} onClick={retryFailedDrafts} title={draftCounts.failed === 0 ? "Não há falhas para reprocessar" : undefined}>Reprocessar{draftCounts.failed ? ` (${draftCounts.failed})` : ""}</button>
                   </article>
-                </div>
+                </div></>}
                 {aiPromptOpen && <section className="triage-ai-prompt" aria-label="Prompt para análise de vagas pela IA">
                   <div className="triage-ai-prompt-heading"><b>Perfil e stack que a IA vai usar</b><small>Esta é a referência do seu perfil salvo no Radar para analisar {aiTargetJobIds?.length ?? actionCandidateCount ?? 0} vaga(s) {aiTargetJobIds ? "selecionada(s)" : "do recorte"}.</small></div>
                   {aiProfileLoading && <small>Carregando o perfil salvo…</small>}
@@ -384,9 +390,9 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
                     <div className="triage-ai-profile-wide"><dt>Projeto ou experiência-âncora</dt><dd>{aiProfile.careerRules.anchorProject || "Não informado"}</dd></div>
                     <div><dt>Score mínimo do Radar</dt><dd>{aiProfile.minScore}</dd></div>
                   </dl>}
-                  <div className="triage-ai-prompt-heading"><b>O que você quer que a IA avalie?</b><small>Escolha se quer receber a leitura agora no portal ou preparar este mesmo recorte para conversar com o Codex aqui.</small></div>
+                  <div className="triage-ai-prompt-heading"><b>{isIndividualAiReview ? "Processar somente esta vaga" : "O que você quer que a IA avalie?"}</b><small>{isIndividualAiReview ? "A consulta usará somente a vaga identificada acima; ela não altera o veredito nem cria rascunhos." : "Escolha se quer receber a leitura agora no portal ou preparar este mesmo recorte para conversar com o Codex aqui."}</small></div>
                   <textarea ref={aiPromptRef} aria-label="Instrução para a IA" value={aiPrompt} onChange={(event) => setAiPrompt(event.target.value)} maxLength={1200} disabled={aiReviewLoading || codexQueueLoading} />
-                  <div><button type="button" className="triage-queue-button" onClick={() => setAiPromptOpen(false)} disabled={aiReviewLoading || codexQueueLoading}>Cancelar</button><button type="button" className="triage-queue-button" onClick={prepareCodexReview} disabled={aiReviewLoading || codexQueueLoading || aiPrompt.trim().length < 8}>{codexQueueLoading ? "Preparando…" : "Preparar para o Codex"}</button><button type="button" className="primary" onClick={requestAiReview} disabled={aiReviewLoading || codexQueueLoading || aiPrompt.trim().length < 8}>{aiReviewLoading ? "Solicitando…" : "Solicitar análise"}</button></div>
+                  <div><button type="button" className="triage-queue-button" onClick={() => setAiPromptOpen(false)} disabled={aiReviewLoading || codexQueueLoading}>Cancelar</button><button type="button" className="triage-queue-button" onClick={prepareCodexReview} disabled={aiReviewLoading || codexQueueLoading || aiPrompt.trim().length < 8}>{codexQueueLoading ? "Preparando…" : isIndividualAiReview ? "Preparar esta vaga para o Codex" : "Preparar para o Codex"}</button><button type="button" className="primary" onClick={requestAiReview} disabled={aiReviewLoading || codexQueueLoading || aiPrompt.trim().length < 8}>{aiReviewLoading ? "Solicitando…" : isIndividualAiReview ? "Analisar esta vaga" : "Solicitar análise"}</button></div>
                 </section>}
                 {aiReview && <section className="triage-ai-review" aria-label="Resultado da análise da IA"><div><h3>Análise da IA</h3><small>{aiReview.status === "completed" ? "Concluída" : `${aiReview.completed ?? 0}/${aiReview.total ?? aiReview.chunks ?? 0} lotes concluídos`} · {aiReview.provider ?? "processando"}{aiReview.model ? ` · ${aiReview.model}` : ""}</small></div>{aiReview.response ? <p>{aiReview.response}</p> : <p>{aiReview.error ?? "A análise está sendo processada em segundo plano."}</p>}</section>}
                 <small>Acompanhe o resultado no cartão “Último lote manual”, logo abaixo. Depois de preparar, o Gmail cria os rascunhos pendentes na rotina configurada; eles nunca são enviados automaticamente. A consulta à IA é opcional e não altera o fluxo.</small>
