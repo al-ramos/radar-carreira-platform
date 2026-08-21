@@ -55,6 +55,19 @@ test("contato capturado permanece no campo da vaga e a API persiste a primeira g
   assert.match(route, /or\(isNull\(jobs\.contactEmail\), eq\(jobs\.contactEmail, ""\)\)/);
 });
 
+test("triagem permite reutilizar o e-mail já cadastrado para a mesma empresa", async () => {
+  const [dashboard, route, schema] = await Promise.all([
+    readFile(new URL("../app/Dashboard.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/jobs/[id]/contact/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../db/schema.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(dashboard, /Usar e-mail da empresa/);
+  assert.match(dashboard, /useCompanyContact: true/);
+  assert.match(route, /companyContacts/);
+  assert.match(route, /useCompanyContact/);
+  assert.match(schema, /company_contacts/);
+});
+
 test("revalidação APInfo só completa domínio de e-mail salvo incompleto", async () => {
   const [dashboard, route] = await Promise.all([
     readFile(new URL("../app/Dashboard.tsx", import.meta.url), "utf8"),

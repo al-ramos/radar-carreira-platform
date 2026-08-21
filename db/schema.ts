@@ -46,6 +46,19 @@ export const jobs = sqliteTable("jobs", {
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(), updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
 }, t => [uniqueIndex("jobs_fingerprint_unique").on(t.fingerprint)]);
 
+/**
+ * Contato reutilizável por empresa. A chave é normalizada para que variações
+ * apenas de caixa, acento ou pontuação não criem cadastros duplicados.
+ */
+export const companyContacts = sqliteTable("company_contacts", {
+  companyKey: text("company_key").primaryKey(),
+  companyName: text("company_name").notNull(),
+  contactEmail: text("contact_email").notNull(),
+  contactSubject: text("contact_subject"),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+});
+
 export const userJobStatus = sqliteTable("user_job_status", {
   userId: text("user_id").notNull(), jobId: text("job_id").notNull().references(() => jobs.id),
   stage: text("stage", { enum: ["viewed", "saved", "applied", "interview", "offer", "rejected", "archived"] }).notNull().default("viewed"),

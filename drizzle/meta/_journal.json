@@ -169,6 +169,13 @@
       "when": 1786735200000,
       "tag": "0023_job_ai_triage",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1786809600000,
+      "tag": "0024_company_contacts",
+      "breakpoints": true
     }
   ]
 }

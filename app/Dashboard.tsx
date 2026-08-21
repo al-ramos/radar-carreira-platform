@@ -1878,6 +1878,27 @@ export default function Dashboard() {
     setContactCaptureMsg({ text: `E-mail capturado: ${savedEmail}`, error: false });
     return true;
   }
+  async function reuseCompanyContact(job: Job) {
+    setContactCapturing(true);
+    try {
+      const r = await fetch(`/api/jobs/${job.id}/contact`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ useCompanyContact: true }),
+      });
+      const data = await r.json().catch(() => null) as { contactEmail?: string; contactSubject?: string; error?: string } | null;
+      const contactEmail = normalizeContactEmail(data?.contactEmail);
+      if (!r.ok || !contactEmail) {
+        setContactCaptureMsg({ text: data?.error ?? "Nenhum e-mail cadastrado para esta empresa.", error: !r.ok && r.status !== 404 });
+        return;
+      }
+      setItems((current) => current.map((item) => item.id === job.id ? { ...item, contactEmail, contactSubject: data?.contactSubject } : item));
+      setContactPasteReady(false);
+      setContactCaptureMsg({ text: `E-mail da empresa reutilizado: ${contactEmail}`, error: false });
+    } finally {
+      setContactCapturing(false);
+    }
+  }
   async function pasteApinfoContact(job: Job) {
     setContactCapturing(true);
     try {
@@ -3337,6 +3358,17 @@ export default function Dashboard() {
                     >
                       {selectedJob.contactEmail ? "Copiar e-mail" : contactCapturing ? "Capturando…" : contactPasteReady ? "Tentar captura novamente" : "Capturar e-mail"}
                     </button>
+                    {!selectedJob.contactEmail && (
+                      <button
+                        type="button"
+                        className="analysis-toggle-btn"
+                        disabled={contactCapturing}
+                        title={`Busca na base um e-mail já cadastrado para ${selectedJob.company} e o vincula a esta vaga.`}
+                        onClick={() => void reuseCompanyContact(selectedJob)}
+                      >
+                        Usar e-mail da empresa
+                      </button>
+                    )}
                     {selectedJob.contactEmail && (
                       <button type="button" className="analysis-toggle-btn" disabled={contactCapturing} title="Lê novamente o contato da aba APInfo e corrige somente um domínio que tenha sido salvo incompleto." onClick={() => captureApinfoContact(selectedJob, true)}>
                         {contactCapturing ? "Verificando…" : "Verificar no APInfo"}
