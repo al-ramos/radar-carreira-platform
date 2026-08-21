@@ -18,7 +18,8 @@ test("rascunho avulso pede criação imediata sem enviar e-mail", async () => {
   assert.match(cron, /outboxIds\?: string\[\]/);
   assert.match(cron, /inArray\(draftOutbox\.id, requestedOutboxIds\)/);
   assert.match(connector, /function doPost\(event\)/);
-  assert.match(connector, /action !== 'prioritizeDrafts'/);
+  assert.match(connector, /payload\.action === 'prioritizeDrafts'/);
+  assert.match(connector, /payload\.action === 'reconcileSent'/);
   assert.match(connector, /criarRascunhosRadar\(\{ outboxIds: payload\.outboxIds \}\)/);
   assert.doesNotMatch(connector.split("function doPost")[1], /GmailApp\.sendEmail/);
   assert.match(priority, /GMAIL_DRAFTS_WEBHOOK_TOKEN/);

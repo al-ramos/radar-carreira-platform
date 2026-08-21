@@ -84,16 +84,20 @@ function criarRascunhosRadar(options) {
   return { processed: processed, scanned: scanned };
 }
 
-// Web App autenticado pelo mesmo segredo do conector. O Radar chama apenas
-// esta ação para uma vaga escolhida manualmente; ela cria rascunho, nunca envia.
+// Web App autenticado pelo mesmo segredo do conector. O Radar chama somente
+// ações avulsas: criar rascunho ou confirmar um envio já realizado.
 function doPost(event) {
   try {
     const payload = JSON.parse(event && event.postData && event.postData.contents || '{}');
     const secret = PropertiesService.getScriptProperties().getProperty('RADAR_SECRET');
     if (!secret || payload.token !== secret) return responderWebhookRadar({ ok:false, error:'Não autorizado' });
-    if (payload.action !== 'prioritizeDrafts' || !Array.isArray(payload.outboxIds) || !payload.outboxIds.length) return responderWebhookRadar({ ok:false, error:'Ação de prioridade inválida' });
-    const result = criarRascunhosRadar({ outboxIds: payload.outboxIds });
-    return responderWebhookRadar({ ok:true, created: result.processed, scanned: result.scanned });
+    if (!Array.isArray(payload.outboxIds) || !payload.outboxIds.length) return responderWebhookRadar({ ok:false, error:'Selecione ao menos um rascunho.' });
+    if (payload.action === 'prioritizeDrafts') {
+      const result = criarRascunhosRadar({ outboxIds: payload.outboxIds });
+      return responderWebhookRadar({ ok:true, created: result.processed, scanned: result.scanned });
+    }
+    if (payload.action === 'reconcileSent') return responderWebhookRadar({ ok:true, confirmed: reconciliarEnviosManuaisRadar({ outboxIds: payload.outboxIds }));
+    return responderWebhookRadar({ ok:false, error:'Ação de prioridade inválida' });
   } catch (error) {
     return responderWebhookRadar({ ok:false, error:String(error) });
   }
@@ -155,12 +159,12 @@ function registrarFalhaRascunhoRadar(secret, outboxId, error) {
 // envia e-mails. O Radar fornece os candidatos exatos; a confirmação exige
 // destinatário, assunto e data posteriores ao rascunho para evitar falsos
 // positivos e continua idempotente pelo identificador da mensagem Gmail.
-function reconciliarEnviosManuaisRadar() {
+function reconciliarEnviosManuaisRadar(options) {
   const secret = PropertiesService.getScriptProperties().getProperty('RADAR_SECRET');
   if (!secret) throw new Error('Configure RADAR_SECRET nas propriedades do script.');
   const response = UrlFetchApp.fetch(`${radarUrl()}/api/cron/drafts`, {
     method:'post',contentType:'application/json',headers:{Authorization:`Bearer ${secret}`},
-    payload:JSON.stringify({action:'sentCandidates',limit:100,connectorVersion:RADAR_DRAFT_CONNECTOR_VERSION}),muteHttpExceptions:true
+    payload:JSON.stringify({action:'sentCandidates',limit:options && options.outboxIds ? options.outboxIds.length : 100,outboxIds:options && options.outboxIds,connectorVersion:RADAR_DRAFT_CONNECTOR_VERSION}),muteHttpExceptions:true
   });
   if (response.getResponseCode() >= 300) throw new Error(response.getContentText());
   const payload = JSON.parse(response.getContentText());
@@ -183,6 +187,7 @@ function reconciliarEnviosManuaisRadar() {
     confirmed += 1;
   });
   console.log(`Envios manuais confirmados: ${confirmed}. Nenhum e-mail foi criado ou enviado nesta etapa.`);
+  return confirmed;
 }
 
 function encontrarMensagemEnviadaRadar(candidate) {

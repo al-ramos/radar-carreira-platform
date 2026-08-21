@@ -59,6 +59,8 @@ export async function POST(request: Request) {
   // com a pasta "Enviados".
   if (body.action === "sentCandidates") {
     const limit = Math.max(1, Math.min(100, Math.floor(body.limit ?? 100)));
+    const requestedOutboxIds = Array.isArray(body.outboxIds) ? [...new Set(body.outboxIds.filter((id): id is string => typeof id === "string" && id.length > 0))].slice(0, 20) : null;
+    if (Array.isArray(body.outboxIds) && !requestedOutboxIds?.length) return NextResponse.json({ error: "Nenhum rascunho válido foi informado." }, { status: 400 });
     const candidates = await db.select({
       outboxId: draftOutbox.id,
       to: jobs.contactEmail,
@@ -69,7 +71,7 @@ export async function POST(request: Request) {
       draftedAt: draftOutbox.updatedAt,
     }).from(draftOutbox)
       .innerJoin(jobs, eq(draftOutbox.jobId, jobs.id))
-      .where(and(eq(draftOutbox.userId, owner.userId), eq(draftOutbox.status, "drafted")))
+      .where(and(eq(draftOutbox.userId, owner.userId), eq(draftOutbox.status, "drafted"), requestedOutboxIds ? inArray(draftOutbox.id, requestedOutboxIds) : undefined))
       .limit(limit);
     return NextResponse.json({
       candidates: candidates.flatMap((item) => {
