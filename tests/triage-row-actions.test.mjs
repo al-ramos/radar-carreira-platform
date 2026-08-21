@@ -39,7 +39,8 @@ test("triagem permite ações avulsas por vaga sem contornar os guardrails", asy
   assert.match(screen, /não recebeu resposta do serviço/);
   assert.match(screen, /A solicitação de análise/);
   assert.match(queue, /jobIds\?: string\[\]/);
-  assert.match(queue, /inArray\(triageHistory\.jobId, requestedJobIds\)/);
+  assert.match(queue, /inArray\(userJobAnalyses\.jobId, requestedJobIds\)/);
+  assert.match(queue, /draft-history-repair/);
   assert.match(queue, /isSafeForDraft/);
   assert.match(review, /requestedJobIds/);
   assert.match(review, /inArray\(jobs\.id, requestedJobIds\)/);

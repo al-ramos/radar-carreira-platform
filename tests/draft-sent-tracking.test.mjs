@@ -35,4 +35,5 @@ test("envio manual é reconciliado por evidência do Gmail sem autorizar envio a
   assert.match(screen, /envios confirmados/);
   assert.match(screen, /Ainda não enviado/);
   assert.match(screen, /Atualizar envio/);
+  assert.match(screen, /Aguardando criação no Gmail — próxima sincronização agendada/);
 });

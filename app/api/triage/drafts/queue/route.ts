@@ -2,7 +2,7 @@ import { and, desc, eq, gte, inArray } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../../chatgpt-auth";
 import { getDb } from "../../../../../db/index";
-import { draftOutbox, jobs, profiles, triageHistory, userJobAnalyses } from "../../../../../db/schema";
+import { draftOutbox, jobs, profiles, triageBatches, triageHistory, userJobAnalyses } from "../../../../../db/schema";
 import { getAnalysisVersions } from "../../../../../lib/analysis-versions";
 import { canonicalizeProfile, profileIsReadyForTriage } from "../../../../../lib/canonical-profile";
 import { evaluateDeterministicTriage } from "../../../../../lib/deterministic-triage";
@@ -75,21 +75,18 @@ export async function POST(request: Request) {
   const versions = getAnalysisVersions(canonicalProfile);
   const [historyRows, existingOutbox] = await Promise.all([
     db.select({
-      id: triageHistory.id,
-      jobId: triageHistory.jobId,
-      verdict: triageHistory.verdict,
-      profileRevision: triageHistory.profileRevision,
-      rulesRevision: triageHistory.rulesRevision,
-      instructionsRevision: triageHistory.instructionsRevision,
+      historyId: triageHistory.id,
+      historyCreatedAt: triageHistory.createdAt,
+      jobId: userJobAnalyses.jobId,
       job: jobs,
       analysis: userJobAnalyses,
     })
-      .from(triageHistory)
-      .innerJoin(jobs, eq(triageHistory.jobId, jobs.id))
-      .leftJoin(userJobAnalyses, and(eq(userJobAnalyses.userId, user.userId), eq(userJobAnalyses.jobId, jobs.id)))
+      .from(userJobAnalyses)
+      .innerJoin(jobs, eq(userJobAnalyses.jobId, jobs.id))
+      .leftJoin(triageHistory, and(eq(triageHistory.userId, user.userId), eq(triageHistory.jobId, jobs.id)))
       .where(and(
-        eq(triageHistory.userId, user.userId),
-        requestedJobIds ? inArray(triageHistory.jobId, requestedJobIds) : undefined,
+        eq(userJobAnalyses.userId, user.userId),
+        requestedJobIds ? inArray(userJobAnalyses.jobId, requestedJobIds) : undefined,
         sourceId && sourceId !== "all" ? eq(jobs.sourceId, sourceId) : undefined,
         roleArea && roleArea !== "all" ? eq(jobs.roleArea, roleArea) : undefined,
         ingestionChannel && ingestionChannel !== "all" ? eq(jobs.ingestionChannel, ingestionChannel as "extension" | "email" | "connector" | "file" | "api") : undefined,
@@ -104,6 +101,7 @@ export async function POST(request: Request) {
   for (const row of historyRows) if (!latestByJob.has(row.jobId)) latestByJob.set(row.jobId, row);
 
   const now = new Date();
+  let repairBatchId: string | null = null;
   const queued: string[] = [];
   const priorityOutboxIds: string[] = [];
   let noValidContact = 0;
@@ -118,8 +116,6 @@ export async function POST(request: Request) {
       continue;
     }
     if (!isDraftAllowedForSource(row.job.sourceId)) { notEligible += 1; continue; }
-    const sameVersion = row.profileRevision === versions.profileRevision && row.rulesRevision === versions.rulesRevision && row.instructionsRevision === versions.instructionsRevision;
-    if (!sameVersion) { outdated += 1; continue; }
     const analysisIsCurrent = row.analysis
       && row.analysis.profileRevision === versions.profileRevision
       && row.analysis.rulesRevision === versions.rulesRevision
@@ -146,8 +142,17 @@ export async function POST(request: Request) {
       else notEligible += 1;
       continue;
     }
+    let historyId = row.historyId;
+    if (!historyId) {
+      if (!repairBatchId) {
+        repairBatchId = crypto.randomUUID();
+        await db.insert(triageBatches).values({ id: repairBatchId, userId: user.userId, trigger: "manual", scope: "draft-history-repair", status: "completed", startedAt: now, completedAt: now, createdAt: now });
+      }
+      historyId = crypto.randomUUID();
+      await db.insert(triageHistory).values({ id: historyId, batchId: repairBatchId, userId: user.userId, jobId: row.jobId, profileRevision: row.analysis.profileRevision, rulesRevision: row.analysis.rulesRevision, instructionsRevision: row.analysis.instructionsRevision, verdict: row.analysis.verdict as "✅" | "🟡" | "🔴" | "❌", label: row.analysis.label, blocker: row.analysis.blocker, source: row.analysis.source as "rules" | "ai", confidence: row.analysis.confidence, rows: row.analysis.rows, createdAt: now });
+    }
     const outboxId = crypto.randomUUID();
-    await db.insert(draftOutbox).values({ id: outboxId, userId: user.userId, jobId: row.jobId, historyId: row.id, status: "pending", createdAt: now, updatedAt: now });
+    await db.insert(draftOutbox).values({ id: outboxId, userId: user.userId, jobId: row.jobId, historyId, status: "pending", createdAt: now, updatedAt: now });
     queued.push(row.jobId);
     if (requestedJobIds?.length === 1) priorityOutboxIds.push(outboxId);
   }
