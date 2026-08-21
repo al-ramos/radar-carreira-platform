@@ -26,3 +26,13 @@ test("falha ao salvar (depois de já ter sido capturado) fica contabilizada, nã
   assert.match(dashboard, /contactBatchSaveFailedRef\.current \+= 1/);
   assert.match(dashboard, /encontrado.*mas não salvo.*no Radar/);
 });
+
+test("a captura avulsa respeita apenas os registros marcados na tabela", async () => {
+  const dashboard = await readFile(new URL("../app/Dashboard.tsx", import.meta.url), "utf8");
+
+  assert.match(dashboard, /selectedApinfoContactsPendingCount/);
+  assert.match(dashboard, /function captureApinfoContactsBatch\(selectionOnly = false\)/);
+  assert.match(dashboard, /!selectionOnly \|\| exportSelectionIds\.has\(j\.id\)/);
+  assert.match(dashboard, /Capturar selecionadas/);
+  assert.match(dashboard, /captureApinfoContactsBatch\(true\)/);
+});

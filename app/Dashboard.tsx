@@ -1136,6 +1136,13 @@ export default function Dashboard() {
     () => orderedJobs.filter((j) => isApinfoJob(j) && !j.contactEmail && j.applyUrl).length,
     [orderedJobs],
   );
+  /** Parte da seleção manual que realmente pode ser consultada no APInfo.
+   * Assim, marcar uma vaga que já tem e-mail (ou é de outra fonte) não cria
+   * uma tentativa inútil nem abre uma aba adicional. */
+  const selectedApinfoContactsPendingCount = useMemo(
+    () => orderedJobs.filter((j) => exportSelectionIds.has(j.id) && isApinfoJob(j) && !j.contactEmail && j.applyUrl).length,
+    [orderedJobs, exportSelectionIds],
+  );
   const sortReportJobs = useCallback((jobs: Job[]) =>
     [...jobs].sort((left, right) => {
       if (sortOrder === "recent") {
@@ -1990,10 +1997,17 @@ export default function Dashboard() {
    * navegador (login manual, feito por ela mesma, como sempre foi); esta
    * função nunca solicita nem manipula credenciais.
    */
-  function captureApinfoContactsBatch() {
-    const pending = orderedJobs.filter((j) => isApinfoJob(j) && !j.contactEmail && j.applyUrl);
+  function captureApinfoContactsBatch(selectionOnly = false) {
+    const pending = orderedJobs.filter((j) =>
+      (!selectionOnly || exportSelectionIds.has(j.id)) && isApinfoJob(j) && !j.contactEmail && j.applyUrl,
+    );
     if (!pending.length) {
-      setContactCaptureMsg({ text: "Nenhuma vaga do APinfo sem e-mail está visível na tela agora.", error: true });
+      setContactCaptureMsg({
+        text: selectionOnly
+          ? "Nenhuma vaga selecionada do APinfo está sem e-mail e disponível para captura."
+          : "Nenhuma vaga do APinfo sem e-mail está visível na tela agora.",
+        error: true,
+      });
       return;
     }
     const requestId = crypto.randomUUID();
@@ -2507,14 +2521,26 @@ export default function Dashboard() {
                   {" · Cancelar"}
                 </button>
               ) : (
-                <button
-                  type="button"
-                  className="filter-trigger"
-                  onClick={captureApinfoContactsBatch}
-                  title="Abre, uma a uma em segundo plano, as páginas de contato das vagas do APinfo visíveis sem e-mail — requer que você já esteja autenticado no APinfo neste navegador."
-                >
-                  ✉ Capturar e-mails ({apinfoContactsPendingCount})
-                </button>
+                <>
+                  {selectedApinfoContactsPendingCount > 0 && (
+                    <button
+                      type="button"
+                      className="filter-trigger active"
+                      onClick={() => captureApinfoContactsBatch(true)}
+                      title="Captura apenas as vagas marcadas na tabela. Requer que você já esteja autenticado no APInfo neste navegador."
+                    >
+                      ✉ Capturar selecionadas ({selectedApinfoContactsPendingCount})
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="filter-trigger"
+                    onClick={() => captureApinfoContactsBatch()}
+                    title="Abre, uma a uma em segundo plano, as páginas de contato das vagas do APinfo visíveis sem e-mail — requer que você já esteja autenticado no APinfo neste navegador."
+                  >
+                    ✉ Capturar e-mails ({apinfoContactsPendingCount})
+                  </button>
+                </>
               )
             )}
           </div>
