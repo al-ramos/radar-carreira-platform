@@ -902,28 +902,43 @@
 }
 
 .radar-filter-panel {
-  display: grid;
-  grid-template-columns: repeat(12, minmax(0, 1fr));
+  display: flex;
+  flex-direction: column;
   gap: 16px;
   margin: 0 0 14px;
-  padding: 18px;
+  padding: 18px 20px;
   border: 1px solid #e4e5ed;
   border-radius: 14px;
   background: #fff;
   box-shadow: 0 8px 24px #101b3506;
 }
 .radar-filter-panel[hidden] { display: none; }
-.radar-filter-panel .compact-filter-group {
+.quick-filter-row {
+  display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
+  gap: 16px 32px;
+}
+.radar-filter-panel .compact-filter-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
   min-width: 0;
 }
-.radar-filter-panel > .compact-filter-group:not(.ingestion-filter-group) { grid-column: span 4; }
-.radar-filter-panel > .compact-filter-group:first-child { grid-column: 1 / -1; }
+.radar-filter-panel .quick-filter-row .compact-filter-group {
+  flex: 1 1 180px;
+}
+.radar-filter-panel .quick-filter-row .contact-filter-group {
+  flex: 2 1 320px;
+}
 .radar-filter-panel .compact-filter-label {
-  min-width: 68px;
-  padding-top: 4px;
-  color: #69718b;
+  padding-top: 0;
+  color: #9198ac;
   font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 .radar-filter-panel .compact-pills button {
   border-color: #dddfea;
@@ -935,6 +950,12 @@
   background: #18264d;
   border-color: #18264d;
   color: #fff;
+}
+.radar-filter-panel .compact-filter-divider,
+.radar-filter-panel > .compact-filter-group + .compact-filter-group,
+.radar-filter-panel > .ingestion-filter-group {
+  border-top: 1px solid #eef0f6;
+  padding-top: 16px;
 }
 .radar-filter-panel .compact-filter-divider { display: none; }
 .area-filter-grid {
@@ -981,17 +1002,11 @@
 }
 .area-filter-grid button.active span { background: #fff; color: #18264d; }
 .radar-filter-panel .ingestion-filter-group {
-  grid-column: 1 / -1;
   display: grid;
   grid-template-columns: 1fr;
-  gap: 10px;
-  padding-top: 2px;
-}
-.radar-filter-panel .ingestion-filter-group > .compact-filter-label {
-  min-width: 0;
+  gap: 12px;
 }
 .ingestion-filter-subgroup {
-  grid-column: 2;
   display: grid;
   gap: 6px;
 }
@@ -1052,16 +1067,12 @@
   height: 14px;
   accent-color: #18264d;
 }
-.contact-filter-group { grid-column: span 8 !important; }
-.status-filter-group { grid-column: span 4 !important; }
 .contact-filter-content {
   display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px 10px;
-  min-height: 34px;
+  flex-direction: column;
+  gap: 6px;
 }
-.contact-filter-content .list-head-dim { font-size: 10px; }
+.contact-filter-content .list-head-dim { font-size: 9px; margin: 0 0 4px 21px; }
 .contact-filter-content label { display: inline-flex; align-items: center; gap: 7px; color: #18264d; font-size: 10px; font-weight: 700; }
 .contact-filter-content input { width: 14px; height: 14px; accent-color: #6a5cf0; }
 .job-main .job-ingestion-meta,
@@ -1097,15 +1108,20 @@
   margin: 0;
   align-self: center;
 }
+.radar-filter-panel-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 14px;
+  border-top: 1px solid #eef0f6;
+}
 .clear-radar-filters {
-  justify-self: end;
-  align-self: center;
   border: 0;
   background: transparent;
   color: #685ab5;
   font-size: 10px;
   font-weight: 750;
   text-decoration: underline;
+  cursor: pointer;
 }
 .job-card.job-card-scored,
 .job-card.selected.job-card-scored {
@@ -1143,14 +1159,12 @@
 }
 @media (max-width: 850px) {
   .radar-controls { align-items: stretch; }
-  .radar-filter-panel { grid-template-columns: 1fr; }
-  .radar-filter-panel > .compact-filter-group:not(.ingestion-filter-group), .contact-filter-group { grid-column: auto !important; }
   .score-controls { grid-template-columns: 1fr 1fr; }
   .score-controls-range { grid-column: 1 / -1; }
   .score-controls .fit-filter-profile-chip { justify-self: start; }
-  .radar-filter-panel .ingestion-filter-group { grid-template-columns: 1fr; }
-  .ingestion-filter-group > small { grid-column: 1; }
-  .ingestion-filter-subgroup { grid-column: 1; }
+  .quick-filter-row { gap: 14px 24px; }
+  .radar-filter-panel .quick-filter-row .compact-filter-group,
+  .radar-filter-panel .quick-filter-row .contact-filter-group { flex-basis: 100%; }
   .ingestion-filter-controls,
   .ingestion-filter-controls-dates { grid-template-columns: 1fr; }
 }
