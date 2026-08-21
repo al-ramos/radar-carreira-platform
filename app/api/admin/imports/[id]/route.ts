@@ -24,5 +24,9 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
   ]);
   const notification = recentNotifications.find(item => parseMetadata(item.metadata).runId === id);
   const notificationError = notification ? parseMetadata(notification.metadata).error : null;
-  return NextResponse.json({ run, jobs: affectedJobs, error: typeof notificationError === "string" ? notificationError : (run.status === "failed" ? notification?.body ?? "Falha sem detalhe disponível para esta execução antiga." : null) });
+  const metadata = notification ? parseMetadata(notification.metadata) : {};
+  const intake = typeof metadata.valid === "number" || typeof metadata.invalid === "number"
+    ? { valid: typeof metadata.valid === "number" ? metadata.valid : null, invalid: typeof metadata.invalid === "number" ? metadata.invalid : 0, invalidReasons: typeof metadata.invalidReasons === "object" && metadata.invalidReasons ? metadata.invalidReasons : {}, rejectedProfile: typeof metadata.rejectedProfile === "number" ? metadata.rejectedProfile : 0 }
+    : null;
+  return NextResponse.json({ run, jobs: affectedJobs, intake, error: typeof notificationError === "string" ? notificationError : (run.status === "failed" ? notification?.body ?? "Falha sem detalhe disponível para esta execução antiga." : null) });
 }

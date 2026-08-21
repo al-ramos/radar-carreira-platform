@@ -62,11 +62,16 @@ test("o sino abre o relatório detalhado da importação para quem administra fo
   assert.match(bell, /fetch\("\/api\/notifications"\)/);
   assert.match(bell, /metadata\.runId/);
   assert.match(bell, /onOpenImportRun/);
+  assert.match(bell, /Abrir log completo/);
   assert.match(bell, /notification-bell-badge/);
   assert.match(styles, /\.notification-bell-dropdown/);
   assert.match(styles, /\.import-run-report/);
   assert.match(report, /RELATÓRIO DE IMPORTAÇÃO/);
   assert.match(report, /Vagas afetadas/);
+  assert.match(report, /Pesquisar no log/);
+  assert.match(report, /Esta execução requer atenção/);
+  assert.match(report, /Entrada da fonte/);
+  assert.match(route, /invalidReasons/);
   assert.match(route, /jobImportRuns/);
   assert.match(route, /import\.run/);
 });

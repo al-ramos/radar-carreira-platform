@@ -133,6 +133,16 @@ export default function NotificationBell({ onOpenImportRun }: { onOpenImportRun?
                 <div>
                   <p className="notification-bell-title">{n.title}</p>
                   {n.body && <p className="notification-bell-body">{n.body}</p>}
+                  {canOpenReport && <button
+                    type="button"
+                    className="notification-bell-report-link"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openNotification(n);
+                    }}
+                  >
+                    Abrir log completo
+                  </button>}
                   <small>{timeAgo(n.createdAt)}</small>
                 </div>
                 {!n.read && (

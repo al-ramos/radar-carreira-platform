@@ -40,6 +40,10 @@ export type ImportRunOutcome = {
   source: string;
   status: "completed" | "failed";
   received: number;
+  valid?: number;
+  invalid?: number;
+  invalidReasons?: Record<string, number>;
+  rejectedProfile?: number;
   inserted: number;
   updated: number;
   duplicates?: number;
@@ -60,6 +64,9 @@ export async function notifyImportRun(db: ReturnType<typeof getDb>, outcome: Imp
   const parts = success
     ? [
         `${numberFormat.format(outcome.received)} recebida${outcome.received === 1 ? "" : "s"}`,
+        ...(typeof outcome.valid === "number" ? [`${numberFormat.format(outcome.valid)} válida${outcome.valid === 1 ? "" : "s"} para processar`] : []),
+        ...(outcome.invalid ? [`${numberFormat.format(outcome.invalid)} ${outcome.invalid === 1 ? "não entrou" : "não entraram"} (${Object.entries(outcome.invalidReasons ?? {}).map(([reason, count]) => `${reason}: ${numberFormat.format(count)}`).join(", ") || "dados obrigatórios ausentes"})`] : []),
+        ...(outcome.rejectedProfile ? [`${numberFormat.format(outcome.rejectedProfile)} rejeitada${outcome.rejectedProfile === 1 ? "" : "s"} pelo perfil`] : []),
         `${numberFormat.format(outcome.inserted)} nova${outcome.inserted === 1 ? "" : "s"}`,
         `${numberFormat.format(outcome.updated)} atualizada${outcome.updated === 1 ? "" : "s"}`,
         ...(outcome.duplicates ? [`${numberFormat.format(outcome.duplicates)} duplicada${outcome.duplicates === 1 ? "" : "s"}`] : []),
@@ -71,6 +78,6 @@ export async function notifyImportRun(db: ReturnType<typeof getDb>, outcome: Imp
     title,
     body: parts.join(" · "),
     link: "/?open=importacoes",
-    metadata: { runId: outcome.runId, source: outcome.source, received: outcome.received, inserted: outcome.inserted, updated: outcome.updated, duplicates: outcome.duplicates ?? 0, error: outcome.error ?? null },
+    metadata: { runId: outcome.runId, source: outcome.source, received: outcome.received, valid: outcome.valid ?? null, invalid: outcome.invalid ?? 0, invalidReasons: outcome.invalidReasons ?? {}, rejectedProfile: outcome.rejectedProfile ?? 0, inserted: outcome.inserted, updated: outcome.updated, duplicates: outcome.duplicates ?? 0, error: outcome.error ?? null },
   });
 }

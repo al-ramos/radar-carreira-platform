@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { normalizeImportedJobs } from "../lib/import-jobs.ts";
+import { normalizeImportedJobs, normalizeImportedJobsWithDiagnostics } from "../lib/import-jobs.ts";
 
 test("normaliza o JSON gerado pelo LinkedIn Job Collector",()=>{
  const [job]=normalizeImportedJobs([{titulo:"Security Engineer",empresa:"Empresa",local:"São Paulo, Brasil · há 14 minutos · 10 candidaturas",descricao:"Modelo de trabalho híbrido",link:"https://www.linkedin.com/jobs/view/4449682834/",coletado_em:"2026-08-05T19:15:40.844Z",pagina:1}]);
@@ -11,6 +11,13 @@ test("normaliza o JSON gerado pelo LinkedIn Job Collector",()=>{
 test("mantém a publicação informada pela fonte separada da coleta",()=>{
  const [job]=normalizeImportedJobs([{titulo:"Analista",empresa:"Empresa",link:"https://www.apinfo.com/vaga/85321",data_publicacao:"13/08/26",coletado_em:"2026-08-13T18:42:00.000Z"}]);
  assert.equal(job.publishedAt,"13/08/26");
+});
+
+test("explica quais dados obrigatórios impediram a entrada no Radar",()=>{
+ const result=normalizeImportedJobsWithDiagnostics([{titulo:"Sem link",empresa:"Empresa"},{titulo:"Sem empresa",link:"https://example.com/vaga"},{titulo:"Válida",empresa:"Empresa",link:"https://example.com/valida"}]);
+ assert.equal(result.items.length,1);
+ assert.equal(result.rejected,2);
+ assert.deepEqual(result.reasons,{"link da vaga ausente":1,"empresa ausente":1});
 });
 
 test("endpoint da extensão LinkedIn responde ao preflight CORS", async()=>{

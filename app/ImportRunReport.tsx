@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 type Job = { id: string; company: string; title: string; location: string | null; workMode: string | null; outcome: "inserted" | "updated" | "duplicate"; receivedAt: string };
 type Report = {
   run: { id: string; source: string; channel: string; status: "running" | "completed" | "failed"; received: number; inserted: number; updated: number; duplicates: number; errors: number; startedAt: string; finishedAt: string | null };
+  intake: { valid: number | null; invalid: number; invalidReasons: Record<string, number>; rejectedProfile: number } | null;
   error: string | null;
   jobs: Job[];
 };
@@ -16,6 +17,8 @@ const formatDate = (value: string) => new Intl.DateTimeFormat("pt-BR", { dateSty
 export default function ImportRunReport({ runId, close }: { runId: string; close: () => void }) {
   const [report, setReport] = useState<Report | null>(null);
   const [message, setMessage] = useState("Carregando relatório…");
+  const [search, setSearch] = useState("");
+  const [outcome, setOutcome] = useState<"all" | Job["outcome"]>("all");
 
   useEffect(() => {
     const controller = new AbortController();
@@ -29,6 +32,13 @@ export default function ImportRunReport({ runId, close }: { runId: string; close
       .catch(error => { if (!controller.signal.aborted) setMessage(error instanceof Error ? error.message : "Não foi possível carregar este relatório."); });
     return () => controller.abort();
   }, [runId]);
+
+  const filteredJobs = report?.jobs.filter(job => {
+    const term = search.trim().toLocaleLowerCase("pt-BR");
+    const matchesSearch = !term || [job.title, job.company, job.location, job.workMode].some(value => value?.toLocaleLowerCase("pt-BR").includes(term));
+    return matchesSearch && (outcome === "all" || job.outcome === outcome);
+  }) ?? [];
+  const sourceNeedsAttention = Boolean(report && (report.run.status === "failed" || report.run.errors > 0));
 
   return <div className="modal-backdrop" onClick={close}>
     <section className="modal import-run-report" onClick={event => event.stopPropagation()} aria-labelledby="import-run-report-title">
@@ -47,10 +57,19 @@ export default function ImportRunReport({ runId, close }: { runId: string; close
           <article><strong>{report.run.duplicates.toLocaleString("pt-BR")}</strong><span>duplicadas</span></article>
           <article className={report.run.errors ? "has-error" : ""}><strong>{report.run.errors.toLocaleString("pt-BR")}</strong><span>erros</span></article>
         </div>
+        <div className={`import-run-source-context${sourceNeedsAttention ? " needs-attention" : ""}`}>
+          <div><small>Fonte desta execução</small><strong>{report.run.source}</strong></div>
+          <p>{sourceNeedsAttention ? "Esta execução requer atenção: consulte o detalhe e as vagas afetadas antes da próxima coleta." : "Não há erros registrados nesta execução da fonte."}</p>
+        </div>
+        {report.intake && <div className="import-run-intake"><strong>Entrada da fonte</strong><p>{report.intake.valid === null ? "Execução antiga: o detalhamento de entrada não foi registrado." : `${report.intake.valid} válida${report.intake.valid === 1 ? "" : "s"} para processar${report.intake.invalid ? ` · ${report.intake.invalid} ${report.intake.invalid === 1 ? "não entrou" : "não entraram"}` : ""}${report.intake.rejectedProfile ? ` · ${report.intake.rejectedProfile} rejeitada${report.intake.rejectedProfile === 1 ? "" : "s"} pelo perfil` : ""}`}</p>{Object.keys(report.intake.invalidReasons).length > 0 && <ul>{Object.entries(report.intake.invalidReasons).map(([reason, count]) => <li key={reason}>{count} · {reason}</li>)}</ul>}</div>}
         {report.error && <div className="import-run-error"><strong>Detalhe da falha</strong><p>{report.error}</p></div>}
-        <div className="import-run-jobs-head"><div><h3>Vagas afetadas</h3><p>{report.jobs.length === 500 ? "Mostrando as 500 mais recentes" : `${report.jobs.length} vaga${report.jobs.length === 1 ? "" : "s"} registrada${report.jobs.length === 1 ? "" : "s"} nesta execução`}</p></div>{report.run.finishedAt && <small>Concluída em {formatDate(report.run.finishedAt)}</small>}</div>
+        <div className="import-run-jobs-head"><div><h3>Vagas afetadas</h3><p>{filteredJobs.length === report.jobs.length ? (report.jobs.length === 500 ? "Mostrando as 500 mais recentes" : `${report.jobs.length} vaga${report.jobs.length === 1 ? "" : "s"} registrada${report.jobs.length === 1 ? "" : "s"} nesta execução`) : `${filteredJobs.length} de ${report.jobs.length} vagas encontradas`}</p></div>{report.run.finishedAt && <small>Concluída em {formatDate(report.run.finishedAt)}</small>}</div>
+        <div className="import-run-research" aria-label="Pesquisar no log da importação">
+          <label>Pesquisar no log<input value={search} onChange={event => setSearch(event.target.value)} placeholder="Vaga, empresa, local ou modalidade" /></label>
+          <label>Resultado<select value={outcome} onChange={event => setOutcome(event.target.value as "all" | Job["outcome"])}><option value="all">Todos</option><option value="inserted">Novas</option><option value="updated">Atualizadas</option><option value="duplicate">Duplicadas</option></select></label>
+        </div>
         <div className="import-run-jobs">
-          {report.jobs.length === 0 ? <p>Nenhuma vaga foi gravada nesta execução.</p> : report.jobs.map(job => <article key={job.id}><span className={`import-run-outcome ${job.outcome}`}>{outcomeLabel[job.outcome]}</span><div><strong>{job.title}</strong><p>{job.company}{job.location ? ` · ${job.location}` : ""}{job.workMode ? ` · ${job.workMode}` : ""}</p></div><time>{formatDate(job.receivedAt)}</time></article>)}
+          {report.jobs.length === 0 ? <p>Nenhuma vaga foi gravada nesta execução.</p> : filteredJobs.length === 0 ? <p>Nenhuma vaga corresponde à pesquisa.</p> : filteredJobs.map(job => <article key={job.id}><span className={`import-run-outcome ${job.outcome}`}>{outcomeLabel[job.outcome]}</span><div><strong>{job.title}</strong><p>{job.company}{job.location ? ` · ${job.location}` : ""}{job.workMode ? ` · ${job.workMode}` : ""}</p></div><time>{formatDate(job.receivedAt)}</time></article>)}
         </div>
       </>}
     </section>

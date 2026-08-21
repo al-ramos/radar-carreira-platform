@@ -2,7 +2,7 @@ import { eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "../../../../../db/index";
 import { importRuns, jobSources, jobs, profiles } from "../../../../../db/schema";
 import { filterImportedJobsByProfile } from "../../../../../lib/collector-profile-filter";
-import { normalizeImportedJobs } from "../../../../../lib/import-jobs";
+import { normalizeImportedJobsWithDiagnostics } from "../../../../../lib/import-jobs";
 import { fingerprint, recordedJobDate, sourcePublishedJobDate, type ImportedJob } from "../../../../../lib/jobs";
 import { normalizeCareerRules } from "../../../../../lib/profile-options";
 import { inferJobArea } from "../../../../../lib/job-area";
@@ -174,8 +174,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ sou
   if (payload?.action === "status") {
     return json({ ok: true, ...(await recordCollectorStatus(db, source, sourceId, sourceName, config.userId ?? "collector", payload.run ?? {})) });
   }
-  const items = normalizeImportedJobs(Array.isArray(payload?.jobs) ? payload.jobs : []);
-  if (!items.length) return json({ error: "Nenhuma vaga válida recebida" }, { status: 400 });
+  const rawItems = Array.isArray(payload?.jobs) ? payload.jobs : [];
+  const input = normalizeImportedJobsWithDiagnostics(rawItems);
+  const items = input.items;
+  if (!items.length) return json({ error: "Nenhuma vaga válida recebida", received: rawItems.length, invalid: input.rejected, invalidReasons: input.reasons }, { status: 400 });
   if (items.length > 2000) return json({ error: "O limite é de 2.000 vagas por envio" }, { status: 400 });
 
   const profile = sourceId === "linkedin-extension" && config.userId
@@ -199,13 +201,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ sou
     sourceId,
     channel: "extension",
     status: "running",
-    received: items.length,
+    received: rawItems.length,
     duplicates: duplicateRows,
     actorUserId: config.userId ?? "collector",
     startedAt,
   }).onConflictDoUpdate({
     target: importRuns.id,
-    set: { status: "running", received: items.length, duplicates: duplicateRows, errors: 0, finishedAt: null },
+    set: { status: "running", received: rawItems.length, duplicates: duplicateRows, errors: 0, finishedAt: null },
   });
 
   let inserted = 0;
@@ -215,8 +217,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ sou
       await db.update(importRuns).set({ status: "completed", finishedAt: new Date() }).where(eq(importRuns.id, runId));
       const finishedAt = new Date();
       await db.update(jobSources).set({ lastRunAt: finishedAt, lastSuccessAt: finishedAt, lastError: null, consecutiveFailures: 0 }).where(eq(jobSources.id, sourceId));
-      await notifyImportRun(db, { runId, source: sourceName, status: "completed", received: items.length, inserted: 0, updated: 0, duplicates: 0 }).catch(() => undefined);
-      return json({ ok: true, runId, accepted: 0, received: items.length, duplicates: 0, rejected: filtered.rejected, inserted: 0, updated: 0, requiredStacks: filtered.requiredStacks, stackMatchMode: filtered.stackMatchMode, message: "Nenhuma vaga atende ao perfil de stacks obrigatórias" });
+      await notifyImportRun(db, { runId, source: sourceName, status: "completed", received: rawItems.length, valid: items.length, invalid: input.rejected, invalidReasons: input.reasons, rejectedProfile: filtered.rejected, inserted: 0, updated: 0, duplicates: 0 }).catch(() => undefined);
+      return json({ ok: true, runId, accepted: 0, received: rawItems.length, valid: items.length, invalid: input.rejected, invalidReasons: input.reasons, duplicates: 0, rejected: filtered.rejected, inserted: 0, updated: 0, requiredStacks: filtered.requiredStacks, stackMatchMode: filtered.stackMatchMode, message: "Nenhuma vaga atende ao perfil de stacks obrigatórias" });
     }
     const existing = new Set<string>();
     for (const batch of chunks(entries.map((entry) => entry.fp), LOOKUP_BATCH_SIZE)) {
@@ -272,8 +274,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ sou
       .where(eq(importRuns.id, runId));
     const finishedAt = new Date();
     await db.update(jobSources).set({ lastRunAt: finishedAt, lastSuccessAt: finishedAt, lastError: null, consecutiveFailures: 0 }).where(eq(jobSources.id, sourceId));
-    await notifyImportRun(db, { runId, source: sourceName, status: "completed", received: items.length, inserted, updated, duplicates: duplicateRows }).catch(() => undefined);
-    return json({ ok: true, runId, accepted: filtered.accepted.length, received: items.length, duplicates: duplicateRows, rejected: filtered.rejected, inserted, updated, requiredStacks: filtered.requiredStacks, stackMatchMode: filtered.stackMatchMode });
+    await notifyImportRun(db, { runId, source: sourceName, status: "completed", received: rawItems.length, valid: items.length, invalid: input.rejected, invalidReasons: input.reasons, rejectedProfile: filtered.rejected, inserted, updated, duplicates: duplicateRows }).catch(() => undefined);
+    return json({ ok: true, runId, accepted: filtered.accepted.length, received: rawItems.length, valid: items.length, invalid: input.rejected, invalidReasons: input.reasons, duplicates: duplicateRows, rejected: filtered.rejected, inserted, updated, requiredStacks: filtered.requiredStacks, stackMatchMode: filtered.stackMatchMode });
   } catch (error) {
     const detail = error instanceof Error ? error.message : "Falha desconhecida durante a gravação";
     await db
@@ -281,7 +283,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ sou
       .set({ status: "failed", inserted, updated, duplicates: duplicateRows, errors: 1, finishedAt: new Date() })
       .where(eq(importRuns.id, runId))
       .catch(() => undefined);
-    await notifyImportRun(db, { runId, source: sourceName, status: "failed", received: items.length, inserted, updated, duplicates: duplicateRows, error: detail.slice(0, 300) }).catch(() => undefined);
+    await notifyImportRun(db, { runId, source: sourceName, status: "failed", received: rawItems.length, valid: items.length, invalid: input.rejected, invalidReasons: input.reasons, rejectedProfile: filtered.rejected, inserted, updated, duplicates: duplicateRows, error: detail.slice(0, 300) }).catch(() => undefined);
     return json(
       { error: "A importação foi interrompida. Reenvie o mesmo lote para concluir as vagas pendentes.", runId, inserted, updated },
       { status: 500 },

@@ -325,10 +325,15 @@ async function exportAccumulated() {
       showExportStatus(response?.error || 'Não foi possível exportar.', true);
       return;
     }
+    const inputDetails = response.radar ? [
+      `${response.radar.valid ?? response.radar.accepted ?? response.matched} válidas no Radar`,
+      response.radar.invalid ? `${response.radar.invalid} não entraram (${Object.entries(response.radar.invalidReasons || {}).map(([reason, count]) => `${reason}: ${count}`).join(', ') || 'dados obrigatórios ausentes'})` : '',
+      response.radar.rejected ? `${response.radar.rejected} rejeitadas pelo perfil` : '',
+    ].filter(Boolean).join('; ') : '';
     const destino = [
       settings.downloadFiles ? 'CSV/JSON salvos' : '',
       response.radar
-        ? `${response.radar.accepted ?? response.matched} aceitas pelo Radar, ${response.radar.inserted ?? 0} novas e ${response.radar.updated ?? 0} atualizadas`
+        ? `${inputDetails}; ${response.radar.inserted ?? 0} novas e ${response.radar.updated ?? 0} atualizadas`
         : '',
     ]
       .filter(Boolean)

@@ -26,7 +26,13 @@ function inferWorkMode(location:string,description:string){
 }
 
 export function normalizeImportedJob(value:unknown):ImportedJob|null{
- if(!value||typeof value!=="object"||Array.isArray(value))return null;
+ return inspectImportedJob(value).job;
+}
+
+export type ImportInputDiagnostics={items:ImportedJob[];rejected:number;reasons:Record<string,number>};
+
+function inspectImportedJob(value:unknown):{job:ImportedJob|null;reasons:string[]}{
+ if(!value||typeof value!=="object"||Array.isArray(value))return{job:null,reasons:["registro inválido"]};
  const source=value as Record<string,unknown>,mapped:Record<string,unknown>={};
  for(const [rawKey,rawValue] of Object.entries(source)){
   const key=aliases[normalizeHeader(rawKey)];
@@ -34,10 +40,11 @@ export function normalizeImportedJob(value:unknown):ImportedJob|null{
  }
  const string=(key:keyof ImportedJob)=>typeof mapped[key]==="string"?String(mapped[key]).trim():"";
  const company=string("company"),title=string("title"),url=string("url");
- if(!company||!title||!url)return null;
+ const reasons=[!company?"empresa ausente":"",!title?"título ausente":"",!url?"link da vaga ausente":""].filter(Boolean);
+ if(reasons.length)return{job:null,reasons};
  const rawLocation=string("location"),description=string("description"),linkedinId=url.match(/linkedin\.com\/jobs\/view\/(\d+)/i)?.[1];
  const stack=Array.isArray(mapped.stack)?mapped.stack.map(String).map(item=>item.trim()).filter(Boolean):typeof mapped.stack==="string"?mapped.stack.split(/[|,]/).map(item=>item.trim()).filter(Boolean):undefined;
- return {
+ return {job:{
   company,title,url,description,
   location:rawLocation?cleanLocation(rawLocation):undefined,
   workMode:string("workMode")||inferWorkMode(rawLocation,description),
@@ -49,9 +56,19 @@ export function normalizeImportedJob(value:unknown):ImportedJob|null{
   contactEmail:string("contactEmail")||undefined,
   contactSubject:string("contactSubject")||undefined,
   sourceId:string("sourceId")||undefined
- };
+ },reasons:[]};
 }
 
 export function normalizeImportedJobs(values:unknown[]):ImportedJob[]{
  return values.map(normalizeImportedJob).filter((job):job is ImportedJob=>job!==null);
+}
+
+export function normalizeImportedJobsWithDiagnostics(values:unknown[]):ImportInputDiagnostics{
+ const items:ImportedJob[]=[],reasons:Record<string,number>={};
+ for(const value of values){
+  const result=inspectImportedJob(value);
+  if(result.job){items.push(result.job);continue}
+  for(const reason of result.reasons)reasons[reason]=(reasons[reason]??0)+1;
+ }
+ return{items,rejected:values.length-items.length,reasons};
 }
