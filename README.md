@@ -178,6 +178,10 @@ O conector atual:
 - tenta enriquecer vagas do LinkedIn;
 - prepara e envia o resumo diário quando houver correspondências suficientes.
 
+### Rascunhos de candidatura
+
+Os rascunhos de candidatura não são agendados. Depois de colocá-los na fila pelo Radar, abra o Apps Script e execute `executarRascunhosPendentesRadar` manualmente. A função cria os rascunhos pendentes e confere envios feitos por você; ela nunca envia e-mails. Caso uma versão anterior tenha criado esse acionador automaticamente, execute `removerAgendamentoRascunhosRadar` uma vez para removê-lo.
+
 ## Coleta de fontes públicas
 
 O painel aceita os identificadores públicos de páginas hospedadas em:

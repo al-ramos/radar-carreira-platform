@@ -122,14 +122,8 @@ function verificarConectorRascunhosRadar() {
   console.log('Conector de rascunhos verificado. Nenhum e-mail foi criado ou enviado.');
 }
 
-// Agenda somente a criação de rascunhos pendentes já aprovados pelo Radar.
-// O horário padrão é 9h; a função não envia e-mails e pode ser removida a
-// qualquer momento com removerAgendamentoRascunhosRadar().
-function instalarAgendamentoRascunhosRadar() {
-  removerAgendamentoRascunhosRadar();
-  ScriptApp.newTrigger('executarRascunhosPendentesRadar').timeBased().everyDays(1).atHour(9).create();
-}
-
+// Remove acionadores legados caso algum tenha sido criado em versões anteriores.
+// A criação de rascunhos agora é exclusivamente manual.
 function removerAgendamentoRascunhosRadar() {
   ScriptApp.getProjectTriggers()
     .filter(trigger => ['executarTriagemDiariaERascunhos', 'executarRascunhosPendentesRadar'].includes(trigger.getHandlerFunction()))
