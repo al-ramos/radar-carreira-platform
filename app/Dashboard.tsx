@@ -1823,7 +1823,6 @@ export default function Dashboard() {
       seniority: profileChoices.seniority,
       careerRules: profileChoices.careerRules,
       contractSpecified: /\b(PJ|CLT|pessoa jurídica|carteira assinada)\b/i.test(job.description ?? ""),
-      applicantName: currentUser?.fullName || currentUser?.displayName,
     });
     const query = [
       `subject=${encodeURIComponent(job.contactSubject || `Candidatura — ${job.title}`)}`,
