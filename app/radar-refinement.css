@@ -1320,9 +1320,12 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .workspace.workspace-table-mode { grid-template-columns: 1fr !important; }
 .workspace.workspace-table-mode .job-list { max-height: none; }
 .job-table-wrap { border: 1px solid #e5e6ef; border-radius: 10px; background: #fff; overflow: hidden; }
-.job-table-header, .job-table-filter-row, .job-table-row { grid-template-columns: 1.05fr 1.5fr 1fr .9fr 1.1fr .75fr 1.25fr .85fr; gap: 8px; }
+.job-table-header, .job-table-filter-row, .job-table-row { grid-template-columns: 28px 1.05fr 1.5fr 1fr .9fr 1.1fr .75fr 1.25fr .85fr; gap: 8px; }
 .job-table-header { padding: 0 16px; background: #f7f7fc; border-bottom: 1px solid #e5e6ef; }
 .job-table-th { min-height: 38px; padding: 0; color: #69718b; }
+.job-table-selection-header, .job-table-selection { display: flex; align-items: center; justify-content: center; }
+.job-table-selection input, .job-table-selection-header input { width: 14px; height: 14px; accent-color: #6a5cf0; cursor: pointer; }
+.job-table-selection { cursor: default; }
 .job-table-th:hover, .job-table-th.active { color: #18264d; }
 .job-table-sort-arrow { color: #6a5cf0; }
 .job-table-filter-row { padding: 8px 16px; background: #fbfbfe; border-bottom: 1px solid #e5e6ef; align-items: center; }
@@ -1345,17 +1348,18 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .detail-drawer-close { position: absolute; top: 14px; right: 16px; width: 30px; height: 30px; border: 1px solid #e5e6ef; border-radius: 999px; background: #fff; color: #69718b; font-size: 17px; line-height: 1; cursor: pointer; }
 .detail-drawer .detail-heading { padding-right: 40px; }
 @media (max-width: 1100px) {
-  .job-table-header, .job-table-filter-row, .job-table-row { grid-template-columns: 1.05fr 1.5fr 1fr .9fr 1.25fr; }
-  .job-table-cell-stack, .job-table-filter-row .job-table-filter-cell:nth-child(5), .job-table-header .job-table-th:nth-child(5), .job-table-cell-source, .job-table-filter-row .job-table-filter-cell:nth-child(6), .job-table-header .job-table-th:nth-child(6), .job-table-cell-date, .job-table-filter-row .job-table-filter-cell:nth-child(8), .job-table-header .job-table-th:nth-child(8) { display: none; }
+  .job-table-header, .job-table-filter-row, .job-table-row { grid-template-columns: 28px 1.05fr 1.5fr 1fr .9fr 1.25fr; }
+  .job-table-cell-stack, .job-table-filter-row .job-table-filter-cell:nth-child(6), .job-table-header .job-table-th:nth-child(6), .job-table-cell-source, .job-table-filter-row .job-table-filter-cell:nth-child(7), .job-table-header .job-table-th:nth-child(7), .job-table-cell-date, .job-table-filter-row .job-table-filter-cell:nth-child(9), .job-table-header .job-table-th:nth-child(9) { display: none; }
 }
 @media (max-width: 900px) {
-  .job-table-header, .job-table-filter-row, .job-table-row { grid-template-columns: 1.05fr 1.5fr 1fr; }
-  .job-table-cell-score, .job-table-filter-row .job-table-filter-cell:nth-child(4), .job-table-header .job-table-th:nth-child(4), .job-table-cell-email, .job-table-filter-row .job-table-filter-cell:nth-child(7), .job-table-header .job-table-th:nth-child(7) { display: none; }
+  .job-table-header, .job-table-filter-row, .job-table-row { grid-template-columns: 28px 1.05fr 1.5fr 1fr; }
+  .job-table-cell-score, .job-table-filter-row .job-table-filter-cell:nth-child(5), .job-table-header .job-table-th:nth-child(5), .job-table-cell-email, .job-table-filter-row .job-table-filter-cell:nth-child(8), .job-table-header .job-table-th:nth-child(8) { display: none; }
   .detail.detail-drawer { width: 100vw; }
 }
 @media (max-width: 650px) {
   .job-table-header, .job-table-filter-row { display: none; }
-  .job-table-row { grid-template-columns: 1fr; gap: 4px; padding: 12px 14px; }
+  .job-table-row { grid-template-columns: 28px 1fr; gap: 4px; padding: 12px 14px; }
+  .job-table-selection { grid-row: 1 / span 8; align-self: start; padding-top: 3px; }
   .job-table-cell-score { order: -1; justify-content: flex-start; }
 }
 @media (max-width: 720px) { .notification-bell-dropdown { position: fixed; top: auto; right: 16px; bottom: 16px; left: 16px; width: auto; max-height: 60vh; } }

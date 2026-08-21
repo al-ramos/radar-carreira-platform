@@ -1039,6 +1039,9 @@ export default function Dashboard() {
   const [tableColumnFilters, setTableColumnFilters] = useState<{
     company: string; title: string; mode: string; verdict: string; stack: string; source: string; contactEmail: string;
   }>({ company: "", title: "", mode: "", verdict: "", stack: "", source: "", contactEmail: "" });
+  /** Seleção temporária para exportação. Ela não altera o card aberto, o
+   * pipeline nem o status da vaga: serve exclusivamente ao relatório. */
+  const [exportSelectionIds, setExportSelectionIds] = useState<Set<string>>(() => new Set());
   const setTableColumnFilter = useCallback((column: keyof typeof tableColumnFilters, value: string) => {
     setTableColumnFilters((current) => ({ ...current, [column]: value }));
   }, []);
@@ -1085,6 +1088,30 @@ export default function Dashboard() {
       }
     });
   }, [orderedJobs, tableSort, tableColumnFilters, verdictMap]);
+  const selectedJobsForExport = useMemo(
+    () => orderedJobs.filter((job) => exportSelectionIds.has(job.id)),
+    [orderedJobs, exportSelectionIds],
+  );
+  const allVisibleTableJobsSelected = tableJobs.length > 0 && tableJobs.every((job) => exportSelectionIds.has(job.id));
+  const toggleJobForExport = useCallback((jobId: string) => {
+    setExportSelectionIds((current) => {
+      const next = new Set(current);
+      if (next.has(jobId)) next.delete(jobId);
+      else next.add(jobId);
+      return next;
+    });
+  }, []);
+  const toggleVisibleTableJobsForExport = useCallback(() => {
+    setExportSelectionIds((current) => {
+      const next = new Set(current);
+      const allSelected = tableJobs.length > 0 && tableJobs.every((job) => next.has(job.id));
+      for (const job of tableJobs) {
+        if (allSelected) next.delete(job.id);
+        else next.add(job.id);
+      }
+      return next;
+    });
+  }, [tableJobs]);
   /** Opções distintas para os filtros de coluna do tipo "select" (Modalidade
    * e Fonte), derivadas da página de vagas já carregada. */
   const tableModeOptions = useMemo(
@@ -1132,17 +1159,21 @@ export default function Dashboard() {
     return sortReportJobs(allJobs);
   }
 
-  /** Baixa a página atual ou todas as páginas que correspondem aos filtros. */
-  async function downloadReport(scope: "page" | "all") {
+  /** Baixa a página atual, todas as vagas dos filtros ou só a seleção marcada. */
+  async function downloadReport(scope: "page" | "all" | "selected") {
     if (reportLoading) return;
     setReportOptionsOpen(false);
     if (scope === "page" && orderedJobs.length === 0) {
       setMessage("A página atual não possui vagas para exportar. Ajuste ou limpe os filtros e tente novamente.");
       return;
     }
+    if (scope === "selected" && selectedJobsForExport.length === 0) {
+      setMessage("Nenhuma vaga marcada está disponível para exportação. Sem seleção, use Exportar todas.");
+      return;
+    }
     setReportLoading(true);
     try {
-      const jobsToExport = scope === "page" ? orderedJobs : await getAllReportJobs();
+      const jobsToExport = scope === "selected" ? selectedJobsForExport : scope === "page" ? orderedJobs : await getAllReportJobs();
       if (jobsToExport.length === 0) {
         setMessage("Não há vagas para exportar com os filtros atuais.");
         return;
@@ -2348,6 +2379,10 @@ export default function Dashboard() {
                 </button>
                 {reportOptionsOpen && (
                   <div className="report-dropdown" role="menu" aria-label="Opções de exportação">
+                    <button type="button" role="menuitem" onClick={() => void downloadReport(selectedJobsForExport.length ? "selected" : "all")}>
+                      <span aria-hidden="true">☑</span>
+                      <span><strong>{selectedJobsForExport.length ? "Exportar selecionadas" : "Exportar todas"}</strong><small>{selectedJobsForExport.length ? `${selectedJobsForExport.length} vaga${selectedJobsForExport.length !== 1 ? "s" : ""} marcada${selectedJobsForExport.length !== 1 ? "s" : ""}` : "Nenhuma vaga marcada: exporta todas conforme os filtros"}</small></span>
+                    </button>
                     <button type="button" role="menuitem" onClick={() => void downloadReport("page")}>
                       <span aria-hidden="true">📄</span>
                       <span><strong>Exportar página atual</strong><small>{orderedJobs.length > 0 ? `${orderedJobs.length} vaga${orderedJobs.length !== 1 ? "s" : ""}` : "Nenhuma vaga nesta página"}</small></span>
@@ -2748,6 +2783,15 @@ export default function Dashboard() {
             {viewMode === "table" && orderedJobs.length > 0 && (
               <div className="job-table-wrap" role="table" aria-label="Vagas em formato de tabela">
                 <div className="job-table-header" role="row">
+                  <span role="columnheader" className="job-table-selection-header">
+                    <input
+                      type="checkbox"
+                      checked={allVisibleTableJobsSelected}
+                      onChange={toggleVisibleTableJobsForExport}
+                      aria-label={allVisibleTableJobsSelected ? "Desmarcar todas as vagas visíveis" : "Selecionar todas as vagas visíveis"}
+                      title={allVisibleTableJobsSelected ? "Desmarcar vagas visíveis" : "Selecionar vagas visíveis"}
+                    />
+                  </span>
                   {([
                     { column: "company" as const, label: "Empresa" },
                     { column: "title" as const, label: "Vaga" },
@@ -2774,6 +2818,7 @@ export default function Dashboard() {
                   ))}
                 </div>
                 <div className="job-table-filter-row" role="row" hidden={!filtersOpen && activeTableColumnFilterCount === 0}>
+                  <span role="cell" className="job-table-selection-header" aria-label="Seleção para exportação" />
                   <span role="cell" className="job-table-filter-cell">
                     <input type="text" placeholder="Filtrar empresa…" value={tableColumnFilters.company} onChange={(e) => setTableColumnFilter("company", e.target.value)} aria-label="Filtrar por empresa" />
                   </span>
@@ -2830,6 +2875,15 @@ export default function Dashboard() {
                         }
                       }}
                     >
+                      <span role="cell" className="job-table-cell job-table-selection" onClick={(event) => event.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={exportSelectionIds.has(j.id)}
+                          onChange={() => toggleJobForExport(j.id)}
+                          onKeyDown={(event) => event.stopPropagation()}
+                          aria-label={`Selecionar ${j.title} da empresa ${j.company} para exportação`}
+                        />
+                      </span>
                       <span role="cell" className="job-table-cell job-table-cell-company">
                         {stage && stage !== "viewed" && (
                           <span className="card-stage-badge" aria-hidden="true">
