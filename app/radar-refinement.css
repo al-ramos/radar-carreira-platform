@@ -1331,7 +1331,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .workspace.workspace-table-mode { grid-template-columns: 1fr !important; }
 .workspace.workspace-table-mode .job-list { max-height: none; }
 .job-table-wrap { border: 1px solid #e5e6ef; border-radius: 10px; background: #fff; overflow: hidden; }
-.job-table-header, .job-table-filter-row, .job-table-row { grid-template-columns: 28px 1.05fr 1.5fr 1fr .9fr 1.1fr .75fr 1.25fr .85fr; gap: 8px; }
+.job-table-header, .job-table-filter-row, .job-table-row { grid-template-columns: 28px .85fr 1.05fr 1.5fr 1fr .9fr 1.1fr .75fr 1.25fr .85fr; gap: 8px; }
 .job-table-header { padding: 0 16px; background: #f7f7fc; border-bottom: 1px solid #e5e6ef; }
 .job-table-th { min-height: 38px; padding: 0; color: #69718b; }
 .job-table-selection-header, .job-table-selection { display: flex; align-items: center; justify-content: center; }
@@ -1350,7 +1350,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .job-table-cell-location { display: flex; flex-direction: column; gap: 2px; }
 .job-table-location-line { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10.5px; }
 .job-table-mode-tag { align-self: flex-start; border-radius: 4px; background: #f0edff; color: #6a5cf0; padding: 1px 6px; font-size: 9px; font-weight: 700; }
+.job-table-cell-code { color: #69718b; font-size: 10.5px; font-family: var(--mono, ui-monospace, "SFMono-Regular", Menlo, monospace); }
 .job-table-cell-source, .job-table-cell-date { color: #69718b; font-size: 10.5px; }
+.job-table-filter-cell-disabled { pointer-events: none; }
 .job-table-cell-email a { display: block; color: #4f46c7; font-size: 10.5px; overflow: hidden; text-decoration: none; text-overflow: ellipsis; white-space: nowrap; }
 .job-table-cell-email a:hover { text-decoration: underline; }
 .job-table-empty { padding: 26px 16px; color: #69718b; font-size: 11px; text-align: center; }
@@ -1359,18 +1361,18 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .detail-drawer-close { position: absolute; top: 14px; right: 16px; width: 30px; height: 30px; border: 1px solid #e5e6ef; border-radius: 999px; background: #fff; color: #69718b; font-size: 17px; line-height: 1; cursor: pointer; }
 .detail-drawer .detail-heading { padding-right: 40px; }
 @media (max-width: 1100px) {
-  .job-table-header, .job-table-filter-row, .job-table-row { grid-template-columns: 28px 1.05fr 1.5fr 1fr .9fr 1.25fr; }
-  .job-table-cell-stack, .job-table-filter-row .job-table-filter-cell:nth-child(6), .job-table-header .job-table-th:nth-child(6), .job-table-cell-source, .job-table-filter-row .job-table-filter-cell:nth-child(7), .job-table-header .job-table-th:nth-child(7), .job-table-cell-date, .job-table-filter-row .job-table-filter-cell:nth-child(9), .job-table-header .job-table-th:nth-child(9) { display: none; }
+  .job-table-header, .job-table-filter-row, .job-table-row { grid-template-columns: 28px .85fr 1.05fr 1.5fr 1fr .9fr 1.25fr; }
+  .job-table-cell-stack, .job-table-filter-row .job-table-filter-cell:nth-child(7), .job-table-header .job-table-th:nth-child(7), .job-table-cell-source, .job-table-filter-row .job-table-filter-cell:nth-child(8), .job-table-header .job-table-th:nth-child(8), .job-table-cell-date, .job-table-filter-row .job-table-filter-cell:nth-child(10), .job-table-header .job-table-th:nth-child(10) { display: none; }
 }
 @media (max-width: 900px) {
-  .job-table-header, .job-table-filter-row, .job-table-row { grid-template-columns: 28px 1.05fr 1.5fr 1fr; }
-  .job-table-cell-score, .job-table-filter-row .job-table-filter-cell:nth-child(5), .job-table-header .job-table-th:nth-child(5), .job-table-cell-email, .job-table-filter-row .job-table-filter-cell:nth-child(8), .job-table-header .job-table-th:nth-child(8) { display: none; }
+  .job-table-header, .job-table-filter-row, .job-table-row { grid-template-columns: 28px .85fr 1.05fr 1.5fr 1fr; }
+  .job-table-cell-score, .job-table-filter-row .job-table-filter-cell:nth-child(6), .job-table-header .job-table-th:nth-child(6), .job-table-cell-email, .job-table-filter-row .job-table-filter-cell:nth-child(9), .job-table-header .job-table-th:nth-child(9) { display: none; }
   .detail.detail-drawer { width: 100vw; }
 }
 @media (max-width: 650px) {
   .job-table-header, .job-table-filter-row { display: none; }
   .job-table-row { grid-template-columns: 28px 1fr; gap: 4px; padding: 12px 14px; }
-  .job-table-selection { grid-row: 1 / span 8; align-self: start; padding-top: 3px; }
+  .job-table-selection { grid-row: 1 / span 9; align-self: start; padding-top: 3px; }
   .job-table-cell-score { order: -1; justify-content: flex-start; }
 }
 @media (max-width: 720px) { .notification-bell-dropdown { position: fixed; top: auto; right: 16px; bottom: 16px; left: 16px; width: auto; max-height: 60vh; } }

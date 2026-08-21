@@ -1023,7 +1023,7 @@ export default function Dashboard() {
    * clicar num cabeçalho de coluna ordena só a tabela. Opera sobre a mesma
    * `orderedJobs` (já filtrada pelos controles da tela), então herda busca,
    * aderência mínima, período etc. automaticamente. */
-  const [tableSort, setTableSort] = useState<{ column: "company" | "title" | "score" | "stack" | "location" | "source" | "contactEmail" | "publishedAt"; direction: "asc" | "desc" }>(
+  const [tableSort, setTableSort] = useState<{ column: "externalId" | "company" | "title" | "score" | "stack" | "location" | "source" | "contactEmail" | "publishedAt"; direction: "asc" | "desc" }>(
     { column: "score", direction: "desc" },
   );
   const toggleTableSort = useCallback((column: typeof tableSort.column) => {
@@ -1071,6 +1071,8 @@ export default function Dashboard() {
       : orderedJobs;
     return [...filtered].sort((left, right) => {
       switch (column) {
+        case "externalId":
+          return (left.externalId ?? "").localeCompare(right.externalId ?? "", "pt-BR") * factor;
         case "score":
           return (left.score - right.score) * factor;
         case "stack":
@@ -2790,6 +2792,7 @@ export default function Dashboard() {
                     />
                   </span>
                   {([
+                    { column: "externalId" as const, label: "Código" },
                     { column: "company" as const, label: "Empresa" },
                     { column: "title" as const, label: "Vaga" },
                     { column: "location" as const, label: "Local / Modalidade" },
@@ -2816,6 +2819,7 @@ export default function Dashboard() {
                 </div>
                 <div className="job-table-filter-row" role="row" hidden={!filtersOpen && activeTableColumnFilterCount === 0}>
                   <span role="cell" className="job-table-selection-header" aria-label="Seleção para exportação" />
+                  <span role="cell" className="job-table-filter-cell job-table-filter-cell-disabled" aria-hidden="true" />
                   <span role="cell" className="job-table-filter-cell">
                     <input type="text" placeholder="Filtrar empresa…" value={tableColumnFilters.company} onChange={(e) => setTableColumnFilter("company", e.target.value)} aria-label="Filtrar por empresa" />
                   </span>
@@ -2880,6 +2884,9 @@ export default function Dashboard() {
                           onKeyDown={(event) => event.stopPropagation()}
                           aria-label={`Selecionar ${j.title} da empresa ${j.company} para exportação`}
                         />
+                      </span>
+                      <span role="cell" className="job-table-cell job-table-cell-code" title={j.externalId ?? undefined}>
+                        {j.externalId ?? "—"}
                       </span>
                       <span role="cell" className="job-table-cell job-table-cell-company">
                         {stage && stage !== "viewed" && (
