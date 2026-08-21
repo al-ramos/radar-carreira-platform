@@ -28,6 +28,10 @@
       {
         "binding": "TRIAGE_QUEUE",
         "queue": "radar-carreira-triage"
+      },
+      {
+        "binding": "AI_REVIEW_QUEUE",
+        "queue": "radar-carreira-ai-review"
       }
     ],
     "consumers": [
@@ -38,6 +42,14 @@
         "max_retries": 3,
         "max_concurrency": 2,
         "dead_letter_queue": "radar-carreira-triage-dlq"
+      },
+      {
+        "queue": "radar-carreira-ai-review",
+        "max_batch_size": 1,
+        "max_batch_timeout": 5,
+        "max_retries": 3,
+        "max_concurrency": 1,
+        "dead_letter_queue": "radar-carreira-ai-review-dlq"
       }
     ]
   }

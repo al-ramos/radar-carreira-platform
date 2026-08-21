@@ -73,6 +73,8 @@ jobs:
         run: |
           npx wrangler queues create radar-carreira-triage || true
           npx wrangler queues create radar-carreira-triage-dlq || true
+          npx wrangler queues create radar-carreira-ai-review || true
+          npx wrangler queues create radar-carreira-ai-review-dlq || true
       - name: Gerar Worker de produção
         run: npm run build
       - name: Publicar Worker

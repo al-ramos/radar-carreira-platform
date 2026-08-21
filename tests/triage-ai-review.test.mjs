@@ -9,13 +9,16 @@ test("análise consultiva da IA persiste o prompt e o snapshot sem alterar a tri
     readFile(new URL("../lib/ai-provider.ts", import.meta.url), "utf8"),
     readFile(new URL("../drizzle/0028_triage_ai_reviews.sql", import.meta.url), "utf8"),
   ]);
-  assert.match(route, /MAX_AI_REVIEW_JOBS = 20/);
+  assert.match(route, /MAX_ASYNC_AI_REVIEW_JOBS = 1000/);
+  assert.match(route, /CHUNK_SIZE = 5/);
+  assert.match(route, /AI_REVIEW_QUEUE/);
+  assert.match(route, /triageAiReviewChunks/);
   assert.match(route, /triageAiReviews/);
-  assert.match(route, /reviewSelectedJobs/);
-  assert.match(route, /const reviewProfile: AiReviewProfile/);
+  assert.match(route, /status: "queued"/);
+  assert.match(route, /reviewProfile: AiReviewProfile/);
   assert.match(route, /profile: reviewProfile/);
-  assert.match(route, /JSON\.stringify\(reviewProfile\)/);
-  assert.match(route, /operation: "review_selection"/);
+  assert.match(route, /JSON\.stringify\(\{ profile: reviewProfile, jobs: reviewJobs \}\)/);
+  assert.match(route, /status: "queued"/);
   assert.match(schema, /triageAiReviews/);
   assert.match(provider, /reviewSelectedJobs/);
   assert.match(provider, /export type AiReviewProfile/);

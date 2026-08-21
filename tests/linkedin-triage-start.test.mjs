@@ -51,7 +51,8 @@ test("painel inicia a fila para recortes grandes sem bloquear a ação manual", 
   assert.doesNotMatch(ui, /MAX_MANUAL_TRIAGE_JOBS/);
   assert.match(ui, /processado em segundo plano/);
   assert.match(orchestrator, /MAX_ASYNC_TRIAGE_JOBS = 1000/);
-  assert.match(ui, /MAX_AI_REVIEW_JOBS = 20/);
+  assert.match(ui, /consulta à IA será processada em segundo plano/);
+  assert.doesNotMatch(ui, /MAX_AI_REVIEW_JOBS/);
   assert.match(ui, /Triar por regras/);
 });
 

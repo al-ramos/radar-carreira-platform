@@ -10,6 +10,7 @@ interface Env {
     send(message: unknown): Promise<void>;
     sendBatch(messages: unknown[]): Promise<void>;
   };
+  AI_REVIEW_QUEUE: { send(message: unknown): Promise<void>; sendBatch(messages: unknown[]): Promise<void>; };
   IMAGES: {
     input(stream: ReadableStream): {
       transform(options: Record<string, unknown>): {
@@ -25,6 +26,7 @@ type TriageQueueMessage = {
   jobId: string;
   run: Record<string, unknown>;
 };
+type AiReviewQueueMessage = { kind: "ai-review"; reviewId: string; chunkId?: string; action: "chunk" | "consolidate" };
 
 type QueueMessage = {
   body: TriageQueueMessage;
@@ -57,6 +59,7 @@ const worker = {
     // handler interno. Nunca aceite os cabeçalhos enviados pela internet.
     headers.delete("x-radar-triage-queue-authenticated");
     headers.delete("x-radar-triage-user-id");
+    headers.delete("x-radar-ai-review-authenticated");
 
     const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
     // A mesma rota aceita sessões do portal. Somente uma chamada com bearer
@@ -88,7 +91,12 @@ const worker = {
   },
   async queue(batch: { messages: QueueMessage[] }, env: Env, ctx: ExecutionContext): Promise<void> {
     for (const message of batch.messages) {
-      const payload = message.body;
+      const payload = message.body as TriageQueueMessage | AiReviewQueueMessage;
+      if ("kind" in payload && payload.kind === "ai-review") {
+        const response = await handler.fetch(new Request("https://queue.internal/api/triage/ai-review/run", { method: "POST", headers: { "content-type": "application/json", "x-radar-ai-review-authenticated": "1" }, body: JSON.stringify(payload) }), env, ctx);
+        if (response.ok) message.ack(); else message.retry({ delaySeconds: 15 });
+        continue;
+      }
       const response = await handler.fetch(new Request("https://queue.internal/api/triage/run", {
         method: "POST",
         headers: {

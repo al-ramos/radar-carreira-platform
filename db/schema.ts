@@ -104,12 +104,20 @@ export const triageBatchItems = sqliteTable("triage_batch_items", {
 /** Consulta livre da IA sobre um recorte congelado, sem efeito operacional. */
 export const triageAiReviews = sqliteTable("triage_ai_reviews", {
   id: text("id").primaryKey(), userId: text("user_id").notNull(), prompt: text("prompt").notNull(), selection: text("selection").notNull(),
-  response: text("response"), status: text("status", { enum: ["running", "completed", "failed", "blocked"] }).notNull().default("running"), error: text("error"),
+  response: text("response"), status: text("status", { enum: ["queued", "running", "consolidating", "completed", "partial_failed", "failed", "blocked"] }).notNull().default("queued"), error: text("error"),
   provider: text("provider"), model: text("model"), inputTokens: integer("input_tokens").notNull().default(0), outputTokens: integer("output_tokens").notNull().default(0), createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   destination: text("destination", { enum: ["portal", "codex"] }).notNull().default("portal"),
   codexStatus: text("codex_status", { enum: ["pending", "claimed", "completed", "failed"] }),
-  codexClaimedAt: integer("codex_claimed_at", { mode: "timestamp_ms" }), codexCompletedAt: integer("codex_completed_at", { mode: "timestamp_ms" }),
+  codexClaimedAt: integer("codex_claimed_at", { mode: "timestamp_ms" }), codexCompletedAt: integer("codex_completed_at", { mode: "timestamp_ms" }), finalizationQueuedAt: integer("finalization_queued_at", { mode: "timestamp_ms" }),
 }, t => [index("triage_ai_reviews_user_created_idx").on(t.userId, t.createdAt), index("triage_ai_reviews_codex_queue_idx").on(t.userId, t.destination, t.codexStatus, t.createdAt)]);
+
+/** Subdivisões imutáveis de uma consulta consultiva assíncrona à IA. */
+export const triageAiReviewChunks = sqliteTable("triage_ai_review_chunks", {
+  id: text("id").primaryKey(), reviewId: text("review_id").notNull().references(() => triageAiReviews.id), chunkIndex: integer("chunk_index").notNull(),
+  selection: text("selection").notNull(), response: text("response"), status: text("status", { enum: ["queued", "processing", "completed", "failed"] }).notNull().default("queued"),
+  error: text("error"), attemptCount: integer("attempt_count").notNull().default(0), inputTokens: integer("input_tokens").notNull().default(0), outputTokens: integer("output_tokens").notNull().default(0),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(), updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+}, t => [uniqueIndex("triage_ai_review_chunks_review_index_idx").on(t.reviewId, t.chunkIndex), index("triage_ai_review_chunks_review_status_idx").on(t.reviewId, t.status)]);
 
 /** Chave global que impede o mesmo perfil/vaga/versões de ser processado duas vezes. */
 export const triageDeduplication = sqliteTable("triage_deduplication", {

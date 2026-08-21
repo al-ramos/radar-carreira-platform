@@ -9,10 +9,13 @@ test("fila da triagem possui consumidor controlado e DLQ", async () => {
   ]);
   assert.match(config, /"binding": "TRIAGE_QUEUE"/);
   assert.match(config, /"queue": "radar-carreira-triage"/);
+  assert.match(config, /"queue": "radar-carreira-ai-review"/);
   assert.match(config, /"consumers"/);
   assert.match(config, /"max_batch_size": 10/);
   assert.match(config, /"max_retries": 3/);
   assert.match(config, /"dead_letter_queue": "radar-carreira-triage-dlq"/);
+  assert.match(config, /"dead_letter_queue": "radar-carreira-ai-review-dlq"/);
   assert.match(workflow, /wrangler queues create radar-carreira-triage \|\| true/);
   assert.match(workflow, /wrangler queues create radar-carreira-triage-dlq \|\| true/);
+  assert.match(workflow, /wrangler queues create radar-carreira-ai-review \|\| true/);
 });

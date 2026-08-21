@@ -4,13 +4,12 @@ type PilotResult = { batchId: string; processed: Array<{ jobId: string; title: s
 type HistoryItem = { id: string; batchId: string; jobId: string; verdict: string; label: string; blocker: string | null; source: string; confidence: number; rows: string; processedAt: string; title: string; company: string; externalId: string | null; jobSource: string | null; workMode: string | null; location: string | null; sourcePublishedAt: string | null; receivedAt: string; url: string; contactEmail: string | null; hasValidContactEmail: boolean; draftStatus: "pending" | "drafted" | "sent" | "failed" | "cancelled" | null; draftSubject: string; draftError: string | null; draftUpdatedAt: string | null; sentAt: string | null; trigger: string };
 type Batch = { id: string; trigger: "manual" | "scheduled" | "assistant"; scope: string; status: string; startedAt: string | null; completedAt: string | null; createdAt: string; error: string | null; total: number; completed: number; failed: number; eligible: number; eligibleWithoutContact: number; draftsPending: number; draftsReady: number; draftsFailed: number };
 type Operational = { pendingDrafts: number; readyDrafts: number; sentDrafts: number; failedDrafts: number; oldestPendingAt: string | null; alerts: Array<{ level: "warning" | "error"; message: string }> };
-type AiReview = { id: string; response: string; jobs: Array<{ id: string; title: string; company: string }>; provider: string; model: string };
+type AiReview = { id: string; response?: string | null; jobs?: Array<{ id: string; title: string; company: string }>; provider?: string | null; model?: string | null; status?: string; total?: number; completed?: number; failed?: number; chunks?: number; queued?: number; error?: string | null };
 type AiCareerRules = { professionalName: string; professionalTitle: string; professionalSummary: string; baseLocation: string; acceptedRegions: string[]; maxHybridDays: number; preferredContracts: string[]; dailyCommunicationLanguages: string[]; blockedSeniorities: string[]; blockedWorkTypes: string[]; coreStack: string[]; coreStackMatchMode: "all" | "any"; stackExceptions: string[]; anchorProject: string };
 type AiProfile = { name: string | null; seniority: string[]; preferredMode: string[]; masteredSkills: string[]; desiredAreas: string[]; avoidTerms: string[]; minScore: number; careerRules: AiCareerRules };
 type LegacyItem = { jobId: string; veredito: string; motivo: string | null; processedAt: string; title: string; company: string; externalId: string | null; sourceId: string | null; workMode: string | null; location: string | null; sourcePublishedAt: string | null; receivedAt: string; url: string; contactEmail: string | null };
 type FilterOption = { id: string; label: string; count: number };
 const rowClass: Record<string, string> = { "✅": "approved", "🟡": "partial", "❌": "rejected", "🔴": "rejected" };
-const MAX_AI_REVIEW_JOBS = 20;
 const saoPauloToday = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
 const sourceName = (source: string) => source === "apinfo-extension" ? "APInfo" : source === "linkedin-extension" ? "LinkedIn" : source;
 const homePeriodLabel = (period: string) => period === "24" ? "recebidas nas últimas 24h" : period === "72" ? "recebidas nos últimos 3 dias" : period === "168" ? "recebidas nos últimos 7 dias" : "todas as vagas";
@@ -72,6 +71,11 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
     const timer = window.setTimeout(() => { void loadHistory(); }, 0);
     return () => window.clearTimeout(timer);
   }, []);
+  useEffect(() => {
+    if (!aiReview?.id || ["completed", "partial_failed", "failed", "blocked"].includes(aiReview.status ?? "")) return;
+    const timer = window.setInterval(() => void fetch(`/api/triage/ai-review?id=${aiReview.id}`).then(response => response.ok ? response.json() as Promise<AiReview> : null).then(result => { if (result) { setAiReview(result); if (["completed", "partial_failed", "failed"].includes(result.status ?? "")) setMessage(result.status === "completed" ? "Análise da IA concluída. Nenhuma decisão operacional foi alterada." : result.error ?? "A análise terminou com falhas parciais."); } }), 3000);
+    return () => window.clearInterval(timer);
+  }, [aiReview?.id, aiReview?.status]);
   const actionSelectionKey = `${actionSourceId}|${actionArea}|${actionChannel}|${actionPeriod}|${reprocess}`;
   useEffect(() => {
     if (!actionSourceId) return;
@@ -89,7 +93,10 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
     new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(v));
   const latestScheduled = batches.find((batch) => batch.trigger === "scheduled");
   const latestManual = batches.find((batch) => batch.trigger === "manual");
-  const manualIsActive = latestManual?.status === "queued" || latestManual?.status === "running";
+  // Um lote sem itens pode permanecer registrado como "queued" quando a fila
+  // não encontrou trabalho. Ele deve continuar auditável, mas não pode impedir
+  // que o usuário inicie a próxima triagem do recorte.
+  const manualIsActive = (latestManual?.status === "queued" || latestManual?.status === "running") && (latestManual.total ?? 0) > 0;
   const dayKey = (value: string | null) => value ? new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date(value)) : "";
   const latestByJob = new Map<string, HistoryItem>();
   for (const item of history) if (!latestByJob.has(item.jobId)) latestByJob.set(item.jobId, item);
@@ -205,7 +212,7 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
   };
   const requestAiReview = async () => {
     const aiCount = aiTargetJobIds?.length ?? actionCandidateCount ?? 0;
-    if ((!aiTargetJobIds && !actionSourceId) || !aiCount || aiCount > MAX_AI_REVIEW_JOBS || aiPrompt.trim().length < 8) return;
+    if ((!aiTargetJobIds && !actionSourceId) || !aiCount || aiPrompt.trim().length < 8) return;
     setAiReviewLoading(true);
     setMessage(`Enviando ${aiTargetJobIds ? "a seleção de" : "o recorte de"} ${aiCount} vaga(s) para a análise da IA…`);
     try {
@@ -218,7 +225,7 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
       if (!response.ok) throw new Error(result.error ?? "Não foi possível solicitar a análise da IA.");
       setAiReview(result);
       setAiPromptOpen(false);
-      setMessage(`Análise da IA concluída para ${aiCount} vaga(s). Nenhum veredito, rascunho ou candidatura foi alterado.`);
+      setMessage(`Análise solicitada para ${aiCount} vaga(s), em ${result.chunks ?? 0} lote(s). O resultado aparecerá aqui quando concluir.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Não foi possível solicitar a análise da IA.");
     } finally {
@@ -227,7 +234,7 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
   };
   const prepareCodexReview = async () => {
     const aiCount = aiTargetJobIds?.length ?? actionCandidateCount ?? 0;
-    if ((!aiTargetJobIds && !actionSourceId) || !aiCount || aiCount > MAX_AI_REVIEW_JOBS || aiPrompt.trim().length < 8) return;
+    if ((!aiTargetJobIds && !actionSourceId) || !aiCount || aiPrompt.trim().length < 8) return;
     setCodexQueueLoading(true);
     setMessage(`Preparando ${aiTargetJobIds ? "a seleção de" : "o recorte de"} ${aiCount} vaga(s) para a análise no Codex…`);
     try {
@@ -330,7 +337,7 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
                   {actionCandidateCount === null ? "Selecione uma fonte para consultar o recorte da triagem." : actionCandidateCount === 0 && actionCandidateTotal ? `Há ${actionCandidateTotal} vaga${actionCandidateTotal === 1 ? "" : "s"} no recorte ${homePeriodLabel(actionPeriod)}, mas todas já foram triadas.` : actionCandidateCount === 0 ? `Nenhuma vaga corresponde aos filtros da triagem em ${homePeriodLabel(actionPeriod)}.` : `${actionCandidateCount} vaga${actionCandidateCount === 1 ? "" : "s"} aguardando triagem, de ${actionCandidateTotal} no recorte ${homePeriodLabel(actionPeriod)}.`}
                   {actionCandidateCount === 0 && Boolean(actionCandidateTotal) && !reprocess && <span>Marque “Incluir vagas já triadas” para reavaliar as vagas desse recorte.</span>}
                   {actionCandidateCount !== null && actionCandidateCount > 100 && <span>O lote por regras será processado em segundo plano, em blocos controlados.</span>}
-                  {actionCandidateCount !== null && actionCandidateCount > MAX_AI_REVIEW_JOBS && <span>A análise com IA aceita até {MAX_AI_REVIEW_JOBS} vagas por vez; refine o recorte para solicitar a leitura.</span>}
+                  {actionCandidateCount !== null && actionCandidateCount > 20 && <span>A consulta à IA será processada em segundo plano, em lotes controlados.</span>}
                 </div>
                 <div className="triage-action-steps">
                   <article className="triage-action-step">
@@ -339,7 +346,7 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
                   </article>
                   <article className="triage-action-step triage-ai-step">
                     <span>IA</span><div><b>Consulta à IA <em>opcional</em></b><small>Faz uma leitura consultiva; não muda a triagem nem cria rascunhos.</small></div>
-                    <button className="triage-queue-button" disabled={runningPilot || aiReviewLoading || codexQueueLoading || !actionCandidateCount || actionCandidateCount > MAX_AI_REVIEW_JOBS} onClick={() => void openAiPrompt()}>{aiReviewLoading || codexQueueLoading ? "Preparando…" : "Escolher"}</button>
+                    <button className="triage-queue-button" disabled={runningPilot || aiReviewLoading || codexQueueLoading || !actionCandidateCount} onClick={() => void openAiPrompt()}>{aiReviewLoading || codexQueueLoading ? "Preparando…" : "Escolher"}</button>
                   </article>
                   <article className={`triage-action-step ${manualIsActive ? "waiting" : ""}`}>
                     <span>2</span><div><b>Preparar rascunhos</b><small>Use após a etapa 1 concluir. Separa apenas vagas ✅/🟡 com e-mail válido; não envia nada.</small></div>
@@ -371,9 +378,9 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
                   </dl>}
                   <div className="triage-ai-prompt-heading"><b>O que você quer que a IA avalie?</b><small>Escolha se quer receber a leitura agora no portal ou preparar este mesmo recorte para conversar com o Codex aqui.</small></div>
                   <textarea aria-label="Instrução para a IA" value={aiPrompt} onChange={(event) => setAiPrompt(event.target.value)} maxLength={1200} disabled={aiReviewLoading || codexQueueLoading} />
-                  <div><button type="button" className="triage-queue-button" onClick={() => setAiPromptOpen(false)} disabled={aiReviewLoading || codexQueueLoading}>Cancelar</button><button type="button" className="triage-queue-button" onClick={prepareCodexReview} disabled={aiReviewLoading || codexQueueLoading || aiPrompt.trim().length < 8}>{codexQueueLoading ? "Preparando…" : "Preparar para o Codex"}</button><button type="button" className="primary" onClick={requestAiReview} disabled={aiReviewLoading || codexQueueLoading || aiPrompt.trim().length < 8}>{aiReviewLoading ? "Analisando…" : "Analisar no portal"}</button></div>
+                  <div><button type="button" className="triage-queue-button" onClick={() => setAiPromptOpen(false)} disabled={aiReviewLoading || codexQueueLoading}>Cancelar</button><button type="button" className="triage-queue-button" onClick={prepareCodexReview} disabled={aiReviewLoading || codexQueueLoading || aiPrompt.trim().length < 8}>{codexQueueLoading ? "Preparando…" : "Preparar para o Codex"}</button><button type="button" className="primary" onClick={requestAiReview} disabled={aiReviewLoading || codexQueueLoading || aiPrompt.trim().length < 8}>{aiReviewLoading ? "Solicitando…" : "Solicitar análise"}</button></div>
                 </section>}
-                {aiReview && <section className="triage-ai-review" aria-label="Resultado da análise da IA"><div><h3>Análise da IA</h3><small>{aiReview.jobs.length} vagas · {aiReview.provider} · {aiReview.model}</small></div><p>{aiReview.response}</p></section>}
+                {aiReview && <section className="triage-ai-review" aria-label="Resultado da análise da IA"><div><h3>Análise da IA</h3><small>{aiReview.status === "completed" ? "Concluída" : `${aiReview.completed ?? 0}/${aiReview.total ?? aiReview.chunks ?? 0} lotes concluídos`} · {aiReview.provider ?? "processando"}{aiReview.model ? ` · ${aiReview.model}` : ""}</small></div>{aiReview.response ? <p>{aiReview.response}</p> : <p>{aiReview.error ?? "A análise está sendo processada em segundo plano."}</p>}</section>}
                 <small>Acompanhe o resultado no cartão “Último lote manual”, logo abaixo. Depois de preparar, o Gmail cria os rascunhos pendentes na rotina configurada; eles nunca são enviados automaticamente. A consulta à IA é opcional e não altera o fluxo.</small>
               </div>
             </details>
@@ -464,7 +471,7 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
               </nav>}
               {selectedHistory.length > 0 && <div className="triage-selection-actions" aria-live="polite">
                 <span><b>{selectedHistory.length}</b> vaga(s) selecionada(s)</span>
-                <button type="button" className="triage-queue-button" disabled={aiReviewLoading || selectedHistory.length > MAX_AI_REVIEW_JOBS} onClick={() => void openAiPrompt(selectedHistory.map((item) => item.jobId))} title={selectedHistory.length > MAX_AI_REVIEW_JOBS ? `A IA aceita até ${MAX_AI_REVIEW_JOBS} vagas por vez.` : undefined}>Consultar IA</button>
+                <button type="button" className="triage-queue-button" disabled={aiReviewLoading} onClick={() => void openAiPrompt(selectedHistory.map((item) => item.jobId))}>Consultar IA</button>
                 <button type="button" className="triage-queue-button" disabled={queueingDrafts || selectedHistory.length > 100} onClick={() => void queueDrafts(selectedHistory.map((item) => item.jobId))} title={selectedHistory.length > 100 ? "Prepare até 100 vagas por vez." : undefined}>Preparar rascunhos</button>
                 <button type="button" className="triage-selection-clear" onClick={() => setSelectedHistoryJobIds([])}>Limpar seleção</button>
               </div>}
