@@ -12,6 +12,7 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
   const [message, setMessage] = useState("Carregando avaliações…"),
     [runningPilot, setRunningPilot] = useState(false),
     [runningLinkedIn, setRunningLinkedIn] = useState(false),
+    [runningApinfo, setRunningApinfo] = useState(false),
     [queueingDrafts, setQueueingDrafts] = useState(false),
     [pilot, setPilot] = useState<PilotResult | null>(null),
     [batchSize, setBatchSize] = useState(10),
@@ -145,6 +146,26 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
       setRunningLinkedIn(false);
     }
   };
+  const runApinfoToday = async () => {
+    setRunningApinfo(true);
+    setMessage(`Analisando até ${batchSize} vagas APInfo publicadas hoje…`);
+    try {
+      const response = await fetch("/api/triage/run", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ trigger: "portal", sourceId: "apinfo-extension", dateScope: "published", batchSize, reprocess, aiMode: "ambiguous", createDrafts: false }),
+      });
+      const result = await response.json() as PilotResult & { error?: string };
+      if (!response.ok) throw new Error(result.error ?? "Não foi possível analisar as vagas APInfo.");
+      setPilot(result);
+      setMessage(`Triagem APInfo concluída: ${result.processed.length} vagas publicadas hoje registradas. Rascunhos continuam dependentes de contato válido.`);
+      void loadHistory();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Não foi possível analisar as vagas APInfo.");
+    } finally {
+      setRunningApinfo(false);
+    }
+  };
   const openHistory = (nextDraftFilter = "all") => {
     setDraftFilter(nextDraftFilter);
     setHistoryPage(0);
@@ -185,14 +206,19 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
                 <button className="primary triage-run-button" disabled={runningPilot} onClick={runPilot}>
                   {runningPilot ? "Analisando vagas…" : `Analisar ${batchSize} vagas agora`}
                 </button>
-                {!sourceId && <button className="triage-queue-button" disabled={runningLinkedIn || runningPilot} onClick={runLinkedInToday}>
-                  {runningLinkedIn ? "Analisando LinkedIn…" : "Analisar LinkedIn recebidas hoje"}
-                </button>}
+                {!sourceId && <>
+                  <button className="triage-queue-button" disabled={runningApinfo || runningLinkedIn || runningPilot} onClick={runApinfoToday}>
+                    {runningApinfo ? "Analisando APInfo…" : "Analisar APInfo publicadas hoje"}
+                  </button>
+                  <button className="triage-queue-button" disabled={runningApinfo || runningLinkedIn || runningPilot} onClick={runLinkedInToday}>
+                    {runningLinkedIn ? "Analisando LinkedIn…" : "Analisar LinkedIn recebidas hoje"}
+                  </button>
+                </>}
                 <button className="triage-queue-button" disabled={queueingDrafts || runningPilot} onClick={queueDrafts}>
                   {queueingDrafts ? "Preparando fila…" : "Preparar rascunhos elegíveis"}
                 </button>
                 <button className="triage-queue-button" disabled={queueingDrafts || runningPilot} onClick={retryFailedDrafts}>Reprocessar falhas de rascunho</button>
-                <small>{sourceId ? `Exceção manual: somente vagas de hoje da fonte ${sourceLabel ?? sourceId}. ` : ""}LinkedIn usa recebimento no Radar e nunca entra na fila de rascunhos. A fila exige vaga aprovada ou provável, análise atual e e-mail de contato válido.</small>
+                <small>{sourceId ? `Exceção manual: somente vagas de hoje da fonte ${sourceLabel ?? sourceId}. ` : ""}APInfo usa a data de publicação; LinkedIn usa o recebimento no Radar e nunca entra na fila de rascunhos. A fila exige vaga aprovada ou provável, análise atual e e-mail de contato válido.</small>
               </div>
             </details>
           </div>

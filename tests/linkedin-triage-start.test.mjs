@@ -16,3 +16,11 @@ test("acionamento LinkedIn usa recebimento no Radar, sem IA e sem rascunhos", as
   assert.match(queue, /isDraftAllowedForSource\(row\.job\.sourceId\)/);
   assert.match(cron, /isDraftAllowedForSource\(row\.sourceId\)/);
 });
+
+test("acionamento APInfo usa publicação do dia e pode seguir o fluxo de rascunhos", async () => {
+  const ui = await readFile(new URL("../app/TriageReport.tsx", import.meta.url), "utf8");
+  assert.match(ui, /sourceId: "apinfo-extension", dateScope: "published"/);
+  assert.match(ui, /sourceId: "apinfo-extension", dateScope: "published", batchSize, reprocess, aiMode: "ambiguous", createDrafts: false/);
+  assert.match(ui, /Analisar APInfo publicadas hoje/);
+  assert.match(ui, /APInfo usa a data de publicação/);
+});
