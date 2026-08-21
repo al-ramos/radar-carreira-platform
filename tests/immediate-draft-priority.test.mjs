@@ -26,4 +26,6 @@ test("rascunho avulso pede criação imediata sem enviar e-mail", async () => {
   assert.match(workflow, /GMAIL_DRAFTS_WEBHOOK_URL/);
   assert.match(screen, /O rascunho desta vaga foi criado agora no Gmail/);
   assert.match(screen, /Criação imediata indisponível/);
+  assert.match(screen, /draftActionStatuses/);
+  assert.match(screen, /Gmail acionado; atualize em instantes para confirmar o rascunho/);
 });
