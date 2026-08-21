@@ -280,6 +280,18 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
     } catch (error) { setMessage(error instanceof Error ? error.message : "Não foi possível consultar o Gmail agora."); }
     finally { setReconcilingSentJobId(null); }
   };
+  const confirmSentDraft = async (jobId: string) => {
+    if (!window.confirm("Confirmar que este e-mail já foi enviado? O Radar somente atualizará o acompanhamento; nenhuma mensagem será enviada.")) return;
+    setReconcilingSentJobId(jobId);
+    try {
+      const response = await fetch("/api/triage/drafts/queue", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "confirmSent", jobIds: [jobId] }) });
+      const result = await readJsonResponse<{ confirmed?: number; alreadySent?: boolean; error?: string }>(response, "A confirmação manual do envio");
+      if (!response.ok) throw new Error(result.error ?? "Não foi possível confirmar o envio agora.");
+      setMessage(result.alreadySent ? "Este envio já estava registrado no Radar." : "Envio confirmado manualmente e atualizado no Radar.");
+      await loadHistory();
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Não foi possível confirmar o envio agora."); }
+    finally { setReconcilingSentJobId(null); }
+  };
   const requestAiReview = async (jobIds = aiTargetJobIds) => {
     const aiCount = jobIds?.length ?? actionCandidateCount ?? 0;
     if ((!jobIds && !actionSourceId) || !aiCount || aiPrompt.trim().length < 8) return;
@@ -566,7 +578,7 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
               {selectedHistory.length > 0 && <div className="triage-selection-actions" aria-live="polite">
                 <span><b>{selectedHistory.length}</b> vaga(s) selecionada(s)</span>
                 <button type="button" className="triage-queue-button" disabled={aiReviewLoading} onClick={() => void openAiPrompt(selectedHistory.map((item) => item.jobId))}>Consultar IA</button>
-                {selectedHistory.length === 1 && selectedHistory[0].draftStatus === "drafted" && <button type="button" className="triage-queue-button" disabled={reconcilingSentJobId === selectedHistory[0].jobId} onClick={() => void reconcileSentDraft(selectedHistory[0].jobId)}>{reconcilingSentJobId === selectedHistory[0].jobId ? "Consultando Gmail…" : "Atualizar envio"}</button>}
+                {selectedHistory.length === 1 && selectedHistory[0].draftStatus === "drafted" && <><button type="button" className="triage-queue-button" disabled={reconcilingSentJobId === selectedHistory[0].jobId} onClick={() => void reconcileSentDraft(selectedHistory[0].jobId)}>{reconcilingSentJobId === selectedHistory[0].jobId ? "Consultando Gmail…" : "Atualizar envio"}</button><button type="button" className="triage-queue-button" disabled={reconcilingSentJobId === selectedHistory[0].jobId} onClick={() => void confirmSentDraft(selectedHistory[0].jobId)}>Confirmar envio</button></>}
                 <button type="button" className="triage-queue-button" disabled={queueingDrafts || selectedHistory.length > 100} onClick={() => void queueDrafts(selectedHistory.map((item) => item.jobId))} title={selectedHistory.length > 100 ? "Prepare até 100 vagas por vez." : undefined}>Preparar rascunhos</button>
                 <button type="button" className="triage-selection-clear" onClick={() => setSelectedHistoryJobIds([])}>Limpar seleção</button>
               </div>}

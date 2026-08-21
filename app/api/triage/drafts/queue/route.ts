@@ -23,7 +23,7 @@ export const dynamic = "force-dynamic";
 const periods = new Set(["24", "72", "168", "all"]);
 const channels = new Set(["extension", "email", "connector", "file", "api"]);
 type DraftQueueRequest = {
-  action?: "queue" | "retryFailed" | "reconcileSent";
+  action?: "queue" | "retryFailed" | "reconcileSent" | "confirmSent";
   sourceId?: string;
   roleArea?: string;
   ingestionChannel?: string;
@@ -57,6 +57,20 @@ export async function POST(request: Request) {
     const reconciliation = await requestImmediateSentReconciliation([outbox.id]);
     if (!reconciliation.requested) return NextResponse.json({ error: reconciliation.reason ?? "Não foi possível consultar o Gmail agora." }, { status: 503 });
     return NextResponse.json({ ok: true, confirmed: reconciliation.confirmed ?? 0 });
+  }
+  // Alternativa explícita para o caso em que a ponte com o Gmail esteja
+  // indisponível. Não envia e-mail: apenas registra a confirmação feita pela
+  // própria pessoa usuária, que já enviou a mensagem fora do Radar.
+  if (body.action === "confirmSent") {
+    const requestedJobIds = Array.isArray(body.jobIds) ? [...new Set(body.jobIds.filter((id): id is string => typeof id === "string" && id.length > 0))].slice(0, 2) : [];
+    if (requestedJobIds.length !== 1) return NextResponse.json({ error: "Escolha uma única vaga para confirmar o envio." }, { status: 400 });
+    const outbox = await db.select({ id: draftOutbox.id, status: draftOutbox.status }).from(draftOutbox).where(and(eq(draftOutbox.userId, user.userId), eq(draftOutbox.jobId, requestedJobIds[0]))).limit(1).then((rows) => rows[0]);
+    if (!outbox) return NextResponse.json({ error: "Rascunho não encontrado para esta vaga." }, { status: 404 });
+    if (outbox.status === "sent") return NextResponse.json({ ok: true, alreadySent: true, confirmed: 1 });
+    if (outbox.status !== "drafted") return NextResponse.json({ error: "Somente um rascunho pronto pode ser confirmado como enviado." }, { status: 409 });
+    const now = new Date();
+    await db.update(draftOutbox).set({ status: "sent", sentAt: now, error: null, updatedAt: now }).where(and(eq(draftOutbox.id, outbox.id), eq(draftOutbox.userId, user.userId), eq(draftOutbox.status, "drafted")));
+    return NextResponse.json({ ok: true, confirmed: 1, manuallyConfirmed: true, sentAt: now });
   }
   const profile = await db.select().from(profiles).where(eq(profiles.userId, user.userId)).limit(1).then((rows) => rows[0]);
   if (!profile) return NextResponse.json({ error: "Complete seu perfil antes de preparar rascunhos." }, { status: 412 });
