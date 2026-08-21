@@ -2740,7 +2740,7 @@ export default function Dashboard() {
                     </button>
                   ))}
                 </div>
-                <div className="job-table-filter-row" role="row">
+                <div className="job-table-filter-row" role="row" hidden={!filtersOpen && activeTableColumnFilterCount === 0}>
                   <span role="cell" className="job-table-filter-cell">
                     <input type="text" placeholder="Filtrar empresa…" value={tableColumnFilters.company} onChange={(e) => setTableColumnFilter("company", e.target.value)} aria-label="Filtrar por empresa" />
                   </span>

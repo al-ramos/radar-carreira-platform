@@ -230,6 +230,7 @@ test("a tabela permite filtrar colunas e abre detalhes sem reduzir a área de re
   ]);
   assert.match(dashboard, /tableColumnFilters/);
   assert.match(dashboard, /Filtrar empresa/);
+  assert.match(dashboard, /hidden=\{!filtersOpen && activeTableColumnFilterCount === 0\}/);
   assert.match(dashboard, /Limpar filtros de coluna/);
   assert.match(dashboard, /workspace-table-mode/);
   assert.match(dashboard, /detail-drawer/);
