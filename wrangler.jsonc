@@ -23,6 +23,9 @@
   "images": {
     "binding": "IMAGES"
   },
+  "observability": {
+    "enabled": true
+  },
   "queues": {
     "producers": [
       {
