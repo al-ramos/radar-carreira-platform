@@ -12,7 +12,6 @@ type AiProfile = { name: string | null; seniority: string[]; preferredMode: stri
 type LegacyItem = { jobId: string; veredito: string; motivo: string | null; processedAt: string; title: string; company: string; externalId: string | null; sourceId: string | null; workMode: string | null; location: string | null; sourcePublishedAt: string | null; receivedAt: string; url: string; contactEmail: string | null };
 type FilterOption = { id: string; label: string; count: number };
 const rowClass: Record<string, string> = { "✅": "approved", "🟡": "partial", "❌": "rejected", "🔴": "rejected" };
-const saoPauloToday = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
 const sourceName = (source: string) => source === "apinfo-extension" ? "APInfo" : source === "linkedin-extension" ? "LinkedIn" : source;
 const homePeriodLabel = (period: string) => period === "24" ? "recebidas nas últimas 24h" : period === "72" ? "recebidas nos últimos 3 dias" : period === "168" ? "recebidas nos últimos 7 dias" : "todas as vagas";
 const profileList = (values: string[], fallback: string) => values.length ? values.join(" · ") : fallback;
@@ -55,11 +54,12 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
     [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null),
     [syncingBatch, setSyncingBatch] = useState(false),
     [operational, setOperational] = useState<Operational | null>(null),
+    [situationFilter, setSituationFilter] = useState<"pending" | "analysed" | "all">("pending"),
     [verdictFilter, setVerdictFilter] = useState("all"),
     [sourceFilter, setSourceFilter] = useState("all"),
     [draftFilter, setDraftFilter] = useState("all"),
     [jobSourceFilter, setJobSourceFilter] = useState("apinfo-extension"),
-    [publishedDateFilter, setPublishedDateFilter] = useState(saoPauloToday),
+    [publishedDateFilter, setPublishedDateFilter] = useState(""),
     [receivedDateFilter, setReceivedDateFilter] = useState(""),
     [analysedDateFilter, setAnalysedDateFilter] = useState(""),
     [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(false),
@@ -138,7 +138,11 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
   const aiTargetJobs = aiTargetJobIds ? currentAssessments.filter((item) => aiTargetJobIds.includes(item.jobId)) : [];
   const isIndividualAiReview = aiTargetJobIds?.length === 1;
   const jobSources = [...new Set(currentAssessments.map((item) => item.jobSource).filter(Boolean))] as string[];
-  const scopedHistory = currentAssessments.filter((item) => (verdictFilter === "all" || item.verdict === verdictFilter) && (sourceFilter === "all" || item.source === sourceFilter) && (jobSourceFilter === "all" || item.jobSource === jobSourceFilter) && (!publishedDateFilter || dayKey(item.sourcePublishedAt) === publishedDateFilter) && (!receivedDateFilter || dayKey(item.receivedAt) === receivedDateFilter) && (!analysedDateFilter || dayKey(item.processedAt) === analysedDateFilter));
+  // "Não analisada" cobre tanto vaga sem veredito quanto veredito ⚪ (marcação
+  // neutra usada para zerar backlog em lote) — nenhum dos dois passou por
+  // avaliação real ainda. Ver RC-TI-024.
+  const isPending = (item: HistoryItem) => !item.verdict || item.verdict === "⚪";
+  const scopedHistory = currentAssessments.filter((item) => (situationFilter === "all" || (situationFilter === "pending" ? isPending(item) : !isPending(item))) && (verdictFilter === "all" || item.verdict === verdictFilter) && (sourceFilter === "all" || item.source === sourceFilter) && (jobSourceFilter === "all" || item.jobSource === jobSourceFilter) && (!publishedDateFilter || dayKey(item.sourcePublishedAt) === publishedDateFilter) && (!receivedDateFilter || dayKey(item.receivedAt) === receivedDateFilter) && (!analysedDateFilter || dayKey(item.processedAt) === analysedDateFilter));
   // Os contadores e a tabela devem falar sobre o mesmo recorte. O filtro de
   // rascunho é aplicado somente depois de contabilizar cada status.
   const draftCounts = {
@@ -171,7 +175,7 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
     return null;
   };
   const historyPageCount = Math.ceil(filteredHistory.length / historyPageSize);
-  const hasActiveAdvancedFilters = draftFilter !== "all" || Boolean(receivedDateFilter) || Boolean(analysedDateFilter);
+  const hasActiveAdvancedFilters = draftFilter !== "all" || Boolean(publishedDateFilter) || Boolean(receivedDateFilter) || Boolean(analysedDateFilter);
   const actionSources = sourceId && !sourceOptions.some((option) => option.id === sourceId)
     ? [{ id: sourceId, label: sourceLabel ?? sourceName(sourceId), count: 0 }, ...sourceOptions]
     : sourceOptions;
@@ -546,27 +550,30 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
                 <small>Use os filtros para escolher exatamente as vagas que deseja consultar.</small>
               </div>
               <div className="triage-summary triage-summary-compact" aria-label="Resumo do filtro atual">
-                <article className="approved"><small>Aprovadas</small><strong>{filteredHistory.filter((item) => item.verdict === "✅").length}</strong></article>
-                <article className="partial"><small>Prováveis</small><strong>{filteredHistory.filter((item) => item.verdict === "🟡").length}</strong></article>
-                <article className="rejected"><small>Não aderentes</small><strong>{filteredHistory.filter((item) => item.verdict === "❌" || item.verdict === "🔴").length}</strong></article>
-                <article><small>Analisadas</small><strong>{filteredHistory.length}</strong></article>
+                {situationFilter === "pending" ? <article><small>Pendentes neste recorte</small><strong>{filteredHistory.length}</strong></article> : <>
+                  <article className="approved"><small>Aprovadas</small><strong>{filteredHistory.filter((item) => item.verdict === "✅").length}</strong></article>
+                  <article className="partial"><small>Prováveis</small><strong>{filteredHistory.filter((item) => item.verdict === "🟡").length}</strong></article>
+                  <article className="rejected"><small>Não aderentes</small><strong>{filteredHistory.filter((item) => item.verdict === "❌" || item.verdict === "🔴").length}</strong></article>
+                  <article><small>Analisadas</small><strong>{filteredHistory.length}</strong></article>
+                </>}
               </div>
             </div>
             <div className="triage-list">
               <div className="triage-run-settings triage-table-filters">
+                <label>Situação<select value={situationFilter} onChange={(e) => { setSituationFilter(e.target.value as typeof situationFilter); setHistoryPage(0); }}><option value="pending">Não analisadas</option><option value="analysed">Analisadas</option><option value="all">Todas</option></select></label>
                 <label>Veredito<select value={verdictFilter} onChange={(e) => { setVerdictFilter(e.target.value); setHistoryPage(0); }}><option value="all">Todos</option><option value="✅">Aprovadas</option><option value="🟡">Prováveis</option><option value="❌">Reprovadas</option></select></label>
                 <label>Origem<select value={sourceFilter} onChange={(e) => { setSourceFilter(e.target.value); setHistoryPage(0); }}><option value="all">Regras, IA e histórico</option><option value="rules">Regras</option><option value="ai">IA</option><option value="legacy">Histórico do Radar</option></select></label>
                 <label>Fonte<select value={jobSourceFilter} onChange={(e) => { setJobSourceFilter(e.target.value); setHistoryPage(0); }}><option value="all">Todas</option>{jobSources.map((source) => <option key={source} value={source}>{sourceName(source)}</option>)}</select></label>
-                <label>Publicada em<input type="date" value={publishedDateFilter} onChange={(e) => { setPublishedDateFilter(e.target.value); setHistoryPage(0); }} /></label>
                 <details className="triage-advanced-filters" open={advancedFiltersOpen || hasActiveAdvancedFilters} onToggle={(event) => setAdvancedFiltersOpen(event.currentTarget.open)}>
                   <summary>Mais filtros</summary>
                   <div>
+                    <label>Publicada em<input type="date" value={publishedDateFilter} onChange={(e) => { setPublishedDateFilter(e.target.value); setHistoryPage(0); }} /></label>
                     <label>Rascunho<select value={draftFilter} onChange={(e) => { setDraftFilter(e.target.value); setHistoryPage(0); }}><option value="all">Todos</option><option value="pending">Na fila</option><option value="drafted">Pronto</option><option value="sent">Enviado</option><option value="failed">Com falha</option></select></label>
                     <label>Recebida em<input type="date" value={receivedDateFilter} onChange={(e) => { setReceivedDateFilter(e.target.value); setHistoryPage(0); }} /></label>
                     <label>Analisada em<input type="date" value={analysedDateFilter} onChange={(e) => { setAnalysedDateFilter(e.target.value); setHistoryPage(0); }} /></label>
                   </div>
                 </details>
-                <button type="button" className="triage-clear-filters" onClick={() => { setVerdictFilter("all"); setSourceFilter("all"); setJobSourceFilter("apinfo-extension"); setDraftFilter("all"); setPublishedDateFilter(saoPauloToday()); setReceivedDateFilter(""); setAnalysedDateFilter(""); setAdvancedFiltersOpen(false); setHistoryPage(0); }}>Consulta APInfo de hoje</button>
+                <button type="button" className="triage-clear-filters" onClick={() => { setSituationFilter("pending"); setVerdictFilter("all"); setSourceFilter("all"); setJobSourceFilter("apinfo-extension"); setDraftFilter("all"); setPublishedDateFilter(""); setReceivedDateFilter(""); setAnalysedDateFilter(""); setAdvancedFiltersOpen(false); setHistoryPage(0); }}>Fila pendente da APInfo</button>
               </div>
               {filteredHistory.length > historyPageSize && <nav className="triage-pagination" aria-label="Paginação do histórico">
                 <button type="button" disabled={historyPage === 0} onClick={() => setHistoryPage(page => page - 1)}>← Anterior</button>
