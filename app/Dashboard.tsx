@@ -3560,6 +3560,9 @@ export default function Dashboard() {
         close={() => setTriageOpen(false)}
         sourceId={sourceFilter === "all" ? undefined : sourceFilter}
         sourceLabel={sourceFilter === "all" ? undefined : jobFilterOptions.sources.find(option => option.id === sourceFilter)?.label}
+        sourceOptions={jobFilterOptions.sources}
+        areaOptions={jobFilterOptions.areas}
+        channelOptions={jobFilterOptions.channels}
       />}
       {importReportRunId && <ImportRunReport runId={importReportRunId} close={() => setImportReportRunId(null)} />}
       {monitorOpen && <Monitoring close={() => setMonitorOpen(false)} />}

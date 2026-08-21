@@ -9,13 +9,21 @@ export type TriageRunRequest = {
   sourceId?: string;
   /** Escolhe se o recorte diário usa entrada no Radar ou publicação na fonte. */
   dateScope?: TriageDateScope;
+  /** Filtros opcionais do Radar para reduzir uma execução manual. */
+  roleArea?: string;
+  ingestionChannel?: "extension" | "email" | "connector" | "file" | "api";
   batchSize?: number;
   reprocess?: boolean;
   aiMode?: TriageAiMode;
   createDrafts?: boolean;
 };
 
-export type NormalizedTriageRunRequest = Required<Omit<TriageRunRequest, "referenceDate" | "sourceId">> & { referenceDate: string; sourceId?: string };
+export type NormalizedTriageRunRequest = Required<Omit<TriageRunRequest, "referenceDate" | "sourceId" | "roleArea" | "ingestionChannel">> & {
+  referenceDate: string;
+  sourceId?: string;
+  roleArea?: string;
+  ingestionChannel?: TriageRunRequest["ingestionChannel"];
+};
 
 function saoPauloDate(now: Date): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
@@ -34,11 +42,15 @@ export function normalizeTriageRunRequest(request: TriageRunRequest, now = new D
   if (!/^\d{4}-\d{2}-\d{2}$/.test(referenceDate)) throw new Error("referenceDate deve usar YYYY-MM-DD");
   const batchSize = Math.max(1, Math.min(100, Math.floor(request.batchSize ?? 10)));
   const sourceId = request.sourceId?.trim();
+  const roleArea = request.roleArea?.trim();
+  const ingestionChannel = request.ingestionChannel;
   const dateScope = request.dateScope ?? (request.trigger === "schedule" ? "received" : "published");
   if (dateScope !== "received" && dateScope !== "published") throw new Error("dateScope deve ser received ou published");
   return {
     trigger: request.trigger, referenceDate, batchSize, reprocess: request.reprocess ?? false,
     aiMode: request.aiMode ?? "ambiguous", createDrafts: request.createDrafts ?? false, dateScope,
     ...(sourceId && sourceId !== "all" ? { sourceId } : {}),
+    ...(roleArea && roleArea !== "all" ? { roleArea } : {}),
+    ...(ingestionChannel && ingestionChannel !== "all" ? { ingestionChannel } : {}),
   };
 }

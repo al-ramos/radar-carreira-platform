@@ -57,6 +57,8 @@ export async function POST(request: Request) {
       referenceDate: body.referenceDate,
       sourceId: body.sourceId,
       dateScope: body.dateScope,
+      roleArea: body.roleArea,
+      ingestionChannel: body.ingestionChannel,
       batchSize: body.batchSize,
       reprocess: body.reprocess,
       aiMode: body.aiMode ?? "off",
@@ -88,6 +90,8 @@ export async function POST(request: Request) {
       scopedToReferenceDay ? gte(dateColumn, saoPauloDayWindow(run.referenceDate).start) : undefined,
       scopedToReferenceDay ? lt(dateColumn, saoPauloDayWindow(run.referenceDate).end) : undefined,
       run.sourceId ? eq(jobs.sourceId, run.sourceId) : undefined,
+      run.roleArea ? eq(jobs.roleArea, run.roleArea) : undefined,
+      run.ingestionChannel ? eq(jobs.ingestionChannel, run.ingestionChannel) : undefined,
       run.reprocess ? undefined : run.aiMode === "ambiguous"
         ? or(isNull(userJobAnalyses.jobId), and(eq(userJobAnalyses.source, "rules"), lt(userJobAnalyses.confidence, 100), isNull(userJobAnalyses.blocker)))
         : isNull(userJobAnalyses.jobId),

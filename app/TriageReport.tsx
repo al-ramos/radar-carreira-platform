@@ -5,18 +5,20 @@ type HistoryItem = { id: string; batchId: string; jobId: string; verdict: string
 type Batch = { id: string; trigger: "manual" | "scheduled" | "assistant"; scope: string; status: string; startedAt: string | null; completedAt: string | null; createdAt: string; error: string | null; total: number; completed: number; failed: number; eligible: number; eligibleWithoutContact: number; draftsPending: number; draftsReady: number; draftsFailed: number };
 type Operational = { pendingDrafts: number; readyDrafts: number; failedDrafts: number; oldestPendingAt: string | null; alerts: Array<{ level: "warning" | "error"; message: string }> };
 type LegacyItem = { jobId: string; veredito: string; motivo: string | null; processedAt: string; title: string; company: string; externalId: string | null; sourceId: string | null; workMode: string | null; location: string | null; sourcePublishedAt: string | null; receivedAt: string; url: string; contactEmail: string | null };
+type FilterOption = { id: string; label: string; count: number };
 const rowClass: Record<string, string> = { "✅": "approved", "🟡": "partial", "❌": "rejected", "🔴": "rejected" };
+const MAX_MANUAL_TRIAGE_JOBS = 100;
 const saoPauloToday = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
 const sourceName = (source: string) => source === "apinfo-extension" ? "APInfo" : source === "linkedin-extension" ? "LinkedIn" : source;
-export default function TriageReport({ close, sourceId, sourceLabel }: { close: () => void; sourceId?: string; sourceLabel?: string }) {
+export default function TriageReport({ close, sourceId, sourceLabel, sourceOptions = [], areaOptions = [], channelOptions = [] }: { close: () => void; sourceId?: string; sourceLabel?: string; sourceOptions?: FilterOption[]; areaOptions?: FilterOption[]; channelOptions?: FilterOption[] }) {
   const [message, setMessage] = useState("Carregando avaliações…"),
     [runningPilot, setRunningPilot] = useState(false),
-    [runningLinkedIn, setRunningLinkedIn] = useState(false),
-    [runningApinfo, setRunningApinfo] = useState(false),
     [queueingDrafts, setQueueingDrafts] = useState(false),
     [pilot, setPilot] = useState<PilotResult | null>(null),
-    [batchSize, setBatchSize] = useState("50"),
-    [todayReceived, setTodayReceived] = useState(0),
+    [actionSourceId, setActionSourceId] = useState(sourceId ?? ""),
+    [actionArea, setActionArea] = useState("all"),
+    [actionChannel, setActionChannel] = useState("all"),
+    [actionCandidate, setActionCandidate] = useState<{ key: string; count: number } | null>(null),
     [reprocess, setReprocess] = useState(false),
     [history, setHistory] = useState<HistoryItem[]>([]),
     [batches, setBatches] = useState<Batch[]>([]),
@@ -43,9 +45,9 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
         setHistory(items); setBatches([]); setOperational(null); setMessage(items.length ? "Exibindo avaliações já registradas no Radar." : "Nenhuma vaga avaliada foi encontrada.");
         return;
       }
-      const data = await response.json() as { items?: HistoryItem[]; batches?: Batch[]; operational?: Operational; todayReceived?: number };
+      const data = await response.json() as { items?: HistoryItem[]; batches?: Batch[]; operational?: Operational };
       const items = data.items ?? [];
-      setHistory(items); setBatches(data.batches ?? []); setOperational(data.operational ?? null); setTodayReceived(data.todayReceived ?? 0);
+      setHistory(items); setBatches(data.batches ?? []); setOperational(data.operational ?? null);
       setMessage(items.length ? "" : "Nenhuma vaga foi triada ainda. Use “Analisar vagas agora” para iniciar.");
     } catch { setMessage("Não foi possível carregar as avaliações da triagem."); }
   };
@@ -53,6 +55,19 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
     const timer = window.setTimeout(() => { void loadHistory(); }, 0);
     return () => window.clearTimeout(timer);
   }, []);
+  const actionSelectionKey = `${actionSourceId}|${actionArea}|${actionChannel}|${reprocess}`;
+  useEffect(() => {
+    if (!actionSourceId) return;
+    const controller = new AbortController();
+    const query = new URLSearchParams({ sourceId: actionSourceId, includeTriaged: String(reprocess) });
+    if (actionArea !== "all") query.set("roleArea", actionArea);
+    if (actionChannel !== "all") query.set("ingestionChannel", actionChannel);
+    void fetch(`/api/triage/preview?${query}`, { signal: controller.signal })
+      .then(async (response) => response.ok ? response.json() as Promise<{ count?: number }> : Promise.reject(new Error("Falha ao consultar vagas de hoje.")))
+      .then((data) => setActionCandidate({ key: actionSelectionKey, count: typeof data.count === "number" ? data.count : 0 }))
+      .catch((error: unknown) => { if (!(error instanceof DOMException && error.name === "AbortError")) setActionCandidate({ key: actionSelectionKey, count: 0 }); });
+    return () => controller.abort();
+  }, [actionArea, actionChannel, actionSelectionKey, actionSourceId, reprocess]);
   const date = (v: string) =>
     new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(v));
   const latestScheduled = batches.find((batch) => batch.trigger === "scheduled");
@@ -75,26 +90,30 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
   const visibleHistory = orderedHistory.slice(historyPage * historyPageSize, (historyPage + 1) * historyPageSize);
   const historyPageCount = Math.ceil(filteredHistory.length / historyPageSize);
   const hasActiveAdvancedFilters = draftFilter !== "all" || Boolean(receivedDateFilter) || Boolean(analysedDateFilter);
+  const actionSources = sourceId && !sourceOptions.some((option) => option.id === sourceId)
+    ? [{ id: sourceId, label: sourceLabel ?? sourceName(sourceId), count: 0 }, ...sourceOptions]
+    : sourceOptions;
+  const actionCandidateCount = actionCandidate?.key === actionSelectionKey && actionSourceId ? actionCandidate.count : null;
   const scheduledSummary = (batch: Batch) => {
     if (batch.total === 0) return "Nenhuma vaga nova pendente de avaliação foi encontrada para este dia.";
     if (batch.eligible === 0) return "Nenhuma vaga aderente ou provável foi encontrada neste lote.";
     if (batch.eligibleWithoutContact === batch.eligible) return "As vagas elegíveis continuam sem e-mail de contato válido; nenhum rascunho foi preparado.";
     return `${batch.eligible} vaga(s) elegível(is); somente as que têm contato válido podem gerar rascunho.`;
   };
-  const selectedBatchSize = batchSize === "today" ? todayReceived : Number(batchSize);
-  const runPilot = async () => {
+  const runToday = async () => {
+    if (!actionSourceId || !actionCandidateCount || actionCandidateCount > MAX_MANUAL_TRIAGE_JOBS) return;
     setRunningPilot(true);
-    setMessage("Executando piloto determinístico de até 10 vagas…");
+    setMessage(`Analisando ${actionCandidateCount} vaga(s) recebida(s) hoje…`);
     try {
       const response = await fetch("/api/triage/run", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ trigger: sourceId ? "gpt" : "portal", sourceId, dateScope: "received", batchSize: selectedBatchSize, reprocess, aiMode: "ambiguous", createDrafts: false }),
+        body: JSON.stringify({ trigger: "portal", sourceId: actionSourceId, dateScope: "received", roleArea: actionArea, ingestionChannel: actionChannel, batchSize: actionCandidateCount, reprocess, aiMode: "off", createDrafts: false }),
       });
       const result = await response.json() as PilotResult & { error?: string };
       if (!response.ok) throw new Error(result.error ?? "Não foi possível concluir o piloto.");
       setPilot(result);
-      setMessage(`Triagem concluída: ${result.processed.length} vagas registradas, ${result.aiCompleted ?? 0} refinada(s) por IA e ${result.skipped} já processada(s). Rascunhos continuam dependentes de contato válido.`);
+      setMessage(`Triagem concluída: ${result.processed.length} vaga(s) registrada(s) de ${sourceName(actionSourceId)}. Rascunhos continuam dependentes de contato válido.`);
       void loadHistory();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Não foi possível concluir o piloto.");
@@ -128,46 +147,6 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
     } catch (error) { setMessage(error instanceof Error ? error.message : "Não foi possível retomar os rascunhos."); }
     finally { setQueueingDrafts(false); }
   };
-  const runLinkedInToday = async () => {
-    setRunningLinkedIn(true);
-    setMessage(`Analisando até ${selectedBatchSize} vagas do LinkedIn recebidas hoje pelo Radar…`);
-    try {
-      const response = await fetch("/api/triage/run", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ trigger: "portal", sourceId: "linkedin-extension", dateScope: "received", batchSize: selectedBatchSize, reprocess, aiMode: "off", createDrafts: false }),
-      });
-      const result = await response.json() as PilotResult & { error?: string };
-      if (!response.ok) throw new Error(result.error ?? "Não foi possível analisar as vagas do LinkedIn.");
-      setPilot(result);
-      setMessage(`Triagem LinkedIn concluída: ${result.processed.length} vagas recebidas hoje registradas. A fonte LinkedIn não entra na fila de rascunhos.`);
-      void loadHistory();
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Não foi possível analisar as vagas do LinkedIn.");
-    } finally {
-      setRunningLinkedIn(false);
-    }
-  };
-  const runApinfoToday = async () => {
-    setRunningApinfo(true);
-    setMessage(`Analisando até ${selectedBatchSize} vagas APInfo publicadas hoje…`);
-    try {
-      const response = await fetch("/api/triage/run", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ trigger: "portal", sourceId: "apinfo-extension", dateScope: "published", batchSize: selectedBatchSize, reprocess, aiMode: "ambiguous", createDrafts: false }),
-      });
-      const result = await response.json() as PilotResult & { error?: string };
-      if (!response.ok) throw new Error(result.error ?? "Não foi possível analisar as vagas APInfo.");
-      setPilot(result);
-      setMessage(`Triagem APInfo concluída: ${result.processed.length} vagas publicadas hoje registradas. Rascunhos continuam dependentes de contato válido.`);
-      void loadHistory();
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Não foi possível analisar as vagas APInfo.");
-    } finally {
-      setRunningApinfo(false);
-    }
-  };
   const openHistory = (nextDraftFilter = "all") => {
     setDraftFilter(nextDraftFilter);
     setHistoryPage(0);
@@ -197,33 +176,43 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
               <div className="triage-run-panel">
                 <div className="triage-run-settings">
                   <label>
-                    Quantidade
-                    <select aria-label="Quantidade de vagas" value={batchSize} onChange={(e) => setBatchSize(e.target.value)} disabled={runningPilot}>
-                      <option value="10">10 vagas</option><option value="25">25 vagas</option><option value="50">50 vagas</option><option value="100">100 vagas</option>
-                      {todayReceived > 0 && todayReceived <= 100 && <option value="today">Todas as vagas de hoje ({todayReceived})</option>}
+                    Fonte
+                    <select aria-label="Fonte das vagas a analisar" value={actionSourceId} onChange={(e) => setActionSourceId(e.target.value)} disabled={runningPilot}>
+                      <option value="">Selecione uma fonte</option>
+                      {actionSources.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+                    </select>
+                  </label>
+                  <label>
+                    Área
+                    <select aria-label="Área das vagas a analisar" value={actionArea} onChange={(e) => setActionArea(e.target.value)} disabled={runningPilot}>
+                      <option value="all">Todas</option>
+                      {areaOptions.filter((option) => option.count > 0).map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+                    </select>
+                  </label>
+                  <label>
+                    Canal
+                    <select aria-label="Canal de entrada das vagas a analisar" value={actionChannel} onChange={(e) => setActionChannel(e.target.value)} disabled={runningPilot}>
+                      <option value="all">Todos</option>
+                      {channelOptions.filter((option) => option.count > 0).map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
                     </select>
                   </label>
                   <label className="triage-reprocess">
                     <input type="checkbox" checked={reprocess} onChange={(e) => setReprocess(e.target.checked)} disabled={runningPilot} />
-                    Reavaliar vagas já processadas
+                    Incluir vagas já triadas
                   </label>
                 </div>
-                <button className="primary triage-run-button" disabled={runningPilot} onClick={runPilot}>
-                  {runningPilot ? "Analisando vagas…" : `Analisar ${selectedBatchSize} vaga${selectedBatchSize === 1 ? "" : "s"} de hoje`}
+                <div className="triage-run-selection" aria-live="polite">
+                  {actionCandidateCount === null ? "Selecione uma fonte para consultar as vagas recebidas hoje." : actionCandidateCount === 0 ? "Nenhuma vaga corresponde ao recorte de hoje." : `${actionCandidateCount} vaga${actionCandidateCount === 1 ? "" : "s"} recebida${actionCandidateCount === 1 ? "" : "s"} hoje.`}
+                  {actionCandidateCount !== null && actionCandidateCount > MAX_MANUAL_TRIAGE_JOBS && <span>Refine Área ou Canal para analisar até {MAX_MANUAL_TRIAGE_JOBS} vagas por vez.</span>}
+                </div>
+                <button className="primary triage-run-button" disabled={runningPilot || !actionCandidateCount || actionCandidateCount > MAX_MANUAL_TRIAGE_JOBS} onClick={runToday}>
+                  {runningPilot ? "Analisando vagas…" : `Analisar vagas de hoje${actionCandidateCount ? ` (${actionCandidateCount})` : ""}`}
                 </button>
-                {!sourceId && <>
-                  <button className="triage-queue-button" disabled={runningApinfo || runningLinkedIn || runningPilot} onClick={runApinfoToday}>
-                    {runningApinfo ? "Analisando APInfo…" : "Analisar APInfo publicadas hoje"}
-                  </button>
-                  <button className="triage-queue-button" disabled={runningApinfo || runningLinkedIn || runningPilot} onClick={runLinkedInToday}>
-                    {runningLinkedIn ? "Analisando LinkedIn…" : "Analisar LinkedIn recebidas hoje"}
-                  </button>
-                </>}
                 <button className="triage-queue-button" disabled={queueingDrafts || runningPilot} onClick={queueDrafts}>
                   {queueingDrafts ? "Preparando fila…" : "Preparar rascunhos elegíveis"}
                 </button>
                 <button className="triage-queue-button" disabled={queueingDrafts || runningPilot} onClick={retryFailedDrafts}>Reprocessar falhas de rascunho</button>
-                <small>{sourceId ? `Exceção manual: somente vagas de hoje da fonte ${sourceLabel ?? sourceId}. ` : ""}APInfo usa a data de publicação; LinkedIn usa o recebimento no Radar e nunca entra na fila de rascunhos. A fila exige vaga aprovada ou provável, análise atual e e-mail de contato válido.</small>
+                <small>A consulta usa a data de entrada no Radar, sempre no dia atual de São Paulo. Por padrão, somente vagas ainda não triadas entram no recorte. A fila exige vaga aprovada ou provável, análise atual e e-mail de contato válido.</small>
               </div>
             </details>
           </div>

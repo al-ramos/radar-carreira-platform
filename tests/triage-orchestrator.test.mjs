@@ -23,6 +23,12 @@ test("LinkedIn pode pedir explicitamente o recorte por recebimento no Radar", ()
   });
 });
 
+test("preserva filtros manuais do Radar na execução do dia", () => {
+  assert.deepEqual(normalizeTriageRunRequest({ trigger: "portal", sourceId: "apinfo-extension", dateScope: "received", roleArea: "engineering", ingestionChannel: "connector" }, new Date("2026-08-20T12:00:00.000Z")), {
+    trigger: "portal", sourceId: "apinfo-extension", roleArea: "engineering", ingestionChannel: "connector", referenceDate: "2026-08-20", batchSize: 10, reprocess: false, aiMode: "ambiguous", createDrafts: false, dateScope: "received",
+  });
+});
+
 test("recorta o dia agendado no calendário de São Paulo", () => {
   const window = saoPauloDayWindow("2026-08-20");
   assert.equal(window.start.toISOString(), "2026-08-20T03:00:00.000Z");
