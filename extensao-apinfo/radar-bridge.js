@@ -49,6 +49,22 @@ window.addEventListener('message', (event) => {
   if (data.type === 'RADAR_CAPTURE_CONTACTS_BATCH') {
     const requestId = data.requestId;
     let port;
+    let finished = false;
+    const finishWithError = (error) => {
+      if (finished) return;
+      finished = true;
+      activeBatchPorts.delete(requestId);
+      window.postMessage(
+        {
+          source: 'radar-extension',
+          type: 'RADAR_CAPTURE_CONTACTS_BATCH_RESULT',
+          requestId,
+          ok: false,
+          error,
+        },
+        location.origin,
+      );
+    };
     try {
       port = chrome.runtime.connect({ name: 'apinfo-capture-contacts-batch' });
     } catch {
@@ -78,6 +94,7 @@ window.addEventListener('message', (event) => {
         return;
       }
       // DONE ou ERROR encerram o ciclo desta porta.
+      finished = true;
       activeBatchPorts.delete(requestId);
       window.postMessage(
         { source: 'radar-extension', type: 'RADAR_CAPTURE_CONTACTS_BATCH_RESULT', requestId, ...message },
@@ -85,7 +102,14 @@ window.addEventListener('message', (event) => {
       );
     });
     port.onDisconnect.addListener(() => {
+      // Cancelamento remove a porta do mapa antes de desconectá-la e já
+      // publica um resultado "cancelled" abaixo; não deve virar erro.
+      if (!activeBatchPorts.has(requestId)) return;
       activeBatchPorts.delete(requestId);
+      // Sem este retorno o Radar não recebia DONE/ERROR quando a extensão
+      // era recarregada, atualizada ou a porta caía antes da primeira vaga:
+      // o botão ficava preso em "Capturando 0/N" indefinidamente.
+      finishWithError('A comunicação com a extensão APInfo foi interrompida antes de concluir a próxima vaga. Recarregue a extensão e tente novamente.');
     });
 
     port.postMessage({ type: 'START', items: data.items, delayMs: data.delayMs });
