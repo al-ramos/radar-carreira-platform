@@ -2914,15 +2914,15 @@ export default function Dashboard() {
                       {tableSourceOptions.map((s) => <option key={s} value={s}>{s}</option>)}
                     </select>
                   </span>
-                  <span role="cell" className="job-table-filter-cell">
+                  <span role="cell" className="job-table-filter-cell job-table-filter-cell-email">
                     <input type="text" placeholder="Filtrar e-mail…" value={tableColumnFilters.contactEmail} onChange={(e) => setTableColumnFilter("contactEmail", e.target.value)} aria-label="Filtrar por e-mail" />
-                  </span>
-                  <span role="cell" className="job-table-filter-cell job-table-filter-clear-cell">
                     {tableJobs.some((job) => !job.contactEmail) && (
                       <button type="button" className="analysis-toggle-btn job-table-reuse-company-contacts" disabled={companyContactsReusing} onClick={() => void reuseCompanyContactsInTable()} title="Usa, em todas as vagas filtradas sem e-mail, o contato já cadastrado para a empresa.">
                         {companyContactsReusing ? "Usando e-mails…" : "Usar e-mail da empresa"}
                       </button>
                     )}
+                  </span>
+                  <span role="cell" className="job-table-filter-cell job-table-filter-clear-cell">
                     {activeTableColumnFilterCount > 0 && <button type="button" className="job-table-filter-clear" onClick={clearTableColumnFilters}>Limpar ({activeTableColumnFilterCount})</button>}
                   </span>
                 </div>
