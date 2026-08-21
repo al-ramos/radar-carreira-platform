@@ -899,27 +899,14 @@ export default function Dashboard() {
     return map;
   }, [pipelineItems]);
 
-  /** Mapa jobId → VerdictResult (calculado uma vez por lista carregada).
-   *  Retorna mapa vazio se o usuário não configurou skills no perfil. */
+  /**
+   * Vereditos não são gerados automaticamente no Radar. A avaliação fica
+   * restrita à ação manual de análise/triagem, para não antecipar decisões
+   * antes de a pessoa pedir a leitura da vaga.
+   */
   const verdictMap = useMemo(() => {
-    if (profileMasteredSkills.length === 0) return new Map<string, VerdictResult>();
-    const map = new Map<string, VerdictResult>();
-    items.forEach((job) => {
-      // O veredito só complementa uma aderência calculada. Vagas fora do
-      // escopo técnico ficam sem score e não podem receber, por acidente,
-      // um "Bate" baseado apenas em modalidade, idioma ou senioridade.
-      if (!job.scored) return;
-      map.set(job.id, computeVerdict({
-        title: job.title,
-        description: job.description ?? "",
-        stack: job.stack,
-        seniority: job.seniority,
-        workMode: job.workMode,
-        location: job.location,
-      }, profileMasteredSkills, profileChoices.careerRules));
-    });
-    return map;
-  }, [items, profileMasteredSkills, profileChoices.careerRules]);
+    return new Map<string, VerdictResult>();
+  }, []);
   /** Cor do trilho do slider — mesmos limiares usados no score das vagas. */
   const fitFilterColor =
     effectiveMinScore >= 80 ? "#2e6b3e" : effectiveMinScore >= 60 ? "#7a6200" : effectiveMinScore > 0 ? "#b04a1a" : "#173f32";
@@ -2771,7 +2758,7 @@ export default function Dashboard() {
                   : "Seu perfil está salvo; a aderência será retomada assim que a consulta temporária for recuperada."}
               </span>
             </div>
-          ) : currentUser && profileMasteredSkills.length > 0 && (
+          ) : currentUser && profileMasteredSkills.length > 0 && verdictMap.size > 0 && (
             <>
               <div className="compact-filter-divider" aria-hidden="true" />
               <div className="compact-filter-group">
