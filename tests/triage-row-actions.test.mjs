@@ -21,11 +21,10 @@ test("triagem permite ações avulsas por vaga sem contornar os guardrails", asy
   assert.match(screen, /LinkedIn não permite rascunho/);
   assert.match(screen, /E-mail válido exigido/);
   assert.match(screen, /queueDrafts\(\[item\.jobId\]\)/);
-  assert.match(screen, /openAiPrompt\(\[item\.jobId\]\)/);
-  assert.match(screen, /Consulta individual da IA preparada/);
-  assert.match(screen, /Consulta individual/);
-  assert.match(screen, /A IA analisará somente esta vaga\. Os filtros do recorte não serão usados\./);
-  assert.match(screen, /Analisar esta vaga/);
+  assert.match(screen, /requestAiReview\(\[item\.jobId\]\)/);
+  assert.match(screen, /prepareCodexReview\(\[item\.jobId\]\)/);
+  assert.match(screen, /Analisa esta vaga agora no portal/);
+  assert.match(screen, /sem abrir a tela de configuração/);
   assert.match(screen, /actions\.open = true/);
   assert.match(screen, /aiPromptRef\.current\?\.scrollIntoView/);
   assert.match(screen, /ref=\{aiPromptRef\}/);

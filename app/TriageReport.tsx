@@ -213,16 +213,16 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
     } catch (error) { setMessage(error instanceof Error ? error.message : "Não foi possível retomar os rascunhos."); }
     finally { setQueueingDrafts(false); }
   };
-  const requestAiReview = async () => {
-    const aiCount = aiTargetJobIds?.length ?? actionCandidateCount ?? 0;
-    if ((!aiTargetJobIds && !actionSourceId) || !aiCount || aiPrompt.trim().length < 8) return;
+  const requestAiReview = async (jobIds = aiTargetJobIds) => {
+    const aiCount = jobIds?.length ?? actionCandidateCount ?? 0;
+    if ((!jobIds && !actionSourceId) || !aiCount || aiPrompt.trim().length < 8) return;
     setAiReviewLoading(true);
-    setMessage(`Enviando ${aiTargetJobIds ? "a seleção de" : "o recorte de"} ${aiCount} vaga(s) para a análise da IA…`);
+    setMessage(`Enviando ${jobIds ? "a seleção de" : "o recorte de"} ${aiCount} vaga(s) para a análise da IA…`);
     try {
       const response = await fetch("/api/triage/ai-review", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ sourceId: actionSourceId, homePeriod: actionPeriod, roleArea: actionArea, ingestionChannel: actionChannel, includeTriaged: reprocess, jobIds: aiTargetJobIds ?? undefined, prompt: aiPrompt }),
+        body: JSON.stringify({ sourceId: actionSourceId, homePeriod: actionPeriod, roleArea: actionArea, ingestionChannel: actionChannel, includeTriaged: reprocess, jobIds: jobIds ?? undefined, prompt: aiPrompt }),
       });
       const result = await response.json() as AiReview & { error?: string };
       if (!response.ok) throw new Error(result.error ?? "Não foi possível solicitar a análise da IA.");
@@ -235,16 +235,16 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
       setAiReviewLoading(false);
     }
   };
-  const prepareCodexReview = async () => {
-    const aiCount = aiTargetJobIds?.length ?? actionCandidateCount ?? 0;
-    if ((!aiTargetJobIds && !actionSourceId) || !aiCount || aiPrompt.trim().length < 8) return;
+  const prepareCodexReview = async (jobIds = aiTargetJobIds) => {
+    const aiCount = jobIds?.length ?? actionCandidateCount ?? 0;
+    if ((!jobIds && !actionSourceId) || !aiCount || aiPrompt.trim().length < 8) return;
     setCodexQueueLoading(true);
-    setMessage(`Preparando ${aiTargetJobIds ? "a seleção de" : "o recorte de"} ${aiCount} vaga(s) para a análise no Codex…`);
+    setMessage(`Preparando ${jobIds ? "a seleção de" : "o recorte de"} ${aiCount} vaga(s) para a análise no Codex…`);
     try {
       const response = await fetch("/api/triage/codex-queue", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ sourceId: actionSourceId, homePeriod: actionPeriod, roleArea: actionArea, ingestionChannel: actionChannel, includeTriaged: reprocess, jobIds: aiTargetJobIds ?? undefined, prompt: aiPrompt }),
+        body: JSON.stringify({ sourceId: actionSourceId, homePeriod: actionPeriod, roleArea: actionArea, ingestionChannel: actionChannel, includeTriaged: reprocess, jobIds: jobIds ?? undefined, prompt: aiPrompt }),
       });
       const result = await response.json() as { queued?: number; error?: string };
       if (!response.ok) throw new Error(result.error ?? "Não foi possível preparar a análise para o Codex.");
@@ -489,7 +489,7 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
                 <button type="button" className="triage-queue-button" disabled={queueingDrafts || selectedHistory.length > 100} onClick={() => void queueDrafts(selectedHistory.map((item) => item.jobId))} title={selectedHistory.length > 100 ? "Prepare até 100 vagas por vez." : undefined}>Preparar rascunhos</button>
                 <button type="button" className="triage-selection-clear" onClick={() => setSelectedHistoryJobIds([])}>Limpar seleção</button>
               </div>}
-              <div className="triage-table-wrap"><table className="triage-table"><thead><tr><th className="triage-select-column"><input aria-label="Selecionar todas as vagas visíveis" type="checkbox" checked={allVisibleSelected} onChange={toggleVisibleHistory} /></th><th><button onClick={() => sortHistory("verdict")}>Veredito</button></th><th><button onClick={() => sortHistory("title")}>Vaga</button></th><th><button onClick={() => sortHistory("company")}>Empresa</button></th><th>Fonte / código</th><th>Local e modalidade</th><th>Publicada / recebida</th><th>Contato</th><th><button onClick={() => sortHistory("draft")}>Rascunho</button></th><th>Envio</th><th><button onClick={() => sortHistory("processedAt")}>Analisada</button></th><th>Ações</th></tr></thead><tbody>{visibleHistory.length ? visibleHistory.map((item) => { const draftBlocker = draftActionBlocker(item); return <tr key={item.id} className={rowClass[item.verdict] ?? "backlog"}><td className="triage-select-column"><input aria-label={`Selecionar ${item.title}`} type="checkbox" checked={selectedHistoryJobIds.includes(item.jobId)} onChange={() => toggleHistoryJob(item.jobId)} /></td><td className="triage-verdict">{item.verdict}<small>{item.source === "ai" ? "IA" : item.source === "legacy" ? "Radar" : "Regras"}</small></td><td><a href={item.url} target="_blank" rel="noreferrer"><b>{item.title}</b></a><span>{item.label}{item.blocker ? ` · ${item.blocker}` : ""}</span>{item.source === "ai" && <details><summary>Evidências</summary><pre>{item.rows}</pre></details>}</td><td>{item.company}</td><td>{item.jobSource ? sourceName(item.jobSource) : "Não informada"}<small>{item.externalId ? `Código ${item.externalId}` : "Sem código"}</small></td><td>{item.workMode ?? "—"}<small>{item.location ?? "Local não informado"}</small></td><td>{item.sourcePublishedAt ? date(item.sourcePublishedAt) : "Não informada"}<small>Recebida: {date(item.receivedAt)}</small></td><td>{item.hasValidContactEmail ? item.contactEmail : "Manual / sem e-mail"}</td><td>{item.draftStatus === "sent" ? "Rascunho usado" : item.draftStatus === "drafted" ? "Pronto" : item.draftStatus === "pending" ? "Na fila" : item.draftStatus === "failed" ? "Falhou" : "—"}</td><td>{item.sentAt ? <><b>Enviado</b><small>{date(item.sentAt)}</small></> : item.draftStatus === "drafted" ? "Ainda não enviado" : "—"}</td><td>{date(item.processedAt)}</td><td><div className="triage-row-actions"><button type="button" onClick={() => void openAiPrompt([item.jobId])} disabled={aiReviewLoading} title="Abre a consulta individual no painel acima; não altera o veredito nem cria rascunho">Consultar IA</button><button type="button" onClick={() => void queueDrafts([item.jobId])} disabled={queueingDrafts || Boolean(draftBlocker)} title={draftBlocker ?? "Revalida a vaga e prepara somente a fila; não envia e-mail."}>Rascunho</button>{draftBlocker && <small>{draftBlocker}</small>}</div></td></tr>; }) : <tr><td className="triage-table-empty" colSpan={12}>Nenhuma vaga corresponde aos filtros selecionados.</td></tr>}</tbody></table></div>
+              <div className="triage-table-wrap"><table className="triage-table"><thead><tr><th className="triage-select-column"><input aria-label="Selecionar todas as vagas visíveis" type="checkbox" checked={allVisibleSelected} onChange={toggleVisibleHistory} /></th><th><button onClick={() => sortHistory("verdict")}>Veredito</button></th><th><button onClick={() => sortHistory("title")}>Vaga</button></th><th><button onClick={() => sortHistory("company")}>Empresa</button></th><th>Fonte / código</th><th>Local e modalidade</th><th>Publicada / recebida</th><th>Contato</th><th><button onClick={() => sortHistory("draft")}>Rascunho</button></th><th>Envio</th><th><button onClick={() => sortHistory("processedAt")}>Analisada</button></th><th>Ações</th></tr></thead><tbody>{visibleHistory.length ? visibleHistory.map((item) => { const draftBlocker = draftActionBlocker(item); return <tr key={item.id} className={rowClass[item.verdict] ?? "backlog"}><td className="triage-select-column"><input aria-label={`Selecionar ${item.title}`} type="checkbox" checked={selectedHistoryJobIds.includes(item.jobId)} onChange={() => toggleHistoryJob(item.jobId)} /></td><td className="triage-verdict">{item.verdict}<small>{item.source === "ai" ? "IA" : item.source === "legacy" ? "Radar" : "Regras"}</small></td><td><a href={item.url} target="_blank" rel="noreferrer"><b>{item.title}</b></a><span>{item.label}{item.blocker ? ` · ${item.blocker}` : ""}</span>{item.source === "ai" && <details><summary>Evidências</summary><pre>{item.rows}</pre></details>}</td><td>{item.company}</td><td>{item.jobSource ? sourceName(item.jobSource) : "Não informada"}<small>{item.externalId ? `Código ${item.externalId}` : "Sem código"}</small></td><td>{item.workMode ?? "—"}<small>{item.location ?? "Local não informado"}</small></td><td>{item.sourcePublishedAt ? date(item.sourcePublishedAt) : "Não informada"}<small>Recebida: {date(item.receivedAt)}</small></td><td>{item.hasValidContactEmail ? item.contactEmail : "Manual / sem e-mail"}</td><td>{item.draftStatus === "sent" ? "Rascunho usado" : item.draftStatus === "drafted" ? "Pronto" : item.draftStatus === "pending" ? "Na fila" : item.draftStatus === "failed" ? "Falhou" : "—"}</td><td>{item.sentAt ? <><b>Enviado</b><small>{date(item.sentAt)}</small></> : item.draftStatus === "drafted" ? "Ainda não enviado" : "—"}</td><td>{date(item.processedAt)}</td><td><div className="triage-row-actions"><button type="button" onClick={() => void requestAiReview([item.jobId])} disabled={aiReviewLoading || codexQueueLoading} title="Analisa esta vaga agora no portal, com a instrução padrão e sem alterar a triagem.">Consultar IA</button><button type="button" onClick={() => void prepareCodexReview([item.jobId])} disabled={aiReviewLoading || codexQueueLoading} title="Prepara esta vaga para análise nesta conversa do Codex, sem abrir a tela de configuração.">Codex</button><button type="button" onClick={() => void queueDrafts([item.jobId])} disabled={queueingDrafts || Boolean(draftBlocker)} title={draftBlocker ?? "Revalida a vaga e prepara somente a fila; não envia e-mail."}>Rascunho</button>{draftBlocker && <small>{draftBlocker}</small>}</div></td></tr>; }) : <tr><td className="triage-table-empty" colSpan={12}>Nenhuma vaga corresponde aos filtros selecionados.</td></tr>}</tbody></table></div>
             </div>
           </section>
         )}
