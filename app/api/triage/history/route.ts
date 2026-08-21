@@ -58,6 +58,7 @@ export async function GET() {
       draftStatus: draftOutbox.status,
       draftError: draftOutbox.error,
       draftUpdatedAt: draftOutbox.updatedAt,
+      sentAt: draftOutbox.sentAt,
     })
     .from(userJobAnalyses)
     .innerJoin(jobs, eq(userJobAnalyses.jobId, jobs.id))
@@ -80,7 +81,7 @@ export async function GET() {
     db.select({ batchId: triageBatchItems.batchId, status: triageBatchItems.status }).from(triageBatchItems)
       .innerJoin(triageBatches, eq(triageBatchItems.batchId, triageBatches.id))
       .where(eq(triageBatches.userId, user.userId)),
-    db.select({ status: draftOutbox.status, createdAt: draftOutbox.createdAt }).from(draftOutbox).where(eq(draftOutbox.userId, user.userId)),
+    db.select({ status: draftOutbox.status, createdAt: draftOutbox.createdAt, sentAt: draftOutbox.sentAt }).from(draftOutbox).where(eq(draftOutbox.userId, user.userId)),
     db.select({ batchId: triageHistory.batchId, status: draftOutbox.status }).from(draftOutbox)
       .innerJoin(triageHistory, eq(draftOutbox.historyId, triageHistory.id))
       .where(eq(draftOutbox.userId, user.userId)),
@@ -110,6 +111,7 @@ export async function GET() {
   const now = Date.now();
   const pendingDrafts = outboxRows.filter((row) => row.status === "pending");
   const readyDrafts = outboxRows.filter((row) => row.status === "drafted");
+  const sentDrafts = outboxRows.filter((row) => row.status === "sent");
   const failedDrafts = outboxRows.filter((row) => row.status === "failed");
   const oldestPendingAt = pendingDrafts.reduce<Date | null>((oldest, row) => !oldest || row.createdAt < oldest ? row.createdAt : oldest, null);
   const latestScheduled = batchRows.find((batch) => batch.trigger === "scheduled");
@@ -147,6 +149,7 @@ export async function GET() {
     operational: {
       pendingDrafts: pendingDrafts.length,
       readyDrafts: readyDrafts.length,
+      sentDrafts: sentDrafts.length,
       failedDrafts: failedDrafts.length,
       oldestPendingAt,
       alerts,

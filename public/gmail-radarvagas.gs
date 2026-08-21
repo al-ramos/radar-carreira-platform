@@ -69,7 +69,7 @@ function criarRascunhosRadar() {
           return message.getTo().toLowerCase() === item.to.toLowerCase() && message.getSubject() === item.subject;
         });
         const draft = existing || GmailApp.createDraft(item.to, item.subject, item.body);
-        const confirm = confirmarRascunhoRadar(secret, item.outboxId, draft.getId());
+        const confirm = confirmarRascunhoRadar(secret, item.outboxId, draft.getId(), item.subject);
         if (confirm.getResponseCode() >= 300) throw new Error(confirm.getContentText());
         processed += 1;
       } catch (error) {
@@ -113,12 +113,13 @@ function removerAgendamentoRascunhosRadar() {
 
 function executarRascunhosPendentesRadar() {
   criarRascunhosRadar();
+  reconciliarEnviosManuaisRadar();
 }
 
-function confirmarRascunhoRadar(secret, outboxId, gmailDraftId) {
+function confirmarRascunhoRadar(secret, outboxId, gmailDraftId, subject) {
   return UrlFetchApp.fetch(`${radarUrl()}/api/cron/drafts`, {
     method:'post',contentType:'application/json',headers:{Authorization:`Bearer ${secret}`},
-    payload:JSON.stringify({action:'confirm',outboxId:outboxId,gmailDraftId:gmailDraftId}),muteHttpExceptions:true
+    payload:JSON.stringify({action:'confirm',outboxId:outboxId,gmailDraftId:gmailDraftId,subject:subject}),muteHttpExceptions:true
   });
 }
 
@@ -127,4 +128,56 @@ function registrarFalhaRascunhoRadar(secret, outboxId, error) {
     method:'post',contentType:'application/json',headers:{Authorization:`Bearer ${secret}`},
     payload:JSON.stringify({action:'fail',outboxId:outboxId,error:error}),muteHttpExceptions:true
   });
+}
+
+// Verifica somente mensagens que já estão em "Enviados". Não cria, altera ou
+// envia e-mails. O Radar fornece os candidatos exatos; a confirmação exige
+// destinatário, assunto e data posteriores ao rascunho para evitar falsos
+// positivos e continua idempotente pelo identificador da mensagem Gmail.
+function reconciliarEnviosManuaisRadar() {
+  const secret = PropertiesService.getScriptProperties().getProperty('RADAR_SECRET');
+  if (!secret) throw new Error('Configure RADAR_SECRET nas propriedades do script.');
+  const response = UrlFetchApp.fetch(`${radarUrl()}/api/cron/drafts`, {
+    method:'post',contentType:'application/json',headers:{Authorization:`Bearer ${secret}`},
+    payload:JSON.stringify({action:'sentCandidates',limit:100,connectorVersion:RADAR_DRAFT_CONNECTOR_VERSION}),muteHttpExceptions:true
+  });
+  if (response.getResponseCode() >= 300) throw new Error(response.getContentText());
+  const payload = JSON.parse(response.getContentText());
+  let confirmed = 0;
+  (payload.candidates || []).forEach(candidate => {
+    const message = encontrarMensagemEnviadaRadar(candidate);
+    if (!message) return;
+    const confirmation = UrlFetchApp.fetch(`${radarUrl()}/api/cron/drafts`, {
+      method:'post',contentType:'application/json',headers:{Authorization:`Bearer ${secret}`},
+      payload:JSON.stringify({
+        action:'reconcileSent',outboxId:candidate.outboxId,gmailSentId:message.getId(),
+        to:candidate.to,subject:candidate.subject,sentAt:message.getDate().toISOString(),
+        connectorVersion:RADAR_DRAFT_CONNECTOR_VERSION
+      }),muteHttpExceptions:true
+    });
+    if (confirmation.getResponseCode() >= 300) {
+      console.warn(`Não foi possível confirmar envio de ${candidate.outboxId}: ${confirmation.getContentText()}`);
+      return;
+    }
+    confirmed += 1;
+  });
+  console.log(`Envios manuais confirmados: ${confirmed}. Nenhum e-mail foi criado ou enviado nesta etapa.`);
+}
+
+function encontrarMensagemEnviadaRadar(candidate) {
+  const escapedSubject = String(candidate.subject || '').replace(/["\\]/g, ' ');
+  const since = new Date(candidate.draftedAt).getTime() - 60 * 1000;
+  const query = `in:sent to:${candidate.to} subject:"${escapedSubject}"`;
+  const messages = GmailApp.search(query, 0, 20).flatMap(thread => thread.getMessages());
+  return messages
+    .filter(message => message.getDate().getTime() >= since)
+    .filter(message => message.getSubject() === candidate.subject)
+    .filter(message => extrairDestinatarioUnicoRadar(message.getTo()) === candidate.to.toLowerCase())
+    .sort((left, right) => right.getDate().getTime() - left.getDate().getTime())[0] || null;
+}
+
+function extrairDestinatarioUnicoRadar(value) {
+  const matches = String(value || '').match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi) || [];
+  const addresses = [...new Set(matches.map(address => address.toLowerCase()))];
+  return addresses.length === 1 ? addresses[0] : null;
 }

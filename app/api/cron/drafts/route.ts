@@ -5,6 +5,7 @@ import { draftOutbox, jobSources, jobs, profiles, triageHistory, userJobAnalyses
 import { getAnalysisVersions } from "../../../../lib/analysis-versions";
 import { buildApinfoApplicationEmail } from "../../../../lib/application-email";
 import { canonicalizeProfile, profileIsReadyForTriage } from "../../../../lib/canonical-profile";
+import { normalizeContactEmail } from "../../../../lib/contact-email";
 import { evaluateDeterministicTriage } from "../../../../lib/deterministic-triage";
 import { isDraftAllowedForSource, isSafeForDraft } from "../../../../lib/draft-eligibility";
 
@@ -14,6 +15,13 @@ const digest = async (value: string) => Array.from(new Uint8Array(await crypto.s
 const list = (value: string) => { try { const parsed: unknown = JSON.parse(value); return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : []; } catch { return []; } };
 const parseStack = (value: string) => { try { const parsed: unknown = JSON.parse(value); return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : []; } catch { return []; } };
 const CONNECTOR_VERSION = "radar-drafts-v2";
+const subjectFor = (item: { draftSubject: string | null; contactSubject: string | null; title: string; externalId: string | null }) =>
+  item.draftSubject?.trim() || item.contactSubject?.trim() || `Candidatura — ${item.title}${item.externalId ? ` (vaga ${item.externalId})` : ""}`;
+const parseSentAt = (value: unknown) => {
+  if (typeof value !== "string") return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
 
 async function authenticate(request: Request) {
   const source = (await getDb().select().from(jobSources).where(eq(jobSources.id, "gmail-radarvagas")).limit(1))[0];
@@ -32,7 +40,11 @@ async function authenticate(request: Request) {
 export async function POST(request: Request) {
   const owner = await authenticate(request);
   if (!owner) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
-  const body = await request.json().catch(() => ({})) as { action?: "prepare" | "confirm" | "fail" | "health"; outboxId?: string; gmailDraftId?: string; error?: string; limit?: number; retryFailed?: boolean; connectorVersion?: string };
+  const body = await request.json().catch(() => ({})) as {
+    action?: "prepare" | "confirm" | "fail" | "health" | "sentCandidates" | "reconcileSent";
+    outboxId?: string; gmailDraftId?: string; gmailSentId?: string; subject?: string; to?: string; sentAt?: string;
+    error?: string; limit?: number; retryFailed?: boolean; connectorVersion?: string;
+  };
   const db = getDb();
 
   if (body.connectorVersion && body.connectorVersion !== CONNECTOR_VERSION) {
@@ -41,14 +53,72 @@ export async function POST(request: Request) {
 
   if (body.action === "health") return NextResponse.json({ ok: true, connectorVersion: CONNECTOR_VERSION, sent: false });
 
+  // Esta consulta não pesquisa o Gmail nem cria mensagens. Ela só devolve os
+  // rascunhos confirmados que podem ser comparados localmente pelo Apps Script
+  // com a pasta "Enviados".
+  if (body.action === "sentCandidates") {
+    const limit = Math.max(1, Math.min(100, Math.floor(body.limit ?? 100)));
+    const candidates = await db.select({
+      outboxId: draftOutbox.id,
+      to: jobs.contactEmail,
+      title: jobs.title,
+      externalId: jobs.externalId,
+      contactSubject: jobs.contactSubject,
+      draftSubject: draftOutbox.draftSubject,
+      draftedAt: draftOutbox.updatedAt,
+    }).from(draftOutbox)
+      .innerJoin(jobs, eq(draftOutbox.jobId, jobs.id))
+      .where(and(eq(draftOutbox.userId, owner.userId), eq(draftOutbox.status, "drafted")))
+      .limit(limit);
+    return NextResponse.json({
+      candidates: candidates.flatMap((item) => {
+        const to = normalizeContactEmail(item.to);
+        return to ? [{ outboxId: item.outboxId, to, subject: subjectFor(item), draftedAt: item.draftedAt.toISOString() }] : [];
+      }),
+      sent: false,
+    });
+  }
+
+  // O Apps Script só chega aqui depois de encontrar, em "Enviados", uma
+  // correspondência exata por destinatário e assunto. Mesmo assim, o Radar
+  // valida novamente os dados persistidos e não aceita promover outro estado.
+  if (body.action === "reconcileSent") {
+    if (!body.outboxId || !body.gmailSentId) return NextResponse.json({ error: "Identificadores da fila e da mensagem enviada são obrigatórios" }, { status: 400 });
+    const item = (await db.select({
+      id: draftOutbox.id,
+      status: draftOutbox.status,
+      gmailSentId: draftOutbox.gmailSentId,
+      draftSubject: draftOutbox.draftSubject,
+      contactEmail: jobs.contactEmail,
+      contactSubject: jobs.contactSubject,
+      title: jobs.title,
+      externalId: jobs.externalId,
+    }).from(draftOutbox).innerJoin(jobs, eq(draftOutbox.jobId, jobs.id))
+      .where(and(eq(draftOutbox.id, body.outboxId), eq(draftOutbox.userId, owner.userId))).limit(1))[0];
+    if (!item) return NextResponse.json({ error: "Item da fila não encontrado" }, { status: 404 });
+    if (item.status === "sent") {
+      if (item.gmailSentId === body.gmailSentId) return NextResponse.json({ ok: true, changed: false, status: "sent" });
+      return NextResponse.json({ error: "A vaga já está vinculada a outra mensagem enviada" }, { status: 409 });
+    }
+    if (item.status !== "drafted") return NextResponse.json({ error: "Somente rascunhos confirmados podem ser marcados como enviados" }, { status: 409 });
+    const expectedTo = normalizeContactEmail(item.contactEmail);
+    const expectedSubject = subjectFor(item);
+    const sentAt = parseSentAt(body.sentAt);
+    if (!expectedTo || normalizeContactEmail(body.to) !== expectedTo || body.subject?.trim() !== expectedSubject || !sentAt) {
+      return NextResponse.json({ error: "A mensagem enviada não corresponde ao destinatário, assunto e data esperados" }, { status: 409 });
+    }
+    await db.update(draftOutbox).set({ status: "sent", gmailSentId: body.gmailSentId.slice(0, 500), sentAt, error: null, updatedAt: new Date() }).where(eq(draftOutbox.id, item.id));
+    return NextResponse.json({ ok: true, changed: true, status: "sent", sentAt });
+  }
+
   if (body.action === "confirm" || body.action === "fail") {
     if (!body.outboxId) return NextResponse.json({ error: "Identificador da fila obrigatório" }, { status: 400 });
     const item = (await db.select().from(draftOutbox).where(and(eq(draftOutbox.id, body.outboxId), eq(draftOutbox.userId, owner.userId))).limit(1))[0];
     if (!item) return NextResponse.json({ error: "Item da fila não encontrado" }, { status: 404 });
-    if (item.status === "drafted") return NextResponse.json({ ok: true, changed: false, status: "drafted" });
+    if (item.status === "drafted" || item.status === "sent") return NextResponse.json({ ok: true, changed: false, status: item.status });
     if (body.action === "confirm") {
       if (!body.gmailDraftId) return NextResponse.json({ error: "Identificador do rascunho Gmail obrigatório" }, { status: 400 });
-      await db.update(draftOutbox).set({ status: "drafted", gmailDraftId: body.gmailDraftId, error: null, updatedAt: new Date() }).where(eq(draftOutbox.id, item.id));
+      await db.update(draftOutbox).set({ status: "drafted", gmailDraftId: body.gmailDraftId, draftSubject: body.subject?.trim().slice(0, 500) || null, error: null, updatedAt: new Date() }).where(eq(draftOutbox.id, item.id));
       return NextResponse.json({ ok: true, changed: true, status: "drafted" });
     }
     await db.update(draftOutbox).set({ status: "failed", error: (body.error ?? "Falha ao criar rascunho").slice(0, 1000), updatedAt: new Date() }).where(eq(draftOutbox.id, item.id));
@@ -132,7 +202,7 @@ export async function POST(request: Request) {
       await db.update(draftOutbox).set({ status: "cancelled", error: reason, updatedAt: new Date() }).where(eq(draftOutbox.id, row.outboxId));
       continue;
     }
-    const subject = row.contactSubject?.trim() || `Candidatura — ${row.title}${row.externalId ? ` (vaga ${row.externalId})` : ""}`;
+    const subject = subjectFor(row);
     drafts.push({
       outboxId: row.outboxId,
       to: row.contactEmail!.trim().toLowerCase(),
