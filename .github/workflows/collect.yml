@@ -38,10 +38,3 @@ jobs:
             echo "$response"
             jq -e '.ok == true' >/dev/null <<< "$response"
           done
-
-          response=$(curl --fail-with-body --retry 2 --retry-all-errors --max-time 120 \
-            -X POST -H "Authorization: Bearer ${COLLECTOR_SECRET}" -H "Content-Type: application/json" \
-            --data '{"trigger":"schedule","batchSize":100,"aiMode":"off","createDrafts":false}' \
-            "${RADAR_BASE_URL}/api/triage/run")
-          echo "$response"
-          jq -e '.ok == true' >/dev/null <<< "$response"
