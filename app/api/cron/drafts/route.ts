@@ -207,7 +207,7 @@ export async function POST(request: Request) {
       outboxId: row.outboxId,
       to: row.contactEmail!.trim().toLowerCase(),
       subject,
-      body: buildApinfoApplicationEmail({ title: row.title, company: row.company, externalId: row.externalId ?? undefined, matchingSkills: list(row.matchingSkills), missingSkills: list(row.missingSkills), seniority: canonicalProfile.seniority, careerRules: canonicalProfile.careerRules }),
+      body: buildApinfoApplicationEmail({ title: row.title, company: row.company, externalId: row.externalId ?? undefined, matchingSkills: list(row.matchingSkills), missingSkills: list(row.missingSkills), seniority: canonicalProfile.seniority, careerRules: canonicalProfile.careerRules, applicantName: profile.name }),
     });
   }
   return NextResponse.json({ drafts, scanned: rows.length, hasMore: rows.length === limit, connectorVersion: CONNECTOR_VERSION, sent: false });

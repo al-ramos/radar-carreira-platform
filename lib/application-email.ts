@@ -9,6 +9,7 @@ type ApinfoApplicationEmailInput = {
   missingSkills?: string[];
   careerRules?: CareerRules;
   contractSpecified?: boolean;
+  applicantName?: string | null;
 };
 
 /**
@@ -25,6 +26,7 @@ export function buildApinfoApplicationEmail({
   missingSkills = [],
   careerRules,
   contractSpecified,
+  applicantName,
 }: ApinfoApplicationEmailInput): string {
   const uniqueSkills = [...new Map(
     matchingSkills
@@ -53,6 +55,7 @@ export function buildApinfoApplicationEmail({
   const contractLine = contractSpecified === false
     ? "Gostaria também de confirmar se a contratação é no regime PJ ou CLT.\n\n"
     : "";
+  const signature = applicantName?.trim() ? `\n\nAtenciosamente,\n${applicantName.trim()}` : "";
   return (
     `Olá, ${addressee}.\n\n` +
     `Gostaria de me candidatar à vaga de ${title}${jobReference}.\n\n` +
@@ -63,6 +66,7 @@ export function buildApinfoApplicationEmail({
     anchorLine +
     contractLine +
     "Tenho interesse em conversar para apresentar melhor minha experiência e entender os próximos passos do processo seletivo.\n\n" +
-    "Fico à disposição para encaminhar meu currículo e demais informações necessárias."
+    "Fico à disposição para encaminhar meu currículo e demais informações necessárias." +
+    signature
   );
 }
