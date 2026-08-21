@@ -135,26 +135,29 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
             <p className="triage-kicker">CENTRO DE DECISÃO</p>
             <h2>Triagem de vagas</h2>
             <p>Regras primeiro. IA apenas para incertezas. Rascunhos somente após validação e contato confirmado.</p>
-            <div className="triage-run-panel">
-              <div className="triage-run-settings">
-                <label>
-                  Quantidade
-                  <input aria-label="Quantidade de vagas" type="number" min="1" max="100" value={batchSize} onChange={(e) => setBatchSize(Math.max(1, Math.min(100, Number(e.target.value) || 1)))} disabled={runningPilot} />
-                </label>
-                <label className="triage-reprocess">
-                  <input type="checkbox" checked={reprocess} onChange={(e) => setReprocess(e.target.checked)} disabled={runningPilot} />
-                  Reavaliar vagas já processadas
-                </label>
+            <details className="triage-actions">
+              <summary>Exibir ações de automação</summary>
+              <div className="triage-run-panel">
+                <div className="triage-run-settings">
+                  <label>
+                    Quantidade
+                    <input aria-label="Quantidade de vagas" type="number" min="1" max="100" value={batchSize} onChange={(e) => setBatchSize(Math.max(1, Math.min(100, Number(e.target.value) || 1)))} disabled={runningPilot} />
+                  </label>
+                  <label className="triage-reprocess">
+                    <input type="checkbox" checked={reprocess} onChange={(e) => setReprocess(e.target.checked)} disabled={runningPilot} />
+                    Reavaliar vagas já processadas
+                  </label>
+                </div>
+                <button className="primary triage-run-button" disabled={runningPilot} onClick={runPilot}>
+                  {runningPilot ? "Analisando vagas…" : `Analisar ${batchSize} vagas agora`}
+                </button>
+                <button className="triage-queue-button" disabled={queueingDrafts || runningPilot} onClick={queueDrafts}>
+                  {queueingDrafts ? "Preparando fila…" : "Preparar rascunhos elegíveis"}
+                </button>
+                <button className="triage-queue-button" disabled={queueingDrafts || runningPilot} onClick={retryFailedDrafts}>Reprocessar falhas de rascunho</button>
+                <small>{sourceId ? `Exceção manual: somente vagas de hoje da fonte ${sourceLabel ?? sourceId}. ` : ""}A fila exige vaga aprovada ou provável, análise atual e e-mail de contato válido. Esta ação não cria nem envia e-mails.</small>
               </div>
-              <button className="primary triage-run-button" disabled={runningPilot} onClick={runPilot}>
-                {runningPilot ? "Analisando vagas…" : `Analisar ${batchSize} vagas agora`}
-              </button>
-              <button className="triage-queue-button" disabled={queueingDrafts || runningPilot} onClick={queueDrafts}>
-                {queueingDrafts ? "Preparando fila…" : "Preparar rascunhos elegíveis"}
-              </button>
-              <button className="triage-queue-button" disabled={queueingDrafts || runningPilot} onClick={retryFailedDrafts}>Reprocessar falhas de rascunho</button>
-              <small>{sourceId ? `Exceção manual: somente vagas de hoje da fonte ${sourceLabel ?? sourceId}. ` : ""}A fila exige vaga aprovada ou provável, análise atual e e-mail de contato válido. Esta ação não cria nem envia e-mails.</small>
-            </div>
+            </details>
           </div>
         </div>
         {message && <div className="notice">{message}</div>}
