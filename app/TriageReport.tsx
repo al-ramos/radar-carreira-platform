@@ -5,6 +5,7 @@ type HistoryItem = { id: string; batchId: string; jobId: string; verdict: string
 type Batch = { id: string; trigger: "manual" | "scheduled" | "assistant"; scope: string; status: string; startedAt: string | null; completedAt: string | null; createdAt: string; error: string | null; total: number; completed: number; failed: number; eligible: number; eligibleWithoutContact: number; draftsPending: number; draftsReady: number; draftsFailed: number };
 type Operational = { pendingDrafts: number; readyDrafts: number; failedDrafts: number; oldestPendingAt: string | null; alerts: Array<{ level: "warning" | "error"; message: string }> };
 type AiReview = { id: string; response: string; jobs: Array<{ id: string; title: string; company: string }>; provider: string; model: string };
+type AiProfile = { name: string | null; seniority: string[]; preferredMode: string[]; masteredSkills: string[]; desiredAreas: string[]; minScore: number };
 type LegacyItem = { jobId: string; veredito: string; motivo: string | null; processedAt: string; title: string; company: string; externalId: string | null; sourceId: string | null; workMode: string | null; location: string | null; sourcePublishedAt: string | null; receivedAt: string; url: string; contactEmail: string | null };
 type FilterOption = { id: string; label: string; count: number };
 const rowClass: Record<string, string> = { "✅": "approved", "🟡": "partial", "❌": "rejected", "🔴": "rejected" };
@@ -27,6 +28,9 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
     [aiPrompt, setAiPrompt] = useState("Analise a aderência de cada vaga ao meu perfil, destaque evidências, lacunas e priorize as oportunidades. Não altere candidaturas nem gere rascunhos."),
     [aiReviewLoading, setAiReviewLoading] = useState(false),
     [aiReview, setAiReview] = useState<AiReview | null>(null),
+    [aiProfile, setAiProfile] = useState<AiProfile | null>(null),
+    [aiProfileLoading, setAiProfileLoading] = useState(false),
+    [aiProfileError, setAiProfileError] = useState(""),
     [history, setHistory] = useState<HistoryItem[]>([]),
     [batches, setBatches] = useState<Batch[]>([]),
     [operational, setOperational] = useState<Operational | null>(null),
@@ -198,6 +202,22 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
       setAiReviewLoading(false);
     }
   };
+  const openAiPrompt = async () => {
+    setAiPromptOpen(true);
+    if (aiProfile || aiProfileLoading) return;
+    setAiProfileLoading(true);
+    setAiProfileError("");
+    try {
+      const response = await fetch("/api/profile");
+      const result = await response.json() as { profile?: AiProfile };
+      if (!response.ok || !result.profile) throw new Error("Perfil indisponível");
+      setAiProfile(result.profile);
+    } catch {
+      setAiProfileError("Não foi possível exibir o perfil agora. A análise continuará usando o perfil salvo no Radar.");
+    } finally {
+      setAiProfileLoading(false);
+    }
+  };
   const openHistory = (nextDraftFilter = "all") => {
     setDraftFilter(nextDraftFilter);
     setHistoryPage(0);
@@ -274,7 +294,7 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
                   </article>
                   <article className="triage-action-step triage-ai-step">
                     <span>IA</span><div><b>Consulta à IA <em>opcional</em></b><small>Faz uma leitura consultiva; não muda a triagem nem cria rascunhos.</small></div>
-                    <button className="triage-queue-button" disabled={runningPilot || aiReviewLoading || !actionCandidateCount || actionCandidateCount > MAX_AI_REVIEW_JOBS} onClick={() => setAiPromptOpen(true)}>{aiReviewLoading ? "Consultando…" : "Consultar"}</button>
+                    <button className="triage-queue-button" disabled={runningPilot || aiReviewLoading || !actionCandidateCount || actionCandidateCount > MAX_AI_REVIEW_JOBS} onClick={openAiPrompt}>{aiReviewLoading ? "Consultando…" : "Consultar"}</button>
                   </article>
                   <article className={`triage-action-step ${manualIsActive ? "waiting" : ""}`}>
                     <span>2</span><div><b>Preparar rascunhos</b><small>Use após a etapa 1 concluir. Separa apenas vagas ✅/🟡 com e-mail válido; não envia nada.</small></div>
@@ -286,8 +306,16 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
                   </article>
                 </div>
                 {aiPromptOpen && <section className="triage-ai-prompt" aria-label="Prompt para análise de vagas pela IA">
-                  <b>O que você quer que a IA avalie?</b>
-                  <small>Ela receberá um snapshot das {actionCandidateCount ?? 0} vagas deste recorte e do seu perfil. A resposta é apenas consultiva.</small>
+                  <div className="triage-ai-prompt-heading"><b>Perfil e stack que a IA vai usar</b><small>Esta é a referência do seu perfil salvo no Radar para analisar as {actionCandidateCount ?? 0} vagas do recorte.</small></div>
+                  {aiProfileLoading && <small>Carregando o perfil salvo…</small>}
+                  {aiProfileError && <small className="triage-ai-profile-error">{aiProfileError}</small>}
+                  {aiProfile && <dl className="triage-ai-profile">
+                    <div><dt>Senioridade</dt><dd>{aiProfile.seniority.join(", ") || "Não informada"}</dd></div>
+                    <div><dt>Modelo</dt><dd>{aiProfile.preferredMode.join(", ") || "Sem preferência informada"}</dd></div>
+                    <div><dt>Áreas</dt><dd>{aiProfile.desiredAreas.join(", ") || "Não informadas"}</dd></div>
+                    <div className="triage-ai-profile-stack"><dt>Stack</dt><dd>{aiProfile.masteredSkills.join(" · ") || "Nenhuma competência cadastrada"}</dd></div>
+                  </dl>}
+                  <div className="triage-ai-prompt-heading"><b>O que você quer que a IA avalie?</b><small>Você pode alterar o texto abaixo para orientar a leitura. A resposta é apenas consultiva.</small></div>
                   <textarea aria-label="Instrução para a IA" value={aiPrompt} onChange={(event) => setAiPrompt(event.target.value)} maxLength={1200} disabled={aiReviewLoading} />
                   <div><button type="button" className="triage-queue-button" onClick={() => setAiPromptOpen(false)} disabled={aiReviewLoading}>Cancelar</button><button type="button" className="primary" onClick={requestAiReview} disabled={aiReviewLoading || aiPrompt.trim().length < 8}>Solicitar análise</button></div>
                 </section>}
