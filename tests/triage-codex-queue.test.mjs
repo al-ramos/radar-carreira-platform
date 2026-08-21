@@ -15,6 +15,7 @@ test("fila de análise pelo Codex persiste o recorte e oferece consumo protegido
   assert.match(route, /destination: "codex"/);
   assert.match(route, /codexStatus: "pending"/);
   assert.match(route, /profile: canonicalizeProfile\(profile\)/);
+  assert.match(route, /ingestionChannelInput === "all" \? "" : ingestionChannelInput/);
   assert.match(screen, /Preparar para o Codex/);
   assert.match(screen, /\/api\/triage\/codex-queue/);
   assert.match(schema, /codexStatus/);

@@ -37,7 +37,11 @@ export async function POST(request: Request) {
   const sourceId = typeof body?.sourceId === "string" ? body.sourceId.trim() : "";
   const homePeriod = typeof body?.homePeriod === "string" ? body.homePeriod : "24";
   const roleArea = typeof body?.roleArea === "string" ? body.roleArea.trim() : "";
-  const ingestionChannel = typeof body?.ingestionChannel === "string" ? body.ingestionChannel.trim() : "";
+  const ingestionChannelInput = typeof body?.ingestionChannel === "string" ? body.ingestionChannel.trim() : "";
+  // A interface usa "all" para "Todos os canais". Na API, ausência do
+  // filtro é representada por string vazia; tratar "all" como um canal real
+  // fazia a consulta avulsa ao Codex falhar antes de chegar à fila.
+  const ingestionChannel = ingestionChannelInput === "all" ? "" : ingestionChannelInput;
   const includeTriaged = body?.includeTriaged === true;
   const requestedJobIds = Array.isArray(body?.jobIds) ? [...new Set(body.jobIds.filter((id): id is string => typeof id === "string" && id.length > 0))].slice(0, MAX_CODEX_REVIEW_JOBS + 1) : null;
   const prompt = typeof body?.prompt === "string" ? body.prompt.trim().slice(0, 1200) : "";
