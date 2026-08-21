@@ -66,7 +66,11 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
     [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(false),
     [sortKey, setSortKey] = useState<"processedAt" | "company" | "title" | "verdict" | "draft">("processedAt"),
     [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc"),
-    [historyPage, setHistoryPage] = useState(0);
+    [historyPage, setHistoryPage] = useState(0),
+    [csvImportOpen, setCsvImportOpen] = useState(false),
+    [csvImportText, setCsvImportText] = useState(""),
+    [csvImportLoading, setCsvImportLoading] = useState(false),
+    [csvImportResult, setCsvImportResult] = useState<{ applied: number; draftsQueued: number; notFound: string[]; ambiguous: string[]; rejected: Array<{ line: number; reason: string }> } | null>(null);
   const aiPromptRef = useRef<HTMLTextAreaElement>(null);
   const loadHistory = async () => {
     try {
@@ -374,6 +378,28 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
       setCodexQueueLoading(false);
     }
   };
+  const loadCsvImportFile = async (file: File) => {
+    if (file.size > 2_000_000) { setMessage("O arquivo CSV excede o limite de 2 MB."); return; }
+    setCsvImportText(await file.text());
+  };
+  const submitCsvImport = async () => {
+    if (!csvImportText.trim()) return;
+    setCsvImportLoading(true);
+    setCsvImportResult(null);
+    setMessage("Reimportando análise externa…");
+    try {
+      const response = await fetch("/api/admin/triage-import", { method: "POST", headers: { "content-type": "text/csv" }, body: csvImportText });
+      const result = await readJsonResponse<{ applied?: number; draftsQueued?: number; notFound?: string[]; ambiguous?: string[]; rejected?: Array<{ line: number; reason: string }>; error?: string }>(response, "A reimportação da análise");
+      if (!response.ok) throw new Error(result.error ?? "Não foi possível reimportar a análise.");
+      setCsvImportResult({ applied: result.applied ?? 0, draftsQueued: result.draftsQueued ?? 0, notFound: result.notFound ?? [], ambiguous: result.ambiguous ?? [], rejected: result.rejected ?? [] });
+      setMessage(`${result.applied ?? 0} veredito(s) substituído(s)${result.draftsQueued ? `, ${result.draftsQueued} rascunho(s) enfileirado(s)` : ""}.`);
+      await loadHistory();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Não foi possível reimportar a análise.");
+    } finally {
+      setCsvImportLoading(false);
+    }
+  };
   const copyCodexRequest = async () => {
     const text = "Analise a última triagem preparada para o Codex.";
     try { await navigator.clipboard.writeText(text); setMessage("Pedido para o Codex copiado. Cole-o nesta conversa para iniciar a análise."); }
@@ -489,6 +515,10 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
                     <span>IA</span><div><b>Consulta à IA <em>opcional</em></b><small>Faz uma leitura consultiva; não muda a triagem nem cria rascunhos.</small></div>
                     <button className="triage-queue-button" disabled={runningPilot || aiReviewLoading || codexQueueLoading || !actionCandidateCount} onClick={() => void openAiPrompt()}>{aiReviewLoading || codexQueueLoading ? "Preparando…" : "Escolher"}</button>
                   </article>
+                  <article className="triage-action-step triage-csv-import-step">
+                    <span>CSV</span><div><b>Reimportar análise externa</b><small>Substitui o veredito das vagas pelo status do CSV (código, status, descrição). Pode enfileirar rascunho, como um veredito normal.</small></div>
+                    <button className="triage-queue-button" onClick={() => setCsvImportOpen((open) => !open)}>{csvImportOpen ? "Fechar" : "Importar"}</button>
+                  </article>
                   <article className={`triage-action-step ${manualIsActive ? "waiting" : ""}`}>
                     <span>2</span><div><b>Preparar rascunhos</b><small>Use após a etapa 1 concluir. Separa apenas vagas ✅/🟡 com e-mail válido; não envia nada.</small></div>
                     <button className="triage-queue-button" disabled={queueingDrafts || runningPilot || manualIsActive || !actionSourceId} onClick={queueDrafts} title={manualIsActive ? "Aguarde a triagem concluir antes de preparar rascunhos." : !actionSourceId ? "Selecione uma fonte para preparar rascunhos do recorte." : undefined}>{queueingDrafts ? "Preparando…" : "Preparar"}</button>
@@ -522,6 +552,18 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
                   <div><button type="button" className="triage-queue-button" onClick={() => setAiPromptOpen(false)} disabled={aiReviewLoading || codexQueueLoading}>Cancelar</button><button type="button" className="triage-queue-button" onClick={() => void prepareCodexReview()} disabled={aiReviewLoading || codexQueueLoading || aiPrompt.trim().length < 8}>{codexQueueLoading ? "Preparando…" : isIndividualAiReview ? "Preparar esta vaga para o Codex" : "Preparar para o Codex"}</button><button type="button" className="primary" onClick={() => void requestAiReview()} disabled={aiReviewLoading || codexQueueLoading || aiPrompt.trim().length < 8}>{aiReviewLoading ? "Solicitando…" : isIndividualAiReview ? "Analisar esta vaga" : "Solicitar análise"}</button></div>
                 </section>}
                 {aiReview && <section className="triage-ai-review" aria-label="Resultado da análise da IA"><div><h3>Análise da IA</h3><small>{aiReview.status === "completed" ? "Concluída" : `${aiReview.completed ?? 0}/${aiReview.total ?? aiReview.chunks ?? 0} lotes concluídos`} · {aiReview.provider ?? "processando"}{aiReview.model ? ` · ${aiReview.model}` : ""}</small></div>{aiReview.response ? <p>{aiReview.response}</p> : <p>{aiReview.error ?? "A análise está sendo processada em segundo plano."}</p>}</section>}
+                {csvImportOpen && <section className="triage-csv-import triage-ai-prompt" aria-label="Reimportar análise externa em CSV">
+                  <div className="triage-ai-prompt-heading"><b>Reimportar análise externa (CSV)</b><small>Colunas: código, status (✅/🟡/🔴/❌ ou texto), descrição. O status do CSV substitui o veredito atual da vaga e é registrado com origem "IA"; até 2.000 linhas / 2 MB por vez.</small></div>
+                  <input type="file" accept=".csv,text/csv" aria-label="Selecionar arquivo CSV de análise" disabled={csvImportLoading} onChange={(event) => { const file = event.target.files?.[0]; if (file) void loadCsvImportFile(file); event.target.value = ""; }} />
+                  <textarea aria-label="Conteúdo CSV da análise" value={csvImportText} onChange={(event) => setCsvImportText(event.target.value)} placeholder={"codigo,status,descricao\n85981,🟡,Provável com ressalvas"} disabled={csvImportLoading} />
+                  <div><button type="button" className="triage-queue-button" onClick={() => { setCsvImportOpen(false); setCsvImportText(""); setCsvImportResult(null); }} disabled={csvImportLoading}>Cancelar</button><button type="button" className="primary" onClick={() => void submitCsvImport()} disabled={csvImportLoading || !csvImportText.trim()}>{csvImportLoading ? "Importando…" : "Substituir vereditos"}</button></div>
+                  {csvImportResult && <div className="triage-csv-import-result" aria-live="polite">
+                    <span><b>{csvImportResult.applied}</b> veredito(s) substituído(s){csvImportResult.draftsQueued ? `, ${csvImportResult.draftsQueued} rascunho(s) enfileirado(s)` : ""}.</span>
+                    {csvImportResult.notFound.length > 0 && <small>Código(s) não encontrado(s): {csvImportResult.notFound.join(", ")}</small>}
+                    {csvImportResult.ambiguous.length > 0 && <small>Código(s) ambíguo(s) (mais de uma vaga, não aplicados): {csvImportResult.ambiguous.join(", ")}</small>}
+                    {csvImportResult.rejected.length > 0 && <small>Linha(s) rejeitada(s): {csvImportResult.rejected.map((r) => `${r.line} (${r.reason})`).join(", ")}</small>}
+                  </div>}
+                </section>}
               <small>Acompanhe o resultado no cartão “Último lote manual”, logo abaixo. Ao usar “Preparar”, o Gmail cria esse lote uma única vez; não há agendamento e nenhum e-mail é enviado automaticamente. A consulta à IA é opcional e não altera o fluxo.</small>
               </div>
             </details>
