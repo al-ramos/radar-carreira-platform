@@ -31,10 +31,12 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
     [aiReviewLoading, setAiReviewLoading] = useState(false),
     [codexQueueLoading, setCodexQueueLoading] = useState(false),
     [aiReview, setAiReview] = useState<AiReview | null>(null),
+    [aiTargetJobIds, setAiTargetJobIds] = useState<string[] | null>(null),
     [aiProfile, setAiProfile] = useState<AiProfile | null>(null),
     [aiProfileLoading, setAiProfileLoading] = useState(false),
     [aiProfileError, setAiProfileError] = useState(""),
     [history, setHistory] = useState<HistoryItem[]>([]),
+    [selectedHistoryJobIds, setSelectedHistoryJobIds] = useState<string[]>([]),
     [batches, setBatches] = useState<Batch[]>([]),
     [operational, setOperational] = useState<Operational | null>(null),
     [verdictFilter, setVerdictFilter] = useState("all"),
@@ -114,6 +116,17 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
   });
   const historyPageSize = 10;
   const visibleHistory = orderedHistory.slice(historyPage * historyPageSize, (historyPage + 1) * historyPageSize);
+  const selectedHistory = currentAssessments.filter((item) => selectedHistoryJobIds.includes(item.jobId));
+  const allVisibleSelected = visibleHistory.length > 0 && visibleHistory.every((item) => selectedHistoryJobIds.includes(item.jobId));
+  const toggleHistoryJob = (jobId: string) => setSelectedHistoryJobIds((current) => current.includes(jobId) ? current.filter((id) => id !== jobId) : [...current, jobId]);
+  const toggleVisibleHistory = () => setSelectedHistoryJobIds((current) => allVisibleSelected ? current.filter((id) => !visibleHistory.some((item) => item.jobId === id)) : [...new Set([...current, ...visibleHistory.map((item) => item.jobId)])]);
+  const draftActionBlocker = (item: HistoryItem) => {
+    if (item.draftStatus) return item.draftStatus === "sent" ? "Enviado" : item.draftStatus === "drafted" ? "Rascunho pronto" : item.draftStatus === "pending" ? "Já está na fila" : "Reveja a falha antes";
+    if (item.jobSource === "linkedin-extension") return "LinkedIn não permite rascunho";
+    if (item.verdict !== "✅" && item.verdict !== "🟡") return "Exige vaga aderente ou provável";
+    if (!item.hasValidContactEmail) return "E-mail válido exigido";
+    return null;
+  };
   const historyPageCount = Math.ceil(filteredHistory.length / historyPageSize);
   const hasActiveAdvancedFilters = draftFilter !== "all" || Boolean(receivedDateFilter) || Boolean(analysedDateFilter);
   const actionSources = sourceId && !sourceOptions.some((option) => option.id === sourceId)
@@ -155,18 +168,19 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
       setRunningPilot(false);
     }
   };
-  const queueDrafts = async () => {
+  const queueDrafts = async (jobIds?: string[]) => {
     setQueueingDrafts(true);
-    setMessage("Verificando vagas elegíveis para a fila de rascunhos…");
+    setMessage(jobIds?.length ? `Verificando ${jobIds.length} vaga(s) selecionada(s) para a fila de rascunhos…` : "Verificando vagas elegíveis para a fila de rascunhos…");
     try {
       const response = await fetch("/api/triage/drafts/queue", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ sourceId: actionSourceId, roleArea: actionArea, ingestionChannel: actionChannel, homePeriod: actionPeriod }),
+        body: JSON.stringify({ sourceId: actionSourceId, roleArea: actionArea, ingestionChannel: actionChannel, homePeriod: actionPeriod, jobIds }),
       });
       const result = await response.json() as { error?: string; considered: number; queued: number; noValidContact: number; outdated: number; alreadyPresent: number };
       if (!response.ok) throw new Error(result.error ?? "Não foi possível preparar a fila de rascunhos.");
-      setMessage(`Fila preparada para este recorte (${result.considered} vaga(s)): ${result.queued} elegível(is); ${result.noValidContact} sem e-mail válido; ${result.outdated} precisa(m) de nova avaliação; ${result.alreadyPresent} já estava(m) na fila. Nenhum e-mail foi criado ou enviado.`);
+      const queueMessagePrefix = jobIds?.length ? "Fila preparada para a seleção" : "Fila preparada para este recorte";
+      setMessage(`${queueMessagePrefix} (${result.considered} vaga(s)): ${result.queued} elegível(is); ${result.noValidContact} sem e-mail válido; ${result.outdated} precisa(m) de nova avaliação; ${result.alreadyPresent} já estava(m) na fila. Nenhum e-mail foi criado ou enviado.`);
       void loadHistory();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Não foi possível preparar a fila de rascunhos.");
@@ -190,20 +204,21 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
     finally { setQueueingDrafts(false); }
   };
   const requestAiReview = async () => {
-    if (!actionSourceId || !actionCandidateCount || actionCandidateCount > MAX_AI_REVIEW_JOBS || aiPrompt.trim().length < 8) return;
+    const aiCount = aiTargetJobIds?.length ?? actionCandidateCount ?? 0;
+    if ((!aiTargetJobIds && !actionSourceId) || !aiCount || aiCount > MAX_AI_REVIEW_JOBS || aiPrompt.trim().length < 8) return;
     setAiReviewLoading(true);
-    setMessage(`Enviando o recorte de ${actionCandidateCount} vaga(s) para a análise da IA…`);
+    setMessage(`Enviando ${aiTargetJobIds ? "a seleção de" : "o recorte de"} ${aiCount} vaga(s) para a análise da IA…`);
     try {
       const response = await fetch("/api/triage/ai-review", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ sourceId: actionSourceId, homePeriod: actionPeriod, roleArea: actionArea, ingestionChannel: actionChannel, includeTriaged: reprocess, prompt: aiPrompt }),
+        body: JSON.stringify({ sourceId: actionSourceId, homePeriod: actionPeriod, roleArea: actionArea, ingestionChannel: actionChannel, includeTriaged: reprocess, jobIds: aiTargetJobIds ?? undefined, prompt: aiPrompt }),
       });
       const result = await response.json() as AiReview & { error?: string };
       if (!response.ok) throw new Error(result.error ?? "Não foi possível solicitar a análise da IA.");
       setAiReview(result);
       setAiPromptOpen(false);
-      setMessage(`Análise da IA concluída para ${actionCandidateCount} vaga(s). Nenhum veredito, rascunho ou candidatura foi alterado.`);
+      setMessage(`Análise da IA concluída para ${aiCount} vaga(s). Nenhum veredito, rascunho ou candidatura foi alterado.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Não foi possível solicitar a análise da IA.");
     } finally {
@@ -211,26 +226,28 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
     }
   };
   const prepareCodexReview = async () => {
-    if (!actionSourceId || !actionCandidateCount || actionCandidateCount > MAX_AI_REVIEW_JOBS || aiPrompt.trim().length < 8) return;
+    const aiCount = aiTargetJobIds?.length ?? actionCandidateCount ?? 0;
+    if ((!aiTargetJobIds && !actionSourceId) || !aiCount || aiCount > MAX_AI_REVIEW_JOBS || aiPrompt.trim().length < 8) return;
     setCodexQueueLoading(true);
-    setMessage(`Preparando ${actionCandidateCount} vaga(s) para a análise no Codex…`);
+    setMessage(`Preparando ${aiTargetJobIds ? "a seleção de" : "o recorte de"} ${aiCount} vaga(s) para a análise no Codex…`);
     try {
       const response = await fetch("/api/triage/codex-queue", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ sourceId: actionSourceId, homePeriod: actionPeriod, roleArea: actionArea, ingestionChannel: actionChannel, includeTriaged: reprocess, prompt: aiPrompt }),
+        body: JSON.stringify({ sourceId: actionSourceId, homePeriod: actionPeriod, roleArea: actionArea, ingestionChannel: actionChannel, includeTriaged: reprocess, jobIds: aiTargetJobIds ?? undefined, prompt: aiPrompt }),
       });
       const result = await response.json() as { queued?: number; error?: string };
       if (!response.ok) throw new Error(result.error ?? "Não foi possível preparar a análise para o Codex.");
       setAiPromptOpen(false);
-      setMessage(`${result.queued ?? actionCandidateCount} vaga(s) foram preparadas. Nesta conversa, basta pedir: “Analise a última triagem preparada para o Codex”. Nenhuma decisão do portal foi alterada.`);
+      setMessage(`${result.queued ?? aiCount} vaga(s) foram preparadas. Nesta conversa, basta pedir: “Analise a última triagem preparada para o Codex”. Nenhuma decisão do portal foi alterada.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Não foi possível preparar a análise para o Codex.");
     } finally {
       setCodexQueueLoading(false);
     }
   };
-  const openAiPrompt = async () => {
+  const openAiPrompt = async (jobIds?: string[]) => {
+    setAiTargetJobIds(jobIds?.length ? jobIds : null);
     setAiPromptOpen(true);
     if (aiProfile || aiProfileLoading) return;
     setAiProfileLoading(true);
@@ -322,7 +339,7 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
                   </article>
                   <article className="triage-action-step triage-ai-step">
                     <span>IA</span><div><b>Consulta à IA <em>opcional</em></b><small>Faz uma leitura consultiva; não muda a triagem nem cria rascunhos.</small></div>
-                    <button className="triage-queue-button" disabled={runningPilot || aiReviewLoading || codexQueueLoading || !actionCandidateCount || actionCandidateCount > MAX_AI_REVIEW_JOBS} onClick={openAiPrompt}>{aiReviewLoading || codexQueueLoading ? "Preparando…" : "Escolher"}</button>
+                    <button className="triage-queue-button" disabled={runningPilot || aiReviewLoading || codexQueueLoading || !actionCandidateCount || actionCandidateCount > MAX_AI_REVIEW_JOBS} onClick={() => void openAiPrompt()}>{aiReviewLoading || codexQueueLoading ? "Preparando…" : "Escolher"}</button>
                   </article>
                   <article className={`triage-action-step ${manualIsActive ? "waiting" : ""}`}>
                     <span>2</span><div><b>Preparar rascunhos</b><small>Use após a etapa 1 concluir. Separa apenas vagas ✅/🟡 com e-mail válido; não envia nada.</small></div>
@@ -334,7 +351,7 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
                   </article>
                 </div>
                 {aiPromptOpen && <section className="triage-ai-prompt" aria-label="Prompt para análise de vagas pela IA">
-                  <div className="triage-ai-prompt-heading"><b>Perfil e stack que a IA vai usar</b><small>Esta é a referência do seu perfil salvo no Radar para analisar as {actionCandidateCount ?? 0} vagas do recorte.</small></div>
+                  <div className="triage-ai-prompt-heading"><b>Perfil e stack que a IA vai usar</b><small>Esta é a referência do seu perfil salvo no Radar para analisar {aiTargetJobIds?.length ?? actionCandidateCount ?? 0} vaga(s) {aiTargetJobIds ? "selecionada(s)" : "do recorte"}.</small></div>
                   {aiProfileLoading && <small>Carregando o perfil salvo…</small>}
                   {aiProfileError && <small className="triage-ai-profile-error">{aiProfileError}</small>}
                   {aiProfile && <dl className="triage-ai-profile">
@@ -445,7 +462,13 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
                 <small>Página {historyPage + 1} de {historyPageCount}</small>
                 <button type="button" disabled={(historyPage + 1) * historyPageSize >= filteredHistory.length} onClick={() => setHistoryPage(page => page + 1)}>Próxima →</button>
               </nav>}
-              <div className="triage-table-wrap"><table className="triage-table"><thead><tr><th><button onClick={() => sortHistory("verdict")}>Veredito</button></th><th><button onClick={() => sortHistory("title")}>Vaga</button></th><th><button onClick={() => sortHistory("company")}>Empresa</button></th><th>Fonte / código</th><th>Local e modalidade</th><th>Publicada / recebida</th><th>Contato</th><th><button onClick={() => sortHistory("draft")}>Rascunho</button></th><th>Envio</th><th><button onClick={() => sortHistory("processedAt")}>Analisada</button></th></tr></thead><tbody>{visibleHistory.length ? visibleHistory.map((item) => <tr key={item.id} className={rowClass[item.verdict] ?? "backlog"}><td className="triage-verdict">{item.verdict}<small>{item.source === "ai" ? "IA" : item.source === "legacy" ? "Radar" : "Regras"}</small></td><td><a href={item.url} target="_blank" rel="noreferrer"><b>{item.title}</b></a><span>{item.label}{item.blocker ? ` · ${item.blocker}` : ""}</span>{item.source === "ai" && <details><summary>Evidências</summary><pre>{item.rows}</pre></details>}</td><td>{item.company}</td><td>{item.jobSource ? sourceName(item.jobSource) : "Não informada"}<small>{item.externalId ? `Código ${item.externalId}` : "Sem código"}</small></td><td>{item.workMode ?? "—"}<small>{item.location ?? "Local não informado"}</small></td><td>{item.sourcePublishedAt ? date(item.sourcePublishedAt) : "Não informada"}<small>Recebida: {date(item.receivedAt)}</small></td><td>{item.hasValidContactEmail ? item.contactEmail : "Manual / sem e-mail"}</td><td>{item.draftStatus === "sent" ? "Rascunho usado" : item.draftStatus === "drafted" ? "Pronto" : item.draftStatus === "pending" ? "Na fila" : item.draftStatus === "failed" ? "Falhou" : "—"}</td><td>{item.sentAt ? <><b>Enviado</b><small>{date(item.sentAt)}</small></> : item.draftStatus === "drafted" ? "Ainda não enviado" : "—"}</td><td>{date(item.processedAt)}</td></tr>) : <tr><td className="triage-table-empty" colSpan={10}>Nenhuma vaga corresponde aos filtros selecionados.</td></tr>}</tbody></table></div>
+              {selectedHistory.length > 0 && <div className="triage-selection-actions" aria-live="polite">
+                <span><b>{selectedHistory.length}</b> vaga(s) selecionada(s)</span>
+                <button type="button" className="triage-queue-button" disabled={aiReviewLoading || selectedHistory.length > MAX_AI_REVIEW_JOBS} onClick={() => void openAiPrompt(selectedHistory.map((item) => item.jobId))} title={selectedHistory.length > MAX_AI_REVIEW_JOBS ? `A IA aceita até ${MAX_AI_REVIEW_JOBS} vagas por vez.` : undefined}>Consultar IA</button>
+                <button type="button" className="triage-queue-button" disabled={queueingDrafts || selectedHistory.length > 100} onClick={() => void queueDrafts(selectedHistory.map((item) => item.jobId))} title={selectedHistory.length > 100 ? "Prepare até 100 vagas por vez." : undefined}>Preparar rascunhos</button>
+                <button type="button" className="triage-selection-clear" onClick={() => setSelectedHistoryJobIds([])}>Limpar seleção</button>
+              </div>}
+              <div className="triage-table-wrap"><table className="triage-table"><thead><tr><th className="triage-select-column"><input aria-label="Selecionar todas as vagas visíveis" type="checkbox" checked={allVisibleSelected} onChange={toggleVisibleHistory} /></th><th><button onClick={() => sortHistory("verdict")}>Veredito</button></th><th><button onClick={() => sortHistory("title")}>Vaga</button></th><th><button onClick={() => sortHistory("company")}>Empresa</button></th><th>Fonte / código</th><th>Local e modalidade</th><th>Publicada / recebida</th><th>Contato</th><th><button onClick={() => sortHistory("draft")}>Rascunho</button></th><th>Envio</th><th><button onClick={() => sortHistory("processedAt")}>Analisada</button></th><th>Ações</th></tr></thead><tbody>{visibleHistory.length ? visibleHistory.map((item) => { const draftBlocker = draftActionBlocker(item); return <tr key={item.id} className={rowClass[item.verdict] ?? "backlog"}><td className="triage-select-column"><input aria-label={`Selecionar ${item.title}`} type="checkbox" checked={selectedHistoryJobIds.includes(item.jobId)} onChange={() => toggleHistoryJob(item.jobId)} /></td><td className="triage-verdict">{item.verdict}<small>{item.source === "ai" ? "IA" : item.source === "legacy" ? "Radar" : "Regras"}</small></td><td><a href={item.url} target="_blank" rel="noreferrer"><b>{item.title}</b></a><span>{item.label}{item.blocker ? ` · ${item.blocker}` : ""}</span>{item.source === "ai" && <details><summary>Evidências</summary><pre>{item.rows}</pre></details>}</td><td>{item.company}</td><td>{item.jobSource ? sourceName(item.jobSource) : "Não informada"}<small>{item.externalId ? `Código ${item.externalId}` : "Sem código"}</small></td><td>{item.workMode ?? "—"}<small>{item.location ?? "Local não informado"}</small></td><td>{item.sourcePublishedAt ? date(item.sourcePublishedAt) : "Não informada"}<small>Recebida: {date(item.receivedAt)}</small></td><td>{item.hasValidContactEmail ? item.contactEmail : "Manual / sem e-mail"}</td><td>{item.draftStatus === "sent" ? "Rascunho usado" : item.draftStatus === "drafted" ? "Pronto" : item.draftStatus === "pending" ? "Na fila" : item.draftStatus === "failed" ? "Falhou" : "—"}</td><td>{item.sentAt ? <><b>Enviado</b><small>{date(item.sentAt)}</small></> : item.draftStatus === "drafted" ? "Ainda não enviado" : "—"}</td><td>{date(item.processedAt)}</td><td><div className="triage-row-actions"><button type="button" onClick={() => void openAiPrompt([item.jobId])} disabled={aiReviewLoading} title="Consulta individual: não altera o veredito nem cria rascunho">IA</button><button type="button" onClick={() => void queueDrafts([item.jobId])} disabled={queueingDrafts || Boolean(draftBlocker)} title={draftBlocker ?? "Revalida a vaga e prepara somente a fila; não envia e-mail."}>Rascunho</button>{draftBlocker && <small>{draftBlocker}</small>}</div></td></tr>; }) : <tr><td className="triage-table-empty" colSpan={12}>Nenhuma vaga corresponde aos filtros selecionados.</td></tr>}</tbody></table></div>
             </div>
           </section>
         )}

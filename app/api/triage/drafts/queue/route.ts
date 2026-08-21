@@ -1,4 +1,4 @@
-import { and, desc, eq, gte } from "drizzle-orm";
+import { and, desc, eq, gte, inArray } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../../chatgpt-auth";
 import { getDb } from "../../../../../db/index";
@@ -27,6 +27,7 @@ type DraftQueueRequest = {
   roleArea?: string;
   ingestionChannel?: string;
   homePeriod?: string;
+  jobIds?: string[];
 };
 
 /**
@@ -54,6 +55,8 @@ export async function POST(request: Request) {
   const roleArea = body.roleArea?.trim();
   const ingestionChannel = body.ingestionChannel?.trim();
   const homePeriod = body.homePeriod ?? "all";
+  const requestedJobIds = Array.isArray(body.jobIds) ? [...new Set(body.jobIds.filter((id): id is string => typeof id === "string" && id.length > 0))].slice(0, 100) : null;
+  if (Array.isArray(body.jobIds) && !requestedJobIds?.length) return NextResponse.json({ error: "Selecione ao menos uma vaga válida." }, { status: 400 });
   if (!periods.has(homePeriod)) return NextResponse.json({ error: "Período inválido." }, { status: 400 });
   if (ingestionChannel && ingestionChannel !== "all" && !channels.has(ingestionChannel)) return NextResponse.json({ error: "Canal inválido." }, { status: 400 });
   const cutoff = homePeriod === "all" ? null : new Date(Date.now() - Number(homePeriod) * 36e5);
@@ -74,6 +77,7 @@ export async function POST(request: Request) {
       .leftJoin(userJobAnalyses, and(eq(userJobAnalyses.userId, user.userId), eq(userJobAnalyses.jobId, jobs.id)))
       .where(and(
         eq(triageHistory.userId, user.userId),
+        requestedJobIds ? inArray(triageHistory.jobId, requestedJobIds) : undefined,
         sourceId && sourceId !== "all" ? eq(jobs.sourceId, sourceId) : undefined,
         roleArea && roleArea !== "all" ? eq(jobs.roleArea, roleArea) : undefined,
         ingestionChannel && ingestionChannel !== "all" ? eq(jobs.ingestionChannel, ingestionChannel as "extension" | "email" | "connector" | "file" | "api") : undefined,
@@ -128,5 +132,5 @@ export async function POST(request: Request) {
     queued.push(row.jobId);
   }
 
-  return NextResponse.json({ ok: true, considered: latestByJob.size, queued: queued.length, noValidContact, notEligible, outdated, alreadyPresent, gmailDraftsCreated: 0 });
+  return NextResponse.json({ ok: true, considered: latestByJob.size, queued: queued.length, queuedJobIds: queued, noValidContact, notEligible, outdated, alreadyPresent, gmailDraftsCreated: 0 });
 }

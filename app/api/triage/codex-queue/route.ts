@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, isNull } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
@@ -39,8 +39,11 @@ export async function POST(request: Request) {
   const roleArea = typeof body?.roleArea === "string" ? body.roleArea.trim() : "";
   const ingestionChannel = typeof body?.ingestionChannel === "string" ? body.ingestionChannel.trim() : "";
   const includeTriaged = body?.includeTriaged === true;
+  const requestedJobIds = Array.isArray(body?.jobIds) ? [...new Set(body.jobIds.filter((id): id is string => typeof id === "string" && id.length > 0))].slice(0, MAX_CODEX_REVIEW_JOBS + 1) : null;
   const prompt = typeof body?.prompt === "string" ? body.prompt.trim().slice(0, 1200) : "";
-  if (!sourceId || sourceId === "all") return NextResponse.json({ error: "Selecione uma fonte antes de preparar a análise." }, { status: 400 });
+  if (Array.isArray(body?.jobIds) && !requestedJobIds?.length) return NextResponse.json({ error: "Selecione ao menos uma vaga válida." }, { status: 400 });
+  if (!requestedJobIds && (!sourceId || sourceId === "all")) return NextResponse.json({ error: "Selecione uma fonte antes de preparar a análise." }, { status: 400 });
+  if (requestedJobIds && requestedJobIds.length > MAX_CODEX_REVIEW_JOBS) return NextResponse.json({ error: `A análise pelo Codex aceita até ${MAX_CODEX_REVIEW_JOBS} vagas por vez.` }, { status: 422 });
   if (!["24", "72", "168", "all"].includes(homePeriod)) return NextResponse.json({ error: "Período inválido" }, { status: 400 });
   if (ingestionChannel && !channels.has(ingestionChannel)) return NextResponse.json({ error: "Canal inválido" }, { status: 400 });
   if (prompt.length < 8) return NextResponse.json({ error: "Descreva o que você quer que o Codex avalie." }, { status: 400 });
@@ -51,13 +54,13 @@ export async function POST(request: Request) {
   const cutoff = homePeriod === "all" ? null : new Date(Date.now() - Number(homePeriod) * 36e5);
   const selected = await db.select({ id: jobs.id, title: jobs.title, company: jobs.company, location: jobs.location, url: jobs.url, description: jobs.description })
     .from(jobs).leftJoin(userJobAnalyses, and(eq(userJobAnalyses.userId, auth.user.userId), eq(userJobAnalyses.jobId, jobs.id)))
-    .where(and(eq(jobs.status, "active"), eq(jobs.sourceId, sourceId), cutoff ? gte(jobs.firstSeenAt, cutoff) : undefined, roleArea && roleArea !== "all" ? eq(jobs.roleArea, roleArea) : undefined, ingestionChannel ? eq(jobs.ingestionChannel, ingestionChannel as "extension" | "email" | "connector" | "file" | "api") : undefined, includeTriaged ? undefined : isNull(userJobAnalyses.jobId)))
+    .where(and(eq(jobs.status, "active"), requestedJobIds ? inArray(jobs.id, requestedJobIds) : eq(jobs.sourceId, sourceId), requestedJobIds ? eq(userJobAnalyses.userId, auth.user.userId) : undefined, requestedJobIds ? undefined : cutoff ? gte(jobs.firstSeenAt, cutoff) : undefined, requestedJobIds ? undefined : roleArea && roleArea !== "all" ? eq(jobs.roleArea, roleArea) : undefined, requestedJobIds ? undefined : ingestionChannel ? eq(jobs.ingestionChannel, ingestionChannel as "extension" | "email" | "connector" | "file" | "api") : undefined, requestedJobIds ? undefined : includeTriaged ? undefined : isNull(userJobAnalyses.jobId)))
     .orderBy(desc(jobs.firstSeenAt), desc(jobs.createdAt)).limit(MAX_CODEX_REVIEW_JOBS + 1);
   if (!selected.length) return NextResponse.json({ error: "Nenhuma vaga corresponde ao recorte atual." }, { status: 404 });
   if (selected.length > MAX_CODEX_REVIEW_JOBS) return NextResponse.json({ error: `A análise pelo Codex aceita até ${MAX_CODEX_REVIEW_JOBS} vagas por vez. Refine Área, Canal ou Período.` }, { status: 422 });
 
   const selection = {
-    filters: { sourceId, homePeriod, roleArea: roleArea || "all", ingestionChannel: ingestionChannel || "all", includeTriaged },
+    filters: requestedJobIds ? { jobIds: requestedJobIds } : { sourceId, homePeriod, roleArea: roleArea || "all", ingestionChannel: ingestionChannel || "all", includeTriaged },
     profile: canonicalizeProfile(profile),
     jobs: selected.map((job) => ({ ...job, description: job.description.slice(0, 3200) })),
   };
