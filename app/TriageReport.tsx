@@ -148,6 +148,10 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
     }
   };
   const retryFailedDrafts = async () => {
+    if (draftCounts.failed === 0) {
+      setMessage(`Nenhuma falha para reprocessar. ${draftCounts.drafted} rascunho(s) já está(ão) pronto(s) para revisão.`);
+      return;
+    }
     setQueueingDrafts(true);
     try {
       const response = await fetch("/api/triage/drafts/queue", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "retryFailed" }) });
@@ -232,7 +236,7 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
                 <button className="triage-queue-button" disabled={queueingDrafts || runningPilot} onClick={queueDrafts}>
                   {queueingDrafts ? "Preparando fila…" : "Preparar rascunhos elegíveis"}
                 </button>
-                <button className="triage-queue-button" disabled={queueingDrafts || runningPilot} onClick={retryFailedDrafts}>Reprocessar falhas de rascunho</button>
+                <button className="triage-queue-button" disabled={queueingDrafts || runningPilot || draftCounts.failed === 0} onClick={retryFailedDrafts} title={draftCounts.failed === 0 ? "Não há falhas para reprocessar" : undefined}>Reprocessar falhas de rascunho{draftCounts.failed ? ` (${draftCounts.failed})` : ""}</button>
                 <small>A consulta inicia com Fonte, Área, Canal e Período ativos na Home; o período pode ser ajustado aqui e considera a data de publicação da vaga, como na lista principal. Por padrão, somente vagas ainda não triadas entram no recorte. A fila exige vaga aprovada ou provável, análise atual e e-mail de contato válido.</small>
               </div>
             </details>
