@@ -164,7 +164,7 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
   const toggleHistoryJob = (jobId: string) => setSelectedHistoryJobIds((current) => current.includes(jobId) ? current.filter((id) => id !== jobId) : [...current, jobId]);
   const toggleVisibleHistory = () => setSelectedHistoryJobIds((current) => allVisibleSelected ? current.filter((id) => !visibleHistory.some((item) => item.jobId === id)) : [...new Set([...current, ...visibleHistory.map((item) => item.jobId)])]);
   const draftActionBlocker = (item: HistoryItem) => {
-    if (item.draftStatus) return item.draftStatus === "sent" ? "Enviado" : item.draftStatus === "drafted" ? "Rascunho pronto" : item.draftStatus === "pending" ? `Aguardando criação manual no Gmail. Execute executarRascunhosPendentesRadar no Apps Script. Fila atualizada: ${date(item.draftUpdatedAt ?? item.processedAt)}` : "Reveja a falha antes";
+    if (item.draftStatus) return item.draftStatus === "sent" ? "Enviado" : item.draftStatus === "drafted" ? "Rascunho pronto" : item.draftStatus === "pending" ? `Aguardando você acionar a criação pela fila. Fila atualizada: ${date(item.draftUpdatedAt ?? item.processedAt)}` : "Reveja a falha antes";
     if (item.jobSource === "linkedin-extension") return "LinkedIn não permite rascunho";
     if (item.verdict !== "✅" && item.verdict !== "🟡") return "Exige vaga aderente ou provável";
     if (!item.hasValidContactEmail) return "E-mail válido exigido";
@@ -232,17 +232,16 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
       const result = await response.json() as { error?: string; considered: number; queued: number; noValidContact: number; outdated: number; alreadyPresent: number; immediateDraft?: { requested: boolean; created?: number; reason?: string } };
       if (!response.ok) throw new Error(result.error ?? "Não foi possível preparar a fila de rascunhos.");
       const queueMessagePrefix = jobIds?.length ? "Fila preparada para a seleção" : "Fila preparada para este recorte";
-      const immediateMessage = jobIds?.length === 1 ? result.immediateDraft?.requested
-        ? result.immediateDraft.created ? " O rascunho desta vaga foi criado agora no Gmail; nenhum e-mail foi enviado." : " A criação imediata foi acionada para esta vaga; atualize a tela em instantes para confirmar o rascunho."
-        : ` Criação imediata indisponível: ${result.immediateDraft?.reason ?? "execute executarRascunhosPendentesRadar manualmente no Apps Script."}`
-        : " Nenhum e-mail foi criado ou enviado.";
+      const immediateMessage = result.immediateDraft?.requested
+        ? result.immediateDraft.created ? ` ${result.immediateDraft.created} rascunho(s) foi(ram) criado(s) agora no Gmail; nenhum e-mail foi enviado.` : " A criação foi acionada agora no Gmail; atualize a tela em instantes para confirmar os rascunhos."
+        : ` Criação manual indisponível: ${result.immediateDraft?.reason ?? "tente novamente pela fila."}`;
       setMessage(`${queueMessagePrefix} (${result.considered} vaga(s)): ${result.queued} elegível(is); ${result.noValidContact} sem e-mail válido; ${result.outdated} precisa(m) de nova avaliação; ${result.alreadyPresent} já estava(m) na fila.${immediateMessage}`);
       if (jobIds?.length === 1) {
         const status = result.immediateDraft?.requested
           ? result.immediateDraft.created
             ? { kind: "done" as const, text: "Rascunho criado agora no Gmail; nenhum e-mail foi enviado." }
             : { kind: "waiting" as const, text: "Gmail acionado; atualize em instantes para confirmar o rascunho." }
-          : { kind: "failed" as const, text: `Criação imediata indisponível: ${result.immediateDraft?.reason ?? "execute executarRascunhosPendentesRadar manualmente no Apps Script."}` };
+          : { kind: "failed" as const, text: `Criação manual indisponível: ${result.immediateDraft?.reason ?? "tente novamente pela fila."}` };
         setDraftActionStatuses((current) => ({ ...current, [jobIds[0]]: status }));
       }
       void loadHistory();
@@ -487,7 +486,7 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
                   <div><button type="button" className="triage-queue-button" onClick={() => setAiPromptOpen(false)} disabled={aiReviewLoading || codexQueueLoading}>Cancelar</button><button type="button" className="triage-queue-button" onClick={() => void prepareCodexReview()} disabled={aiReviewLoading || codexQueueLoading || aiPrompt.trim().length < 8}>{codexQueueLoading ? "Preparando…" : isIndividualAiReview ? "Preparar esta vaga para o Codex" : "Preparar para o Codex"}</button><button type="button" className="primary" onClick={() => void requestAiReview()} disabled={aiReviewLoading || codexQueueLoading || aiPrompt.trim().length < 8}>{aiReviewLoading ? "Solicitando…" : isIndividualAiReview ? "Analisar esta vaga" : "Solicitar análise"}</button></div>
                 </section>}
                 {aiReview && <section className="triage-ai-review" aria-label="Resultado da análise da IA"><div><h3>Análise da IA</h3><small>{aiReview.status === "completed" ? "Concluída" : `${aiReview.completed ?? 0}/${aiReview.total ?? aiReview.chunks ?? 0} lotes concluídos`} · {aiReview.provider ?? "processando"}{aiReview.model ? ` · ${aiReview.model}` : ""}</small></div>{aiReview.response ? <p>{aiReview.response}</p> : <p>{aiReview.error ?? "A análise está sendo processada em segundo plano."}</p>}</section>}
-                <small>Acompanhe o resultado no cartão “Último lote manual”, logo abaixo. Depois de preparar, o Gmail cria os rascunhos pendentes na rotina configurada; eles nunca são enviados automaticamente. A consulta à IA é opcional e não altera o fluxo.</small>
+              <small>Acompanhe o resultado no cartão “Último lote manual”, logo abaixo. Ao usar “Preparar”, o Gmail cria esse lote uma única vez; não há agendamento e nenhum e-mail é enviado automaticamente. A consulta à IA é opcional e não altera o fluxo.</small>
               </div>
             </details>
           </div>

@@ -126,7 +126,9 @@ export async function POST(request: Request) {
     const existing = existingOutboxByJob.get(row.jobId);
     if (existing) {
       alreadyPresent += 1;
-      if (requestedJobIds?.length === 1 && existing.status === "pending") priorityOutboxIds.push(existing.id);
+      // Toda preparação é uma ação explícita do portal. Ao usar a fila,
+      // também tentamos criar os itens pendentes que já faziam parte dela.
+      if (existing.status === "pending") priorityOutboxIds.push(existing.id);
       continue;
     }
     if (!isDraftAllowedForSource(row.job.sourceId)) { notEligible += 1; continue; }
@@ -168,7 +170,7 @@ export async function POST(request: Request) {
     const outboxId = crypto.randomUUID();
     await db.insert(draftOutbox).values({ id: outboxId, userId: user.userId, jobId: row.jobId, historyId, status: "pending", createdAt: now, updatedAt: now });
     queued.push(row.jobId);
-    if (requestedJobIds?.length === 1) priorityOutboxIds.push(outboxId);
+    priorityOutboxIds.push(outboxId);
   }
 
   const individualUnavailableReason = latestByJob.size === 0
@@ -181,9 +183,9 @@ export async function POST(request: Request) {
           ? "As regras atuais de segurança não permitem criar rascunho para esta vaga."
           : alreadyPresent
             ? "Já existe um rascunho ou item de fila para esta vaga; atualize a tela para ver o status."
-            : "A vaga não está disponível para criação imediata.";
-  const immediateDraft = requestedJobIds?.length === 1 && priorityOutboxIds.length
+            : "A vaga não está disponível para criação manual.";
+  const immediateDraft = priorityOutboxIds.length
     ? await requestImmediateDraftCreation(priorityOutboxIds)
-    : { requested: false, reason: requestedJobIds?.length === 1 ? individualUnavailableReason : "A criação imediata é reservada para uma vaga avulsa." };
+    : { requested: false, reason: requestedJobIds?.length === 1 ? individualUnavailableReason : "Nenhum rascunho pendente está disponível neste recorte." };
   return NextResponse.json({ ok: true, considered: latestByJob.size, queued: queued.length, queuedJobIds: queued, noValidContact, notEligible, outdated, alreadyPresent, gmailDraftsCreated: immediateDraft.created ?? 0, immediateDraft });
 }

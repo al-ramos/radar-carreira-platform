@@ -3,8 +3,8 @@ type ImmediateSentReconciliationResult = { requested: boolean; confirmed?: numbe
 
 /**
  * Aciona o Apps Script somente para itens escolhidos manualmente. A URL e o
- * token ficam em secrets do Worker; sem essa configuração, a rotina diária
- * continua sendo o fallback seguro.
+ * token ficam em secrets do Worker. A criação é sempre iniciada por uma ação
+ * manual no Radar; não há rotina programada como alternativa.
  */
 export async function requestImmediateDraftCreation(outboxIds: string[]): Promise<ImmediateDraftResult> {
   const url = process.env.GMAIL_DRAFTS_WEBHOOK_URL?.trim();
@@ -21,7 +21,7 @@ export async function requestImmediateDraftCreation(outboxIds: string[]): Promis
     if (!response.ok || !payload?.ok) return { requested: false, reason: payload?.error ?? "O conector Gmail não confirmou a criação imediata." };
     return { requested: true, created: Number(payload.created ?? 0) };
   } catch {
-    return { requested: false, reason: "Não foi possível acionar o conector Gmail agora; a rotina agendada continuará como alternativa." };
+    return { requested: false, reason: "Não foi possível acionar o conector Gmail agora. Tente novamente pela ação manual." };
   }
 }
 
