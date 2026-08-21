@@ -96,7 +96,7 @@ function doPost(event) {
       const result = criarRascunhosRadar({ outboxIds: payload.outboxIds });
       return responderWebhookRadar({ ok:true, created: result.processed, scanned: result.scanned });
     }
-    if (payload.action === 'reconcileSent') return responderWebhookRadar({ ok:true, confirmed: reconciliarEnviosManuaisRadar({ outboxIds: payload.outboxIds }));
+    if (payload.action === 'reconcileSent') return responderWebhookRadar({ ok:true, confirmed: reconciliarEnviosManuaisRadar({ outboxIds: payload.outboxIds }) });
     return responderWebhookRadar({ ok:false, error:'Ação de prioridade inválida' });
   } catch (error) {
     return responderWebhookRadar({ ok:false, error:String(error) });
