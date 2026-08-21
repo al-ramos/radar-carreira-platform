@@ -64,8 +64,22 @@ export async function POST(request: Request) {
   const now = new Date();
   const batchId = crypto.randomUUID();
   const scope = run.sourceId ? (run.homePeriod ? `source-home-period:${run.sourceId}:${run.homePeriod}` : `source-${run.dateScope}-day:${run.sourceId}`) : run.reprocess ? "reprocess" : "unreviewed";
-  await db.insert(triageBatches).values({ id: batchId, userId: user.userId, trigger: "manual", scope, status: "queued", createdAt: now });
-  await db.insert(triageBatchItems).values(candidates.map(({ jobId }) => ({ batchId, jobId, status: "queued", attemptCount: 0, updatedAt: now })));
+  try {
+    await db.insert(triageBatches).values({ id: batchId, userId: user.userId, trigger: "manual", scope, status: "queued", createdAt: now });
+    // D1 limita a ~100 parâmetros vinculados por statement. Cada linha de
+    // triageBatchItems usa 9 colunas, então um único insert com mais de ~11
+    // vagas já estoura o limite e o D1 lança um erro (ex.: lotes de 57 vagas
+    // da APInfo). Insere em fatias pequenas para nunca esbarrar nesse teto.
+    const itemsChunkSize = 10;
+    const items = candidates.map(({ jobId }) => ({ batchId, jobId, status: "queued" as const, attemptCount: 0, updatedAt: now }));
+    for (let index = 0; index < items.length; index += itemsChunkSize) {
+      await db.insert(triageBatchItems).values(items.slice(index, index + itemsChunkSize));
+    }
+  } catch (error) {
+    const detail = error instanceof Error ? error.message.slice(0, 1000) : "Não foi possível registrar o lote no banco.";
+    await db.update(triageBatches).set({ status: "failed", completedAt: new Date(), error: detail }).where(eq(triageBatches.id, batchId)).catch(() => {});
+    return NextResponse.json({ error: detail, batchId }, { status: 503 });
+  }
   const payloads = candidates.map(({ jobId }): QueueMessage => ({ body: { userId: user.userId, batchId, jobId, run } }));
   try {
     for (let index = 0; index < payloads.length; index += 100) await queue.sendBatch(payloads.slice(index, index + 100));

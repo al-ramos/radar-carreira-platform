@@ -72,6 +72,7 @@ const roleArea = (url.searchParams.get("area") ?? "").trim();
 const ingestionChannel = (url.searchParams.get("channel") ?? "").trim();
 const importRunId = (url.searchParams.get("importRun") ?? "").trim();
 const ingestionMode = url.searchParams.get("ingestionMode") ?? "all";
+const hasEmailParam = url.searchParams.get("hasEmail") ?? "all";
 const parseDateParam = (name: string) => {
 const value = url.searchParams.get(name);
 if (!value) return null;
@@ -96,7 +97,18 @@ const receivedCondition = and(
 receivedFrom ? gte(jobs.firstSeenAt, receivedFrom) : undefined,
 receivedTo ? lte(jobs.firstSeenAt, receivedTo) : undefined,
 );
-const baseCondition = and(receivedInPeriodCondition, ingestionCondition, receivedCondition);
+// "Sem e-mail" trata string vazia como ausência, não só NULL — o campo já
+// foi salvo como "" em alguns fluxos antigos de captura.
+const hasEmailCondition = hasEmailParam === "yes"
+? and(sql`${jobs.contactEmail} is not null`, sql`${jobs.contactEmail} != ${""}`)
+: hasEmailParam === "no"
+? or(isNull(jobs.contactEmail), eq(jobs.contactEmail, ""))
+: undefined;
+// Base sem o próprio filtro de e-mail — usada só para contar quantas vagas
+// ficariam de fora se "tem e-mail" fosse marcado, respeitando os demais
+// filtros ativos (mesmo quando o checkbox está desmarcado).
+const baseConditionWithoutEmailFilter = and(receivedInPeriodCondition, ingestionCondition, receivedCondition);
+const baseCondition = and(baseConditionWithoutEmailFilter, hasEmailCondition);
 const linkedInCondition = and(baseCondition, like(jobs.url, "%linkedin.com%"));
 const apinfoCondition = and(
 baseCondition,
@@ -194,6 +206,32 @@ const affinityCandidateCondition = minScore > BASE_TECH_SCORE
 )
 : undefined;
 const condition = and(exactSourceCondition, roleAreaCondition, channelCondition, importRunCondition, seniorityCondition, searchCondition, pipelineCondition, affinityCandidateCondition);
+// Contagem "sem e-mail" mostrada junto ao checkbox — sempre calculada com os
+// mesmos filtros ativos (fonte, área, canal, importação, busca, pipeline),
+// mas ignorando o próprio filtro de e-mail, para o número não desaparecer
+// quando o checkbox está desmarcado nem ficar preso ao lado "com e-mail".
+const noEmailCondition = or(isNull(jobs.contactEmail), eq(jobs.contactEmail, ""));
+const exactSourceConditionNoEmailFilter = sourceId === "unidentified"
+? and(baseConditionWithoutEmailFilter, isNull(jobs.sourceId))
+: sourceId
+? and(baseConditionWithoutEmailFilter, eq(jobs.sourceId, sourceId))
+: sourceType === "linkedin"
+? and(baseConditionWithoutEmailFilter, like(jobs.url, "%linkedin.com%"))
+: sourceType === "apinfo"
+? and(baseConditionWithoutEmailFilter, or(eq(jobs.sourceId, "apinfo-extension"), like(jobs.url, "%apinfo.com%")))
+: sourceType === "other"
+? and(baseConditionWithoutEmailFilter, notLike(jobs.url, "%linkedin.com%"), notLike(jobs.url, "%apinfo.com%"), sql`(${jobs.sourceId} is null or ${jobs.sourceId} != ${"apinfo-extension"})`)
+: baseConditionWithoutEmailFilter;
+const emailMissingCondition = and(
+exactSourceConditionNoEmailFilter,
+noEmailCondition,
+roleAreaCondition,
+channelCondition,
+importRunCondition,
+seniorityCondition,
+searchCondition,
+pipelineCondition,
+);
 
 const rowsQuery = getDb().select({
 id: jobs.id,
@@ -225,11 +263,12 @@ description: degradedMode
 sort === "imported" ? desc(jobs.firstSeenAt) : desc(jobs.publishedAt),
 desc(jobs.createdAt),
 );
-const [rows, eligibleTotals, sourceTotals, sourceOptionsRows, areaOptionsRows, channelOptionsRows, recentRuns] = await Promise.all([
+const [rows, eligibleTotals, emailMissingTotals, sourceTotals, sourceOptionsRows, areaOptionsRows, channelOptionsRows, recentRuns] = await Promise.all([
 requiresPostFiltering
 ? rowsQuery.limit(MAX_AFFINITY_CANDIDATES)
 : rowsQuery.limit(limit).offset(offset),
 getDb().select({ total: sql<number>`count(*)` }).from(jobs).where(condition),
+getDb().select({ total: sql<number>`count(*)` }).from(jobs).where(emailMissingCondition),
 getDb().select({
 total: sql<number>`count(*)`,
 linkedIn: sql<number>`sum(case when ${jobs.url} like ${"%linkedin.com%"} then 1 else 0 end)`,
@@ -316,6 +355,7 @@ const baseTotal = Number(sourceTotals[0]?.total ?? 0);
 return NextResponse.json({
 jobs: result,
 total: totalCount,
+emailMissingCount: Number(emailMissingTotals[0]?.total ?? 0),
 totalLinkedIn,
 totalApinfo,
 totalOtherSources: Math.max(0, baseTotal - totalLinkedIn - totalApinfo),

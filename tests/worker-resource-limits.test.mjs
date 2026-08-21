@@ -22,7 +22,7 @@ test("a listagem pagina no D1 antes de enriquecer o fluxo normal", async () => {
   // sem refletir a ordem/paginação reais.
   assert.match(route, /requiresPostFiltering = .*sort === "score"/);
   assert.match(route, /substr\(\$\{jobs\.description\}/);
-  assert.match(route, /const \[rows, eligibleTotals, sourceTotals,/);
+  assert.match(route, /const \[rows, eligibleTotals, emailMissingTotals, sourceTotals,/);
   assert.match(route, /verdictFilter !== "all" && masteredSkills\.length/);
   assert.match(route, /isTechnologyJob/);
   assert.match(route, /profileHasScoringSignals \? requestedMinScore : 0/);
