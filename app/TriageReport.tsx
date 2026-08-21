@@ -70,6 +70,7 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
   });
   const historyPageSize = 10;
   const visibleHistory = orderedHistory.slice(historyPage * historyPageSize, (historyPage + 1) * historyPageSize);
+  const historyPageCount = Math.ceil(filteredHistory.length / historyPageSize);
   const hasActiveAdvancedFilters = draftFilter !== "all" || Boolean(receivedDateFilter) || Boolean(analysedDateFilter);
   const scheduledSummary = (batch: Batch) => {
     if (batch.total === 0) return "Nenhuma vaga nova pendente de avaliação foi encontrada para este dia.";
@@ -248,9 +249,14 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
                 </details>
                 <button type="button" className="triage-clear-filters" onClick={() => { setVerdictFilter("all"); setSourceFilter("all"); setJobSourceFilter("apinfo-extension"); setDraftFilter("all"); setPublishedDateFilter(saoPauloToday()); setReceivedDateFilter(""); setAnalysedDateFilter(""); setAdvancedFiltersOpen(false); setHistoryPage(0); }}>Consulta APInfo de hoje</button>
               </div>
+              {filteredHistory.length > historyPageSize && <nav className="triage-pagination" aria-label="Paginação do histórico">
+                <button type="button" disabled={historyPage === 0} onClick={() => setHistoryPage(page => page - 1)}>← Anterior</button>
+                <span><b>{historyPage * historyPageSize + 1}–{Math.min((historyPage + 1) * historyPageSize, filteredHistory.length)}</b> de {filteredHistory.length} vagas</span>
+                <small>Página {historyPage + 1} de {historyPageCount}</small>
+                <button type="button" disabled={(historyPage + 1) * historyPageSize >= filteredHistory.length} onClick={() => setHistoryPage(page => page + 1)}>Próxima →</button>
+              </nav>}
               <div className="triage-table-wrap"><table className="triage-table"><thead><tr><th><button onClick={() => sortHistory("verdict")}>Veredito</button></th><th><button onClick={() => sortHistory("title")}>Vaga</button></th><th><button onClick={() => sortHistory("company")}>Empresa</button></th><th>Fonte / código</th><th>Local e modalidade</th><th>Publicada / recebida</th><th>Contato</th><th><button onClick={() => sortHistory("draft")}>Rascunho</button></th><th><button onClick={() => sortHistory("processedAt")}>Analisada</button></th></tr></thead><tbody>{visibleHistory.length ? visibleHistory.map((item) => <tr key={item.id} className={rowClass[item.verdict] ?? "backlog"}><td className="triage-verdict">{item.verdict}<small>{item.source === "ai" ? "IA" : item.source === "legacy" ? "Radar" : "Regras"}</small></td><td><a href={item.url} target="_blank" rel="noreferrer"><b>{item.title}</b></a><span>{item.label}{item.blocker ? ` · ${item.blocker}` : ""}</span>{item.source === "ai" && <details><summary>Evidências</summary><pre>{item.rows}</pre></details>}</td><td>{item.company}</td><td>{item.jobSource ? sourceName(item.jobSource) : "Não informada"}<small>{item.externalId ? `Código ${item.externalId}` : "Sem código"}</small></td><td>{item.workMode ?? "—"}<small>{item.location ?? "Local não informado"}</small></td><td>{item.sourcePublishedAt ? date(item.sourcePublishedAt) : "Não informada"}<small>Recebida: {date(item.receivedAt)}</small></td><td>{item.hasValidContactEmail ? item.contactEmail : "Manual / sem e-mail"}</td><td>{item.draftStatus === "drafted" ? "Pronto" : item.draftStatus === "pending" ? "Na fila" : item.draftStatus === "failed" ? "Falhou" : "—"}</td><td>{date(item.processedAt)}</td></tr>) : <tr><td className="triage-table-empty" colSpan={9}>Nenhuma vaga corresponde aos filtros selecionados.</td></tr>}</tbody></table></div>
             </div>
-            {filteredHistory.length > historyPageSize && <div className="triage-run-settings"><button disabled={historyPage === 0} onClick={() => setHistoryPage(page => page - 1)}>Anterior</button><small>Página {historyPage + 1} de {Math.ceil(filteredHistory.length / historyPageSize)}</small><button disabled={(historyPage + 1) * historyPageSize >= filteredHistory.length} onClick={() => setHistoryPage(page => page + 1)}>Próxima</button></div>}
           </section>
         )}
       </section>

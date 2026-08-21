@@ -18,6 +18,8 @@ test("histórico expõe saúde operacional sem executar triagem ou Gmail", async
   assert.match(screen, /Saúde operacional/);
   assert.match(screen, /<details className="triage-actions">/);
   assert.match(screen, /Exibir ações de automação/);
+  assert.match(screen, /triage-pagination/);
+  assert.match(screen, /de \{filteredHistory\.length\} vagas/);
   assert.doesNotMatch(screen, /Rascunhos de candidatura/);
   assert.match(screen, /Sem alertas operacionais/);
   assert.match(styles, /\.triage-operations/);
