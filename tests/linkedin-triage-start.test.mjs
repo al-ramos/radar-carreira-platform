@@ -13,10 +13,11 @@ test("acionamento manual respeita os filtros ativos da Home", async () => {
   assert.match(route, /run\.dateScope === "received" \? jobs\.firstSeenAt : jobs\.publishedAt/);
   assert.match(route, /run\.roleArea \? eq\(jobs\.roleArea, run\.roleArea\)/);
   assert.match(route, /run\.ingestionChannel \? eq\(jobs\.ingestionChannel, run\.ingestionChannel\)/);
-  assert.match(ui, /sourceId: actionSourceId, dateScope: "published", homePeriod, roleArea: actionArea, ingestionChannel: actionChannel/);
+  assert.match(ui, /sourceId: actionSourceId, dateScope: "published", homePeriod: actionPeriod, roleArea: actionArea, ingestionChannel: actionChannel/);
   assert.match(ui, /aiMode: "off", createDrafts: false/);
   assert.match(ui, /Fonte das vagas a analisar/);
   assert.match(ui, /Incluir vagas já triadas/);
+  assert.match(ui, /Período das vagas a analisar/);
   assert.match(preview, /eq\(jobs\.sourceId, sourceId\)/);
   assert.match(preview, /gte\(jobs\.publishedAt, cutoff\)/);
   assert.match(preview, /count\(userJobAnalyses\.jobId\)/);

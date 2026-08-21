@@ -19,6 +19,7 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
     [actionSourceId, setActionSourceId] = useState(sourceId ?? ""),
     [actionArea, setActionArea] = useState(initialArea),
     [actionChannel, setActionChannel] = useState(initialChannel),
+    [actionPeriod, setActionPeriod] = useState<"24" | "72" | "168" | "all">(homePeriod),
     [actionCandidate, setActionCandidate] = useState<{ key: string; count: number; total: number; triaged: number } | null>(null),
     [reprocess, setReprocess] = useState(false),
     [history, setHistory] = useState<HistoryItem[]>([]),
@@ -56,11 +57,11 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
     const timer = window.setTimeout(() => { void loadHistory(); }, 0);
     return () => window.clearTimeout(timer);
   }, []);
-  const actionSelectionKey = `${actionSourceId}|${actionArea}|${actionChannel}|${homePeriod}|${reprocess}`;
+  const actionSelectionKey = `${actionSourceId}|${actionArea}|${actionChannel}|${actionPeriod}|${reprocess}`;
   useEffect(() => {
     if (!actionSourceId) return;
     const controller = new AbortController();
-    const query = new URLSearchParams({ sourceId: actionSourceId, includeTriaged: String(reprocess), period: homePeriod });
+    const query = new URLSearchParams({ sourceId: actionSourceId, includeTriaged: String(reprocess), period: actionPeriod });
     if (actionArea !== "all") query.set("roleArea", actionArea);
     if (actionChannel !== "all") query.set("ingestionChannel", actionChannel);
     void fetch(`/api/triage/preview?${query}`, { signal: controller.signal })
@@ -68,7 +69,7 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
       .then((data) => setActionCandidate({ key: actionSelectionKey, count: typeof data.count === "number" ? data.count : 0, total: typeof data.total === "number" ? data.total : 0, triaged: typeof data.triaged === "number" ? data.triaged : 0 }))
       .catch((error: unknown) => { if (!(error instanceof DOMException && error.name === "AbortError")) setActionCandidate({ key: actionSelectionKey, count: 0, total: 0, triaged: 0 }); });
     return () => controller.abort();
-  }, [actionArea, actionChannel, actionSelectionKey, actionSourceId, homePeriod, reprocess]);
+  }, [actionArea, actionChannel, actionPeriod, actionSelectionKey, actionSourceId, reprocess]);
   const date = (v: string) =>
     new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(v));
   const latestScheduled = batches.find((batch) => batch.trigger === "scheduled");
@@ -113,12 +114,12 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
   const runToday = async () => {
     if (!actionSourceId || !actionCandidateCount || actionCandidateCount > MAX_MANUAL_TRIAGE_JOBS) return;
     setRunningPilot(true);
-    setMessage(`Analisando ${actionCandidateCount} vaga(s) do recorte ${homePeriodLabel(homePeriod)}…`);
+    setMessage(`Analisando ${actionCandidateCount} vaga(s) do recorte ${homePeriodLabel(actionPeriod)}…`);
     try {
       const response = await fetch("/api/triage/run", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ trigger: "portal", sourceId: actionSourceId, dateScope: "published", homePeriod, roleArea: actionArea, ingestionChannel: actionChannel, batchSize: actionCandidateCount, reprocess, aiMode: "off", createDrafts: false }),
+        body: JSON.stringify({ trigger: "portal", sourceId: actionSourceId, dateScope: "published", homePeriod: actionPeriod, roleArea: actionArea, ingestionChannel: actionChannel, batchSize: actionCandidateCount, reprocess, aiMode: "off", createDrafts: false }),
       });
       const result = await response.json() as PilotResult & { error?: string };
       if (!response.ok) throw new Error(result.error ?? "Não foi possível concluir o piloto.");
@@ -211,12 +212,17 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
                     Incluir vagas já triadas
                   </label>
                   <label>
-                    Período da Home
-                    <output>{homePeriodLabel(homePeriod)}</output>
+                    Período da triagem
+                    <select aria-label="Período das vagas a analisar" value={actionPeriod} onChange={(e) => setActionPeriod(e.target.value as "24" | "72" | "168" | "all")} disabled={runningPilot}>
+                      <option value="24">Últimas 24h</option>
+                      <option value="72">Últimos 3 dias</option>
+                      <option value="168">Últimos 7 dias</option>
+                      <option value="all">Todas as vagas</option>
+                    </select>
                   </label>
                 </div>
                 <div className="triage-run-selection" aria-live="polite">
-                  {actionCandidateCount === null ? "Selecione uma fonte para consultar o mesmo recorte da Home." : actionCandidateCount === 0 && actionCandidateTotal ? `Há ${actionCandidateTotal} vaga${actionCandidateTotal === 1 ? "" : "s"} no recorte ${homePeriodLabel(homePeriod)}, mas todas já foram triadas.` : actionCandidateCount === 0 ? `Nenhuma vaga corresponde aos filtros ativos da Home em ${homePeriodLabel(homePeriod)}.` : `${actionCandidateCount} vaga${actionCandidateCount === 1 ? "" : "s"} aguardando triagem, de ${actionCandidateTotal} no recorte ${homePeriodLabel(homePeriod)}.`}
+                  {actionCandidateCount === null ? "Selecione uma fonte para consultar o recorte da triagem." : actionCandidateCount === 0 && actionCandidateTotal ? `Há ${actionCandidateTotal} vaga${actionCandidateTotal === 1 ? "" : "s"} no recorte ${homePeriodLabel(actionPeriod)}, mas todas já foram triadas.` : actionCandidateCount === 0 ? `Nenhuma vaga corresponde aos filtros da triagem em ${homePeriodLabel(actionPeriod)}.` : `${actionCandidateCount} vaga${actionCandidateCount === 1 ? "" : "s"} aguardando triagem, de ${actionCandidateTotal} no recorte ${homePeriodLabel(actionPeriod)}.`}
                   {actionCandidateCount === 0 && Boolean(actionCandidateTotal) && !reprocess && <span>Marque “Incluir vagas já triadas” para reavaliar as vagas desse recorte.</span>}
                   {actionCandidateCount !== null && actionCandidateCount > MAX_MANUAL_TRIAGE_JOBS && <span>Refine Área ou Canal para analisar até {MAX_MANUAL_TRIAGE_JOBS} vagas por vez.</span>}
                 </div>
@@ -227,7 +233,7 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
                   {queueingDrafts ? "Preparando fila…" : "Preparar rascunhos elegíveis"}
                 </button>
                 <button className="triage-queue-button" disabled={queueingDrafts || runningPilot} onClick={retryFailedDrafts}>Reprocessar falhas de rascunho</button>
-                <small>A consulta replica Fonte, Área, Canal e Período ativos na Home; o período considera a data de publicação da vaga, como na lista principal. Por padrão, somente vagas ainda não triadas entram no recorte. A fila exige vaga aprovada ou provável, análise atual e e-mail de contato válido.</small>
+                <small>A consulta inicia com Fonte, Área, Canal e Período ativos na Home; o período pode ser ajustado aqui e considera a data de publicação da vaga, como na lista principal. Por padrão, somente vagas ainda não triadas entram no recorte. A fila exige vaga aprovada ou provável, análise atual e e-mail de contato válido.</small>
               </div>
             </details>
           </div>
