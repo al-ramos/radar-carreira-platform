@@ -158,6 +158,25 @@ export async function POST(request: Request) {
           target: [triageBatchItems.batchId, triageBatchItems.jobId],
           set: { status: "completed", historyId: claimed.historyId, error: null, leaseOwner: null, leaseUntil: null, updatedAt: now },
         });
+        // A tela de Histórico lê de user_job_analyses, não de triage_history.
+        // Sem este upsert, uma vaga reaproveitada por idempotência fica com
+        // veredito salvo mas invisível na tela — mesmo incidente do lote acima.
+        if (claimed.historyId) {
+          const reusedHistory = await db.select().from(triageHistory).where(eq(triageHistory.id, claimed.historyId)).limit(1).then(rows => rows[0]);
+          if (reusedHistory) {
+            const reusedVerdict = evaluateDeterministicTriage({ ...job, stack: parseStack(job.stack) }, canonicalProfile);
+            await db.insert(userJobAnalyses).values({
+              userId, jobId: job.id, profileVersion: profile.updatedAt, ...versions,
+              verdict: reusedHistory.verdict, label: reusedHistory.label, blocker: reusedHistory.blocker, rows: reusedHistory.rows,
+              matchingSkills: JSON.stringify(reusedVerdict.matchingSkills), missingSkills: JSON.stringify(reusedVerdict.missingSkills),
+              source: reusedHistory.source, confidence: reusedHistory.confidence,
+              explanation: null, createdAt: now, updatedAt: now,
+            }).onConflictDoUpdate({
+              target: [userJobAnalyses.userId, userJobAnalyses.jobId],
+              set: { profileVersion: profile.updatedAt, ...versions, verdict: reusedHistory.verdict, label: reusedHistory.label, blocker: reusedHistory.blocker, rows: reusedHistory.rows, matchingSkills: JSON.stringify(reusedVerdict.matchingSkills), missingSkills: JSON.stringify(reusedVerdict.missingSkills), source: reusedHistory.source, confidence: reusedHistory.confidence, updatedAt: now },
+            });
+          }
+        }
         continue;
       }
 
