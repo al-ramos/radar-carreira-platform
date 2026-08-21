@@ -31,6 +31,9 @@ test("triagem permite ações avulsas por vaga sem contornar os guardrails", asy
   assert.match(screen, /actions\.open = true/);
   assert.match(screen, /aiPromptRef\.current\?\.scrollIntoView/);
   assert.match(screen, /ref=\{aiPromptRef\}/);
+  assert.match(screen, /readJsonResponse/);
+  assert.match(screen, /não recebeu resposta do serviço/);
+  assert.match(screen, /A solicitação de análise/);
   assert.match(queue, /jobIds\?: string\[\]/);
   assert.match(queue, /inArray\(triageHistory\.jobId, requestedJobIds\)/);
   assert.match(queue, /isSafeForDraft/);

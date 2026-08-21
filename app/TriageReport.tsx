@@ -14,6 +14,12 @@ const saoPauloToday = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Americ
 const sourceName = (source: string) => source === "apinfo-extension" ? "APInfo" : source === "linkedin-extension" ? "LinkedIn" : source;
 const homePeriodLabel = (period: string) => period === "24" ? "recebidas nas últimas 24h" : period === "72" ? "recebidas nos últimos 3 dias" : period === "168" ? "recebidas nos últimos 7 dias" : "todas as vagas";
 const profileList = (values: string[], fallback: string) => values.length ? values.join(" · ") : fallback;
+const readJsonResponse = async <T,>(response: Response, action: string): Promise<T> => {
+  const body = await response.text();
+  if (!body.trim()) throw new Error(`${action} não recebeu resposta do serviço. Tente novamente.`);
+  try { return JSON.parse(body) as T; }
+  catch { throw new Error(`${action} recebeu uma resposta inválida do serviço. Tente novamente.`); }
+};
 export default function TriageReport({ close, openJobInRadar, sourceId, sourceLabel, sourceOptions = [], areaOptions = [], channelOptions = [], initialArea = "all", initialChannel = "all", homePeriod = "24" }: { close: () => void; openJobInRadar: (job: Pick<HistoryItem, "jobId" | "externalId" | "jobSource">) => void; sourceId?: string; sourceLabel?: string; sourceOptions?: FilterOption[]; areaOptions?: FilterOption[]; channelOptions?: FilterOption[]; initialArea?: string; initialChannel?: string; homePeriod?: "24" | "72" | "168" | "all" }) {
   const [message, setMessage] = useState("Carregando avaliações…"),
     [runningPilot, setRunningPilot] = useState(false),
@@ -75,7 +81,7 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
   }, []);
   useEffect(() => {
     if (!aiReview?.id || ["completed", "partial_failed", "failed", "blocked"].includes(aiReview.status ?? "")) return;
-    const timer = window.setInterval(() => void fetch(`/api/triage/ai-review?id=${aiReview.id}`).then(response => response.ok ? response.json() as Promise<AiReview> : null).then(result => { if (result) { setAiReview(result); if (["completed", "partial_failed", "failed"].includes(result.status ?? "")) setMessage(result.status === "completed" ? "Análise da IA concluída. Nenhuma decisão operacional foi alterada." : result.error ?? "A análise terminou com falhas parciais."); } }), 3000);
+    const timer = window.setInterval(() => void fetch(`/api/triage/ai-review?id=${aiReview.id}`).then(async (response) => response.ok ? readJsonResponse<AiReview>(response, "Acompanhamento da análise") : null).then(result => { if (result) { setAiReview(result); if (["completed", "partial_failed", "failed"].includes(result.status ?? "")) setMessage(result.status === "completed" ? "Análise da IA concluída. Nenhuma decisão operacional foi alterada." : result.error ?? "A análise terminou com falhas parciais."); } }).catch(() => undefined), 3000);
     return () => window.clearInterval(timer);
   }, [aiReview?.id, aiReview?.status]);
   const actionSelectionKey = `${actionSourceId}|${actionArea}|${actionChannel}|${actionPeriod}|${reprocess}`;
@@ -226,7 +232,7 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ sourceId: actionSourceId, homePeriod: actionPeriod, roleArea: actionArea, ingestionChannel: actionChannel, includeTriaged: reprocess, jobIds: jobIds ?? undefined, prompt: aiPrompt }),
       });
-      const result = await response.json() as AiReview & { error?: string };
+      const result = await readJsonResponse<AiReview & { error?: string }>(response, "A solicitação de análise");
       if (!response.ok) throw new Error(result.error ?? "Não foi possível solicitar a análise da IA.");
       setAiReview({ ...result, status: result.status ?? "queued", total: result.total ?? result.chunks });
       setAiPromptOpen(false);
@@ -249,7 +255,7 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ sourceId: actionSourceId, homePeriod: actionPeriod, roleArea: actionArea, ingestionChannel: actionChannel, includeTriaged: reprocess, jobIds: jobIds ?? undefined, prompt: aiPrompt }),
       });
-      const result = await response.json() as { queued?: number; error?: string };
+      const result = await readJsonResponse<{ queued?: number; error?: string }>(response, "A preparação para o Codex");
       if (!response.ok) throw new Error(result.error ?? "Não foi possível preparar a análise para o Codex.");
       setAiPromptOpen(false);
       setMessage(`${result.queued ?? aiCount} vaga(s) foram preparadas. Nesta conversa, basta pedir: “Analise a última triagem preparada para o Codex”. Nenhuma decisão do portal foi alterada.`);
@@ -274,7 +280,7 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
     setAiProfileError("");
     try {
       const response = await fetch("/api/profile");
-      const result = await response.json() as { profile?: AiProfile };
+      const result = await readJsonResponse<{ profile?: AiProfile }>(response, "O carregamento do perfil");
       if (!response.ok || !result.profile) throw new Error("Perfil indisponível");
       setAiProfile(result.profile);
     } catch {
