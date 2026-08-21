@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, isNull, lt } from "drizzle-orm";
+import { and, desc, eq, gte, isNull, lt, or } from "drizzle-orm";
 import { env } from "cloudflare:workers";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
@@ -25,19 +25,26 @@ async function resumePendingBatch({ userId, batchId, queue }: { userId: string; 
 
   const now = new Date();
   const staleBefore = new Date(now.getTime() - STALE_QUEUE_ITEM_MS);
+  // Um item pode parar em "processing" se a execução for interrompida após
+  // a reserva, mas antes da resposta final. Só é seguro retomá-lo quando a
+  // reserva expirou; uma análise que ainda possui reserva válida permanece
+  // intocada para não rodar duas vezes em paralelo.
+  const recoverableItem = or(
+    and(eq(triageBatchItems.status, "queued"), lt(triageBatchItems.updatedAt, staleBefore)),
+    and(eq(triageBatchItems.status, "processing"), or(isNull(triageBatchItems.leaseUntil), lt(triageBatchItems.leaseUntil, now))),
+  );
   const pending = await db.select({ jobId: triageBatchItems.jobId }).from(triageBatchItems)
     .where(and(
       eq(triageBatchItems.batchId, batchId),
-      eq(triageBatchItems.status, "queued"),
-      lt(triageBatchItems.updatedAt, staleBefore),
+      recoverableItem,
     ));
   if (!pending.length) return { status: 200 as const, resumed: 0 };
 
   // A seleção do lote é persistida: o executor recebe cada jobId e ignora
   // qualquer vaga que tenha sido concluída entre a interrupção e a retomada.
   const run = normalizeTriageRunRequest({ trigger: "portal", batchSize: 1, aiMode: "off", createDrafts: false });
-  await db.update(triageBatchItems).set({ leaseOwner: null, leaseUntil: null, error: null, updatedAt: now })
-    .where(and(eq(triageBatchItems.batchId, batchId), eq(triageBatchItems.status, "queued"), lt(triageBatchItems.updatedAt, staleBefore)));
+  await db.update(triageBatchItems).set({ status: "queued", leaseOwner: null, leaseUntil: null, error: null, updatedAt: now })
+    .where(and(eq(triageBatchItems.batchId, batchId), recoverableItem));
   await db.update(triageBatches).set({ status: "queued", error: null, completedAt: null }).where(eq(triageBatches.id, batchId));
 
   const messages = pending.map(({ jobId }): QueueMessage => ({ body: { userId, batchId, jobId, run } }));

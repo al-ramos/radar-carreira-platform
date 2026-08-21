@@ -24,7 +24,11 @@ test("fila da triagem possui consumidor controlado, retomada e DLQ", async () =>
   assert.match(queueRoute, /action\?: "resume"/);
   assert.match(queueRoute, /STALE_QUEUE_ITEM_MS/);
   assert.match(queueRoute, /resumePendingBatch/);
+  assert.match(queueRoute, /eq\(triageBatchItems\.status, "processing"\)/);
+  assert.match(queueRoute, /lt\(triageBatchItems\.leaseUntil, now\)/);
+  assert.match(queueRoute, /set\(\{ status: "queued", leaseOwner: null/);
   assert.match(worker, /try \{/);
   assert.match(worker, /message\.retry\(\{ delaySeconds: 15 \}\)/);
-  assert.match(ui, /Retomar \$\{manualItemCounts\.queued\} pendente\(s\)/);
+  assert.match(ui, /recoverableManualItemCount/);
+  assert.match(ui, /Fila interrompida/);
 });
