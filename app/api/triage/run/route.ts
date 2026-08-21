@@ -19,6 +19,14 @@ const AI_FACTS_VERSION = "job-facts-v1";
 const RESERVED_OUTPUT_TOKENS = 1200;
 const MAX_AI_PER_BATCH = 10;
 
+async function finishQueuedBatch(batchId: string) {
+  const db = getDb();
+  const rows = await db.select({ status: triageBatchItems.status }).from(triageBatchItems).where(eq(triageBatchItems.batchId, batchId));
+  if (rows.some((row) => row.status === "queued" || row.status === "processing")) return;
+  const failed = rows.some((row) => row.status === "failed");
+  await db.update(triageBatches).set({ status: failed ? "failed" : "completed", completedAt: new Date(), error: failed ? "Uma ou mais vagas falharam; a fila fará novas tentativas antes de encaminhá-las à DLQ." : null }).where(eq(triageBatches.id, batchId));
+}
+
 function parseStack(value: string): string[] {
   try {
     const parsed: unknown = JSON.parse(value);
@@ -37,13 +45,15 @@ function parseStack(value: string): string[] {
 export async function POST(request: Request) {
   const user = await getChatGPTUser();
   const schedulerAuthenticated = request.headers.get("x-radar-collector-authenticated") === "1";
+  const queueAuthenticated = request.headers.get("x-radar-triage-queue-authenticated") === "1";
+  const queuedUserId = request.headers.get("x-radar-triage-user-id")?.trim() || null;
   const source = schedulerAuthenticated ? (await getDb().select().from(jobSources).where(eq(jobSources.id, "gmail-radarvagas")).limit(1))[0] : null;
   let scheduledUserId: string | null = null;
   try { const config = source ? JSON.parse(source.externalRef) as { userId?: string } : null; if (config?.userId) scheduledUserId = config.userId; } catch { /* a sessão normal permanece disponível */ }
-  const userId = user?.userId ?? scheduledUserId;
+  const userId = queueAuthenticated ? queuedUserId : user?.userId ?? scheduledUserId;
   if (!userId) return NextResponse.json({ error: "Autenticação necessária" }, { status: 401 });
 
-  let body: Partial<TriageRunRequest> = {};
+  let body: Partial<TriageRunRequest> & { batchId?: string; jobId?: string } = {};
   try {
     body = await request.json() as Partial<TriageRunRequest>;
   } catch {
@@ -59,6 +69,7 @@ export async function POST(request: Request) {
       dateScope: body.dateScope,
       roleArea: body.roleArea,
       ingestionChannel: body.ingestionChannel,
+      homePeriod: body.homePeriod,
       batchSize: body.batchSize,
       reprocess: body.reprocess,
       aiMode: body.aiMode ?? "off",
@@ -69,6 +80,7 @@ export async function POST(request: Request) {
   }
   if (schedulerAuthenticated && run.trigger !== "schedule") return NextResponse.json({ error: "A chave de agenda só pode iniciar a rotina agendada." }, { status: 403 });
   if (!schedulerAuthenticated && run.trigger === "schedule") return NextResponse.json({ error: "A rotina agendada só pode ser iniciada pelo backend do Radar." }, { status: 403 });
+  if (queueAuthenticated && (!queuedUserId || !body.batchId || !body.jobId || run.trigger !== "portal")) return NextResponse.json({ error: "Mensagem da fila inválida." }, { status: 403 });
   if (run.aiMode === "all") return NextResponse.json({ error: "A IA só pode processar vagas ambíguas; o modo all não é permitido." }, { status: 400 });
 
   const db = getDb();
@@ -83,6 +95,8 @@ export async function POST(request: Request) {
   const scopedToReferenceDay = !usesHomePeriod && (run.trigger === "schedule" || Boolean(run.sourceId) || run.dateScope === "received");
   const dateColumn = run.dateScope === "received" ? jobs.firstSeenAt : jobs.publishedAt;
   const homeCutoff = run.homePeriod && run.homePeriod !== "all" ? new Date(Date.now() - Number(run.homePeriod) * 36e5) : null;
+  const queuedBatchId = queueAuthenticated ? body.batchId! : null;
+  const queuedJobId = queueAuthenticated ? body.jobId! : null;
   const candidates = await db
     .select({ job: jobs, analysis: userJobAnalyses })
     .from(jobs)
@@ -95,6 +109,7 @@ export async function POST(request: Request) {
       run.sourceId ? eq(jobs.sourceId, run.sourceId) : undefined,
       run.roleArea ? eq(jobs.roleArea, run.roleArea) : undefined,
       run.ingestionChannel ? eq(jobs.ingestionChannel, run.ingestionChannel) : undefined,
+      queuedJobId ? eq(jobs.id, queuedJobId) : undefined,
       run.reprocess ? undefined : run.aiMode === "ambiguous"
         ? or(isNull(userJobAnalyses.jobId), and(eq(userJobAnalyses.source, "rules"), lt(userJobAnalyses.confidence, 100), isNull(userJobAnalyses.blocker)))
         : isNull(userJobAnalyses.jobId),
@@ -103,13 +118,22 @@ export async function POST(request: Request) {
     .limit(run.batchSize);
 
   const now = new Date();
-  const batchId = crypto.randomUUID();
+  const batchId = queuedBatchId ?? crypto.randomUUID();
   const trigger = run.trigger === "portal" ? "manual" : run.trigger === "schedule" ? "scheduled" : "assistant";
-  await db.insert(triageBatches).values({
-    id: batchId, userId, trigger,
-    scope: run.sourceId ? (run.homePeriod ? `source-home-period:${run.sourceId}:${run.homePeriod}` : `source-${run.dateScope}-day:${run.sourceId}`) : run.trigger === "schedule" ? "schedule-day" : run.reprocess ? "reprocess" : "unreviewed",
-    status: "running", startedAt: now, createdAt: now,
-  });
+  if (queuedBatchId) {
+    await db.update(triageBatches).set({ status: "running", startedAt: now, error: null }).where(and(eq(triageBatches.id, batchId), eq(triageBatches.userId, userId)));
+    if (!candidates.length && queuedJobId) {
+      await db.update(triageBatchItems).set({ status: "skipped", error: "A vaga já foi triada antes de ser consumida pela fila.", updatedAt: now }).where(and(eq(triageBatchItems.batchId, batchId), eq(triageBatchItems.jobId, queuedJobId)));
+      await finishQueuedBatch(batchId);
+      return NextResponse.json({ ok: true, batchId, processed: [], skipped: 1, aiEligible: 0, aiCompleted: 0, draftsCreated: 0, aiUsed: false });
+    }
+  } else {
+    await db.insert(triageBatches).values({
+      id: batchId, userId, trigger,
+      scope: run.sourceId ? (run.homePeriod ? `source-home-period:${run.sourceId}:${run.homePeriod}` : `source-${run.dateScope}-day:${run.sourceId}`) : run.trigger === "schedule" ? "schedule-day" : run.reprocess ? "reprocess" : "unreviewed",
+      status: "running", startedAt: now, createdAt: now,
+    });
+  }
 
   const processed: Array<{ jobId: string; title: string; company: string; reference: string | null; contactEligible: boolean; aiEligible: boolean; aiStatus: "not_needed" | "cached" | "completed" | "pending" | "failed"; verdict: string; label: string; blocker: string | null }> = [];
   let skipped = 0;
@@ -141,7 +165,10 @@ export async function POST(request: Request) {
         target: triageDeduplication.idempotencyKey,
         set: { status: "processing", leaseOwner: batchId, leaseUntil: new Date(now.getTime() + 5 * 60_000), updatedAt: now },
       });
-      await db.insert(triageBatchItems).values({ batchId, jobId: job.id, status: "processing", attemptCount: 1, leaseOwner: batchId, leaseUntil: new Date(now.getTime() + 5 * 60_000), updatedAt: now });
+      await db.insert(triageBatchItems).values({ batchId, jobId: job.id, status: "processing", attemptCount: 1, leaseOwner: batchId, leaseUntil: new Date(now.getTime() + 5 * 60_000), updatedAt: now }).onConflictDoUpdate({
+        target: [triageBatchItems.batchId, triageBatchItems.jobId],
+        set: { status: "processing", error: null, attemptCount: sql`${triageBatchItems.attemptCount} + 1`, leaseOwner: batchId, leaseUntil: new Date(now.getTime() + 5 * 60_000), updatedAt: now },
+      });
       await db.insert(triageHistory).values({
         id: historyId, batchId, userId, jobId: job.id, ...versions,
         verdict: verdict.result.emoji, label: verdict.result.label, blocker: verdict.blocker, source: "rules", confidence: verdict.confidence, rows, createdAt: now,
@@ -209,10 +236,14 @@ export async function POST(request: Request) {
       }
       processed.push({ jobId: job.id, title: job.title, company: job.company, reference: job.externalId, contactEligible: Boolean(job.contactEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(job.contactEmail.trim())), aiEligible: aiRefinement.eligible, aiStatus, verdict: finalVerdict.verdict, label: finalVerdict.result.label, blocker: finalVerdict.blocker });
     }
-    await db.update(triageBatches).set({ status: "completed", completedAt: new Date(), error: null }).where(eq(triageBatches.id, batchId));
+    if (queuedBatchId) await finishQueuedBatch(batchId);
+    else await db.update(triageBatches).set({ status: "completed", completedAt: new Date(), error: null }).where(eq(triageBatches.id, batchId));
   } catch (error) {
     const detail = error instanceof Error ? error.message.slice(0, 1000) : "Erro desconhecido";
-    await db.update(triageBatches).set({ status: "failed", completedAt: new Date(), error: detail }).where(eq(triageBatches.id, batchId));
+    if (queuedBatchId && queuedJobId) {
+      await db.update(triageBatchItems).set({ status: "failed", error: detail, leaseOwner: null, leaseUntil: null, updatedAt: new Date() }).where(and(eq(triageBatchItems.batchId, batchId), eq(triageBatchItems.jobId, queuedJobId)));
+      await finishQueuedBatch(batchId);
+    } else await db.update(triageBatches).set({ status: "failed", completedAt: new Date(), error: detail }).where(eq(triageBatches.id, batchId));
     return NextResponse.json({ error: "Falha no lote; nenhum rascunho foi criado.", batchId, processed, detail }, { status: 500 });
   }
 

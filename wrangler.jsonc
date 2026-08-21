@@ -29,6 +29,16 @@
         "binding": "TRIAGE_QUEUE",
         "queue": "radar-carreira-triage"
       }
+    ],
+    "consumers": [
+      {
+        "queue": "radar-carreira-triage",
+        "max_batch_size": 10,
+        "max_batch_timeout": 5,
+        "max_retries": 3,
+        "max_concurrency": 2,
+        "dead_letter_queue": "radar-carreira-triage-dlq"
+      }
     ]
   }
 }

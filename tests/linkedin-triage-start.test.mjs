@@ -3,18 +3,24 @@ import test from "node:test";
 import { readFile } from "node:fs/promises";
 
 test("acionamento manual respeita os filtros ativos da Home", async () => {
-  const [route, ui, preview, queue, cron] = await Promise.all([
+  const [route, asyncRoute, ui, preview, queue, cron, worker] = await Promise.all([
     readFile(new URL("../app/api/triage/run/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/triage/queue/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/TriageReport.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/api/triage/preview/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/triage/drafts/queue/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/cron/drafts/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../worker/index.ts", import.meta.url), "utf8"),
   ]);
   assert.match(route, /run\.dateScope === "received" \? jobs\.firstSeenAt : jobs\.publishedAt/);
   assert.match(route, /run\.roleArea \? eq\(jobs\.roleArea, run\.roleArea\)/);
   assert.match(route, /run\.ingestionChannel \? eq\(jobs\.ingestionChannel, run\.ingestionChannel\)/);
+  assert.match(ui, /fetch\("\/api\/triage\/queue"/);
   assert.match(ui, /sourceId: actionSourceId, dateScope: "published", homePeriod: actionPeriod, roleArea: actionArea, ingestionChannel: actionChannel/);
-  assert.match(ui, /aiMode: "off", createDrafts: false/);
+  assert.match(asyncRoute, /TRIAGE_QUEUE/);
+  assert.match(asyncRoute, /triageBatchItems/);
+  assert.match(worker, /async queue\(/);
+  assert.match(worker, /x-radar-triage-queue-authenticated/);
   assert.match(ui, /Fonte das vagas a analisar/);
   assert.match(ui, /Incluir vagas já triadas/);
   assert.match(ui, /Período das vagas a analisar/);
@@ -25,9 +31,13 @@ test("acionamento manual respeita os filtros ativos da Home", async () => {
   assert.match(cron, /isDraftAllowedForSource\(row\.sourceId\)/);
 });
 
-test("painel mostra a quantidade real e pede filtros quando o recorte excede o limite seguro", async () => {
-  const ui = await readFile(new URL("../app/TriageReport.tsx", import.meta.url), "utf8");
-  assert.match(ui, /MAX_MANUAL_TRIAGE_JOBS = 100/);
-  assert.match(ui, /Refine Área ou Canal para analisar até/);
+test("painel inicia a fila para recortes grandes sem bloquear a ação manual", async () => {
+  const [ui, orchestrator] = await Promise.all([
+    readFile(new URL("../app/TriageReport.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/triage-orchestrator.ts", import.meta.url), "utf8"),
+  ]);
+  assert.doesNotMatch(ui, /MAX_MANUAL_TRIAGE_JOBS/);
+  assert.match(ui, /processado em segundo plano/);
+  assert.match(orchestrator, /MAX_ASYNC_TRIAGE_JOBS = 1000/);
   assert.match(ui, /Analisar vagas do recorte/);
 });

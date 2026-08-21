@@ -7,7 +7,6 @@ type Operational = { pendingDrafts: number; readyDrafts: number; failedDrafts: n
 type LegacyItem = { jobId: string; veredito: string; motivo: string | null; processedAt: string; title: string; company: string; externalId: string | null; sourceId: string | null; workMode: string | null; location: string | null; sourcePublishedAt: string | null; receivedAt: string; url: string; contactEmail: string | null };
 type FilterOption = { id: string; label: string; count: number };
 const rowClass: Record<string, string> = { "✅": "approved", "🟡": "partial", "❌": "rejected", "🔴": "rejected" };
-const MAX_MANUAL_TRIAGE_JOBS = 100;
 const saoPauloToday = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
 const sourceName = (source: string) => source === "apinfo-extension" ? "APInfo" : source === "linkedin-extension" ? "LinkedIn" : source;
 const homePeriodLabel = (period: string) => period === "24" ? "Últimas 24h" : period === "72" ? "Últimos 3 dias" : period === "168" ? "Últimos 7 dias" : "Todas as vagas";
@@ -112,19 +111,19 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
     return `${batch.eligible} vaga(s) elegível(is); somente as que têm contato válido podem gerar rascunho.`;
   };
   const runToday = async () => {
-    if (!actionSourceId || !actionCandidateCount || actionCandidateCount > MAX_MANUAL_TRIAGE_JOBS) return;
+    if (!actionSourceId || !actionCandidateCount) return;
     setRunningPilot(true);
-    setMessage(`Analisando ${actionCandidateCount} vaga(s) do recorte ${homePeriodLabel(actionPeriod)}…`);
+    setMessage(`Enfileirando ${actionCandidateCount} vaga(s) do recorte ${homePeriodLabel(actionPeriod)}…`);
     try {
-      const response = await fetch("/api/triage/run", {
+      const response = await fetch("/api/triage/queue", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ trigger: "portal", sourceId: actionSourceId, dateScope: "published", homePeriod: actionPeriod, roleArea: actionArea, ingestionChannel: actionChannel, batchSize: actionCandidateCount, reprocess, aiMode: "off", createDrafts: false }),
+        body: JSON.stringify({ sourceId: actionSourceId, dateScope: "published", homePeriod: actionPeriod, roleArea: actionArea, ingestionChannel: actionChannel, batchSize: actionCandidateCount, reprocess, aiMode: "off" }),
       });
-      const result = await response.json() as PilotResult & { error?: string };
-      if (!response.ok) throw new Error(result.error ?? "Não foi possível concluir o piloto.");
-      setPilot(result);
-      setMessage(`Triagem concluída: ${result.processed.length} vaga(s) registrada(s) de ${sourceName(actionSourceId)}. Rascunhos continuam dependentes de contato válido.`);
+      const result = await response.json() as { batchId: string | null; queued?: number; error?: string };
+      if (!response.ok) throw new Error(result.error ?? "Não foi possível iniciar a fila de triagem.");
+      setPilot(null);
+      setMessage(result.queued ? `Lote iniciado: ${result.queued} vaga(s) de ${sourceName(actionSourceId)} serão processadas em segundo plano. Acompanhe o progresso no histórico.` : "Nenhuma vaga nova precisa ser triada nesse recorte.");
       void loadHistory();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Não foi possível concluir o piloto.");
@@ -228,16 +227,16 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
                 <div className="triage-run-selection" aria-live="polite">
                   {actionCandidateCount === null ? "Selecione uma fonte para consultar o recorte da triagem." : actionCandidateCount === 0 && actionCandidateTotal ? `Há ${actionCandidateTotal} vaga${actionCandidateTotal === 1 ? "" : "s"} no recorte ${homePeriodLabel(actionPeriod)}, mas todas já foram triadas.` : actionCandidateCount === 0 ? `Nenhuma vaga corresponde aos filtros da triagem em ${homePeriodLabel(actionPeriod)}.` : `${actionCandidateCount} vaga${actionCandidateCount === 1 ? "" : "s"} aguardando triagem, de ${actionCandidateTotal} no recorte ${homePeriodLabel(actionPeriod)}.`}
                   {actionCandidateCount === 0 && Boolean(actionCandidateTotal) && !reprocess && <span>Marque “Incluir vagas já triadas” para reavaliar as vagas desse recorte.</span>}
-                  {actionCandidateCount !== null && actionCandidateCount > MAX_MANUAL_TRIAGE_JOBS && <span>Refine Área ou Canal para analisar até {MAX_MANUAL_TRIAGE_JOBS} vagas por vez.</span>}
+                  {actionCandidateCount !== null && actionCandidateCount > 100 && <span>O lote será processado em segundo plano, em blocos controlados.</span>}
                 </div>
-                <button className="primary triage-run-button" disabled={runningPilot || !actionCandidateCount || actionCandidateCount > MAX_MANUAL_TRIAGE_JOBS} onClick={runToday}>
-                  {runningPilot ? "Analisando vagas…" : `Analisar vagas do recorte${actionCandidateCount ? ` (${actionCandidateCount})` : ""}`}
+                <button className="primary triage-run-button" disabled={runningPilot || !actionCandidateCount} onClick={runToday}>
+                  {runningPilot ? "Iniciando fila…" : `Analisar vagas do recorte${actionCandidateCount ? ` (${actionCandidateCount})` : ""}`}
                 </button>
                 <button className="triage-queue-button" disabled={queueingDrafts || runningPilot} onClick={queueDrafts}>
                   {queueingDrafts ? "Preparando fila…" : "Preparar rascunhos elegíveis"}
                 </button>
                 <button className="triage-queue-button" disabled={queueingDrafts || runningPilot || draftCounts.failed === 0} onClick={retryFailedDrafts} title={draftCounts.failed === 0 ? "Não há falhas para reprocessar" : undefined}>Reprocessar falhas de rascunho{draftCounts.failed ? ` (${draftCounts.failed})` : ""}</button>
-                <small>A consulta inicia com Fonte, Área, Canal e Período ativos na Home; o período pode ser ajustado aqui e considera a data de publicação da vaga, como na lista principal. Por padrão, somente vagas ainda não triadas entram no recorte. A fila exige vaga aprovada ou provável, análise atual e e-mail de contato válido.</small>
+                <small>A consulta inicia com Fonte, Área, Canal e Período ativos na Home; o período pode ser ajustado aqui e considera a data de publicação da vaga, como na lista principal. Por padrão, somente vagas ainda não triadas entram no recorte. A triagem ocorre em segundo plano; rascunhos exigem vaga aprovada ou provável, análise atual e e-mail de contato válido.</small>
               </div>
             </details>
           </div>

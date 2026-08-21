@@ -6,6 +6,10 @@ interface Env {
   ASSETS: Fetcher;
   DB: D1Database;
   COLLECTOR_SECRET: string;
+  TRIAGE_QUEUE: {
+    send(message: unknown): Promise<void>;
+    sendBatch(messages: unknown[]): Promise<void>;
+  };
   IMAGES: {
     input(stream: ReadableStream): {
       transform(options: Record<string, unknown>): {
@@ -14,6 +18,19 @@ interface Env {
     };
   };
 }
+
+type TriageQueueMessage = {
+  userId: string;
+  batchId: string;
+  jobId: string;
+  run: Record<string, unknown>;
+};
+
+type QueueMessage = {
+  body: TriageQueueMessage;
+  ack(): void;
+  retry(options?: { delaySeconds?: number }): void;
+};
 
 interface ExecutionContext {
   waitUntil(promise: Promise<unknown>): void;
@@ -36,6 +53,10 @@ const worker = {
     // Este cabeçalho só é confiável quando o próprio Worker o injeta após
     // validar COLLECTOR_SECRET. Remove qualquer tentativa vinda da internet.
     headers.delete("x-radar-collector-authenticated");
+    // Esta autenticação existe somente entre o consumidor da Queue e o
+    // handler interno. Nunca aceite os cabeçalhos enviados pela internet.
+    headers.delete("x-radar-triage-queue-authenticated");
+    headers.delete("x-radar-triage-user-id");
 
     const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
     // A mesma rota aceita sessões do portal. Somente uma chamada com bearer
@@ -64,6 +85,22 @@ const worker = {
     }
 
     return handler.fetch(request, env, ctx);
+  },
+  async queue(batch: { messages: QueueMessage[] }, env: Env, ctx: ExecutionContext): Promise<void> {
+    for (const message of batch.messages) {
+      const payload = message.body;
+      const response = await handler.fetch(new Request("https://queue.internal/api/triage/run", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-radar-triage-queue-authenticated": "1",
+          "x-radar-triage-user-id": payload.userId,
+        },
+        body: JSON.stringify({ ...payload.run, batchId: payload.batchId, jobId: payload.jobId }),
+      }), env, ctx);
+      if (response.ok) message.ack();
+      else message.retry({ delaySeconds: 15 });
+    }
   },
 };
 

@@ -2,6 +2,7 @@ export type TriageTrigger = "portal" | "schedule" | "gpt";
 export type TriageAiMode = "off" | "ambiguous" | "all";
 export type TriageDateScope = "received" | "published";
 export type TriageHomePeriod = "24" | "72" | "168" | "all";
+export const MAX_ASYNC_TRIAGE_JOBS = 1000;
 
 export type TriageRunRequest = {
   trigger: TriageTrigger;
@@ -44,7 +45,10 @@ export function saoPauloDayWindow(referenceDate: string) {
 export function normalizeTriageRunRequest(request: TriageRunRequest, now = new Date()): NormalizedTriageRunRequest {
   const referenceDate = request.referenceDate ?? saoPauloDate(now);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(referenceDate)) throw new Error("referenceDate deve usar YYYY-MM-DD");
-  const batchSize = Math.max(1, Math.min(100, Math.floor(request.batchSize ?? 10)));
+  // A execução manual é colocada na fila; por isso ela pode receber um
+  // recorte maior sem prender a requisição do portal. A rotina agendada
+  // continua enviando 100 por vez.
+  const batchSize = Math.max(1, Math.min(MAX_ASYNC_TRIAGE_JOBS, Math.floor(request.batchSize ?? 10)));
   const sourceId = request.sourceId?.trim();
   const roleArea = request.roleArea?.trim();
   const ingestionChannel = request.ingestionChannel;

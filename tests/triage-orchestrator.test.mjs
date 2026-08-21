@@ -11,9 +11,9 @@ test("todos os acionadores usam o mesmo contrato e padrão de São Paulo", () =>
   }
 });
 
-test("normaliza parâmetros de execução e limita o lote", () => {
-  assert.deepEqual(normalizeTriageRunRequest({ trigger: "portal", referenceDate: "2026-08-20", batchSize: 999, reprocess: true, aiMode: "off", createDrafts: true }), {
-    trigger: "portal", referenceDate: "2026-08-20", batchSize: 100, reprocess: true, aiMode: "off", createDrafts: true, dateScope: "published",
+test("normaliza parâmetros de execução e limita o lote assíncrono", () => {
+  assert.deepEqual(normalizeTriageRunRequest({ trigger: "portal", referenceDate: "2026-08-20", batchSize: 9999, reprocess: true, aiMode: "off", createDrafts: true }), {
+    trigger: "portal", referenceDate: "2026-08-20", batchSize: 1000, reprocess: true, aiMode: "off", createDrafts: true, dateScope: "published",
   });
 });
 
