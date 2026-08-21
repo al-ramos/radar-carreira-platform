@@ -55,7 +55,8 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
       const data = await response.json() as { items?: HistoryItem[]; batches?: Batch[]; operational?: Operational };
       const items = data.items ?? [];
       setHistory(items); setBatches(data.batches ?? []); setOperational(data.operational ?? null);
-      setMessage(items.length ? "" : "Nenhuma vaga foi triada ainda. Use “Analisar vagas agora” para iniciar.");
+      if (!items.length) setMessage("Nenhuma vaga foi triada ainda. Use “Analisar vagas do recorte” para iniciar.");
+      else setMessage((current) => current === "Carregando avaliações…" ? "" : current);
     } catch { setMessage("Não foi possível carregar as avaliações da triagem."); }
   };
   useEffect(() => {
@@ -78,6 +79,8 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
   const date = (v: string) =>
     new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(v));
   const latestScheduled = batches.find((batch) => batch.trigger === "scheduled");
+  const latestManual = batches.find((batch) => batch.trigger === "manual");
+  const manualIsActive = latestManual?.status === "queued" || latestManual?.status === "running";
   const dayKey = (value: string | null) => value ? new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date(value)) : "";
   const latestByJob = new Map<string, HistoryItem>();
   for (const item of history) if (!latestByJob.has(item.jobId)) latestByJob.set(item.jobId, item);
@@ -110,6 +113,13 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
     : sourceOptions;
   const actionCandidateCount = actionCandidate?.key === actionSelectionKey && actionSourceId ? actionCandidate.count : null;
   const actionCandidateTotal = actionCandidate?.key === actionSelectionKey && actionSourceId ? actionCandidate.total : null;
+  const manualSummary = (batch: Batch) => {
+    if (batch.status === "queued") return `${batch.total} vaga(s) na fila. O Radar iniciará o processamento em instantes.`;
+    if (batch.status === "running") return `Processando: ${batch.completed + batch.failed}/${batch.total} vaga(s).`;
+    if (batch.status === "failed") return `Falhou em ${batch.failed} de ${batch.total} vaga(s). Veja o histórico antes de preparar rascunhos.`;
+    if (batch.status === "completed") return `Concluído: ${batch.completed}/${batch.total} vaga(s) triada(s). Agora você pode preparar os rascunhos elegíveis.`;
+    return `${batch.completed}/${batch.total} vaga(s) registradas.`;
+  };
   const scheduledSummary = (batch: Batch) => {
     if (batch.total === 0) return "Nenhuma vaga nova pendente de avaliação foi encontrada para este dia.";
     if (batch.eligible === 0) return "Nenhuma vaga aderente ou provável foi encontrada neste lote.";
@@ -257,10 +267,24 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
                   {actionCandidateCount !== null && actionCandidateCount > 100 && <span>O lote por regras será processado em segundo plano, em blocos controlados.</span>}
                   {actionCandidateCount !== null && actionCandidateCount > MAX_AI_REVIEW_JOBS && <span>A análise com IA aceita até {MAX_AI_REVIEW_JOBS} vagas por vez; refine o recorte para solicitar a leitura.</span>}
                 </div>
-                <button className="primary triage-run-button" disabled={runningPilot || aiReviewLoading || !actionCandidateCount || actionCandidateCount > MAX_AI_REVIEW_JOBS} onClick={() => setAiPromptOpen(true)}>
-                  {aiReviewLoading ? "Consultando IA…" : `Solicitar análise à IA${actionCandidateCount ? ` (${actionCandidateCount})` : ""}`}
-                </button>
-                <button className="triage-queue-button" disabled={runningPilot || aiReviewLoading || !actionCandidateCount} onClick={runToday}>Triar por regras{actionCandidateCount ? ` (${actionCandidateCount})` : ""}</button>
+                <div className="triage-action-steps">
+                  <article className="triage-action-step">
+                    <span>1</span><div><b>Triar por regras</b><small>Classifica as vagas. Não cria nem envia e-mails.</small></div>
+                    <button className="primary triage-run-button" disabled={runningPilot || aiReviewLoading || !actionCandidateCount || manualIsActive} onClick={runToday}>{runningPilot ? "Iniciando fila…" : `Analisar ${actionCandidateCount ? `(${actionCandidateCount})` : ""}`}</button>
+                  </article>
+                  <article className="triage-action-step triage-ai-step">
+                    <span>IA</span><div><b>Consulta à IA <em>opcional</em></b><small>Faz uma leitura consultiva; não muda a triagem nem cria rascunhos.</small></div>
+                    <button className="triage-queue-button" disabled={runningPilot || aiReviewLoading || !actionCandidateCount || actionCandidateCount > MAX_AI_REVIEW_JOBS} onClick={() => setAiPromptOpen(true)}>{aiReviewLoading ? "Consultando…" : "Consultar"}</button>
+                  </article>
+                  <article className={`triage-action-step ${manualIsActive ? "waiting" : ""}`}>
+                    <span>2</span><div><b>Preparar rascunhos</b><small>Use após a etapa 1 concluir. Separa apenas vagas ✅/🟡 com e-mail válido; não envia nada.</small></div>
+                    <button className="triage-queue-button" disabled={queueingDrafts || runningPilot || manualIsActive} onClick={queueDrafts} title={manualIsActive ? "Aguarde a triagem concluir antes de preparar rascunhos." : undefined}>{queueingDrafts ? "Preparando…" : "Preparar"}</button>
+                  </article>
+                  <article className="triage-action-step triage-retry-step">
+                    <span>↻</span><div><b>Reprocessar falhas</b><small>Use somente se a fila de rascunhos informar falha.</small></div>
+                    <button className="triage-queue-button" disabled={queueingDrafts || runningPilot || draftCounts.failed === 0} onClick={retryFailedDrafts} title={draftCounts.failed === 0 ? "Não há falhas para reprocessar" : undefined}>Reprocessar{draftCounts.failed ? ` (${draftCounts.failed})` : ""}</button>
+                  </article>
+                </div>
                 {aiPromptOpen && <section className="triage-ai-prompt" aria-label="Prompt para análise de vagas pela IA">
                   <b>O que você quer que a IA avalie?</b>
                   <small>Ela receberá um snapshot das {actionCandidateCount ?? 0} vagas deste recorte e do seu perfil. A resposta é apenas consultiva.</small>
@@ -268,11 +292,7 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
                   <div><button type="button" className="triage-queue-button" onClick={() => setAiPromptOpen(false)} disabled={aiReviewLoading}>Cancelar</button><button type="button" className="primary" onClick={requestAiReview} disabled={aiReviewLoading || aiPrompt.trim().length < 8}>Solicitar análise</button></div>
                 </section>}
                 {aiReview && <section className="triage-ai-review" aria-label="Resultado da análise da IA"><div><h3>Análise da IA</h3><small>{aiReview.jobs.length} vagas · {aiReview.provider} · {aiReview.model}</small></div><p>{aiReview.response}</p></section>}
-                <button className="triage-queue-button" disabled={queueingDrafts || runningPilot} onClick={queueDrafts}>
-                  {queueingDrafts ? "Preparando fila…" : "Preparar rascunhos elegíveis"}
-                </button>
-                <button className="triage-queue-button" disabled={queueingDrafts || runningPilot || draftCounts.failed === 0} onClick={retryFailedDrafts} title={draftCounts.failed === 0 ? "Não há falhas para reprocessar" : undefined}>Reprocessar falhas de rascunho{draftCounts.failed ? ` (${draftCounts.failed})` : ""}</button>
-                <small>A consulta inicia com Fonte, Área, Canal e Período ativos na Home; o período pode ser ajustado aqui e considera a data de publicação da vaga, como na lista principal. A análise com IA é consultiva e salva o prompt e o snapshot do recorte, sem alterar vereditos, rascunhos ou candidaturas. A triagem por regras ocorre em segundo plano; rascunhos exigem vaga aprovada ou provável, análise atual e e-mail de contato válido.</small>
+                <small>Acompanhe o resultado no cartão “Último lote manual”, logo abaixo. Depois de preparar, o Gmail cria os rascunhos pendentes na rotina configurada; eles nunca são enviados automaticamente. A consulta à IA é opcional e não altera o fluxo.</small>
               </div>
             </details>
           </div>
@@ -363,6 +383,10 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
             </div>
           </section>
         )}
+        <section className="triage-manual-status" aria-live="polite" aria-label="Acompanhamento do lote manual">
+          <div><p className="eyebrow">SEU ÚLTIMO LOTE</p><h3>{latestManual ? latestManual.status === "completed" ? "Triagem concluída" : latestManual.status === "failed" ? "Triagem com falha" : latestManual.status === "running" ? "Triagem em andamento" : "Triagem na fila" : "Nenhum lote manual iniciado"}</h3></div>
+          {latestManual ? <><p>{manualSummary(latestManual)}</p><div><button type="button" className="triage-card-action" onClick={() => void loadHistory()}>Atualizar status</button><button type="button" className="triage-card-action secondary" onClick={() => openHistory()}>Ver resultados</button></div></> : <p>Escolha o recorte acima e use a etapa 1. O andamento e o resultado aparecerão aqui.</p>}
+        </section>
       </section>
     </div>
   );
