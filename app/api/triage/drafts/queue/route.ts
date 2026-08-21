@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, gte } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../../chatgpt-auth";
 import { getDb } from "../../../../../db/index";
@@ -19,6 +19,16 @@ function parseStack(value: string): string[] {
 
 export const dynamic = "force-dynamic";
 
+const periods = new Set(["24", "72", "168", "all"]);
+const channels = new Set(["extension", "email", "connector", "file", "api"]);
+type DraftQueueRequest = {
+  action?: "queue" | "retryFailed";
+  sourceId?: string;
+  roleArea?: string;
+  ingestionChannel?: string;
+  homePeriod?: string;
+};
+
 /**
  * Reserva a fila persistente para o futuro criador de rascunhos. Não conversa
  * com Gmail e nunca envia e-mail. O perfil canônico é relido nesta requisição,
@@ -28,7 +38,7 @@ export async function POST(request: Request) {
   const user = await getChatGPTUser();
   if (!user) return NextResponse.json({ error: "Autenticação necessária" }, { status: 401 });
   const db = getDb();
-  const body = await request.json().catch(() => ({})) as { action?: "queue" | "retryFailed" };
+  const body = await request.json().catch(() => ({})) as DraftQueueRequest;
   if (body.action === "retryFailed") {
     const now = new Date();
     const failed = await db.select({ id: draftOutbox.id }).from(draftOutbox).where(and(eq(draftOutbox.userId, user.userId), eq(draftOutbox.status, "failed")));
@@ -40,6 +50,13 @@ export async function POST(request: Request) {
 
   const canonicalProfile = canonicalizeProfile(profile);
   if (!profileIsReadyForTriage(canonicalProfile)) return NextResponse.json({ error: "O perfil técnico ainda não está pronto para triagem." }, { status: 412 });
+  const sourceId = body.sourceId?.trim();
+  const roleArea = body.roleArea?.trim();
+  const ingestionChannel = body.ingestionChannel?.trim();
+  const homePeriod = body.homePeriod ?? "all";
+  if (!periods.has(homePeriod)) return NextResponse.json({ error: "Período inválido." }, { status: 400 });
+  if (ingestionChannel && ingestionChannel !== "all" && !channels.has(ingestionChannel)) return NextResponse.json({ error: "Canal inválido." }, { status: 400 });
+  const cutoff = homePeriod === "all" ? null : new Date(Date.now() - Number(homePeriod) * 36e5);
   const versions = getAnalysisVersions(canonicalProfile);
   const [historyRows, existingOutbox] = await Promise.all([
     db.select({
@@ -55,7 +72,13 @@ export async function POST(request: Request) {
       .from(triageHistory)
       .innerJoin(jobs, eq(triageHistory.jobId, jobs.id))
       .leftJoin(userJobAnalyses, and(eq(userJobAnalyses.userId, user.userId), eq(userJobAnalyses.jobId, jobs.id)))
-      .where(eq(triageHistory.userId, user.userId))
+      .where(and(
+        eq(triageHistory.userId, user.userId),
+        sourceId && sourceId !== "all" ? eq(jobs.sourceId, sourceId) : undefined,
+        roleArea && roleArea !== "all" ? eq(jobs.roleArea, roleArea) : undefined,
+        ingestionChannel && ingestionChannel !== "all" ? eq(jobs.ingestionChannel, ingestionChannel as "extension" | "email" | "connector" | "file" | "api") : undefined,
+        cutoff ? gte(jobs.firstSeenAt, cutoff) : undefined,
+      ))
       .orderBy(desc(triageHistory.createdAt)),
     db.select({ jobId: draftOutbox.jobId, status: draftOutbox.status }).from(draftOutbox).where(eq(draftOutbox.userId, user.userId)),
   ]);
@@ -105,5 +128,5 @@ export async function POST(request: Request) {
     queued.push(row.jobId);
   }
 
-  return NextResponse.json({ ok: true, queued: queued.length, noValidContact, notEligible, outdated, alreadyPresent, gmailDraftsCreated: 0 });
+  return NextResponse.json({ ok: true, considered: latestByJob.size, queued: queued.length, noValidContact, notEligible, outdated, alreadyPresent, gmailDraftsCreated: 0 });
 }

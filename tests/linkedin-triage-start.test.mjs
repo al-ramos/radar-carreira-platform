@@ -37,6 +37,9 @@ test("acionamento manual respeita os filtros ativos da Home", async () => {
   assert.match(preview, /gte\(jobs\.firstSeenAt, cutoff\)/);
   assert.match(preview, /count\(userJobAnalyses\.jobId\)/);
   assert.match(queue, /isDraftAllowedForSource\(row\.job\.sourceId\)/);
+  assert.match(queue, /gte\(jobs\.firstSeenAt, cutoff\)/);
+  assert.match(ui, /homePeriod: actionPeriod/);
+  assert.match(ui, /Fila preparada para este recorte/);
   assert.match(cron, /isDraftAllowedForSource\(row\.sourceId\)/);
 });
 

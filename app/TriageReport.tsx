@@ -157,10 +157,14 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
     setQueueingDrafts(true);
     setMessage("Verificando vagas elegíveis para a fila de rascunhos…");
     try {
-      const response = await fetch("/api/triage/drafts/queue", { method: "POST" });
-      const result = await response.json() as { error?: string; queued: number; noValidContact: number; outdated: number; alreadyPresent: number };
+      const response = await fetch("/api/triage/drafts/queue", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ sourceId: actionSourceId, roleArea: actionArea, ingestionChannel: actionChannel, homePeriod: actionPeriod }),
+      });
+      const result = await response.json() as { error?: string; considered: number; queued: number; noValidContact: number; outdated: number; alreadyPresent: number };
       if (!response.ok) throw new Error(result.error ?? "Não foi possível preparar a fila de rascunhos.");
-      setMessage(`Fila preparada: ${result.queued} vaga(s) elegível(is); ${result.noValidContact} sem e-mail válido; ${result.outdated} precisa(m) de nova avaliação; ${result.alreadyPresent} já estava(m) na fila. Nenhum e-mail foi criado ou enviado.`);
+      setMessage(`Fila preparada para este recorte (${result.considered} vaga(s)): ${result.queued} elegível(is); ${result.noValidContact} sem e-mail válido; ${result.outdated} precisa(m) de nova avaliação; ${result.alreadyPresent} já estava(m) na fila. Nenhum e-mail foi criado ou enviado.`);
       void loadHistory();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Não foi possível preparar a fila de rascunhos.");
@@ -300,7 +304,7 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
                   </article>
                   <article className={`triage-action-step ${manualIsActive ? "waiting" : ""}`}>
                     <span>2</span><div><b>Preparar rascunhos</b><small>Use após a etapa 1 concluir. Separa apenas vagas ✅/🟡 com e-mail válido; não envia nada.</small></div>
-                    <button className="triage-queue-button" disabled={queueingDrafts || runningPilot || manualIsActive} onClick={queueDrafts} title={manualIsActive ? "Aguarde a triagem concluir antes de preparar rascunhos." : undefined}>{queueingDrafts ? "Preparando…" : "Preparar"}</button>
+                    <button className="triage-queue-button" disabled={queueingDrafts || runningPilot || manualIsActive || !actionSourceId} onClick={queueDrafts} title={manualIsActive ? "Aguarde a triagem concluir antes de preparar rascunhos." : !actionSourceId ? "Selecione uma fonte para preparar rascunhos do recorte." : undefined}>{queueingDrafts ? "Preparando…" : "Preparar"}</button>
                   </article>
                   <article className="triage-action-step triage-retry-step">
                     <span>↻</span><div><b>Reprocessar falhas</b><small>Use somente se a fila de rascunhos informar falha.</small></div>
