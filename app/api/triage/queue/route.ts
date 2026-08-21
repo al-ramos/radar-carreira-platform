@@ -11,6 +11,39 @@ export const dynamic = "force-dynamic";
 
 type QueuePayload = { userId: string; batchId: string; jobId: string; run: Record<string, unknown> };
 type QueueMessage = { body: QueuePayload };
+type QueueRequest = Partial<TriageRunRequest> & { action?: "resume"; batchId?: string };
+
+const STALE_QUEUE_ITEM_MS = 5 * 60_000;
+
+async function resumePendingBatch({ userId, batchId, queue }: { userId: string; batchId: string; queue: { sendBatch(messages: QueueMessage[]): Promise<void> } }) {
+  const db = getDb();
+  const batch = await db.select().from(triageBatches)
+    .where(and(eq(triageBatches.id, batchId), eq(triageBatches.userId, userId)))
+    .limit(1)
+    .then((rows) => rows[0]);
+  if (!batch) return { status: 404 as const, error: "Lote de triagem não encontrado." };
+
+  const now = new Date();
+  const staleBefore = new Date(now.getTime() - STALE_QUEUE_ITEM_MS);
+  const pending = await db.select({ jobId: triageBatchItems.jobId }).from(triageBatchItems)
+    .where(and(
+      eq(triageBatchItems.batchId, batchId),
+      eq(triageBatchItems.status, "queued"),
+      lt(triageBatchItems.updatedAt, staleBefore),
+    ));
+  if (!pending.length) return { status: 200 as const, resumed: 0 };
+
+  // A seleção do lote é persistida: o executor recebe cada jobId e ignora
+  // qualquer vaga que tenha sido concluída entre a interrupção e a retomada.
+  const run = normalizeTriageRunRequest({ trigger: "portal", batchSize: 1, aiMode: "off", createDrafts: false });
+  await db.update(triageBatchItems).set({ leaseOwner: null, leaseUntil: null, error: null, updatedAt: now })
+    .where(and(eq(triageBatchItems.batchId, batchId), eq(triageBatchItems.status, "queued"), lt(triageBatchItems.updatedAt, staleBefore)));
+  await db.update(triageBatches).set({ status: "queued", error: null, completedAt: null }).where(eq(triageBatches.id, batchId));
+
+  const messages = pending.map(({ jobId }): QueueMessage => ({ body: { userId, batchId, jobId, run } }));
+  for (let index = 0; index < messages.length; index += 100) await queue.sendBatch(messages.slice(index, index + 100));
+  return { status: 202 as const, resumed: messages.length };
+}
 
 /**
  * Entrada rápida da triagem manual. A seleção fica persistida antes de cada
@@ -21,7 +54,21 @@ export async function POST(request: Request) {
   const user = await getChatGPTUser();
   if (!user) return NextResponse.json({ error: "Autenticação necessária" }, { status: 401 });
 
-  const body = await request.json().catch(() => ({})) as Partial<TriageRunRequest>;
+  const body = await request.json().catch(() => ({})) as QueueRequest;
+  const queue = (env as { TRIAGE_QUEUE?: { sendBatch(messages: QueueMessage[]): Promise<void> } }).TRIAGE_QUEUE;
+  if (!queue) return NextResponse.json({ error: "Fila de triagem indisponível no ambiente." }, { status: 503 });
+  if (body.action === "resume") {
+    if (!body.batchId) return NextResponse.json({ error: "Informe o lote a retomar." }, { status: 400 });
+    try {
+      const result = await resumePendingBatch({ userId: user.userId, batchId: body.batchId, queue });
+      return result.status === 404
+        ? NextResponse.json({ error: result.error }, { status: result.status })
+        : NextResponse.json({ ok: true, resumed: result.resumed }, { status: result.status });
+    } catch (error) {
+      const detail = error instanceof Error ? error.message.slice(0, 1000) : "Não foi possível retomar os itens pendentes.";
+      return NextResponse.json({ error: detail }, { status: 503 });
+    }
+  }
   let run;
   try {
     run = normalizeTriageRunRequest({
@@ -34,9 +81,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Parâmetros inválidos" }, { status: 400 });
   }
   if (run.aiMode !== "off") return NextResponse.json({ error: "A execução em fila usa as regras do Radar; a IA continua em fluxo próprio." }, { status: 400 });
-
-  const queue = (env as { TRIAGE_QUEUE?: { sendBatch(messages: QueueMessage[]): Promise<void> } }).TRIAGE_QUEUE;
-  if (!queue) return NextResponse.json({ error: "Fila de triagem indisponível no ambiente." }, { status: 503 });
 
   const db = getDb();
   const profile = await db.select().from(profiles).where(eq(profiles.userId, user.userId)).limit(1).then((rows) => rows[0]);
