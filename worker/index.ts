@@ -182,23 +182,28 @@ const worker = {
   },
   async queue(batch: { messages: QueueMessage[] }, env: Env, ctx: ExecutionContext): Promise<void> {
     for (const message of batch.messages) {
-      const payload = message.body as TriageQueueMessage | AiReviewQueueMessage;
-      if ("kind" in payload && payload.kind === "ai-review") {
-        const response = await handler.fetch(new Request("https://queue.internal/api/triage/ai-review/run", { method: "POST", headers: { "content-type": "application/json", "x-radar-ai-review-authenticated": "1" }, body: JSON.stringify(payload) }), env, ctx);
-        if (response.ok) message.ack(); else message.retry({ delaySeconds: 15 });
-        continue;
+      try {
+        const payload = message.body as TriageQueueMessage | AiReviewQueueMessage;
+        if ("kind" in payload && payload.kind === "ai-review") {
+          const response = await handler.fetch(new Request("https://queue.internal/api/triage/ai-review/run", { method: "POST", headers: { "content-type": "application/json", "x-radar-ai-review-authenticated": "1" }, body: JSON.stringify(payload) }), env, ctx);
+          if (response.ok) message.ack(); else message.retry({ delaySeconds: 15 });
+          continue;
+        }
+        const response = await handler.fetch(new Request("https://queue.internal/api/triage/run", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-radar-triage-queue-authenticated": "1",
+            "x-radar-triage-user-id": payload.userId,
+          },
+          body: JSON.stringify({ ...payload.run, batchId: payload.batchId, jobId: payload.jobId }),
+        }), env, ctx);
+        if (response.ok) message.ack();
+        else message.retry({ delaySeconds: 15 });
+      } catch {
+        // Uma exceção isolada não pode interromper a entrega do lote inteiro.
+        message.retry({ delaySeconds: 15 });
       }
-      const response = await handler.fetch(new Request("https://queue.internal/api/triage/run", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-radar-triage-queue-authenticated": "1",
-          "x-radar-triage-user-id": payload.userId,
-        },
-        body: JSON.stringify({ ...payload.run, batchId: payload.batchId, jobId: payload.jobId }),
-      }), env, ctx);
-      if (response.ok) message.ack();
-      else message.retry({ delaySeconds: 15 });
     }
   },
 };

@@ -65,6 +65,7 @@ test("triagem permite reutilizar o e-mail já cadastrado para a mesma empresa", 
   assert.equal(dashboard.match(/Usar e-mail da empresa/g)?.length, 1);
   assert.match(dashboard, /useCompanyContact: true/);
   assert.match(dashboard, /reuseCompanyContactsInTable/);
+  assert.match(dashboard, /tableJobs\.filter\(\(job\) => !job\.contactEmail\)/);
   assert.match(route, /companyContacts/);
   assert.match(route, /useCompanyContact/);
   assert.match(schema, /company_contacts/);

@@ -1038,8 +1038,8 @@ export default function Dashboard() {
    * em Modalidade/Veredito/Fonte. Roda em cima da página já carregada
    * (client-side), não chama a API de novo. */
   const [tableColumnFilters, setTableColumnFilters] = useState<{
-    company: string; title: string; mode: string; verdict: string; stack: string; source: string; contactEmail: string;
-  }>({ company: "", title: "", mode: "", verdict: "", stack: "", source: "", contactEmail: "" });
+    company: string; title: string; mode: string; verdict: string; stack: string; source: string; contactEmail: string; missingContact: boolean;
+  }>({ company: "", title: "", mode: "", verdict: "", stack: "", source: "", contactEmail: "", missingContact: false });
   /** Seleção temporária para exportação. Ela não altera o card aberto, o
    * pipeline nem o status da vaga: serve exclusivamente ao relatório. */
   const [exportSelectionIds, setExportSelectionIds] = useState<Set<string>>(() => new Set());
@@ -1047,14 +1047,14 @@ export default function Dashboard() {
     setTableColumnFilters((current) => ({ ...current, [column]: value }));
   }, []);
   const clearTableColumnFilters = useCallback(() => {
-    setTableColumnFilters({ company: "", title: "", mode: "", verdict: "", stack: "", source: "", contactEmail: "" });
+    setTableColumnFilters({ company: "", title: "", mode: "", verdict: "", stack: "", source: "", contactEmail: "", missingContact: false });
   }, []);
   const activeTableColumnFilterCount = Object.values(tableColumnFilters).filter(Boolean).length;
   const tableJobs = useMemo(() => {
     const { column, direction } = tableSort;
     const factor = direction === "asc" ? 1 : -1;
     const filters = tableColumnFilters;
-    const filtered = filters.company || filters.title || filters.mode || filters.verdict || filters.stack || filters.source || filters.contactEmail
+    const filtered = filters.company || filters.title || filters.mode || filters.verdict || filters.stack || filters.source || filters.contactEmail || filters.missingContact
       ? orderedJobs.filter((j) => {
           if (filters.company && !j.company.toLowerCase().includes(filters.company.toLowerCase())) return false;
           if (filters.title && !j.title.toLowerCase().includes(filters.title.toLowerCase())) return false;
@@ -1067,6 +1067,7 @@ export default function Dashboard() {
           if (filters.stack && !j.stack.some((s) => s.toLowerCase().includes(filters.stack.toLowerCase()))) return false;
           if (filters.source && (j.sourceName ?? "") !== filters.source) return false;
           if (filters.contactEmail && !(j.contactEmail ?? "").toLowerCase().includes(filters.contactEmail.toLowerCase())) return false;
+          if (filters.missingContact && j.contactEmail) return false;
           return true;
         })
       : orderedJobs;
@@ -1883,26 +1884,26 @@ export default function Dashboard() {
     if (!pendingJobs.length || companyContactsReusing) return;
     setCompanyContactsReusing(true);
     try {
-      const results = await Promise.all(pendingJobs.map(async (job) => {
+      const results = await Promise.allSettled(pendingJobs.map(async (job) => {
         const response = await fetch(`/api/jobs/${job.id}/contact`, {
           method: "PATCH",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ useCompanyContact: true }),
         });
         const data = await response.json().catch(() => null) as { contactEmail?: string; contactSubject?: string } | null;
-        const contactEmail = normalizeContactEmail(data?.contactEmail);
+        const contactEmail = response.ok ? normalizeContactEmail(data?.contactEmail) : undefined;
         return contactEmail ? { id: job.id, contactEmail, contactSubject: data?.contactSubject } : null;
       }));
-      const reused = results.filter((result): result is { id: string; contactEmail: string; contactSubject?: string } => Boolean(result));
+      const reused = results.flatMap((result) => result.status === "fulfilled" && result.value ? [result.value] : []);
       if (reused.length) {
         const byId = new Map(reused.map((result) => [result.id, result]));
-        setItems((current) => current.map((item) => {
-          const result = byId.get(item.id);
-          return result ? { ...item, contactEmail: result.contactEmail, contactSubject: result.contactSubject } : item;
-        }));
+        setItems((current) => current.map((item) =>
+          byId.has(item.id) ? { ...item, contactEmail: byId.get(item.id)!.contactEmail, contactSubject: byId.get(item.id)!.contactSubject } : item,
+        ));
       }
+      const unavailable = pendingJobs.length - reused.length;
       setContactCaptureMsg({
-        text: reused.length ? `E-mail da empresa usado em ${reused.length} vaga${reused.length === 1 ? "" : "s"}.` : "Nenhuma das vagas em branco possui e-mail cadastrado para a empresa.",
+        text: `${reused.length} de ${pendingJobs.length} vaga${pendingJobs.length === 1 ? "" : "s"} atualizada${pendingJobs.length === 1 ? "" : "s"}${unavailable ? `; ${unavailable} sem e-mail cadastrado para a empresa.` : "."}`,
         error: false,
       });
     } finally {
@@ -2676,59 +2677,28 @@ export default function Dashboard() {
           </div>
         )}
         <div id="radar-filter-panel" className="radar-filter-panel" hidden={!filtersOpen} aria-label="Filtros de vagas">
-          <div className="quick-filter-row">
-            <div className="compact-filter-group">
-              <span className="compact-filter-label">Área profissional</span>
-              <select className="area-filter-select" aria-label="Filtrar por área profissional" value={areaFilter} onChange={(event) => setAreaFilter(event.target.value)}>
-                <option value="all">Todas as áreas</option>
-                {jobFilterOptions.areas.filter(option => option.count > 0).map(option => <option key={option.id} value={option.id}>{option.label} ({option.count})</option>)}
-              </select>
-            </div>
-            <div className="compact-filter-group">
-              <span className="compact-filter-label">Status</span>
-              <div className="compact-pills" role="group" aria-label="Filtrar por estágio do pipeline">
-                <select
-                  className="pipeline-filter-select"
-                  value={pipelineFilter}
-                  onChange={(event) => setPipelineFilter(event.target.value as typeof pipelineFilter)}
-                  aria-label="Filtrar por estágio do pipeline"
-                >
-                {([
-                  { id: "all", label: "Todas as vagas" },
-                  { id: "unseen", label: "Não vistas" },
-                  { id: "viewed", label: "Vistas" },
-                  { id: "saved", label: "Salvas" },
-                  { id: "applied", label: "Candidaturas" },
-                  { id: "interview", label: "Entrevistas" },
-                  { id: "rejected", label: "Encerradas" },
-                ] as const).map(({ id, label }) => {
-                  const count = id === "all"
-                    ? items.length
-                    : id === "unseen"
-                      ? items.filter((j) => !pipelineStageMap.has(j.id)).length
-                      : items.filter((j) => pipelineStageMap.get(j.id) === id).length;
-                  return <option key={id} value={id}>{count > 0 ? `${label} (${count})` : label}</option>;
-                })}
-                </select>
-              </div>
-            </div>
-            <div className="compact-filter-group">
-              <span className="compact-filter-label">Contato</span>
-              <label className="has-email-filter-check">
+          <div className="compact-filter-group">
+            <span className="compact-filter-label">Área profissional</span>
+            <select className="area-filter-select" aria-label="Filtrar por área profissional" value={areaFilter} onChange={(event) => setAreaFilter(event.target.value)}>
+              <option value="all">Todas as áreas</option>
+              {jobFilterOptions.areas.filter(option => option.count > 0).map(option => <option key={option.id} value={option.id}>{option.label} ({option.count})</option>)}
+            </select>
+          </div>
+          <div className="compact-filter-group contact-filter-group">
+            <span className="compact-filter-label">Contato</span>
+            <div className="contact-filter-content">
+              <label>
                 <input
                   type="checkbox"
-                  checked={hasEmailFilter === "yes"}
-                  onChange={(event) => setHasEmailFilter(event.target.checked ? "yes" : "all")}
+                  checked={tableColumnFilters.missingContact}
+                  onChange={(event) => setTableColumnFilters((current) => ({ ...current, missingContact: event.target.checked }))}
                 />
-                Somente vagas com e-mail
+                Somente vagas sem e-mail
               </label>
-              {hasEmailFilter === "all" && emailMissingCount > 0 && (
-                <small className="list-head-dim">
-                  {emailMissingCount} {emailMissingCount === 1 ? "vaga sem e-mail" : "vagas sem e-mail"} cadastrado{emailMissingCount === 1 ? "" : "s"} (dentro dos filtros atuais).
-                </small>
-              )}
+              <span className="list-head-dim">{tableJobs.filter((job) => !job.contactEmail).length} vagas sem e-mail cadastrados (dentro dos filtros atuais).</span>
             </div>
           </div>
+          <div className="compact-filter-divider" aria-hidden="true" />
           <div className="compact-filter-group ingestion-filter-group">
             <span className="compact-filter-label">Importação e recebimento</span>
             <div className="ingestion-filter-subgroup">
@@ -2796,6 +2766,52 @@ export default function Dashboard() {
               </small>
             </div>
           </div>
+          <div className="compact-filter-divider" aria-hidden="true" />
+          <div className="compact-filter-group">
+            <span className="compact-filter-label">Contato</span>
+            <label className="has-email-filter-check">
+              <input
+                type="checkbox"
+                checked={hasEmailFilter === "yes"}
+                onChange={(event) => setHasEmailFilter(event.target.checked ? "yes" : "all")}
+              />
+              Somente vagas com e-mail
+            </label>
+            {hasEmailFilter === "all" && emailMissingCount > 0 && (
+              <small className="list-head-dim">
+                {emailMissingCount} {emailMissingCount === 1 ? "vaga sem e-mail" : "vagas sem e-mail"} cadastrado{emailMissingCount === 1 ? "" : "s"} (dentro dos filtros atuais).
+              </small>
+            )}
+          </div>
+          <div className="compact-filter-divider" aria-hidden="true" />
+          <div className="compact-filter-group status-filter-group">
+            <span className="compact-filter-label">Status</span>
+            <div className="compact-pills" role="group" aria-label="Filtrar por estágio do pipeline">
+              <select
+                className="pipeline-filter-select"
+                value={pipelineFilter}
+                onChange={(event) => setPipelineFilter(event.target.value as typeof pipelineFilter)}
+                aria-label="Filtrar por estágio do pipeline"
+              >
+              {([
+                { id: "all", label: "Todas as vagas" },
+                { id: "unseen", label: "Não vistas" },
+                { id: "viewed", label: "Vistas" },
+                { id: "saved", label: "Salvas" },
+                { id: "applied", label: "Candidaturas" },
+                { id: "interview", label: "Entrevistas" },
+                { id: "rejected", label: "Encerradas" },
+              ] as const).map(({ id, label }) => {
+                const count = id === "all"
+                  ? items.length
+                  : id === "unseen"
+                    ? items.filter((j) => !pipelineStageMap.has(j.id)).length
+                    : items.filter((j) => pipelineStageMap.get(j.id) === id).length;
+                return <option key={id} value={id}>{count > 0 ? `${label} (${count})` : label}</option>;
+              })}
+              </select>
+            </div>
+          </div>
           {personalizationPending ? (
             <div className="compact-filter-group" role="status">
               <span className="compact-filter-label">Personalização</span>
@@ -2806,33 +2822,34 @@ export default function Dashboard() {
               </span>
             </div>
           ) : currentUser && profileMasteredSkills.length > 0 && verdictMap.size > 0 && (
-            <div className="compact-filter-group">
-              <span className="compact-filter-label">Veredito</span>
-              <div className="compact-pills" role="group" aria-label="Filtrar por veredito">
-                {(["all", "✅", "🟡", "🔴", "❌"] as const).map((v) => {
-                  const label = v === "all" ? "Todos" : v === "✅" ? "Bate" : v === "🟡" ? "Provável" : v === "🔴" ? "Não bate" : "Bloqueado";
-                  const count = v === "all" ? items.length : [...verdictMap.values()].filter((r) => r.emoji === v).length;
-                  return (
-                    <button
-                      key={v}
-                      type="button"
-                      className={verdictFilter === v ? "active" : ""}
-                      onClick={() => handleVerdictFilterChange(v)}
-                      aria-pressed={verdictFilter === v}
-                    >
-                      {v !== "all" && <>{v} </>}{label}{count > 0 && <span>{count}</span>}
-                    </button>
-                  );
-                })}
+            <>
+              <div className="compact-filter-divider" aria-hidden="true" />
+              <div className="compact-filter-group">
+                <span className="compact-filter-label">Veredito</span>
+                <div className="compact-pills" role="group" aria-label="Filtrar por veredito">
+                  {(["all", "✅", "🟡", "🔴", "❌"] as const).map((v) => {
+                    const label = v === "all" ? "Todos" : v === "✅" ? "Bate" : v === "🟡" ? "Provável" : v === "🔴" ? "Não bate" : "Bloqueado";
+                    const count = v === "all" ? items.length : [...verdictMap.values()].filter((r) => r.emoji === v).length;
+                    return (
+                      <button
+                        key={v}
+                        type="button"
+                        className={verdictFilter === v ? "active" : ""}
+                        onClick={() => handleVerdictFilterChange(v)}
+                        aria-pressed={verdictFilter === v}
+                      >
+                        {v !== "all" && <>{v} </>}{label}{count > 0 && <span>{count}</span>}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
+            </>
           )}
           {activeFilterCount > 0 && (
-            <div className="radar-filter-panel-footer">
-              <button type="button" className="clear-radar-filters" onClick={clearRadarFilters}>
-                Limpar filtros
-              </button>
-            </div>
+            <button type="button" className="clear-radar-filters" onClick={clearRadarFilters}>
+              Limpar filtros
+            </button>
           )}
         </div>
         {totalJobs != null && totalJobs > 50 && (
@@ -2949,13 +2966,13 @@ export default function Dashboard() {
                       {tableSourceOptions.map((s) => <option key={s} value={s}>{s}</option>)}
                     </select>
                   </span>
-                  <span role="cell" className="job-table-filter-cell">
+                  <span role="cell" className="job-table-filter-cell job-table-filter-cell-email">
                     <input type="text" placeholder="Filtrar e-mail…" value={tableColumnFilters.contactEmail} onChange={(e) => setTableColumnFilter("contactEmail", e.target.value)} aria-label="Filtrar por e-mail" />
                   </span>
                   <span role="cell" className="job-table-filter-cell job-table-filter-clear-cell">
                     {tableJobs.some((job) => !job.contactEmail) && (
-                      <button type="button" className="analysis-toggle-btn job-table-reuse-company-contacts" disabled={companyContactsReusing} onClick={() => void reuseCompanyContactsInTable()} title="Usa, em todas as vagas filtradas sem e-mail, o contato já cadastrado para a empresa.">
-                        {companyContactsReusing ? "Usando e-mails…" : "Usar e-mail da empresa"}
+                      <button type="button" className="analysis-toggle-btn job-table-reuse-company-contacts" disabled={companyContactsReusing} onClick={() => void reuseCompanyContactsInTable()} title="Verifica todas as vagas filtradas sem e-mail e usa o contato já cadastrado para cada empresa.">
+                        {companyContactsReusing ? "Verificando e-mails…" : "Usar e-mail da empresa (todos)"}
                       </button>
                     )}
                     {activeTableColumnFilterCount > 0 && <button type="button" className="job-table-filter-clear" onClick={clearTableColumnFilters}>Limpar ({activeTableColumnFilterCount})</button>}
