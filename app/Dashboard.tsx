@@ -2601,13 +2601,10 @@ export default function Dashboard() {
         <div id="radar-filter-panel" className="radar-filter-panel" hidden={!filtersOpen} aria-label="Filtros de vagas">
           <div className="compact-filter-group">
             <span className="compact-filter-label">Área profissional</span>
-            <div className="area-filter-grid" role="group" aria-label="Filtrar por área profissional">
-              {jobFilterOptions.areas.filter(option => option.count > 0).map(option => (
-                <button key={option.id} type="button" className={areaFilter === option.id ? "active" : ""} onClick={() => setAreaFilter(areaFilter === option.id ? "all" : option.id)} aria-pressed={areaFilter === option.id}>
-                  {option.label}<span>{option.count}</span>
-                </button>
-              ))}
-            </div>
+            <select className="area-filter-select" aria-label="Filtrar por área profissional" value={areaFilter} onChange={(event) => setAreaFilter(event.target.value)}>
+              <option value="all">Todas as áreas</option>
+              {jobFilterOptions.areas.filter(option => option.count > 0).map(option => <option key={option.id} value={option.id}>{option.label} ({option.count})</option>)}
+            </select>
           </div>
           <div className="compact-filter-divider" aria-hidden="true" />
           <div className="compact-filter-group ingestion-filter-group">
