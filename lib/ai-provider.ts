@@ -25,6 +25,32 @@ export type AiCompletion<T> = {
   model: string;
 };
 
+/** Dados do perfil que fazem sentido para a leitura consultiva de vagas. */
+export type AiReviewProfile = {
+  seniority: string[];
+  preferredMode: string[];
+  masteredSkills: string[];
+  desiredAreas: string[];
+  avoidTerms: string[];
+  minScore: number;
+  careerRules: {
+    professionalName: string;
+    professionalTitle: string;
+    professionalSummary: string;
+    baseLocation: string;
+    acceptedRegions: string[];
+    maxHybridDays: number;
+    preferredContracts: string[];
+    dailyCommunicationLanguages: string[];
+    blockedSeniorities: string[];
+    blockedWorkTypes: string[];
+    coreStack: string[];
+    coreStackMatchMode: "all" | "any";
+    stackExceptions: string[];
+    anchorProject: string;
+  };
+};
+
 /**
  * A integração permanece no servidor. O Radar só considera IA disponível
  * quando os três valores forem configurados no ambiente de produção.
@@ -98,7 +124,7 @@ export async function extractStructuredJobFacts(input: { title: string; company:
  */
 export async function reviewSelectedJobs(input: {
   instruction: string;
-  profile: { seniority: string[]; preferredMode: string[]; masteredSkills: string[]; desiredAreas: string[]; avoidTerms: string[] };
+  profile: AiReviewProfile;
   jobs: Array<{ id: string; title: string; company: string; location?: string | null; url: string; description: string }>;
 }): Promise<AiCompletion<string>> {
   const status = getAiProviderStatus();

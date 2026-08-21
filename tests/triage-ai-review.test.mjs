@@ -12,8 +12,12 @@ test("análise consultiva da IA persiste o prompt e o snapshot sem alterar a tri
   assert.match(route, /MAX_AI_REVIEW_JOBS = 20/);
   assert.match(route, /triageAiReviews/);
   assert.match(route, /reviewSelectedJobs/);
+  assert.match(route, /const reviewProfile: AiReviewProfile/);
+  assert.match(route, /profile: reviewProfile/);
+  assert.match(route, /JSON\.stringify\(reviewProfile\)/);
   assert.match(route, /operation: "review_selection"/);
   assert.match(schema, /triageAiReviews/);
   assert.match(provider, /reviewSelectedJobs/);
+  assert.match(provider, /export type AiReviewProfile/);
   assert.match(migration, /CREATE TABLE `triage_ai_reviews`/);
 });

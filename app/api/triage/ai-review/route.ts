@@ -5,7 +5,7 @@ import { getChatGPTUser } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db/index";
 import { aiUsageEvents, jobs, profiles, triageAiReviews, userJobAnalyses } from "../../../../db/schema";
 import { isOwnerEmail } from "../../../../lib/access";
-import { reviewSelectedJobs, getAiProviderStatus } from "../../../../lib/ai-provider";
+import { reviewSelectedJobs, getAiProviderStatus, type AiReviewProfile } from "../../../../lib/ai-provider";
 import { canonicalizeProfile } from "../../../../lib/canonical-profile";
 import { normalizeCareerRules } from "../../../../lib/profile-options";
 
@@ -44,6 +44,27 @@ export async function POST(request: Request) {
   if (selected.length > MAX_AI_REVIEW_JOBS) return NextResponse.json({ error: `A análise com IA aceita até ${MAX_AI_REVIEW_JOBS} vagas por vez. Refine Área, Canal ou Período.` }, { status: 422 });
 
   const canonicalProfile = canonicalizeProfile(profile);
+  const reviewProfile: AiReviewProfile = {
+    seniority: canonicalProfile.seniority, preferredMode: canonicalProfile.preferredMode,
+    masteredSkills: canonicalProfile.masteredSkills, desiredAreas: canonicalProfile.desiredAreas,
+    avoidTerms: canonicalProfile.avoidTerms, minScore: canonicalProfile.minScore,
+    careerRules: {
+      professionalName: canonicalProfile.careerRules.professionalName,
+      professionalTitle: canonicalProfile.careerRules.professionalTitle,
+      professionalSummary: canonicalProfile.careerRules.professionalSummary,
+      baseLocation: canonicalProfile.careerRules.baseLocation,
+      acceptedRegions: canonicalProfile.careerRules.acceptedRegions,
+      maxHybridDays: canonicalProfile.careerRules.maxHybridDays,
+      preferredContracts: canonicalProfile.careerRules.preferredContracts,
+      dailyCommunicationLanguages: canonicalProfile.careerRules.dailyCommunicationLanguages,
+      blockedSeniorities: canonicalProfile.careerRules.blockedSeniorities,
+      blockedWorkTypes: canonicalProfile.careerRules.blockedWorkTypes,
+      coreStack: canonicalProfile.careerRules.coreStack,
+      coreStackMatchMode: canonicalProfile.careerRules.coreStackMatchMode,
+      stackExceptions: canonicalProfile.careerRules.stackExceptions,
+      anchorProject: canonicalProfile.careerRules.anchorProject,
+    },
+  };
   const reviewJobs = selected.map(job => ({ id: job.id, title: job.title, company: job.company, location: job.location, url: job.url, description: job.description.slice(0, 3200) }));
   const selection = { filters: { sourceId, homePeriod, roleArea: roleArea || "all", ingestionChannel: ingestionChannel || "all", includeTriaged }, jobs: reviewJobs.map(({ description, ...job }) => ({ ...job, description })) };
   const now = new Date();
@@ -52,7 +73,7 @@ export async function POST(request: Request) {
   if (!status.configured) return NextResponse.json({ error: "A IA ainda não está configurada no ambiente de produção." }, { status: 503 });
   const monthStart = new Date(); monthStart.setUTCDate(1); monthStart.setUTCHours(0, 0, 0, 0);
   const usage = await db.select({ total: sql<number>`coalesce(sum(${aiUsageEvents.inputTokens} + ${aiUsageEvents.outputTokens}), 0)` }).from(aiUsageEvents).where(and(eq(aiUsageEvents.userId, user.userId), gte(aiUsageEvents.createdAt, monthStart))).then(rows => Number(rows[0]?.total ?? 0));
-  const estimatedInput = Math.ceil((JSON.stringify(selection).length + prompt.length + JSON.stringify(canonicalProfile).length) / 4);
+  const estimatedInput = Math.ceil((JSON.stringify(selection).length + prompt.length + JSON.stringify(reviewProfile).length) / 4);
   const rules = normalizeCareerRules(profile.careerRules);
   if (usage + estimatedInput + RESERVED_OUTPUT_TOKENS > rules.aiMonthlyTokenLimit) {
     await db.insert(triageAiReviews).values({ id: reviewId, userId: user.userId, prompt, selection: JSON.stringify(selection), status: "blocked", error: "Limite mensal de IA atingido", createdAt: now });
@@ -61,7 +82,7 @@ export async function POST(request: Request) {
   }
   await db.insert(triageAiReviews).values({ id: reviewId, userId: user.userId, prompt, selection: JSON.stringify(selection), createdAt: now });
   try {
-    const completion = await reviewSelectedJobs({ instruction: prompt, profile: canonicalProfile, jobs: reviewJobs });
+    const completion = await reviewSelectedJobs({ instruction: prompt, profile: reviewProfile, jobs: reviewJobs });
     await db.update(triageAiReviews).set({ response: completion.value, status: "completed", provider: completion.provider, model: completion.model, inputTokens: completion.inputTokens, outputTokens: completion.outputTokens }).where(eq(triageAiReviews.id, reviewId));
     await db.insert(aiUsageEvents).values({ id: randomUUID(), userId: user.userId, operation: "review_selection", provider: completion.provider, model: completion.model, inputTokens: completion.inputTokens, outputTokens: completion.outputTokens, status: "completed", createdAt: now });
     return NextResponse.json({ id: reviewId, response: completion.value, jobs: reviewJobs.map((job) => ({ id: job.id, title: job.title, company: job.company })), provider: completion.provider, model: completion.model });

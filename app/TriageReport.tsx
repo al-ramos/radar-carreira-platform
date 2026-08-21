@@ -5,7 +5,8 @@ type HistoryItem = { id: string; batchId: string; jobId: string; verdict: string
 type Batch = { id: string; trigger: "manual" | "scheduled" | "assistant"; scope: string; status: string; startedAt: string | null; completedAt: string | null; createdAt: string; error: string | null; total: number; completed: number; failed: number; eligible: number; eligibleWithoutContact: number; draftsPending: number; draftsReady: number; draftsFailed: number };
 type Operational = { pendingDrafts: number; readyDrafts: number; failedDrafts: number; oldestPendingAt: string | null; alerts: Array<{ level: "warning" | "error"; message: string }> };
 type AiReview = { id: string; response: string; jobs: Array<{ id: string; title: string; company: string }>; provider: string; model: string };
-type AiProfile = { name: string | null; seniority: string[]; preferredMode: string[]; masteredSkills: string[]; desiredAreas: string[]; minScore: number };
+type AiCareerRules = { professionalName: string; professionalTitle: string; professionalSummary: string; baseLocation: string; acceptedRegions: string[]; maxHybridDays: number; preferredContracts: string[]; dailyCommunicationLanguages: string[]; blockedSeniorities: string[]; blockedWorkTypes: string[]; coreStack: string[]; coreStackMatchMode: "all" | "any"; stackExceptions: string[]; anchorProject: string };
+type AiProfile = { name: string | null; seniority: string[]; preferredMode: string[]; masteredSkills: string[]; desiredAreas: string[]; avoidTerms: string[]; minScore: number; careerRules: AiCareerRules };
 type LegacyItem = { jobId: string; veredito: string; motivo: string | null; processedAt: string; title: string; company: string; externalId: string | null; sourceId: string | null; workMode: string | null; location: string | null; sourcePublishedAt: string | null; receivedAt: string; url: string; contactEmail: string | null };
 type FilterOption = { id: string; label: string; count: number };
 const rowClass: Record<string, string> = { "✅": "approved", "🟡": "partial", "❌": "rejected", "🔴": "rejected" };
@@ -13,6 +14,7 @@ const MAX_AI_REVIEW_JOBS = 20;
 const saoPauloToday = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
 const sourceName = (source: string) => source === "apinfo-extension" ? "APInfo" : source === "linkedin-extension" ? "LinkedIn" : source;
 const homePeriodLabel = (period: string) => period === "24" ? "Últimas 24h" : period === "72" ? "Últimos 3 dias" : period === "168" ? "Últimos 7 dias" : "Todas as vagas";
+const profileList = (values: string[], fallback: string) => values.length ? values.join(" · ") : fallback;
 export default function TriageReport({ close, sourceId, sourceLabel, sourceOptions = [], areaOptions = [], channelOptions = [], initialArea = "all", initialChannel = "all", homePeriod = "24" }: { close: () => void; sourceId?: string; sourceLabel?: string; sourceOptions?: FilterOption[]; areaOptions?: FilterOption[]; channelOptions?: FilterOption[]; initialArea?: string; initialChannel?: string; homePeriod?: "24" | "72" | "168" | "all" }) {
   const [message, setMessage] = useState("Carregando avaliações…"),
     [runningPilot, setRunningPilot] = useState(false),
@@ -310,10 +312,19 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
                   {aiProfileLoading && <small>Carregando o perfil salvo…</small>}
                   {aiProfileError && <small className="triage-ai-profile-error">{aiProfileError}</small>}
                   {aiProfile && <dl className="triage-ai-profile">
-                    <div><dt>Senioridade</dt><dd>{aiProfile.seniority.join(", ") || "Não informada"}</dd></div>
-                    <div><dt>Modelo</dt><dd>{aiProfile.preferredMode.join(", ") || "Sem preferência informada"}</dd></div>
-                    <div><dt>Áreas</dt><dd>{aiProfile.desiredAreas.join(", ") || "Não informadas"}</dd></div>
-                    <div className="triage-ai-profile-stack"><dt>Stack</dt><dd>{aiProfile.masteredSkills.join(" · ") || "Nenhuma competência cadastrada"}</dd></div>
+                    <div className="triage-ai-profile-wide"><dt>Posicionamento profissional</dt><dd>{aiProfile.careerRules.professionalTitle || "Não informado"}{aiProfile.careerRules.professionalSummary ? ` — ${aiProfile.careerRules.professionalSummary}` : ""}</dd></div>
+                    <div><dt>Senioridade</dt><dd>{profileList(aiProfile.seniority, "Não informada")}</dd></div>
+                    <div><dt>Modelo</dt><dd>{profileList(aiProfile.preferredMode, "Sem preferência informada")}</dd></div>
+                    <div><dt>Áreas</dt><dd>{profileList(aiProfile.desiredAreas, "Não informadas")}</dd></div>
+                    <div className="triage-ai-profile-wide"><dt>Stack dominada</dt><dd>{profileList(aiProfile.masteredSkills, "Nenhuma competência cadastrada")}</dd></div>
+                    <div><dt>Localização e híbrido</dt><dd>{[aiProfile.careerRules.baseLocation, ...aiProfile.careerRules.acceptedRegions].filter(Boolean).join(" · ") || "Não informados"}{aiProfile.careerRules.acceptedRegions.length ? ` · até ${aiProfile.careerRules.maxHybridDays} dia(s) presencial(is)/semana` : ""}</dd></div>
+                    <div><dt>Contratos</dt><dd>{profileList(aiProfile.careerRules.preferredContracts, "Sem preferência informada")}</dd></div>
+                    <div><dt>Idiomas</dt><dd>{profileList(aiProfile.careerRules.dailyCommunicationLanguages, "Não informados")}</dd></div>
+                    <div><dt>Stack principal</dt><dd>{profileList(aiProfile.careerRules.coreStack, "Não definida")}{aiProfile.careerRules.coreStack.length ? ` · exigir ${aiProfile.careerRules.coreStackMatchMode === "all" ? "todas" : "qualquer uma"}` : ""}</dd></div>
+                    <div><dt>Exceções técnicas</dt><dd>{profileList(aiProfile.careerRules.stackExceptions, "Nenhuma")}</dd></div>
+                    <div><dt>Restrições</dt><dd>{[aiProfile.careerRules.blockedSeniorities.length ? `Níveis: ${aiProfile.careerRules.blockedSeniorities.join(", ")}` : "", aiProfile.careerRules.blockedWorkTypes.length ? `Atuações: ${aiProfile.careerRules.blockedWorkTypes.join(", ")}` : "", aiProfile.avoidTerms.length ? `Termos: ${aiProfile.avoidTerms.join(", ")}` : ""].filter(Boolean).join(" · ") || "Nenhuma"}</dd></div>
+                    <div className="triage-ai-profile-wide"><dt>Projeto ou experiência-âncora</dt><dd>{aiProfile.careerRules.anchorProject || "Não informado"}</dd></div>
+                    <div><dt>Score mínimo do Radar</dt><dd>{aiProfile.minScore}</dd></div>
                   </dl>}
                   <div className="triage-ai-prompt-heading"><b>O que você quer que a IA avalie?</b><small>Você pode alterar o texto abaixo para orientar a leitura. A resposta é apenas consultiva.</small></div>
                   <textarea aria-label="Instrução para a IA" value={aiPrompt} onChange={(event) => setAiPrompt(event.target.value)} maxLength={1200} disabled={aiReviewLoading} />

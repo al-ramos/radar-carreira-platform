@@ -31,6 +31,8 @@ test("acionamento manual respeita os filtros ativos da Home", async () => {
   assert.match(ui, /Perfil e stack que a IA vai usar/);
   assert.match(ui, /fetch\("\/api\/profile"\)/);
   assert.match(ui, /masteredSkills/);
+  assert.match(ui, /Projeto ou experiência-âncora/);
+  assert.match(ui, /Restrições/);
   assert.match(preview, /eq\(jobs\.sourceId, sourceId\)/);
   assert.match(preview, /gte\(jobs\.publishedAt, cutoff\)/);
   assert.match(preview, /count\(userJobAnalyses\.jobId\)/);
