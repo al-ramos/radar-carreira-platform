@@ -558,7 +558,7 @@ export default function Dashboard() {
   // Radar — ver captureApinfoContact/buildContactMailto e o useEffect que
   // escuta a resposta da extensão (RADAR_CAPTURE_CONTACT_RESULT).
   const [contactCapturing, setContactCapturing] = useState(false);
-  const [companyContactsReusing, setCompanyContactsReusing] = useState(false);
+  const [companyContactReuseJobId, setCompanyContactReuseJobId] = useState<string | null>(null);
   const [contactPasteReady, setContactPasteReady] = useState(false);
   const [contactCaptureMsg, setContactCaptureMsg] = useState<{ text: string; error: boolean } | null>(null);
   const contactRequestRef = useRef<{ requestId: string; jobId: string; correctTruncated?: boolean } | null>(null);
@@ -1878,35 +1878,27 @@ export default function Dashboard() {
     setContactCaptureMsg({ text: `E-mail capturado: ${savedEmail}`, error: false });
     return true;
   }
-  async function reuseCompanyContactsInTable() {
-    const pendingJobs = tableJobs.filter((job) => !job.contactEmail);
-    if (!pendingJobs.length || companyContactsReusing) return;
-    setCompanyContactsReusing(true);
+  async function reuseCompanyContact(job: Job) {
+    if (job.contactEmail || companyContactReuseJobId) return;
+    setCompanyContactReuseJobId(job.id);
     try {
-      const results = await Promise.all(pendingJobs.map(async (job) => {
-        const response = await fetch(`/api/jobs/${job.id}/contact`, {
-          method: "PATCH",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ useCompanyContact: true }),
-        });
-        const data = await response.json().catch(() => null) as { contactEmail?: string; contactSubject?: string } | null;
-        const contactEmail = normalizeContactEmail(data?.contactEmail);
-        return contactEmail ? { id: job.id, contactEmail, contactSubject: data?.contactSubject } : null;
-      }));
-      const reused = results.filter((result): result is { id: string; contactEmail: string; contactSubject?: string } => Boolean(result));
-      if (reused.length) {
-        const byId = new Map(reused.map((result) => [result.id, result]));
-        setItems((current) => current.map((item) => {
-          const result = byId.get(item.id);
-          return result ? { ...item, contactEmail: result.contactEmail, contactSubject: result.contactSubject } : item;
-        }));
-      }
-      setContactCaptureMsg({
-        text: reused.length ? `E-mail da empresa usado em ${reused.length} vaga${reused.length === 1 ? "" : "s"}.` : "Nenhuma das vagas em branco possui e-mail cadastrado para a empresa.",
-        error: false,
+      const response = await fetch(`/api/jobs/${job.id}/contact`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ useCompanyContact: true }),
       });
+      const data = await response.json().catch(() => null) as { contactEmail?: string; contactSubject?: string } | null;
+      const contactEmail = normalizeContactEmail(data?.contactEmail);
+      if (response.ok && contactEmail) {
+        setItems((current) => current.map((item) =>
+          item.id === job.id ? { ...item, contactEmail, contactSubject: data?.contactSubject } : item,
+        ));
+        setContactCaptureMsg({ text: `E-mail da empresa usado em ${job.title}.`, error: false });
+      } else {
+        setContactCaptureMsg({ text: "Esta empresa não possui e-mail cadastrado.", error: false });
+      }
     } finally {
-      setCompanyContactsReusing(false);
+      setCompanyContactReuseJobId(null);
     }
   }
   async function pasteApinfoContact(job: Job) {
@@ -2953,11 +2945,6 @@ export default function Dashboard() {
                   </span>
                   <span role="cell" className="job-table-filter-cell job-table-filter-cell-email">
                     <input type="text" placeholder="Filtrar e-mail…" value={tableColumnFilters.contactEmail} onChange={(e) => setTableColumnFilter("contactEmail", e.target.value)} aria-label="Filtrar por e-mail" />
-                    {tableJobs.some((job) => !job.contactEmail) && (
-                      <button type="button" className="analysis-toggle-btn job-table-reuse-company-contacts" disabled={companyContactsReusing} onClick={() => void reuseCompanyContactsInTable()} title="Usa, em todas as vagas filtradas sem e-mail, o contato já cadastrado para a empresa.">
-                        {companyContactsReusing ? "Usando e-mails…" : "Usar e-mail da empresa"}
-                      </button>
-                    )}
                   </span>
                   <span role="cell" className="job-table-filter-cell job-table-filter-clear-cell">
                     {activeTableColumnFilterCount > 0 && <button type="button" className="job-table-filter-clear" onClick={clearTableColumnFilters}>Limpar ({activeTableColumnFilterCount})</button>}
@@ -3035,7 +3022,7 @@ export default function Dashboard() {
                       <span role="cell" className="job-table-cell job-table-cell-source">
                         {j.sourceName ?? "—"}
                       </span>
-                      <span role="cell" className="job-table-cell job-table-cell-email">
+                      <span role="cell" className="job-table-cell job-table-cell-email" onClick={(event) => event.stopPropagation()}>
                         {j.contactEmail ? (
                           <a
                             href={buildContactMailto(j) ?? `mailto:${j.contactEmail}`}
@@ -3044,7 +3031,17 @@ export default function Dashboard() {
                           >
                             {j.contactEmail}
                           </a>
-                        ) : "—"}
+                        ) : (
+                          <button
+                            type="button"
+                            className="analysis-toggle-btn job-table-reuse-company-contact"
+                            disabled={companyContactReuseJobId !== null}
+                            onClick={() => void reuseCompanyContact(j)}
+                            title="Usa o e-mail já cadastrado para esta empresa nesta vaga"
+                          >
+                            {companyContactReuseJobId === j.id ? "Usando e-mail…" : "Usar e-mail da empresa"}
+                          </button>
+                        )}
                       </span>
                       <span role="cell" className="job-table-cell job-table-cell-date">
                         {j.sourcePublishedAt ? formatJobDateTime(j.sourcePublishedAt) : j.age}
