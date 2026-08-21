@@ -3671,6 +3671,7 @@ export default function Dashboard() {
         initialArea={areaFilter}
         initialChannel={channelFilter}
         homePeriod={effectivePeriod}
+        onOpenInRadar={(code) => { setQuery(code); setTriageOpen(false); }}
       />}
       {importReportRunId && <ImportRunReport runId={importReportRunId} close={() => setImportReportRunId(null)} />}
       {monitorOpen && <Monitoring close={() => setMonitorOpen(false)} />}
