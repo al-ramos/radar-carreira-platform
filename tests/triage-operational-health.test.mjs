@@ -17,14 +17,14 @@ test("histórico expõe saúde operacional sem executar triagem ou Gmail", async
   assert.match(route, /latestScheduled/);
   assert.match(route, /STALE_DRAFT_AFTER_MS/);
   assert.match(route, /rascunhos pendentes há mais de 24 horas/);
-  assert.match(route, /rotina diária está sem atualização há mais de 30 horas/);
+  assert.match(route, /triagem automática não executa há mais de 30 horas/);
   assert.doesNotMatch(route, /fetch\(|GmailApp/);
-  assert.match(screen, /Saúde operacional/);
+  assert.match(screen, /Rascunhos de candidatura/);
+  assert.match(screen, /prontos para revisar/);
   assert.match(screen, /<details className="triage-actions">/);
   assert.match(screen, /Exibir ações de automação/);
   assert.match(screen, /triage-pagination/);
   assert.match(screen, /de \{filteredHistory\.length\} vagas/);
-  assert.doesNotMatch(screen, /Rascunhos de candidatura/);
-  assert.match(screen, /Sem alertas operacionais/);
+  assert.match(screen, /Automação e rascunhos em dia/);
   assert.match(styles, /\.triage-operations/);
 });

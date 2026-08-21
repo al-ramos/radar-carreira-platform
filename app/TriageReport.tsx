@@ -265,11 +265,11 @@ export default function TriageReport({ close, sourceId, sourceLabel }: { close: 
             </div>
           </div>
           {operational && <div className="triage-operations-inline">
-            <div className="triage-operations-heading"><strong>Saúde operacional</strong><small>{operational.alerts.length ? `${operational.alerts.length} alerta(s) exige(m) atenção` : "Sem alertas operacionais."}</small></div>
+            <div className="triage-operations-heading"><strong>Rascunhos de candidatura</strong><small>{operational.alerts.length ? `${operational.alerts.length} aviso sobre a automação` : "Automação e rascunhos em dia."}</small></div>
             <div className="triage-operations-metrics">
-              <button type="button" onClick={() => openHistory("pending")}><b>{operational.pendingDrafts}</b> na fila</button>
-              <button type="button" onClick={() => openHistory("drafted")}><b>{operational.readyDrafts}</b> prontos</button>
-              <button type="button" className={operational.failedDrafts ? "has-failures" : ""} onClick={() => openHistory("failed")}><b>{operational.failedDrafts}</b> com falha</button>
+              <button type="button" onClick={() => openHistory("pending")}><b>{operational.pendingDrafts}</b> aguardando criação</button>
+              <button type="button" onClick={() => openHistory("drafted")}><b>{operational.readyDrafts}</b> prontos para revisar</button>
+              <button type="button" className={operational.failedDrafts ? "has-failures" : ""} onClick={() => openHistory("failed")}><b>{operational.failedDrafts}</b> falhas para corrigir</button>
             </div>
             {operational.alerts.length > 0 && <ul>{operational.alerts.map((alert) => <li key={alert.message} className={alert.level}>{alert.message}</li>)}</ul>}
           </div>}

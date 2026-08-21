@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 
 const OPERATIONAL_MESSAGES = {
   staleDrafts: "Há rascunhos pendentes há mais de 24 horas.",
-  staleSchedule: "A rotina diária está sem atualização há mais de 30 horas.",
+  staleSchedule: "A triagem automática não executa há mais de 30 horas. Verifique a automação diária.",
 };
 
 const STALE_DRAFT_AFTER_MS = 24 * 60 * 60 * 1000;
