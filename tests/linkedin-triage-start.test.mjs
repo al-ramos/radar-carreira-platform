@@ -19,6 +19,8 @@ test("acionamento manual respeita os filtros ativos da Home", async () => {
   assert.match(ui, /sourceId: actionSourceId, dateScope: "published", homePeriod: actionPeriod, roleArea: actionArea, ingestionChannel: actionChannel/);
   assert.match(asyncRoute, /TRIAGE_QUEUE/);
   assert.match(asyncRoute, /triageBatchItems/);
+  assert.match(asyncRoute, /type QueueMessage = \{ body: QueuePayload \}/);
+  assert.match(asyncRoute, /\{ body: \{ userId: user\.userId, batchId, jobId, run \} \}/);
   assert.match(worker, /async queue\(/);
   assert.match(worker, /x-radar-triage-queue-authenticated/);
   assert.match(ui, /Fonte das vagas a analisar/);

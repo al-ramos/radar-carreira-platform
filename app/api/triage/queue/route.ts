@@ -10,6 +10,7 @@ import { normalizeTriageRunRequest, saoPauloDayWindow, type TriageRunRequest } f
 export const dynamic = "force-dynamic";
 
 type QueuePayload = { userId: string; batchId: string; jobId: string; run: Record<string, unknown> };
+type QueueMessage = { body: QueuePayload };
 
 /**
  * Entrada rápida da triagem manual. A seleção fica persistida antes de cada
@@ -34,7 +35,7 @@ export async function POST(request: Request) {
   }
   if (run.aiMode !== "off") return NextResponse.json({ error: "A execução em fila usa as regras do Radar; a IA continua em fluxo próprio." }, { status: 400 });
 
-  const queue = (env as { TRIAGE_QUEUE?: { sendBatch(messages: QueuePayload[]): Promise<void> } }).TRIAGE_QUEUE;
+  const queue = (env as { TRIAGE_QUEUE?: { sendBatch(messages: QueueMessage[]): Promise<void> } }).TRIAGE_QUEUE;
   if (!queue) return NextResponse.json({ error: "Fila de triagem indisponível no ambiente." }, { status: 503 });
 
   const db = getDb();
@@ -65,7 +66,7 @@ export async function POST(request: Request) {
   const scope = run.sourceId ? (run.homePeriod ? `source-home-period:${run.sourceId}:${run.homePeriod}` : `source-${run.dateScope}-day:${run.sourceId}`) : run.reprocess ? "reprocess" : "unreviewed";
   await db.insert(triageBatches).values({ id: batchId, userId: user.userId, trigger: "manual", scope, status: "queued", createdAt: now });
   await db.insert(triageBatchItems).values(candidates.map(({ jobId }) => ({ batchId, jobId, status: "queued", attemptCount: 0, updatedAt: now })));
-  const payloads = candidates.map(({ jobId }): QueuePayload => ({ userId: user.userId, batchId, jobId, run }));
+  const payloads = candidates.map(({ jobId }): QueueMessage => ({ body: { userId: user.userId, batchId, jobId, run } }));
   try {
     for (let index = 0; index < payloads.length; index += 100) await queue.sendBatch(payloads.slice(index, index + 100));
   } catch (error) {
