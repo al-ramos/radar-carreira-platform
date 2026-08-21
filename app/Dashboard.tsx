@@ -1024,7 +1024,7 @@ export default function Dashboard() {
    * clicar num cabeçalho de coluna ordena só a tabela. Opera sobre a mesma
    * `orderedJobs` (já filtrada pelos controles da tela), então herda busca,
    * aderência mínima, período etc. automaticamente. */
-  const [tableSort, setTableSort] = useState<{ column: "company" | "title" | "score" | "stack" | "location" | "source" | "publishedAt"; direction: "asc" | "desc" }>(
+  const [tableSort, setTableSort] = useState<{ column: "company" | "title" | "score" | "stack" | "location" | "source" | "contactEmail" | "publishedAt"; direction: "asc" | "desc" }>(
     { column: "score", direction: "desc" },
   );
   const toggleTableSort = useCallback((column: typeof tableSort.column) => {
@@ -1038,20 +1038,20 @@ export default function Dashboard() {
    * em Modalidade/Veredito/Fonte. Roda em cima da página já carregada
    * (client-side), não chama a API de novo. */
   const [tableColumnFilters, setTableColumnFilters] = useState<{
-    company: string; title: string; mode: string; verdict: string; stack: string; source: string;
-  }>({ company: "", title: "", mode: "", verdict: "", stack: "", source: "" });
+    company: string; title: string; mode: string; verdict: string; stack: string; source: string; contactEmail: string;
+  }>({ company: "", title: "", mode: "", verdict: "", stack: "", source: "", contactEmail: "" });
   const setTableColumnFilter = useCallback((column: keyof typeof tableColumnFilters, value: string) => {
     setTableColumnFilters((current) => ({ ...current, [column]: value }));
   }, []);
   const clearTableColumnFilters = useCallback(() => {
-    setTableColumnFilters({ company: "", title: "", mode: "", verdict: "", stack: "", source: "" });
+    setTableColumnFilters({ company: "", title: "", mode: "", verdict: "", stack: "", source: "", contactEmail: "" });
   }, []);
   const activeTableColumnFilterCount = Object.values(tableColumnFilters).filter(Boolean).length;
   const tableJobs = useMemo(() => {
     const { column, direction } = tableSort;
     const factor = direction === "asc" ? 1 : -1;
     const filters = tableColumnFilters;
-    const filtered = filters.company || filters.title || filters.mode || filters.verdict || filters.stack || filters.source
+    const filtered = filters.company || filters.title || filters.mode || filters.verdict || filters.stack || filters.source || filters.contactEmail
       ? orderedJobs.filter((j) => {
           if (filters.company && !j.company.toLowerCase().includes(filters.company.toLowerCase())) return false;
           if (filters.title && !j.title.toLowerCase().includes(filters.title.toLowerCase())) return false;
@@ -1063,6 +1063,7 @@ export default function Dashboard() {
           }
           if (filters.stack && !j.stack.some((s) => s.toLowerCase().includes(filters.stack.toLowerCase()))) return false;
           if (filters.source && (j.sourceName ?? "") !== filters.source) return false;
+          if (filters.contactEmail && !(j.contactEmail ?? "").toLowerCase().includes(filters.contactEmail.toLowerCase())) return false;
           return true;
         })
       : orderedJobs;
@@ -1076,6 +1077,8 @@ export default function Dashboard() {
           return left.location.localeCompare(right.location, "pt-BR") * factor;
         case "source":
           return (left.sourceName ?? "").localeCompare(right.sourceName ?? "", "pt-BR") * factor;
+        case "contactEmail":
+          return (left.contactEmail ?? "").localeCompare(right.contactEmail ?? "", "pt-BR") * factor;
         case "publishedAt":
           return (new Date(left.sourcePublishedAt ?? 0).getTime() - new Date(right.sourcePublishedAt ?? 0).getTime()) * factor;
         default:
@@ -2753,6 +2756,7 @@ export default function Dashboard() {
                     { column: "score" as const, label: "Score / Veredito" },
                     { column: "stack" as const, label: "Stack" },
                     { column: "source" as const, label: "Fonte" },
+                    { column: "contactEmail" as const, label: "E-mail" },
                     { column: "publishedAt" as const, label: "Publicada" },
                   ]).map(({ column, label }) => (
                     <button
@@ -2801,6 +2805,9 @@ export default function Dashboard() {
                       <option value="">Fonte</option>
                       {tableSourceOptions.map((s) => <option key={s} value={s}>{s}</option>)}
                     </select>
+                  </span>
+                  <span role="cell" className="job-table-filter-cell">
+                    <input type="text" placeholder="Filtrar e-mail…" value={tableColumnFilters.contactEmail} onChange={(e) => setTableColumnFilter("contactEmail", e.target.value)} aria-label="Filtrar por e-mail" />
                   </span>
                   <span role="cell" className="job-table-filter-cell job-table-filter-clear-cell">
                     {activeTableColumnFilterCount > 0 && <button type="button" className="job-table-filter-clear" onClick={clearTableColumnFilters}>Limpar ({activeTableColumnFilterCount})</button>}
@@ -2865,6 +2872,17 @@ export default function Dashboard() {
                       </span>
                       <span role="cell" className="job-table-cell job-table-cell-source">
                         {j.sourceName ?? "—"}
+                      </span>
+                      <span role="cell" className="job-table-cell job-table-cell-email">
+                        {j.contactEmail ? (
+                          <a
+                            href={buildContactMailto(j) ?? `mailto:${j.contactEmail}`}
+                            onClick={(e) => e.stopPropagation()}
+                            title={`Escrever para ${j.contactEmail}`}
+                          >
+                            {j.contactEmail}
+                          </a>
+                        ) : "—"}
                       </span>
                       <span role="cell" className="job-table-cell job-table-cell-date">
                         {j.sourcePublishedAt ? formatJobDateTime(j.sourcePublishedAt) : j.age}
