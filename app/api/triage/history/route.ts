@@ -1,10 +1,11 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, gte, lt, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db/index";
 import { draftOutbox, jobs, triageBatchItems, triageBatches, triageHistory, userJobAnalyses } from "../../../../db/schema";
 import { isOwnerEmail } from "../../../../lib/access";
 import { hasValidContactEmail } from "../../../../lib/contact-email";
+import { saoPauloDayWindow } from "../../../../lib/triage-orchestrator";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +30,8 @@ export async function GET() {
   }
 
   const db = getDb();
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
+  const todayWindow = saoPauloDayWindow(today);
   const items = await db
     .select({
       id: userJobAnalyses.jobId,
@@ -63,7 +66,7 @@ export async function GET() {
     .orderBy(desc(userJobAnalyses.updatedAt))
     .limit(1000);
 
-  const [batchRows, batchItemRows, outboxRows, batchDraftRows, batchHistoryRows] = await Promise.all([
+  const [batchRows, batchItemRows, outboxRows, batchDraftRows, batchHistoryRows, todayReceived] = await Promise.all([
     db.select({
       id: triageBatches.id,
       trigger: triageBatches.trigger,
@@ -84,6 +87,7 @@ export async function GET() {
     db.select({ batchId: triageHistory.batchId, verdict: triageHistory.verdict, contactEmail: jobs.contactEmail }).from(triageHistory)
       .innerJoin(jobs, eq(triageHistory.jobId, jobs.id))
       .where(eq(triageHistory.userId, user.userId)),
+    db.select({ total: sql<number>`count(*)` }).from(jobs).where(and(eq(jobs.status, "active"), gte(jobs.firstSeenAt, todayWindow.start), lt(jobs.firstSeenAt, todayWindow.end))).then((rows) => Number(rows[0]?.total ?? 0)),
   ]);
 
   const itemSummary = new Map<string, { total: number; completed: number; failed: number }>();
@@ -148,5 +152,6 @@ export async function GET() {
       alerts,
       messages: OPERATIONAL_MESSAGES,
     },
+    todayReceived,
   });
 }

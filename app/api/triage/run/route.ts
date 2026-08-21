@@ -77,7 +77,7 @@ export async function POST(request: Request) {
   const versions = getAnalysisVersions(canonicalProfile);
   // APInfo mantém o recorte excepcional por publicação. LinkedIn pode pedir
   // explicitamente o dia de recebimento pelo Radar, sem misturar os dois.
-  const scopedToReferenceDay = run.trigger === "schedule" || Boolean(run.sourceId);
+  const scopedToReferenceDay = run.trigger === "schedule" || Boolean(run.sourceId) || run.dateScope === "received";
   const dateColumn = run.dateScope === "received" ? jobs.firstSeenAt : jobs.publishedAt;
   const candidates = await db
     .select({ job: jobs, analysis: userJobAnalyses })
