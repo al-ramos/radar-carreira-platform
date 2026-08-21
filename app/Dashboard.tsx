@@ -318,7 +318,10 @@ const demo: Job[] = [
   },
 ];
 const nav = [
+  "Prioridades",
   "Radar",
+];
+const followUpNav = [
   "Pipeline",
   "Alertas",
   "Métricas",
@@ -326,7 +329,6 @@ const nav = [
 const operationalNav = [
   "Monitoramento",
   "Auditoria",
-  "Triagem IA",
   "Qualidade",
   "Usuários",
   "Extensão LinkedIn",
@@ -517,6 +519,7 @@ export default function Dashboard() {
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [profileMinScore, setProfileMinScore] = useState(60);
   const [gmailOpen, setGmailOpen] = useState(false);
+  const [followUpOpen, setFollowUpOpen] = useState(false);
   const [operationsOpen, setOperationsOpen] = useState(false);
   const [alertsOpen, setAlertsOpen] = useState(false);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
@@ -2149,12 +2152,13 @@ export default function Dashboard() {
   const isAdmin = currentUser?.role === "admin",
     isOwner = isOwnerEmail(currentUser?.email),
     canManageSources = isOwner,
+    visiblePrimaryNav = nav.filter((item) => item !== "Prioridades" || isOwner),
     visibleOperationalNav = operationalNav.filter((item) => {
       if (item === "Fontes" || item === "Importações") return canManageSources;
-      if (item === "Auditoria" || item === "Triagem IA" || item === "Extensão LinkedIn" || item === "Extensão APinfo") return isOwner;
+      if (item === "Auditoria" || item === "Extensão LinkedIn" || item === "Extensão APinfo") return isOwner;
       return (
         (isAdmin && (item !== "Usuários" || isOwner)) ||
-        !new Set(["Auditoria", "Triagem IA", "Usuários", "Extensão LinkedIn", "Extensão APinfo"]).has(item)
+        !new Set(["Auditoria", "Usuários", "Extensão LinkedIn", "Extensão APinfo"]).has(item)
       );
     }),
     icons: Record<string, string> = {
@@ -2164,7 +2168,7 @@ export default function Dashboard() {
       Métricas: "▥",
       Monitoramento: "◌",
       Auditoria: "≡",
-      "Triagem IA": "◈",
+      Prioridades: "✦",
       Qualidade: "✓",
       Usuários: "♙",
       "Extensão LinkedIn": "in",
@@ -2186,18 +2190,18 @@ export default function Dashboard() {
           </span>
         </div>
         <nav>
-          {nav.map((n) => (
+          {visiblePrimaryNav.map((n) => (
             <button
               key={n}
-              className={active === n ? "active" : ""}
+              className={`${active === n ? "active " : ""}${n === "Prioridades" ? "priority-nav-item" : ""}`}
               onClick={() => {
                 setActive(n);
+                if (n === "Prioridades") setTriageOpen(true);
                 if (n === "Pipeline") openPipeline();
                 if (n === "Alertas") setAlertsOpen(true);
                 if (n === "Métricas") setAnalyticsOpen(true);
                 if (n === "Monitoramento") setMonitorOpen(true);
                 if (n === "Auditoria") setAuditOpen(true);
-                if (n === "Triagem IA") setTriageOpen(true);
                 if (n === "Qualidade") setQualityOpen(true);
                 if (n === "Usuários") setUsersOpen(true);
                 if (n === "Extensão LinkedIn") setLinkedInOpen(true);
@@ -2213,6 +2217,33 @@ export default function Dashboard() {
               {n === "Importações" && <em>ADMIN</em>}
             </button>
           ))}
+          <div className="follow-up-nav">
+            <button
+              type="button"
+              className={followUpOpen ? "follow-up-toggle open" : "follow-up-toggle"}
+              aria-expanded={followUpOpen}
+              onClick={() => setFollowUpOpen((open) => !open)}
+            >
+              <span aria-hidden="true">▦</span>
+              Acompanhamento
+              <small aria-hidden="true">{followUpOpen ? "⌃" : "⌄"}</small>
+            </button>
+            {followUpOpen && followUpNav.map((n) => (
+              <button
+                key={n}
+                className={active === n ? "active follow-up-item" : "follow-up-item"}
+                onClick={() => {
+                  setActive(n);
+                  if (n === "Pipeline") openPipeline();
+                  if (n === "Alertas") setAlertsOpen(true);
+                  if (n === "Métricas") setAnalyticsOpen(true);
+                }}
+              >
+                <span>{icons[n]}</span>
+                {n}
+              </button>
+            ))}
+          </div>
           {visibleOperationalNav.length > 0 && (
             <div className="operations-nav">
               <button
@@ -2233,7 +2264,6 @@ export default function Dashboard() {
                     setActive(n);
                     if (n === "Monitoramento") setMonitorOpen(true);
                     if (n === "Auditoria") setAuditOpen(true);
-                    if (n === "Triagem IA") setTriageOpen(true);
                     if (n === "Qualidade") setQualityOpen(true);
                     if (n === "Usuários") setUsersOpen(true);
                     if (n === "Extensão LinkedIn") setLinkedInOpen(true);

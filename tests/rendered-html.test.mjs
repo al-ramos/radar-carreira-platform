@@ -8,8 +8,10 @@ test("dashboard oferece radar, perfil e pipeline persistente", async () => {
   const dashboard = await read("../app/Dashboard.tsx");
   assert.match(
     dashboard,
-    /const nav\s*=\s*\[\s*"Radar",\s*"Pipeline",\s*"Alertas",\s*"Métricas",?\s*\]/,
+    /const nav\s*=\s*\[\s*"Prioridades",\s*"Radar",?\s*\]/,
   );
+  assert.match(dashboard, /const followUpNav\s*=\s*\[/);
+  assert.match(dashboard, /Acompanhamento/);
   assert.match(dashboard, /const operationalNav\s*=\s*\[/);
   assert.match(dashboard, /Operação e integrações/);
   // Desde o commit 9239c98 (paginação no servidor após filtros), a URL de
@@ -209,8 +211,8 @@ test("triagem por IA fica visível só ao proprietário e consulta job_ai_triage
   ]);
   assert.match(dashboard, /import TriageReport from "\.\/TriageReport"/);
   assert.match(dashboard, /\[triageOpen, setTriageOpen\]/);
-  assert.match(dashboard, /"Triagem IA"/);
-  assert.match(dashboard, /item === "Auditoria" \|\| item === "Triagem IA"/);
+  assert.match(dashboard, /"Prioridades"/);
+  assert.match(dashboard, /item !== "Prioridades" \|\| isOwner/);
   assert.match(dashboard, /\{triageOpen && isOwner && <TriageReport/);
   assert.match(route, /isOwnerEmail\(user\.email\)/);
   assert.match(route, /Acesso restrito ao proprietário/);
