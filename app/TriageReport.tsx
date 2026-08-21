@@ -77,7 +77,15 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
   for (const item of history) if (!latestByJob.has(item.jobId)) latestByJob.set(item.jobId, item);
   const currentAssessments = [...latestByJob.values()];
   const jobSources = [...new Set(currentAssessments.map((item) => item.jobSource).filter(Boolean))] as string[];
-  const filteredHistory = currentAssessments.filter((item) => (verdictFilter === "all" || item.verdict === verdictFilter) && (sourceFilter === "all" || item.source === sourceFilter) && (draftFilter === "all" || item.draftStatus === draftFilter) && (jobSourceFilter === "all" || item.jobSource === jobSourceFilter) && (!publishedDateFilter || dayKey(item.sourcePublishedAt) === publishedDateFilter) && (!receivedDateFilter || dayKey(item.receivedAt) === receivedDateFilter) && (!analysedDateFilter || dayKey(item.processedAt) === analysedDateFilter));
+  const scopedHistory = currentAssessments.filter((item) => (verdictFilter === "all" || item.verdict === verdictFilter) && (sourceFilter === "all" || item.source === sourceFilter) && (jobSourceFilter === "all" || item.jobSource === jobSourceFilter) && (!publishedDateFilter || dayKey(item.sourcePublishedAt) === publishedDateFilter) && (!receivedDateFilter || dayKey(item.receivedAt) === receivedDateFilter) && (!analysedDateFilter || dayKey(item.processedAt) === analysedDateFilter));
+  // Os contadores e a tabela devem falar sobre o mesmo recorte. O filtro de
+  // rascunho é aplicado somente depois de contabilizar cada status.
+  const draftCounts = {
+    pending: scopedHistory.filter((item) => item.draftStatus === "pending").length,
+    drafted: scopedHistory.filter((item) => item.draftStatus === "drafted").length,
+    failed: scopedHistory.filter((item) => item.draftStatus === "failed").length,
+  };
+  const filteredHistory = scopedHistory.filter((item) => draftFilter === "all" || item.draftStatus === draftFilter);
   const sortHistory = (key: typeof sortKey) => {
     if (key === sortKey) setSortDirection((value) => value === "asc" ? "desc" : "asc");
     else { setSortKey(key); setSortDirection("asc"); }
@@ -153,19 +161,6 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
     setDraftFilter(nextDraftFilter);
     setHistoryPage(0);
     window.setTimeout(() => document.getElementById("triage-history")?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
-  };
-  // Os cartões operacionais representam toda a fila pessoal, não somente o
-  // recorte padrão da Home (fonte APinfo + vagas publicadas hoje). Ao abrir
-  // um deles, removemos esse recorte para que o total do cartão e a lista
-  // exibida usem exatamente a mesma população.
-  const openDraftQueue = (nextDraftFilter: "pending" | "drafted" | "failed") => {
-    setVerdictFilter("all");
-    setSourceFilter("all");
-    setJobSourceFilter("all");
-    setPublishedDateFilter("");
-    setReceivedDateFilter("");
-    setAnalysedDateFilter("");
-    openHistory(nextDraftFilter);
   };
   const openAutomationActions = () => {
     const actions = document.querySelector<HTMLDetailsElement>(".triage-actions");
@@ -276,9 +271,9 @@ export default function TriageReport({ close, sourceId, sourceLabel, sourceOptio
           {operational && <div className="triage-operations-inline">
             <div className="triage-operations-heading"><strong>Rascunhos de candidatura</strong><small>{operational.alerts.length ? `${operational.alerts.length} aviso sobre a automação` : "Automação e rascunhos em dia."}</small></div>
             <div className="triage-operations-metrics">
-              <button type="button" onClick={() => openDraftQueue("pending")}><b>{operational.pendingDrafts}</b> aguardando criação</button>
-              <button type="button" onClick={() => openDraftQueue("drafted")}><b>{operational.readyDrafts}</b> prontos para revisar</button>
-              <button type="button" className={operational.failedDrafts ? "has-failures" : ""} onClick={() => openDraftQueue("failed")}><b>{operational.failedDrafts}</b> falhas para corrigir</button>
+              <button type="button" onClick={() => openHistory("pending")}><b>{draftCounts.pending}</b> aguardando criação</button>
+              <button type="button" onClick={() => openHistory("drafted")}><b>{draftCounts.drafted}</b> prontos para revisar</button>
+              <button type="button" className={draftCounts.failed ? "has-failures" : ""} onClick={() => openHistory("failed")}><b>{draftCounts.failed}</b> falhas para corrigir</button>
             </div>
             {operational.alerts.length > 0 && <ul>{operational.alerts.map((alert) => <li key={alert.message} className={alert.level}>{alert.message}</li>)}</ul>}
           </div>}
