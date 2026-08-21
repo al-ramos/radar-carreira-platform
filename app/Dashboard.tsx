@@ -517,6 +517,11 @@ export default function Dashboard() {
   const [ingestionMode, setIngestionMode] = useState<"all" | "automatic" | "manual">("all");
   const [receivedFrom, setReceivedFrom] = useState("");
   const [receivedTo, setReceivedTo] = useState("");
+  /** "all": sem filtro (mostra todas); "yes": só vagas com contactEmail
+   *  preenchido. Quando "all", emailMissingCount (vindo da API, respeitando
+   *  os demais filtros ativos) mostra quantas ficariam de fora. */
+  const [hasEmailFilter, setHasEmailFilter] = useState<"all" | "yes">("all");
+  const [emailMissingCount, setEmailMissingCount] = useState(0);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [profileMinScore, setProfileMinScore] = useState(60);
   const [gmailOpen, setGmailOpen] = useState(false);
@@ -739,6 +744,7 @@ export default function Dashboard() {
       if (ingestionMode !== "all") params.set("ingestionMode", ingestionMode);
       if (receivedFrom) params.set("receivedFrom", new Date(receivedFrom).toISOString());
       if (receivedTo) params.set("receivedTo", new Date(receivedTo).toISOString());
+      if (hasEmailFilter !== "all") params.set("hasEmail", hasEmailFilter);
       if (debouncedQuery) params.set("q", debouncedQuery);
       // Sempre pedimos o filtro que a pessoa escolheu, mesmo vindo de uma
       // resposta simplificada — quem decide se o pedido é atendido é o
@@ -752,7 +758,7 @@ export default function Dashboard() {
       params.set("sort", sortOrder === "recent" ? "imported" : "score");
       return params.toString();
     },
-    [effectivePeriod, sourceFilter, areaFilter, channelFilter, importRunFilter, ingestionMode, receivedFrom, receivedTo, debouncedQuery, requestedMinScore, pipelineFilter, verdictFilter, sortOrder],
+    [effectivePeriod, sourceFilter, areaFilter, channelFilter, importRunFilter, ingestionMode, receivedFrom, receivedTo, hasEmailFilter, debouncedQuery, requestedMinScore, pipelineFilter, verdictFilter, sortOrder],
   );
   useEffect(() => {
     if (!profileReady || profileLoadFailed) return;
@@ -783,6 +789,7 @@ export default function Dashboard() {
           }
         }
         setTotalJobs(typeof data.total === "number" ? data.total : next.length);
+        setEmailMissingCount(typeof data.emailMissingCount === "number" ? data.emailMissingCount : 0);
         setSourcesCount(typeof data.sourcesCount === "number" ? data.sourcesCount : null);
         if (data.filterOptions) setJobFilterOptions(data.filterOptions);
         setLoadedMinScore(requestedMinScore);
@@ -948,6 +955,9 @@ export default function Dashboard() {
       label: `Recebida até ${formatJobDateTime(new Date(receivedTo).toISOString())}`,
       remove: () => setReceivedTo(""),
     });
+  }
+  if (hasEmailFilter !== "all") {
+    activeFilterChips.push({ id: "has-email", label: "Só com e-mail", remove: () => setHasEmailFilter("all") });
   }
   if (effectivePeriod && effectivePeriod !== "all") {
     activeFilterChips.push({
@@ -1249,6 +1259,7 @@ export default function Dashboard() {
     setIngestionMode("all");
     setReceivedFrom("");
     setReceivedTo("");
+    setHasEmailFilter("all");
     setPipelineFilter("all");
     setVerdictFilter("all");
   }
@@ -1441,6 +1452,7 @@ export default function Dashboard() {
       setTotalJobs(
         typeof jobsData.total === "number" ? jobsData.total : next.length,
       );
+      setEmailMissingCount(typeof jobsData.emailMissingCount === "number" ? jobsData.emailMissingCount : 0);
       setSourcesCount(typeof jobsData.sourcesCount === "number" ? jobsData.sourcesCount : null);
       if (jobsData.filterOptions) setJobFilterOptions(jobsData.filterOptions);
     }
@@ -2674,62 +2686,87 @@ export default function Dashboard() {
           <div className="compact-filter-divider" aria-hidden="true" />
           <div className="compact-filter-group ingestion-filter-group">
             <span className="compact-filter-label">Importação e recebimento</span>
-            <div className="ingestion-filter-controls">
-              <label>
-                <span>Tipo de entrada</span>
-                <select
-                  value={ingestionMode}
-                  onChange={(event) => setIngestionMode(event.target.value as typeof ingestionMode)}
-                  aria-label="Filtrar pelo tipo de importação"
-                >
-                  <option value="all">Qualquer forma de entrada</option>
-                  <option value="automatic">Somente automáticas</option>
-                  <option value="manual">Somente manuais</option>
-                </select>
-              </label>
-              <label>
-                <span>Canal de entrada</span>
-                <select value={channelFilter} onChange={(event) => setChannelFilter(event.target.value)} aria-label="Filtrar pelo canal de entrada">
-                  <option value="all">Todos os canais</option>
-                  {jobFilterOptions.channels.filter(option => option.count > 0).map(option => <option key={option.id} value={option.id}>{option.label} ({option.count})</option>)}
-                </select>
-              </label>
-              <label>
-                <span>Importação específica</span>
-                <select value={importRunFilter} onChange={(event) => { setImportRunFilter(event.target.value); handlePeriodChange("all"); }} aria-label="Filtrar por uma importação específica">
-                  <option value="all">Todas as importações</option>
-                  {jobFilterOptions.importRuns.map(run => <option key={run.id} value={run.id}>{run.source} · {formatJobDateTime(run.startedAt)} · {run.jobs} vagas</option>)}
-                </select>
-              </label>
-              <label>
-                <span>Recebida a partir de</span>
-                <input
-                  type="datetime-local"
-                  value={receivedFrom}
-                  onChange={(event) => {
-                    setReceivedFrom(event.target.value);
-                    handlePeriodChange("all");
-                  }}
-                  aria-label="Data e hora inicial de recebimento"
-                />
-              </label>
-              <label>
-                <span>Recebida até</span>
-                <input
-                  type="datetime-local"
-                  value={receivedTo}
-                  onChange={(event) => {
-                    setReceivedTo(event.target.value);
-                    handlePeriodChange("all");
-                  }}
-                  min={receivedFrom || undefined}
-                  aria-label="Data e hora final de recebimento"
-                />
-              </label>
+            <div className="ingestion-filter-subgroup">
+              <span className="ingestion-filter-subgroup-label">Entrada</span>
+              <div className="ingestion-filter-controls">
+                <label>
+                  <span>Tipo de entrada</span>
+                  <select
+                    value={ingestionMode}
+                    onChange={(event) => setIngestionMode(event.target.value as typeof ingestionMode)}
+                    aria-label="Filtrar pelo tipo de importação"
+                  >
+                    <option value="all">Qualquer forma de entrada</option>
+                    <option value="automatic">Somente automáticas</option>
+                    <option value="manual">Somente manuais</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Canal de entrada</span>
+                  <select value={channelFilter} onChange={(event) => setChannelFilter(event.target.value)} aria-label="Filtrar pelo canal de entrada">
+                    <option value="all">Todos os canais</option>
+                    {jobFilterOptions.channels.filter(option => option.count > 0).map(option => <option key={option.id} value={option.id}>{option.label} ({option.count})</option>)}
+                  </select>
+                </label>
+                <label>
+                  <span>Importação específica</span>
+                  <select value={importRunFilter} onChange={(event) => { setImportRunFilter(event.target.value); handlePeriodChange("all"); }} aria-label="Filtrar por uma importação específica">
+                    <option value="all">Todas as importações</option>
+                    {jobFilterOptions.importRuns.map(run => <option key={run.id} value={run.id}>{run.source} · {formatJobDateTime(run.startedAt)} · {run.jobs} vagas</option>)}
+                  </select>
+                </label>
+              </div>
             </div>
-            <small className="list-head-dim">
-              “Recebida” é a data e hora em que a vaga entrou no Radar. A publicação na fonte aparece separadamente em cada vaga.
-            </small>
+            <div className="ingestion-filter-subgroup">
+              <span className="ingestion-filter-subgroup-label">Período de recebimento</span>
+              <div className="ingestion-filter-controls ingestion-filter-controls-dates">
+                <label>
+                  <span>Recebida a partir de</span>
+                  <input
+                    type="datetime-local"
+                    value={receivedFrom}
+                    onChange={(event) => {
+                      setReceivedFrom(event.target.value);
+                      handlePeriodChange("all");
+                    }}
+                    aria-label="Data e hora inicial de recebimento"
+                  />
+                </label>
+                <label>
+                  <span>Recebida até</span>
+                  <input
+                    type="datetime-local"
+                    value={receivedTo}
+                    onChange={(event) => {
+                      setReceivedTo(event.target.value);
+                      handlePeriodChange("all");
+                    }}
+                    min={receivedFrom || undefined}
+                    aria-label="Data e hora final de recebimento"
+                  />
+                </label>
+              </div>
+              <small className="list-head-dim">
+                “Recebida” é a data e hora em que a vaga entrou no Radar. A publicação na fonte aparece separadamente em cada vaga.
+              </small>
+            </div>
+          </div>
+          <div className="compact-filter-divider" aria-hidden="true" />
+          <div className="compact-filter-group">
+            <span className="compact-filter-label">Contato</span>
+            <label className="has-email-filter-check">
+              <input
+                type="checkbox"
+                checked={hasEmailFilter === "yes"}
+                onChange={(event) => setHasEmailFilter(event.target.checked ? "yes" : "all")}
+              />
+              Somente vagas com e-mail
+            </label>
+            {hasEmailFilter === "all" && emailMissingCount > 0 && (
+              <small className="list-head-dim">
+                {emailMissingCount} {emailMissingCount === 1 ? "vaga sem e-mail" : "vagas sem e-mail"} cadastrado{emailMissingCount === 1 ? "" : "s"} (dentro dos filtros atuais).
+              </small>
+            )}
           </div>
           <div className="compact-filter-divider" aria-hidden="true" />
           <div className="compact-filter-group">

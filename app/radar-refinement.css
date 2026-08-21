@@ -986,10 +986,30 @@
 .radar-filter-panel .ingestion-filter-group > .compact-filter-label {
   min-width: 0;
 }
+.ingestion-filter-subgroup {
+  grid-column: 2;
+  display: grid;
+  gap: 6px;
+}
+.ingestion-filter-subgroup + .ingestion-filter-subgroup {
+  margin-top: 6px;
+  padding-top: 10px;
+  border-top: 1px dashed #e4e5ed;
+}
+.ingestion-filter-subgroup-label {
+  color: #9198ac;
+  font-size: 8.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
 .ingestion-filter-controls {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   gap: 10px;
+}
+.ingestion-filter-controls-dates {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
 .ingestion-filter-controls label {
   display: grid;
@@ -1009,9 +1029,24 @@
   padding: 8px 9px;
   font-size: 10px;
 }
-.ingestion-filter-group > small {
-  grid-column: 2;
+.ingestion-filter-group > small,
+.ingestion-filter-subgroup > small {
   line-height: 1.45;
+  color: #9198ac;
+  font-size: 9px;
+}
+.has-email-filter-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #18264d;
+  font-size: 10px;
+  font-weight: 700;
+}
+.has-email-filter-check input {
+  width: 14px;
+  height: 14px;
+  accent-color: #18264d;
 }
 .job-main .job-ingestion-meta,
 .job-ingestion-meta {
@@ -1098,7 +1133,9 @@
   .score-controls .fit-filter-profile-chip { justify-self: start; }
   .radar-filter-panel .ingestion-filter-group { grid-template-columns: 1fr; }
   .ingestion-filter-group > small { grid-column: 1; }
-  .ingestion-filter-controls { grid-template-columns: 1fr; }
+  .ingestion-filter-subgroup { grid-column: 1; }
+  .ingestion-filter-controls,
+  .ingestion-filter-controls-dates { grid-template-columns: 1fr; }
 }
 @media (max-width: 650px) {
   .radar-controls { display: grid; gap: 12px; }
