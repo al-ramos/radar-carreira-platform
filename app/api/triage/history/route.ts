@@ -2,7 +2,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db/index";
-import { draftOutbox, jobs, triageBatches, userJobAnalyses } from "../../../../db/schema";
+import { draftOutbox, jobs, triageBatchItems, triageBatches, triageHistory, userJobAnalyses } from "../../../../db/schema";
 import { isOwnerEmail } from "../../../../lib/access";
 import { hasValidContactEmail } from "../../../../lib/contact-email";
 
@@ -13,11 +13,13 @@ const OPERATIONAL_MESSAGES = {
   staleSchedule: "A rotina diária está sem atualização há mais de 30 horas.",
 };
 
+const STALE_DRAFT_AFTER_MS = 24 * 60 * 60 * 1000;
+const STALE_SCHEDULE_AFTER_MS = 30 * 60 * 60 * 1000;
+
 /**
- * A tela precisa continuar consultável mesmo quando a estrutura opcional de
- * lotes/rascunhos ainda não tiver sido migrada no D1. A fonte canônica é a
- * análise pessoal (`user_job_analyses`): ela preserva a avaliação aplicada ao
- * perfil, inclusive as vagas APInfo consultadas antes da triagem diária.
+ * A análise pessoal preserva a avaliação aplicada ao perfil, inclusive as
+ * vagas APInfo consultadas antes da triagem diária. Lotes e outbox são lidos
+ * em paralelo para que o card operacional reflita o estado persistido.
  */
 export async function GET() {
   const user = await getChatGPTUser();
@@ -26,12 +28,8 @@ export async function GET() {
     return NextResponse.json({ error: "Acesso restrito ao proprietário" }, { status: 403 });
   }
 
-  // Mantém explícito o campo usado pelo histórico completo para falhas de lote
-  // (`error: triageBatches.error`). A versão compatível abaixo não o consulta:
-  // esta base ainda pode não possuir todas as colunas opcionais de outbox.
-  void triageBatches.error;
-
-  const items = await getDb()
+  const db = getDb();
+  const items = await db
     .select({
       id: userJobAnalyses.jobId,
       jobId: userJobAnalyses.jobId,
@@ -65,6 +63,57 @@ export async function GET() {
     .orderBy(desc(userJobAnalyses.updatedAt))
     .limit(1000);
 
+  const [batchRows, batchItemRows, outboxRows, batchDraftRows, batchHistoryRows] = await Promise.all([
+    db.select({
+      id: triageBatches.id,
+      trigger: triageBatches.trigger,
+      scope: triageBatches.scope,
+      status: triageBatches.status,
+      startedAt: triageBatches.startedAt,
+      completedAt: triageBatches.completedAt,
+      createdAt: triageBatches.createdAt,
+      error: triageBatches.error,
+    }).from(triageBatches).where(eq(triageBatches.userId, user.userId)).orderBy(desc(triageBatches.createdAt)).limit(30),
+    db.select({ batchId: triageBatchItems.batchId, status: triageBatchItems.status }).from(triageBatchItems)
+      .innerJoin(triageBatches, eq(triageBatchItems.batchId, triageBatches.id))
+      .where(eq(triageBatches.userId, user.userId)),
+    db.select({ status: draftOutbox.status, createdAt: draftOutbox.createdAt }).from(draftOutbox).where(eq(draftOutbox.userId, user.userId)),
+    db.select({ batchId: triageHistory.batchId, status: draftOutbox.status }).from(draftOutbox)
+      .innerJoin(triageHistory, eq(draftOutbox.historyId, triageHistory.id))
+      .where(eq(draftOutbox.userId, user.userId)),
+    db.select({ batchId: triageHistory.batchId, verdict: triageHistory.verdict, contactEmail: jobs.contactEmail }).from(triageHistory)
+      .innerJoin(jobs, eq(triageHistory.jobId, jobs.id))
+      .where(eq(triageHistory.userId, user.userId)),
+  ]);
+
+  const itemSummary = new Map<string, { total: number; completed: number; failed: number }>();
+  for (const item of batchItemRows) {
+    const summary = itemSummary.get(item.batchId) ?? { total: 0, completed: 0, failed: 0 };
+    summary.total += 1;
+    if (item.status === "completed") summary.completed += 1;
+    if (item.status === "failed") summary.failed += 1;
+    itemSummary.set(item.batchId, summary);
+  }
+  const draftSummary = new Map<string, { pending: number; ready: number; failed: number }>();
+  for (const draft of batchDraftRows) {
+    const summary = draftSummary.get(draft.batchId) ?? { pending: 0, ready: 0, failed: 0 };
+    if (draft.status === "pending") summary.pending += 1;
+    if (draft.status === "drafted") summary.ready += 1;
+    if (draft.status === "failed") summary.failed += 1;
+    draftSummary.set(draft.batchId, summary);
+  }
+
+  const now = Date.now();
+  const pendingDrafts = outboxRows.filter((row) => row.status === "pending");
+  const readyDrafts = outboxRows.filter((row) => row.status === "drafted");
+  const failedDrafts = outboxRows.filter((row) => row.status === "failed");
+  const oldestPendingAt = pendingDrafts.reduce<Date | null>((oldest, row) => !oldest || row.createdAt < oldest ? row.createdAt : oldest, null);
+  const latestScheduled = batchRows.find((batch) => batch.trigger === "scheduled");
+  const alerts: Array<{ level: "warning" | "error"; message: string }> = [];
+  if (oldestPendingAt && now - oldestPendingAt.getTime() > STALE_DRAFT_AFTER_MS) alerts.push({ level: "warning", message: OPERATIONAL_MESSAGES.staleDrafts });
+  const scheduledAt = latestScheduled?.completedAt ?? latestScheduled?.startedAt ?? latestScheduled?.createdAt;
+  if (!scheduledAt || now - scheduledAt.getTime() > STALE_SCHEDULE_AFTER_MS) alerts.push({ level: "error", message: OPERATIONAL_MESSAGES.staleSchedule });
+
   return NextResponse.json({
     items: items.map((item) => ({
       ...item,
@@ -77,13 +126,26 @@ export async function GET() {
       trigger: "scheduled",
       hasValidContactEmail: hasValidContactEmail(item.contactEmail),
     })),
-    batches: [],
+    batches: batchRows.map((batch) => {
+      const itemCount = itemSummary.get(batch.id) ?? { total: 0, completed: 0, failed: 0 };
+      const drafts = draftSummary.get(batch.id) ?? { pending: 0, ready: 0, failed: 0 };
+      const eligible = batchHistoryRows.filter((item) => item.batchId === batch.id && (item.verdict === "✅" || item.verdict === "🟡"));
+      return {
+        ...batch,
+        ...itemCount,
+        eligible: eligible.length,
+        eligibleWithoutContact: eligible.filter((item) => !hasValidContactEmail(item.contactEmail)).length,
+        draftsPending: drafts.pending,
+        draftsReady: drafts.ready,
+        draftsFailed: drafts.failed,
+      };
+    }),
     operational: {
-      pendingDrafts: 0,
-      readyDrafts: 0,
-      failedDrafts: 0,
-      oldestPendingAt: null,
-      alerts: [],
+      pendingDrafts: pendingDrafts.length,
+      readyDrafts: readyDrafts.length,
+      failedDrafts: failedDrafts.length,
+      oldestPendingAt,
+      alerts,
       messages: OPERATIONAL_MESSAGES,
     },
   });
