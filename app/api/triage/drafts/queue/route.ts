@@ -48,15 +48,32 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, retried: failed.length, sent: false });
   }
   if (body.action === "reconcileSent") {
-    const requestedJobIds = Array.isArray(body.jobIds) ? [...new Set(body.jobIds.filter((id): id is string => typeof id === "string" && id.length > 0))].slice(0, 2) : [];
-    if (requestedJobIds.length !== 1) return NextResponse.json({ error: "Escolha uma única vaga para atualizar o envio." }, { status: 400 });
-    const outbox = await db.select({ id: draftOutbox.id, status: draftOutbox.status }).from(draftOutbox).where(and(eq(draftOutbox.userId, user.userId), eq(draftOutbox.jobId, requestedJobIds[0]))).limit(1).then((rows) => rows[0]);
-    if (!outbox) return NextResponse.json({ error: "Rascunho não encontrado para esta vaga." }, { status: 404 });
-    if (outbox.status === "sent") return NextResponse.json({ ok: true, alreadySent: true, confirmed: 1 });
-    if (outbox.status !== "drafted") return NextResponse.json({ error: "O rascunho ainda não está pronto para conferir o envio." }, { status: 409 });
-    const reconciliation = await requestImmediateSentReconciliation([outbox.id]);
+    const requestedJobIds = Array.isArray(body.jobIds) ? [...new Set(body.jobIds.filter((id): id is string => typeof id === "string" && id.length > 0))].slice(0, 200) : [];
+    // Sem jobIds: aciona o mesmo conector do Apps Script sob demanda, para
+    // todos os rascunhos aguardando confirmação — não é mais preciso
+    // escolher vaga por vaga para varrer "Enviados" no Gmail.
+    if (!requestedJobIds.length) {
+      const pending = await db.select({ id: draftOutbox.id }).from(draftOutbox).where(and(eq(draftOutbox.userId, user.userId), eq(draftOutbox.status, "drafted")));
+      if (!pending.length) return NextResponse.json({ ok: true, checked: 0, confirmed: 0 });
+      const reconciliation = await requestImmediateSentReconciliation(pending.map((item) => item.id));
+      if (!reconciliation.requested) return NextResponse.json({ error: reconciliation.reason ?? "Não foi possível consultar o Gmail agora." }, { status: 503 });
+      return NextResponse.json({ ok: true, checked: pending.length, confirmed: reconciliation.confirmed ?? 0 });
+    }
+    if (requestedJobIds.length === 1) {
+      const outbox = await db.select({ id: draftOutbox.id, status: draftOutbox.status }).from(draftOutbox).where(and(eq(draftOutbox.userId, user.userId), eq(draftOutbox.jobId, requestedJobIds[0]))).limit(1).then((rows) => rows[0]);
+      if (!outbox) return NextResponse.json({ error: "Rascunho não encontrado para esta vaga." }, { status: 404 });
+      if (outbox.status === "sent") return NextResponse.json({ ok: true, alreadySent: true, confirmed: 1 });
+      if (outbox.status !== "drafted") return NextResponse.json({ error: "O rascunho ainda não está pronto para conferir o envio." }, { status: 409 });
+      const reconciliation = await requestImmediateSentReconciliation([outbox.id]);
+      if (!reconciliation.requested) return NextResponse.json({ error: reconciliation.reason ?? "Não foi possível consultar o Gmail agora." }, { status: 503 });
+      return NextResponse.json({ ok: true, confirmed: reconciliation.confirmed ?? 0 });
+    }
+    const outboxItems = await db.select({ id: draftOutbox.id, status: draftOutbox.status }).from(draftOutbox).where(and(eq(draftOutbox.userId, user.userId), inArray(draftOutbox.jobId, requestedJobIds)));
+    const drafted = outboxItems.filter((item) => item.status === "drafted");
+    if (!drafted.length) return NextResponse.json({ ok: true, checked: 0, confirmed: 0 });
+    const reconciliation = await requestImmediateSentReconciliation(drafted.map((item) => item.id));
     if (!reconciliation.requested) return NextResponse.json({ error: reconciliation.reason ?? "Não foi possível consultar o Gmail agora." }, { status: 503 });
-    return NextResponse.json({ ok: true, confirmed: reconciliation.confirmed ?? 0 });
+    return NextResponse.json({ ok: true, checked: drafted.length, confirmed: reconciliation.confirmed ?? 0 });
   }
   // Alternativa explícita para o caso em que a ponte com o Gmail esteja
   // indisponível. Não envia e-mail: apenas registra a confirmação feita pela

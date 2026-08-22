@@ -156,3 +156,6 @@
 
 /* Reimportação de análise externa em CSV — reaproveita a moldura de .triage-ai-prompt. */
 .triage-csv-import input[type=file]{background:#fff;border:1px solid #a9bdad;border-radius:8px;color:#173f32;font-size:11px;padding:8px}.triage-csv-import textarea{background:#fff;border:1px solid #a9bdad;border-radius:8px;color:#173f32;font:11px Consolas,monospace;min-height:110px;padding:9px;resize:vertical}.triage-csv-import-result{background:#0d3428;border:1px solid #6fa182;border-radius:8px;display:grid;gap:4px;padding:9px}.triage-csv-import-result span{color:#fff;font-size:11px;font-weight:700}.triage-csv-import-result small{color:#ffe0a3}
+
+/* Verificação em lote dos envios já confirmados pelo conector Gmail. */
+.triage-operations-metrics button.triage-reconcile-all{background:#173f32;color:#fff;font-weight:700}.triage-operations-metrics button.triage-reconcile-all:hover{background:#245744}.triage-operations-metrics button.triage-reconcile-all:disabled{cursor:not-allowed;opacity:.6}
