@@ -178,6 +178,7 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
   const visibleHistory = orderedHistory.slice(historyPage * historyPageSize, (historyPage + 1) * historyPageSize);
   const selectedHistory = currentAssessments.filter((item) => selectedHistoryJobIds.includes(item.jobId));
   const allVisibleSelected = visibleHistory.length > 0 && visibleHistory.every((item) => selectedHistoryJobIds.includes(item.jobId));
+  const allFilteredSelected = filteredHistory.length > 0 && filteredHistory.every((item) => selectedHistoryJobIds.includes(item.jobId));
   const toggleHistoryJob = (jobId: string) => setSelectedHistoryJobIds((current) => current.includes(jobId) ? current.filter((id) => id !== jobId) : [...current, jobId]);
   const toggleVisibleHistory = () => setSelectedHistoryJobIds((current) => allVisibleSelected ? current.filter((id) => !visibleHistory.some((item) => item.jobId === id)) : [...new Set([...current, ...visibleHistory.map((item) => item.jobId)])]);
   const draftActionBlocker = (item: HistoryItem) => {
@@ -371,7 +372,7 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
         setCodexQueueItems((items) => [{ id: result.id, status: result.status ?? "pending", createdAt: new Date().toISOString(), selection: { filters: { jobIds } }, ...items.filter((item) => item.id !== result.id) }]);
       }
       setAiPromptOpen(false);
-      setMessage(`${result.queued ?? aiCount} vaga(s) foram preparadas e aguardam a sua solicitação nesta conversa do Codex. Nenhuma decisão do portal foi alterada.`);
+      setMessage(`${result.queued ?? aiCount} vaga(s) foram preparadas e aguardam a sua solicitação nesta conversa do Codex. Quando o Codex concluir com veredito ✅ ou 🟡, o rascunho é liberado automaticamente.`);
     } catch (error) {
       if (jobIds?.length === 1) setCodexJobStatus("failed");
       setMessage(error instanceof Error ? error.message : "Não foi possível preparar a análise para o Codex.");
@@ -528,7 +529,7 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
                     <button className="primary triage-run-button" disabled={runningPilot || aiReviewLoading || !actionCandidateCount || manualIsActive} onClick={runToday}>{runningPilot ? "Iniciando fila…" : `Analisar ${actionCandidateCount ? `(${actionCandidateCount})` : ""}`}</button>
                   </article>
                   <article className="triage-action-step triage-ai-step">
-                    <span>IA</span><div><b>Consulta à IA <em>opcional</em></b><small>Faz uma leitura consultiva; não muda a triagem nem cria rascunhos.</small></div>
+                    <span>IA</span><div><b>Consulta à IA <em>opcional</em></b><small>Se a IA concluir ✅ ou 🟡, esse veredito vira oficial e libera a fila de rascunho.</small></div>
                     <button className="triage-queue-button" disabled={runningPilot || aiReviewLoading || codexQueueLoading || !actionCandidateCount} onClick={() => void openAiPrompt()}>{aiReviewLoading || codexQueueLoading ? "Preparando…" : "Escolher"}</button>
                   </article>
                   <article className="triage-action-step triage-csv-import-step">
@@ -563,7 +564,7 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
                     <div className="triage-ai-profile-wide"><dt>Projeto ou experiência-âncora</dt><dd>{aiProfile.careerRules.anchorProject || "Não informado"}</dd></div>
                     <div><dt>Score mínimo do Radar</dt><dd>{aiProfile.minScore}</dd></div>
                   </dl>}
-                  <div className="triage-ai-prompt-heading"><b>{isIndividualAiReview ? "Processar somente esta vaga" : "O que você quer que a IA avalie?"}</b><small>{isIndividualAiReview ? "A consulta usará somente a vaga identificada acima; ela não altera o veredito nem cria rascunhos." : "Escolha se quer receber a leitura agora no portal ou preparar este mesmo recorte para conversar com o Codex aqui."}</small></div>
+                  <div className="triage-ai-prompt-heading"><b>{isIndividualAiReview ? "Processar somente esta vaga" : "O que você quer que a IA avalie?"}</b><small>{isIndividualAiReview ? "A consulta usará somente a vaga identificada acima; um veredito ✅ ou 🟡 já vira oficial e libera o rascunho." : "Escolha se quer receber a leitura agora no portal ou preparar este mesmo recorte para conversar com o Codex aqui."}</small></div>
                   <textarea ref={aiPromptRef} aria-label="Instrução para a IA" value={aiPrompt} onChange={(event) => setAiPrompt(event.target.value)} maxLength={1200} disabled={aiReviewLoading || codexQueueLoading} />
                   <div><button type="button" className="triage-queue-button" onClick={() => setAiPromptOpen(false)} disabled={aiReviewLoading || codexQueueLoading}>Cancelar</button><button type="button" className="triage-queue-button" onClick={() => void prepareCodexReview()} disabled={aiReviewLoading || codexQueueLoading || aiPrompt.trim().length < 8}>{codexQueueLoading ? "Preparando…" : isIndividualAiReview ? "Preparar esta vaga para o Codex" : "Preparar para o Codex"}</button><button type="button" className="primary" onClick={() => void requestAiReview()} disabled={aiReviewLoading || codexQueueLoading || aiPrompt.trim().length < 8}>{aiReviewLoading ? "Solicitando…" : isIndividualAiReview ? "Analisar esta vaga" : "Solicitar análise"}</button></div>
                 </section>}
@@ -580,7 +581,7 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
                     {csvImportResult.rejected.length > 0 && <small>Linha(s) rejeitada(s): {csvImportResult.rejected.map((r) => `${r.line} (${r.reason})`).join(", ")}</small>}
                   </div>}
                 </section>}
-              <small>Acompanhe o resultado no cartão “Último lote manual”, logo abaixo. Ao usar “Preparar”, o Gmail cria esse lote uma única vez; não há agendamento e nenhum e-mail é enviado automaticamente. A consulta à IA é opcional e não altera o fluxo.</small>
+              <small>Acompanhe o resultado no cartão “Último lote manual”, logo abaixo. Ao usar “Preparar”, o Gmail cria esse lote uma única vez; não há agendamento e nenhum e-mail é enviado automaticamente. A consulta à IA é opcional; um veredito ✅ ou 🟡 dela já vira oficial e libera a fila de rascunho.</small>
               </div>
             </details>
           </div>
@@ -671,6 +672,7 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
                 <span><b>{historyPage * historyPageSize + 1}–{Math.min((historyPage + 1) * historyPageSize, filteredHistory.length)}</b> de {filteredHistory.length} vagas</span>
                 <small>Página {historyPage + 1} de {historyPageCount}</small>
                 <button type="button" disabled={(historyPage + 1) * historyPageSize >= filteredHistory.length} onClick={() => setHistoryPage(page => page + 1)}>Próxima →</button>
+                {allFilteredSelected ? <button type="button" className="triage-selection-clear" onClick={() => setSelectedHistoryJobIds([])}>Limpar seleção ({filteredHistory.length})</button> : <button type="button" className="triage-queue-button" onClick={() => setSelectedHistoryJobIds(filteredHistory.map((item) => item.jobId))}>Selecionar todas as {filteredHistory.length} vagas filtradas</button>}
               </nav>}
               {selectedHistory.length > 0 && <div className="triage-selection-actions" aria-live="polite">
                 <span><b>{selectedHistory.length}</b> vaga(s) selecionada(s)</span>

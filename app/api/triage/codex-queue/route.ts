@@ -6,6 +6,20 @@ import { getDb } from "../../../../db/index";
 import { jobs, profiles, triageAiReviews, userJobAnalyses } from "../../../../db/schema";
 import { isOwnerEmail } from "../../../../lib/access";
 import { canonicalizeProfile } from "../../../../lib/canonical-profile";
+import { applyAiVerdicts, type AiVerdictEntry } from "../../../../lib/apply-ai-verdict";
+
+const VERDICTS = new Set(["✅", "🟡", "🔴", "❌"]);
+function parseVerdicts(value: unknown): AiVerdictEntry[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item): AiVerdictEntry[] => {
+    if (!item || typeof item !== "object") return [];
+    const entry = item as Record<string, unknown>;
+    const jobId = typeof entry.jobId === "string" ? entry.jobId : "";
+    const verdict = typeof entry.verdict === "string" ? entry.verdict : "";
+    if (!jobId || !VERDICTS.has(verdict)) return [];
+    return [{ jobId, verdict: verdict as AiVerdictEntry["verdict"], note: typeof entry.note === "string" ? entry.note.slice(0, 500) : undefined }];
+  });
+}
 
 export const dynamic = "force-dynamic";
 const MAX_CODEX_REVIEW_JOBS = 20;
@@ -81,7 +95,19 @@ export async function PATCH(request: Request) {
   const action = body?.action;
   if (!id || !["claim", "complete", "fail"].includes(String(action))) return NextResponse.json({ error: "Ação de fila inválida" }, { status: 400 });
   const now = new Date();
-  const set = action === "claim" ? { codexStatus: "claimed" as const, codexClaimedAt: now } : action === "complete" ? { codexStatus: "completed" as const, codexCompletedAt: now } : { codexStatus: "failed" as const, codexCompletedAt: now, error: typeof body?.error === "string" ? body.error.slice(0, 1000) : "Falha na análise pelo Codex" };
+  const response = typeof body?.response === "string" ? body.response.slice(0, 16000) : undefined;
+  const set = action === "claim"
+    ? { codexStatus: "claimed" as const, codexClaimedAt: now }
+    : action === "complete"
+      ? { codexStatus: "completed" as const, codexCompletedAt: now, ...(response ? { response, status: "completed" as const } : {}) }
+      : { codexStatus: "failed" as const, codexCompletedAt: now, error: typeof body?.error === "string" ? body.error.slice(0, 1000) : "Falha na análise pelo Codex" };
   await getDb().update(triageAiReviews).set(set).where(and(eq(triageAiReviews.id, id), eq(triageAiReviews.userId, auth.user.userId), eq(triageAiReviews.destination, "codex")));
+  // Decisão explícita do proprietário: o veredito de uma análise do Codex
+  // considerada válida já é aplicado como oficial (✅/🟡 liberam rascunho),
+  // mesma trilha da reimportação de CSV — sem precisar reprocessar por regras.
+  if (action === "complete") {
+    const verdicts = parseVerdicts(body?.verdicts);
+    if (verdicts.length) await applyAiVerdicts(auth.user.userId, "codex-review", verdicts);
+  }
   return NextResponse.json({ id, status: set.codexStatus });
 }
