@@ -70,7 +70,8 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
     [csvImportOpen, setCsvImportOpen] = useState(false),
     [csvImportText, setCsvImportText] = useState(""),
     [csvImportLoading, setCsvImportLoading] = useState(false),
-    [csvImportResult, setCsvImportResult] = useState<{ applied: number; draftsQueued: number; notFound: string[]; ambiguous: string[]; rejected: Array<{ line: number; reason: string }> } | null>(null);
+    [csvImportResult, setCsvImportResult] = useState<{ applied: number; draftsQueued: number; notFound: string[]; ambiguous: string[]; rejected: Array<{ line: number; reason: string }> } | null>(null),
+    [reconcilingAllSent, setReconcilingAllSent] = useState(false);
   const aiPromptRef = useRef<HTMLTextAreaElement>(null);
   const loadHistory = async () => {
     try {
@@ -378,6 +379,21 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
       setCodexQueueLoading(false);
     }
   };
+  const reconcileAllSentDrafts = async () => {
+    setReconcilingAllSent(true);
+    setMessage("Verificando envios no Gmail para todos os rascunhos pendentes…");
+    try {
+      const response = await fetch("/api/triage/drafts/queue", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "reconcileSent" }) });
+      const result = await readJsonResponse<{ checked?: number; confirmed?: number; error?: string }>(response, "A verificação de envios");
+      if (!response.ok) throw new Error(result.error ?? "Não foi possível verificar os envios agora.");
+      setMessage(!result.checked ? "Nenhum rascunho aguardando confirmação de envio." : `${result.confirmed ?? 0} de ${result.checked} rascunho(s) confirmado(s) como enviado(s) no Gmail.`);
+      await loadHistory();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Não foi possível verificar os envios agora.");
+    } finally {
+      setReconcilingAllSent(false);
+    }
+  };
   const loadCsvImportFile = async (file: File) => {
     if (file.size > 2_000_000) { setMessage("O arquivo CSV excede o limite de 2 MB."); return; }
     setCsvImportText(await file.text());
@@ -610,6 +626,7 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
             <div className="triage-operations-metrics">
               <button type="button" onClick={() => openHistory("pending")}><b>{draftCounts.pending}</b> aguardando criação</button>
               <button type="button" onClick={() => openHistory("drafted")}><b>{draftCounts.drafted}</b> prontos para revisar</button>
+              {draftCounts.drafted > 0 && <button type="button" className="triage-reconcile-all" disabled={reconcilingAllSent} onClick={() => void reconcileAllSentDrafts()} title="Aciona agora o mesmo conector que lê a pasta Enviados do Gmail, para todos os rascunhos pendentes de confirmação.">{reconcilingAllSent ? "Verificando…" : `Verificar envios (${draftCounts.drafted})`}</button>}
               <button type="button" onClick={() => openHistory("sent")}><b>{draftCounts.sent}</b> envios confirmados</button>
               <button type="button" className={draftCounts.failed ? "has-failures" : ""} onClick={() => openHistory("failed")}><b>{draftCounts.failed}</b> falhas para corrigir</button>
             </div>
