@@ -22,10 +22,12 @@ function parseStack(value: string): string[] {
 
 /**
  * Reimporta uma análise externa (código, status, descrição) de volta para o
- * Radar. Ao contrário de /api/triage/ai-review, aqui o veredito importado
- * SUBSTITUI o veredito da vaga — decisão explícita do proprietário — e
- * segue o mesmo caminho de um veredito normal: pode entrar na fila de
- * rascunho se a checagem de segurança (isSafeForDraft) permitir.
+ * Radar. O veredito importado SUBSTITUI o veredito da vaga — decisão
+ * explícita do proprietário — e segue o mesmo caminho de um veredito normal:
+ * pode entrar na fila de rascunho se a checagem de segurança
+ * (isSafeForDraft) permitir. Esta rota usa sua própria trilha de aplicação;
+ * /api/triage/ai-review e /api/triage/codex-queue usam a mesma lógica via
+ * lib/apply-ai-verdict.ts.
  */
 export async function POST(request: Request) {
   const user = await getChatGPTUser();

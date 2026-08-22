@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { getDb } from "../../../../../db/index";
 import { aiUsageEvents, triageAiReviewChunks, triageAiReviews } from "../../../../../db/schema";
 import { reviewSelectedJobs, type AiReviewProfile } from "../../../../../lib/ai-provider";
+import { applyAiVerdicts } from "../../../../../lib/apply-ai-verdict";
 
 export const dynamic = "force-dynamic";
 type Job = { id: string; title: string; company: string; location: string | null; url: string; description: string };
@@ -19,8 +20,11 @@ export async function POST(request: Request) {
   try {
     const header = JSON.parse(review.selection) as { profile: AiReviewProfile }, part = JSON.parse(chunk.selection) as { jobs: Job[] };
     const completion = await reviewSelectedJobs({ instruction: `${review.prompt}\n\nResponda de modo conciso: uma seção por vaga, seguida de prioridades do lote.`, profile: header.profile, jobs: part.jobs });
-    await db.update(triageAiReviewChunks).set({ status: "completed", response: completion.value, inputTokens: completion.inputTokens, outputTokens: completion.outputTokens, updatedAt: new Date() }).where(eq(triageAiReviewChunks.id, chunk.id));
+    await db.update(triageAiReviewChunks).set({ status: "completed", response: completion.value.narrative, inputTokens: completion.inputTokens, outputTokens: completion.outputTokens, updatedAt: new Date() }).where(eq(triageAiReviewChunks.id, chunk.id));
     await db.insert(aiUsageEvents).values({ id: randomUUID(), userId: review.userId, operation: "review_selection", provider: completion.provider, model: completion.model, inputTokens: completion.inputTokens, outputTokens: completion.outputTokens, status: "completed", createdAt: new Date() });
+    // Decisão explícita do proprietário: o veredito da IA já é aplicado como
+    // oficial (✅/🟡 liberam rascunho), mesma trilha da reimportação de CSV.
+    await applyAiVerdicts(review.userId, "ai-review", completion.value.verdicts);
     const all = await db.select().from(triageAiReviewChunks).where(eq(triageAiReviewChunks.reviewId, review.id));
     if (all.every(item => item.status === "completed" || item.status === "failed")) {
       const succeeded = all.filter(item => item.status === "completed"), failed = all.filter(item => item.status === "failed"), response = succeeded.map((item, index) => `## Lote ${index + 1}\n${item.response ?? ""}`).join("\n\n");
