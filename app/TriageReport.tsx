@@ -178,6 +178,7 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
   const visibleHistory = orderedHistory.slice(historyPage * historyPageSize, (historyPage + 1) * historyPageSize);
   const selectedHistory = currentAssessments.filter((item) => selectedHistoryJobIds.includes(item.jobId));
   const allVisibleSelected = visibleHistory.length > 0 && visibleHistory.every((item) => selectedHistoryJobIds.includes(item.jobId));
+  const allFilteredSelected = filteredHistory.length > 0 && filteredHistory.every((item) => selectedHistoryJobIds.includes(item.jobId));
   const toggleHistoryJob = (jobId: string) => setSelectedHistoryJobIds((current) => current.includes(jobId) ? current.filter((id) => id !== jobId) : [...current, jobId]);
   const toggleVisibleHistory = () => setSelectedHistoryJobIds((current) => allVisibleSelected ? current.filter((id) => !visibleHistory.some((item) => item.jobId === id)) : [...new Set([...current, ...visibleHistory.map((item) => item.jobId)])]);
   const draftActionBlocker = (item: HistoryItem) => {
@@ -671,6 +672,7 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
                 <span><b>{historyPage * historyPageSize + 1}–{Math.min((historyPage + 1) * historyPageSize, filteredHistory.length)}</b> de {filteredHistory.length} vagas</span>
                 <small>Página {historyPage + 1} de {historyPageCount}</small>
                 <button type="button" disabled={(historyPage + 1) * historyPageSize >= filteredHistory.length} onClick={() => setHistoryPage(page => page + 1)}>Próxima →</button>
+                {allFilteredSelected ? <button type="button" className="triage-selection-clear" onClick={() => setSelectedHistoryJobIds([])}>Limpar seleção ({filteredHistory.length})</button> : <button type="button" className="triage-queue-button" onClick={() => setSelectedHistoryJobIds(filteredHistory.map((item) => item.jobId))}>Selecionar todas as {filteredHistory.length} vagas filtradas</button>}
               </nav>}
               {selectedHistory.length > 0 && <div className="triage-selection-actions" aria-live="polite">
                 <span><b>{selectedHistory.length}</b> vaga(s) selecionada(s)</span>
