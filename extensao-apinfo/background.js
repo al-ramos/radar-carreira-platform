@@ -37,6 +37,7 @@ importScripts('stacks.js');
  */
 
 const normalized = value => String(value || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+const HOURLY_COLLECTION_ALARM = 'apinfo-hourly-collection';
 const matches = (text, term) => {
   const escaped = normalized(term).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, 'i').test(normalized(text));
@@ -122,6 +123,36 @@ async function sendToRadar(items, settings) {
   if (!response.ok) throw new Error(data.error || `Radar respondeu ${response.status}`);
   return data;
 }
+
+async function findMostRecentApinfoTab() {
+  const tabs = await chrome.tabs.query({ url: 'https://www.apinfo.com/*' });
+  if (!tabs.length) return null;
+  tabs.sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0));
+  return tabs[0];
+}
+
+async function configureHourlyCollection() {
+  const { hourlyCollectionEnabled = false } = await chrome.storage.local.get({ hourlyCollectionEnabled: false });
+  if (hourlyCollectionEnabled) await chrome.alarms.create(HOURLY_COLLECTION_ALARM, { periodInMinutes: 60 });
+  else await chrome.alarms.clear(HOURLY_COLLECTION_ALARM);
+}
+
+async function runHourlyCollection() {
+  const settings = await chrome.storage.local.get({
+    hourlyCollectionEnabled: false, sendRadar: false, portalUrl: '', portalToken: '', selectedStacks: [],
+  });
+  if (!settings.hourlyCollectionEnabled || !settings.sendRadar || !settings.portalUrl || !settings.portalToken) return;
+  const tab = await findMostRecentApinfoTab();
+  if (!tab?.id) return;
+  const result = await autoCollectAllPages(tab.id);
+  if (result.jobs.length) await sendToRadar(result.jobs, settings);
+}
+
+chrome.runtime.onInstalled.addListener(() => { void configureHourlyCollection(); });
+chrome.runtime.onStartup.addListener(() => { void configureHourlyCollection(); });
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === HOURLY_COLLECTION_ALARM) void runHourlyCollection().catch(() => undefined);
+});
 
 /**
  * Injeta page-collector.js na aba do APinfo já identificada pelo chamador
@@ -341,6 +372,10 @@ async function findMostRecentApinfoTab(externalId) {
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.type === 'CONFIGURE_HOURLY_COLLECTION') {
+    configureHourlyCollection().then(() => sendResponse({ ok: true })).catch((error) => sendResponse({ ok: false, error: error.message }));
+    return true;
+  }
   if (message?.type === 'CAPTURE_CONTACT_FOR_RADAR') {
     (async () => {
       try {

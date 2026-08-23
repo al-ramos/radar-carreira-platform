@@ -47,12 +47,6 @@ export async function POST(request: Request) {
   const schedulerAuthenticated = request.headers.get("x-radar-collector-authenticated") === "1";
   const queueAuthenticated = request.headers.get("x-radar-triage-queue-authenticated") === "1";
   const queuedUserId = request.headers.get("x-radar-triage-user-id")?.trim() || null;
-  const source = schedulerAuthenticated ? (await getDb().select().from(jobSources).where(eq(jobSources.id, "gmail-radarvagas")).limit(1))[0] : null;
-  let scheduledUserId: string | null = null;
-  try { const config = source ? JSON.parse(source.externalRef) as { userId?: string } : null; if (config?.userId) scheduledUserId = config.userId; } catch { /* a sessão normal permanece disponível */ }
-  const userId = queueAuthenticated ? queuedUserId : user?.userId ?? scheduledUserId;
-  if (!userId) return NextResponse.json({ error: "Autenticação necessária" }, { status: 401 });
-
   let body: Partial<TriageRunRequest> & { batchId?: string; jobId?: string } = {};
   try {
     body = await request.json() as Partial<TriageRunRequest>;
@@ -82,6 +76,16 @@ export async function POST(request: Request) {
   if (!schedulerAuthenticated && run.trigger === "schedule") return NextResponse.json({ error: "A rotina agendada só pode ser iniciada pelo backend do Radar." }, { status: 403 });
   if (queueAuthenticated && (!queuedUserId || !body.batchId || !body.jobId || run.trigger !== "portal")) return NextResponse.json({ error: "Mensagem da fila inválida." }, { status: 403 });
   if (run.aiMode === "all") return NextResponse.json({ error: "A IA só pode processar vagas ambíguas; o modo all não é permitido." }, { status: 400 });
+
+  // A rotina interna pode ser disparada por qualquer fonte push. Obtém o
+  // dono do perfil a partir da própria fonte, e não de uma fonte fixa.
+  const scheduledSource = schedulerAuthenticated
+    ? (await getDb().select().from(jobSources).where(eq(jobSources.id, run.sourceId ?? "gmail-radarvagas")).limit(1))[0]
+    : null;
+  let scheduledUserId: string | null = null;
+  try { const config = scheduledSource ? JSON.parse(scheduledSource.externalRef) as { userId?: string } : null; if (config?.userId) scheduledUserId = config.userId; } catch { /* a sessão normal permanece disponível */ }
+  const userId = queueAuthenticated ? queuedUserId : user?.userId ?? scheduledUserId;
+  if (!userId) return NextResponse.json({ error: "Autenticação necessária" }, { status: 401 });
 
   const db = getDb();
   // Etapa 1 da automação ponta a ponta: a rotina agendada só roda com o

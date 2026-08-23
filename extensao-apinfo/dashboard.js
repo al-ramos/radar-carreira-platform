@@ -17,6 +17,7 @@ const DEFAULTS = {
   downloadFolder: 'RadarCarreira',
   portalUrl: 'https://radar-carreira-platform.al-ramos.workers.dev/api/collector/import/apinfo-extension',
   portalToken: '',
+  hourlyCollectionEnabled: false,
 };
 
 const showCollectStatus = (text, error = false) => {
@@ -53,6 +54,7 @@ function readSettings() {
     downloadFolder: document.querySelector('#download-folder').value.trim(),
     portalUrl: document.querySelector('#portal-url').value.trim(),
     portalToken: document.querySelector('#portal-token').value.trim(),
+    hourlyCollectionEnabled: document.querySelector('#hourly-collection').checked,
   };
 }
 
@@ -63,6 +65,7 @@ async function saveSettings(silent = false) {
     return null;
   }
   await chrome.storage.local.set(settings);
+  await chrome.runtime.sendMessage({ type: 'CONFIGURE_HOURLY_COLLECTION' });
   if (!silent) showExportStatus('Parâmetros salvos neste navegador.');
   return settings;
 }
@@ -78,6 +81,7 @@ async function loadSettings() {
   document.querySelector('#download-folder').value = settings.downloadFolder;
   document.querySelector('#portal-url').value = settings.portalUrl;
   document.querySelector('#portal-token').value = settings.portalToken;
+  document.querySelector('#hourly-collection').checked = settings.hourlyCollectionEnabled;
 }
 
 async function testRadar() {
