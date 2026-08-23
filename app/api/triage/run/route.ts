@@ -3,7 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db/index";
-import { aiUsageEvents, draftOutbox, jobAiFacts, jobSources, jobs, profiles, triageBatchItems, triageBatches, triageDeduplication, triageHistory, userJobAnalyses } from "../../../../db/schema";
+import { aiUsageEvents, draftOutbox, jobAiFacts, jobSources, jobs, platformSettings, profiles, triageBatchItems, triageBatches, triageDeduplication, triageHistory, userJobAnalyses } from "../../../../db/schema";
 import { getAnalysisVersions } from "../../../../lib/analysis-versions";
 import { canonicalizeProfile } from "../../../../lib/canonical-profile";
 import { evaluateDeterministicTriage, needsAiRefinement } from "../../../../lib/deterministic-triage";
@@ -84,6 +84,20 @@ export async function POST(request: Request) {
   if (run.aiMode === "all") return NextResponse.json({ error: "A IA só pode processar vagas ambíguas; o modo all não é permitido." }, { status: 400 });
 
   const db = getDb();
+  // Etapa 1 da automação ponta a ponta: a rotina agendada só roda com o
+  // interruptor ligado em Configurações, e só enfileira rascunho se o
+  // segundo interruptor (mais restritivo) também estiver ligado. Ambos
+  // desligados por padrão até serem validados; evita reprocessar tudo ou
+  // enfileirar rascunhos silenciosamente se alguém ligar a agenda antes de
+  // revisar o comportamento.
+  let scheduledDraftQueueEnabled = false;
+  if (run.trigger === "schedule") {
+    const settings = await db.select({ enabled: platformSettings.scheduledTriageEnabled, draftQueueEnabled: platformSettings.scheduledTriageDraftQueueEnabled }).from(platformSettings).where(eq(platformSettings.id, "global")).limit(1).then(rows => rows[0]);
+    // Sem linha em platform_settings, o padrão é desligado (mesma postura do
+    // schema): nunca inferir "ligado" por ausência de configuração.
+    if (!settings?.enabled) return NextResponse.json({ ok: true, skipped: true, message: "Triagem agendada desligada em Configurações" });
+    scheduledDraftQueueEnabled = settings.draftQueueEnabled;
+  }
   const profile = await db.select().from(profiles).where(eq(profiles.userId, userId)).limit(1).then(rows => rows[0]);
   if (!profile) return NextResponse.json({ error: "Complete seu perfil antes de iniciar a triagem." }, { status: 412 });
 
@@ -253,7 +267,7 @@ export async function POST(request: Request) {
       await db.update(triageBatchItems).set({ status: "completed", historyId, leaseOwner: null, leaseUntil: null, updatedAt: now }).where(and(eq(triageBatchItems.batchId, batchId), eq(triageBatchItems.jobId, job.id)));
       await db.update(triageDeduplication).set({ status: "completed", historyId, leaseOwner: null, leaseUntil: null, updatedAt: now }).where(eq(triageDeduplication.idempotencyKey, key));
       const safelyRefined = !aiRefinement.eligible || finalSource === "ai";
-      if (run.trigger === "schedule" && safelyRefined && isSafeForDraft({
+      if (run.trigger === "schedule" && scheduledDraftQueueEnabled && safelyRefined && isSafeForDraft({
         verdict: finalVerdict.result.emoji,
         blocker: finalVerdict.blocker,
         contactEmail: job.contactEmail,
