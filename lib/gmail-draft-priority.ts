@@ -2,9 +2,11 @@ type ImmediateDraftResult = { requested: boolean; created?: number; reason?: str
 type ImmediateSentReconciliationResult = { requested: boolean; confirmed?: number; reason?: string };
 
 /**
- * Aciona o Apps Script somente para itens escolhidos manualmente. A URL e o
- * token ficam em secrets do Worker. A criação é sempre iniciada por uma ação
- * manual no Radar; não há rotina programada como alternativa.
+ * Aciona o Apps Script para os itens informados. A URL e o token ficam em
+ * secrets do Worker. Chamada tanto por uma ação manual no portal quanto pela
+ * triagem agendada (app/api/triage/run, quando o interruptor "Criar rascunho
+ * de verdade no Gmail" está ligado), sempre para vagas que já passaram pela
+ * mesma validação de segurança (isSafeForDraft) antes de entrar na fila.
  */
 export async function requestImmediateDraftCreation(outboxIds: string[]): Promise<ImmediateDraftResult> {
   const url = process.env.GMAIL_DRAFTS_WEBHOOK_URL?.trim();
