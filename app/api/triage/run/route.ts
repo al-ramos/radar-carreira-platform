@@ -267,7 +267,12 @@ export async function POST(request: Request) {
       await db.update(triageBatchItems).set({ status: "completed", historyId, leaseOwner: null, leaseUntil: null, updatedAt: now }).where(and(eq(triageBatchItems.batchId, batchId), eq(triageBatchItems.jobId, job.id)));
       await db.update(triageDeduplication).set({ status: "completed", historyId, leaseOwner: null, leaseUntil: null, updatedAt: now }).where(eq(triageDeduplication.idempotencyKey, key));
       const safelyRefined = !aiRefinement.eligible || finalSource === "ai";
-      if (run.trigger === "schedule" && scheduledDraftQueueEnabled && safelyRefined && isSafeForDraft({
+      // Etapa 2 da automação ponta a ativação: o caminho agendado só
+      // enfileira rascunho para veredito ✅ Aprovada. 🟡 Provável fica
+      // parada no histórico para revisão sua (ou pedido explícito de
+      // refino à IA) — a fila manual do portal continua aceitando ✅ e 🟡
+      // como sempre, isSafeForDraft não muda para ninguém além daqui.
+      if (run.trigger === "schedule" && scheduledDraftQueueEnabled && safelyRefined && finalVerdict.result.emoji === "✅" && isSafeForDraft({
         verdict: finalVerdict.result.emoji,
         blocker: finalVerdict.blocker,
         contactEmail: job.contactEmail,
