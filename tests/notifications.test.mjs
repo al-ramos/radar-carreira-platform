@@ -11,7 +11,7 @@ test("schema e migration registram a tabela de notificações", async () => {
     read("../drizzle/meta/_journal.json"),
   ]);
   assert.match(schema, /export const notifications = sqliteTable\("notifications"/);
-  assert.match(schema, /type: text\("type", \{ enum: \["import", "report", "digest", "pipeline", "application"\] \}\)/);
+  assert.match(schema, /type: text\("type", \{ enum: \["import", "report", "digest", "pipeline", "application", "triage"\] \}\)/);
   assert.match(schema, /severity: text\("severity", \{ enum: \["success", "error", "info"\] \}\)/);
   assert.match(migration, /CREATE TABLE `notifications`/);
   assert.match(migration, /CREATE INDEX `notifications_created_at_idx`/);

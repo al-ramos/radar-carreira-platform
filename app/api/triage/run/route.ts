@@ -13,6 +13,7 @@ import { isSafeForDraft } from "../../../../lib/draft-eligibility";
 import { extractStructuredJobFacts, getAiProviderStatus, validateStructuredJobFacts } from "../../../../lib/ai-provider";
 import { normalizeCareerRules } from "../../../../lib/profile-options";
 import { applyAiRefinement } from "../../../../lib/triage-ai-refinement";
+import { notifyScheduledTriage } from "../../../../lib/notifications";
 
 export const dynamic = "force-dynamic";
 const AI_FACTS_VERSION = "job-facts-v1";
@@ -156,6 +157,7 @@ export async function POST(request: Request) {
   const processed: Array<{ jobId: string; title: string; company: string; reference: string | null; contactEligible: boolean; aiEligible: boolean; aiStatus: "not_needed" | "cached" | "completed" | "pending" | "failed"; verdict: string; label: string; blocker: string | null }> = [];
   let skipped = 0;
   let aiAttempts = 0;
+  let scheduledDraftsQueued = 0;
   try {
     for (const { job, analysis } of candidates) {
       const key = triageIdempotencyKey(userId, job.id, versions);
@@ -284,7 +286,11 @@ export async function POST(request: Request) {
         deterministicVerdict: verdict.verdict,
         deterministicBlocker: verdict.blocker,
       })) {
-        await db.insert(draftOutbox).values({ id: crypto.randomUUID(), userId, jobId: job.id, historyId, status: "pending", createdAt: now, updatedAt: now }).onConflictDoNothing();
+        const inserted = await db.insert(draftOutbox).values({ id: crypto.randomUUID(), userId, jobId: job.id, historyId, status: "pending", createdAt: now, updatedAt: now }).onConflictDoNothing().returning({ id: draftOutbox.id });
+        // onConflictDoNothing + returning só devolve linha quando realmente
+        // inseriu, para a notificação da Etapa 4 não contar vaga que já
+        // estava enfileirada por outra rodada.
+        if (inserted.length) scheduledDraftsQueued += 1;
       }
       processed.push({ jobId: job.id, title: job.title, company: job.company, reference: job.externalId, contactEligible: Boolean(job.contactEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(job.contactEmail.trim())), aiEligible: aiRefinement.eligible, aiStatus, verdict: finalVerdict.verdict, label: finalVerdict.result.label, blocker: finalVerdict.blocker });
     }
@@ -296,7 +302,25 @@ export async function POST(request: Request) {
       await db.update(triageBatchItems).set({ status: "failed", error: detail, leaseOwner: null, leaseUntil: null, updatedAt: new Date() }).where(and(eq(triageBatchItems.batchId, batchId), eq(triageBatchItems.jobId, queuedJobId)));
       await finishQueuedBatch(batchId);
     } else await db.update(triageBatches).set({ status: "failed", completedAt: new Date(), error: detail }).where(eq(triageBatches.id, batchId));
+    // Etapa 4: falha na rotina agendada é a que menos se percebe sozinha —
+    // ninguém está olhando a tela nesse horário. Notificação não pode
+    // derrubar a resposta de erro já em curso, por isso fica isolada.
+    if (run.trigger === "schedule") await notifyScheduledTriage(db, { batchId, processed: 0, approved: 0, probable: 0, rejected: 0, draftsQueued: 0, error: detail }).catch(() => undefined);
     return NextResponse.json({ error: "Falha no lote; nenhum rascunho foi criado.", batchId, processed, detail }, { status: 500 });
+  }
+
+  // Etapa 4: observabilidade da rodada agendada pelo sino já existente, sem
+  // painel novo. Silenciosa quando não há nada para relatar (nenhuma vaga
+  // nova); falha ao notificar nunca derruba a resposta da triagem.
+  if (run.trigger === "schedule") {
+    await notifyScheduledTriage(db, {
+      batchId,
+      processed: processed.length,
+      approved: processed.filter(item => item.verdict === "BATE").length,
+      probable: processed.filter(item => item.verdict === "PROVAVEL").length,
+      rejected: processed.filter(item => item.verdict === "NAO_BATE").length,
+      draftsQueued: scheduledDraftsQueued,
+    }).catch(() => undefined);
   }
 
   return NextResponse.json({ ok: true, batchId, referenceDate: run.referenceDate, processed, skipped, aiEligible: processed.filter(item => item.aiEligible).length, aiCompleted: processed.filter(item => item.aiStatus === "completed" || item.aiStatus === "cached").length, draftsCreated: 0, aiUsed: processed.some(item => item.aiStatus === "completed" || item.aiStatus === "cached") });
