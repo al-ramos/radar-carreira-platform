@@ -61,6 +61,7 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
     [sourceFilter, setSourceFilter] = useState("all"),
     [draftFilter, setDraftFilter] = useState("all"),
     [jobSourceFilter, setJobSourceFilter] = useState("apinfo-extension"),
+    [codeFilter, setCodeFilter] = useState(""),
     [publishedDateFilter, setPublishedDateFilter] = useState(""),
     [receivedDateFilter, setReceivedDateFilter] = useState(""),
     [analysedDateFilter, setAnalysedDateFilter] = useState(""),
@@ -171,7 +172,7 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
   // neutra usada para zerar backlog em lote) — nenhum dos dois passou por
   // avaliação real ainda. Ver RC-TI-024.
   const isPending = (item: HistoryItem) => !item.verdict || item.verdict === "⚪";
-  const scopedHistory = currentAssessments.filter((item) => (situationFilter === "all" || (situationFilter === "pending" ? isPending(item) : !isPending(item))) && (verdictFilter === "all" || item.verdict === verdictFilter) && (sourceFilter === "all" || item.source === sourceFilter) && (jobSourceFilter === "all" || item.jobSource === jobSourceFilter) && (!publishedDateFilter || dayKey(item.sourcePublishedAt) === publishedDateFilter) && (!receivedDateFilter || dayKey(item.receivedAt) === receivedDateFilter) && (!analysedDateFilter || dayKey(item.processedAt) === analysedDateFilter));
+  const scopedHistory = currentAssessments.filter((item) => (situationFilter === "all" || (situationFilter === "pending" ? isPending(item) : !isPending(item))) && (verdictFilter === "all" || item.verdict === verdictFilter) && (sourceFilter === "all" || item.source === sourceFilter) && (jobSourceFilter === "all" || item.jobSource === jobSourceFilter) && (!codeFilter.trim() || (item.externalId ?? "").toLowerCase().includes(codeFilter.trim().toLowerCase())) && (!publishedDateFilter || dayKey(item.sourcePublishedAt) === publishedDateFilter) && (!receivedDateFilter || dayKey(item.receivedAt) === receivedDateFilter) && (!analysedDateFilter || dayKey(item.processedAt) === analysedDateFilter));
   // Os contadores e a tabela devem falar sobre o mesmo recorte. O filtro de
   // rascunho é aplicado somente depois de contabilizar cada status.
   const draftCounts = {
@@ -673,6 +674,7 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
                 <label>Veredito<select value={verdictFilter} onChange={(e) => { setVerdictFilter(e.target.value); setHistoryPage(0); }}><option value="all">Todos</option><option value="✅">Aprovadas</option><option value="🟡">Prováveis</option><option value="❌">Reprovadas</option></select></label>
                 <label>Origem<select value={sourceFilter} onChange={(e) => { setSourceFilter(e.target.value); setHistoryPage(0); }}><option value="all">Regras, IA e histórico</option><option value="rules">Regras</option><option value="ai">IA</option><option value="legacy">Histórico do Radar</option></select></label>
                 <label>Fonte<select value={jobSourceFilter} onChange={(e) => { setJobSourceFilter(e.target.value); setHistoryPage(0); }}><option value="all">Todas</option>{jobSources.map((source) => <option key={source} value={source}>{sourceName(source)}</option>)}</select></label>
+                <label>Código<input type="text" inputMode="numeric" placeholder="Ex.: 85885" value={codeFilter} onChange={(e) => { setCodeFilter(e.target.value); setHistoryPage(0); }} /></label>
                 <details className="triage-advanced-filters" open={advancedFiltersOpen || hasActiveAdvancedFilters} onToggle={(event) => setAdvancedFiltersOpen(event.currentTarget.open)}>
                   <summary>Mais filtros</summary>
                   <div>
@@ -682,7 +684,7 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
                     <label>Analisada em<input type="date" value={analysedDateFilter} onChange={(e) => { setAnalysedDateFilter(e.target.value); setHistoryPage(0); }} /></label>
                   </div>
                 </details>
-                <button type="button" className="triage-clear-filters" onClick={() => { setSituationFilter("pending"); setVerdictFilter("all"); setSourceFilter("all"); setJobSourceFilter("apinfo-extension"); setDraftFilter("all"); setPublishedDateFilter(""); setReceivedDateFilter(""); setAnalysedDateFilter(""); setAdvancedFiltersOpen(false); setHistoryPage(0); }}>Fila pendente da APInfo</button>
+                <button type="button" className="triage-clear-filters" onClick={() => { setSituationFilter("pending"); setVerdictFilter("all"); setSourceFilter("all"); setJobSourceFilter("apinfo-extension"); setCodeFilter(""); setDraftFilter("all"); setPublishedDateFilter(""); setReceivedDateFilter(""); setAnalysedDateFilter(""); setAdvancedFiltersOpen(false); setHistoryPage(0); }}>Fila pendente da APInfo</button>
               </div>
               {filteredHistory.length > historyPageSize && <nav className="triage-pagination" aria-label="Paginação do histórico">
                 <button type="button" disabled={historyPage === 0} onClick={() => setHistoryPage(page => page - 1)}>← Anterior</button>
