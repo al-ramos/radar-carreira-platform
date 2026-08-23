@@ -22,7 +22,12 @@ function parseVerdicts(value: unknown): AiVerdictEntry[] {
 }
 
 export const dynamic = "force-dynamic";
-const MAX_CODEX_REVIEW_JOBS = 20;
+// 50 é um teto técnico (tamanho da coluna selection no D1 com descrição de
+// até 3.200 caracteres por vaga), não um limite de token de IA — a fila do
+// Codex não chama IA paga, só grava dados para leitura manual nesta
+// conversa. Lotes maiores que isso arriscam estourar o tamanho prático de
+// uma linha no D1; processe em várias rodadas de "Preparar para o Codex".
+const MAX_CODEX_REVIEW_JOBS = 50;
 const channels = new Set(["extension", "email", "connector", "file", "api"]);
 
 async function owner() {
@@ -72,7 +77,7 @@ export async function POST(request: Request) {
   const cutoff = homePeriod === "all" ? null : new Date(Date.now() - Number(homePeriod) * 36e5);
   const selected = await db.select({ id: jobs.id, title: jobs.title, company: jobs.company, location: jobs.location, url: jobs.url, description: jobs.description })
     .from(jobs).leftJoin(userJobAnalyses, and(eq(userJobAnalyses.userId, auth.user.userId), eq(userJobAnalyses.jobId, jobs.id)))
-    .where(and(eq(jobs.status, "active"), requestedJobIds ? inArray(jobs.id, requestedJobIds) : eq(jobs.sourceId, sourceId), requestedJobIds ? eq(userJobAnalyses.userId, auth.user.userId) : undefined, requestedJobIds ? undefined : cutoff ? gte(jobs.firstSeenAt, cutoff) : undefined, requestedJobIds ? undefined : roleArea && roleArea !== "all" ? eq(jobs.roleArea, roleArea) : undefined, requestedJobIds ? undefined : ingestionChannel ? eq(jobs.ingestionChannel, ingestionChannel as "extension" | "email" | "connector" | "file" | "api") : undefined, requestedJobIds ? undefined : includeTriaged ? undefined : isNull(userJobAnalyses.jobId)))
+    .where(and(eq(jobs.status, "active"), requestedJobIds ? inArray(jobs.id, requestedJobIds) : eq(jobs.sourceId, sourceId), requestedJobIds ? undefined : cutoff ? gte(jobs.firstSeenAt, cutoff) : undefined, requestedJobIds ? undefined : roleArea && roleArea !== "all" ? eq(jobs.roleArea, roleArea) : undefined, requestedJobIds ? undefined : ingestionChannel ? eq(jobs.ingestionChannel, ingestionChannel as "extension" | "email" | "connector" | "file" | "api") : undefined, requestedJobIds ? undefined : includeTriaged ? undefined : isNull(userJobAnalyses.jobId)))
     .orderBy(desc(jobs.firstSeenAt), desc(jobs.createdAt)).limit(MAX_CODEX_REVIEW_JOBS + 1);
   if (!selected.length) return NextResponse.json({ error: "Nenhuma vaga corresponde ao recorte atual." }, { status: 404 });
   if (selected.length > MAX_CODEX_REVIEW_JOBS) return NextResponse.json({ error: `A análise pelo Codex aceita até ${MAX_CODEX_REVIEW_JOBS} vagas por vez. Refine Área, Canal ou Período.` }, { status: 422 });
