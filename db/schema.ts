@@ -217,6 +217,12 @@ export const platformSettings = sqliteTable("platform_settings", {
   collectionEnabled: integer("collection_enabled", { mode: "boolean" }).notNull().default(true),
   emailImportEnabled: integer("email_import_enabled", { mode: "boolean" }).notNull().default(true),
   enrichmentEnabled: integer("enrichment_enabled", { mode: "boolean" }).notNull().default(true),
+  // Etapa 1 da automação ponta a ponta: liga a triagem agendada (avaliação
+  // por regras + IA ambígua). Desligado por padrão até a rotina ser validada.
+  scheduledTriageEnabled: integer("scheduled_triage_enabled", { mode: "boolean" }).notNull().default(false),
+  // Etapa 2/3: só quando ligado a triagem agendada pode inserir vagas seguras
+  // na fila de rascunho. Fica desligado enquanto ✅ e 🟡 não forem separados.
+  scheduledTriageDraftQueueEnabled: integer("scheduled_triage_draft_queue_enabled", { mode: "boolean" }).notNull().default(false),
   defaultPeriod: text("default_period").notNull().default("24"),
   defaultMinScore: integer("default_min_score").notNull().default(70),
   staleAfterDays: integer("stale_after_days").notNull().default(7),
