@@ -11,6 +11,7 @@ import { normalizeTriageRunRequest, saoPauloDayWindow, type TriageRunRequest } f
 import { triageIdempotencyKey } from "../../../../lib/triage-idempotency";
 import { isSafeForDraft } from "../../../../lib/draft-eligibility";
 import { requestImmediateDraftCreation } from "../../../../lib/gmail-draft-priority";
+import { notifyScheduledTriage } from "../../../../lib/notifications";
 import { extractStructuredJobFacts, getAiProviderStatus, validateStructuredJobFacts } from "../../../../lib/ai-provider";
 import { normalizeCareerRules } from "../../../../lib/profile-options";
 import { applyAiRefinement } from "../../../../lib/triage-ai-refinement";
@@ -304,6 +305,10 @@ export async function POST(request: Request) {
       await db.update(triageBatchItems).set({ status: "failed", error: detail, leaseOwner: null, leaseUntil: null, updatedAt: new Date() }).where(and(eq(triageBatchItems.batchId, batchId), eq(triageBatchItems.jobId, queuedJobId)));
       await finishQueuedBatch(batchId);
     } else await db.update(triageBatches).set({ status: "failed", completedAt: new Date(), error: detail }).where(eq(triageBatches.id, batchId));
+    // Etapa 4: falha na rotina agendada é a que menos se percebe sozinha —
+    // ninguém está olhando a tela nesse horário. Notificação não pode
+    // derrubar a resposta de erro já em curso, por isso fica isolada.
+    if (run.trigger === "schedule") await notifyScheduledTriage(db, { batchId, processed: 0, approved: 0, probable: 0, rejected: 0, draftsQueued: 0, draftsCreated: 0, error: detail }).catch(() => undefined);
     return NextResponse.json({ error: "Falha no lote; nenhum rascunho foi criado.", batchId, processed, detail }, { status: 500 });
   }
 
@@ -318,6 +323,22 @@ export async function POST(request: Request) {
     } catch (error) {
       immediateDraft = { requested: false, reason: error instanceof Error ? error.message : "Falha ao acionar o conector Gmail" };
     }
+  }
+
+  // Etapa 4: observabilidade da rodada agendada pelo sino já existente, sem
+  // painel novo. Silenciosa quando não há nada para relatar (nenhuma vaga
+  // nova); falha ao notificar nunca derruba a resposta da triagem.
+  if (run.trigger === "schedule") {
+    await notifyScheduledTriage(db, {
+      batchId,
+      processed: processed.length,
+      approved: processed.filter(item => item.verdict === "BATE").length,
+      probable: processed.filter(item => item.verdict === "PROVAVEL").length,
+      rejected: processed.filter(item => item.verdict === "NAO_BATE").length,
+      draftsQueued: scheduledOutboxIds.length,
+      draftsCreated: immediateDraft?.created ?? 0,
+      gmailReason: scheduledAutoCreateEnabled && scheduledOutboxIds.length && !immediateDraft?.requested ? immediateDraft?.reason ?? "conector não confirmou a criação" : null,
+    }).catch(() => undefined);
   }
 
   return NextResponse.json({ ok: true, batchId, referenceDate: run.referenceDate, processed, skipped, aiEligible: processed.filter(item => item.aiEligible).length, aiCompleted: processed.filter(item => item.aiStatus === "completed" || item.aiStatus === "cached").length, draftsCreated: immediateDraft?.created ?? 0, immediateDraft, aiUsed: processed.some(item => item.aiStatus === "completed" || item.aiStatus === "cached") });

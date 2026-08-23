@@ -1,7 +1,7 @@
 import { getDb } from "../db/index";
 import { notifications } from "../db/schema";
 
-export type NotificationType = "import" | "report" | "digest" | "pipeline" | "application";
+export type NotificationType = "import" | "report" | "digest" | "pipeline" | "application" | "triage";
 export type NotificationSeverity = "success" | "error" | "info";
 
 export type CreateNotificationInput = {
@@ -98,6 +98,58 @@ export type DraftSentOutcome = {
  * só o registro de algo que o usuário já fez fora do portal. Ver ADR-007
  * (nenhum envio automático de candidatura).
  */
+export type ScheduledTriageOutcome = {
+  batchId: string;
+  processed: number;
+  approved: number;
+  probable: number;
+  rejected: number;
+  draftsQueued: number;
+  draftsCreated: number;
+  gmailReason?: string | null;
+  error?: string;
+};
+
+/**
+ * Notificação padrão ao fim de uma rodada da triagem agendada (Etapa 4 da
+ * automação ponta a ponta). Resume o que a rodada fez para observabilidade
+ * sem precisar abrir Auditoria/Histórico: quantas vagas foram avaliadas, e
+ * o desfecho de cada veredito (✅ vira rascunho, 🟡 fica esperando revisão).
+ * Não dispara quando a rodada não teve nenhuma vaga nova (evita ruído no
+ * sino em execuções vazias, que são a maioria em horário comercial).
+ */
+export async function notifyScheduledTriage(db: ReturnType<typeof getDb>, outcome: ScheduledTriageOutcome) {
+  if (outcome.error) {
+    await createNotification(db, {
+      type: "triage",
+      severity: "error",
+      title: "Triagem agendada falhou",
+      body: outcome.error,
+      link: "/?open=triagem",
+      metadata: { batchId: outcome.batchId, error: outcome.error },
+    });
+    return;
+  }
+  if (!outcome.processed) return;
+  const parts = [
+    `${numberFormat.format(outcome.processed)} vaga${outcome.processed === 1 ? "" : "s"} avaliada${outcome.processed === 1 ? "" : "s"}`,
+    `${numberFormat.format(outcome.approved)} aprovada${outcome.approved === 1 ? "" : "s"}`,
+    `${numberFormat.format(outcome.probable)} ${outcome.probable === 1 ? "provável" : "prováveis"} aguardando você`,
+    ...(outcome.rejected ? [`${numberFormat.format(outcome.rejected)} não aderente${outcome.rejected === 1 ? "" : "s"}`] : []),
+    ...(outcome.draftsCreated ? [`${numberFormat.format(outcome.draftsCreated)} rascunho${outcome.draftsCreated === 1 ? "" : "s"} criado${outcome.draftsCreated === 1 ? "" : "s"} no Gmail`] : []),
+    ...(outcome.draftsQueued && !outcome.draftsCreated ? [`${numberFormat.format(outcome.draftsQueued)} na fila de rascunho`] : []),
+    ...(outcome.gmailReason ? [`Gmail: ${outcome.gmailReason}`] : []),
+  ];
+  await createNotification(db, {
+    type: "triage",
+    severity: outcome.gmailReason ? "error" : "success",
+    title: "Triagem agendada concluída",
+    body: parts.join(" · "),
+    link: "/?open=triagem",
+    metadata: { batchId: outcome.batchId, processed: outcome.processed, approved: outcome.approved, probable: outcome.probable, rejected: outcome.rejected, draftsQueued: outcome.draftsQueued, draftsCreated: outcome.draftsCreated, gmailReason: outcome.gmailReason ?? null },
+  });
+}
+
 export async function notifyDraftSent(db: ReturnType<typeof getDb>, outcome: DraftSentOutcome) {
   await createNotification(db, {
     type: "application",
