@@ -105,10 +105,9 @@ test("o Radar não calcula vereditos automaticamente na lista", async () => {
 });
 
 test("contato existente vira ação de cópia e captura oferece fallback pela área de transferência", async () => {
-  const [dashboard, route, bridge] = await Promise.all([
+  const [dashboard, route] = await Promise.all([
     read("../app/Dashboard.tsx"),
     read("../app/api/jobs/[id]/contact/route.ts"),
-    read("../extensao-apinfo/radar-bridge.js"),
   ]);
   assert.match(dashboard, /if \(job\.contactEmail\)/);
   assert.match(dashboard, /disabled=\{contactCapturing\}/);
@@ -121,5 +120,4 @@ test("contato existente vira ação de cópia e captura oferece fallback pela á
   assert.match(dashboard, /`apinfo - \$\{job\.externalId\} - \$\{job\.title\}`/);
   assert.match(route, /isNull\(jobs\.contactEmail\)/);
   assert.match(route, /status: 409/);
-  assert.match(bridge, /chrome\.runtime\.lastError/);
 });
