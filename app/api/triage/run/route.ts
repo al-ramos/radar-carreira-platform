@@ -10,6 +10,7 @@ import { evaluateDeterministicTriage, needsAiRefinement } from "../../../../lib/
 import { normalizeTriageRunRequest, saoPauloDayWindow, type TriageRunRequest } from "../../../../lib/triage-orchestrator";
 import { triageIdempotencyKey } from "../../../../lib/triage-idempotency";
 import { isSafeForDraft } from "../../../../lib/draft-eligibility";
+import { requestImmediateDraftCreation } from "../../../../lib/gmail-draft-priority";
 import { extractStructuredJobFacts, getAiProviderStatus, validateStructuredJobFacts } from "../../../../lib/ai-provider";
 import { normalizeCareerRules } from "../../../../lib/profile-options";
 import { applyAiRefinement } from "../../../../lib/triage-ai-refinement";
@@ -91,12 +92,17 @@ export async function POST(request: Request) {
   // enfileirar rascunhos silenciosamente se alguém ligar a agenda antes de
   // revisar o comportamento.
   let scheduledDraftQueueEnabled = false;
+  let scheduledAutoCreateEnabled = false;
   if (run.trigger === "schedule") {
-    const settings = await db.select({ enabled: platformSettings.scheduledTriageEnabled, draftQueueEnabled: platformSettings.scheduledTriageDraftQueueEnabled }).from(platformSettings).where(eq(platformSettings.id, "global")).limit(1).then(rows => rows[0]);
+    const settings = await db.select({ enabled: platformSettings.scheduledTriageEnabled, draftQueueEnabled: platformSettings.scheduledTriageDraftQueueEnabled, autoCreateEnabled: platformSettings.scheduledTriageAutoCreateEnabled }).from(platformSettings).where(eq(platformSettings.id, "global")).limit(1).then(rows => rows[0]);
     // Sem linha em platform_settings, o padrão é desligado (mesma postura do
     // schema): nunca inferir "ligado" por ausência de configuração.
     if (!settings?.enabled) return NextResponse.json({ ok: true, skipped: true, message: "Triagem agendada desligada em Configurações" });
     scheduledDraftQueueEnabled = settings.draftQueueEnabled;
+    // Etapa 3: criar de verdade no Gmail exige a fila ligada também — nunca
+    // aciona o conector sozinho, mesmo que alguém ligue só este interruptor
+    // (a UI já trava isso, mas a rota não confia só na UI).
+    scheduledAutoCreateEnabled = settings.draftQueueEnabled && settings.autoCreateEnabled;
   }
   const profile = await db.select().from(profiles).where(eq(profiles.userId, userId)).limit(1).then(rows => rows[0]);
   if (!profile) return NextResponse.json({ error: "Complete seu perfil antes de iniciar a triagem." }, { status: 412 });
@@ -152,6 +158,7 @@ export async function POST(request: Request) {
   const processed: Array<{ jobId: string; title: string; company: string; reference: string | null; contactEligible: boolean; aiEligible: boolean; aiStatus: "not_needed" | "cached" | "completed" | "pending" | "failed"; verdict: string; label: string; blocker: string | null }> = [];
   let skipped = 0;
   let aiAttempts = 0;
+  const scheduledOutboxIds: string[] = [];
   try {
     for (const { job, analysis } of candidates) {
       const key = triageIdempotencyKey(userId, job.id, versions);
@@ -280,7 +287,12 @@ export async function POST(request: Request) {
         deterministicVerdict: verdict.verdict,
         deterministicBlocker: verdict.blocker,
       })) {
-        await db.insert(draftOutbox).values({ id: crypto.randomUUID(), userId, jobId: job.id, historyId, status: "pending", createdAt: now, updatedAt: now }).onConflictDoNothing();
+        const outboxId = crypto.randomUUID();
+        const inserted = await db.insert(draftOutbox).values({ id: outboxId, userId, jobId: job.id, historyId, status: "pending", createdAt: now, updatedAt: now }).onConflictDoNothing().returning({ id: draftOutbox.id });
+        // onConflictDoNothing + returning só devolve linha quando realmente
+        // inseriu (vaga já enfileirada por outra rodada não entra de novo
+        // na chamada ao conector Gmail desta execução).
+        if (inserted.length) scheduledOutboxIds.push(outboxId);
       }
       processed.push({ jobId: job.id, title: job.title, company: job.company, reference: job.externalId, contactEligible: Boolean(job.contactEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(job.contactEmail.trim())), aiEligible: aiRefinement.eligible, aiStatus, verdict: finalVerdict.verdict, label: finalVerdict.result.label, blocker: finalVerdict.blocker });
     }
@@ -295,5 +307,18 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Falha no lote; nenhum rascunho foi criado.", batchId, processed, detail }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, batchId, referenceDate: run.referenceDate, processed, skipped, aiEligible: processed.filter(item => item.aiEligible).length, aiCompleted: processed.filter(item => item.aiStatus === "completed" || item.aiStatus === "cached").length, draftsCreated: 0, aiUsed: processed.some(item => item.aiStatus === "completed" || item.aiStatus === "cached") });
+  // Etapa 3: aciona o mesmo conector Gmail que o botão manual usa, para as
+  // vagas que esta própria execução acabou de enfileirar. Falha aqui não
+  // derruba a triagem — a vaga já está salva como "pending" e continua
+  // disponível para a ação manual de sempre.
+  let immediateDraft: { requested: boolean; created?: number; reason?: string } | null = null;
+  if (scheduledAutoCreateEnabled && scheduledOutboxIds.length) {
+    try {
+      immediateDraft = await requestImmediateDraftCreation(scheduledOutboxIds);
+    } catch (error) {
+      immediateDraft = { requested: false, reason: error instanceof Error ? error.message : "Falha ao acionar o conector Gmail" };
+    }
+  }
+
+  return NextResponse.json({ ok: true, batchId, referenceDate: run.referenceDate, processed, skipped, aiEligible: processed.filter(item => item.aiEligible).length, aiCompleted: processed.filter(item => item.aiStatus === "completed" || item.aiStatus === "cached").length, draftsCreated: immediateDraft?.created ?? 0, immediateDraft, aiUsed: processed.some(item => item.aiStatus === "completed" || item.aiStatus === "cached") });
 }

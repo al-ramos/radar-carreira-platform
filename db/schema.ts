@@ -223,6 +223,10 @@ export const platformSettings = sqliteTable("platform_settings", {
   // Etapa 2/3: só quando ligado a triagem agendada pode inserir vagas seguras
   // na fila de rascunho. Fica desligado enquanto ✅ e 🟡 não forem separados.
   scheduledTriageDraftQueueEnabled: integer("scheduled_triage_draft_queue_enabled", { mode: "boolean" }).notNull().default(false),
+  // Etapa 3: com este e o interruptor de fila ligados, a triagem agendada
+  // também aciona o conector Gmail para criar o rascunho de verdade — sem
+  // isso, a vaga só fica enfileirada (pending) esperando ação manual.
+  scheduledTriageAutoCreateEnabled: integer("scheduled_triage_auto_create_enabled", { mode: "boolean" }).notNull().default(false),
   defaultPeriod: text("default_period").notNull().default("24"),
   defaultMinScore: integer("default_min_score").notNull().default(70),
   staleAfterDays: integer("stale_after_days").notNull().default(7),
