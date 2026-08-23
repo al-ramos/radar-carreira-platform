@@ -183,12 +183,12 @@ const worker = {
     // As extensões APInfo e LinkedIn são fontes push: assim que um lote de
     // vagas é persistido com sucesso, inicia a triagem no próprio Worker.
     // Isso evita depender de um cron separado e mantém o processamento após
-    // a coleta.
-    const pushImportSourceId = url.pathname === "/api/collector/import/apinfo-extension"
-      ? "apinfo-extension"
-      : url.pathname === "/api/collector/import"
-      ? "linkedin-extension"
-      : null;
+    // a coleta. Ambas postam em /api/collector/import/<sourceId> (rota
+    // dinâmica com allowlist em KNOWN_SOURCES); nenhuma usa mais o endpoint
+    // fixo legado /api/collector/import.
+    const knownPushSourceIds = new Set(["apinfo-extension", "linkedin-extension"]);
+    const importMatch = /^\/api\/collector\/import\/([^/]+)$/.exec(url.pathname);
+    const pushImportSourceId = importMatch && knownPushSourceIds.has(importMatch[1]) ? importMatch[1] : null;
     if (pushImportSourceId && request.method === "POST" && response.ok) {
       const result = await response.clone().json().catch(() => null) as { accepted?: unknown } | null;
       if (typeof result?.accepted === "number") {
