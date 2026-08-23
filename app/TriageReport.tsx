@@ -48,6 +48,7 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
     [aiProfile, setAiProfile] = useState<AiProfile | null>(null),
     [aiProfileLoading, setAiProfileLoading] = useState(false),
     [aiProfileError, setAiProfileError] = useState(""),
+    [actionSourceOptions, setActionSourceOptions] = useState<FilterOption[] | null>(null),
     [history, setHistory] = useState<HistoryItem[]>([]),
     [selectedHistoryJobIds, setSelectedHistoryJobIds] = useState<string[]>([]),
     [batches, setBatches] = useState<Batch[]>([]),
@@ -122,6 +123,21 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
       .catch((error: unknown) => { if (!(error instanceof DOMException && error.name === "AbortError")) setActionCandidate({ key: actionSelectionKey, count: 0, total: 0, triaged: 0 }); });
     return () => controller.abort();
   }, [actionArea, actionChannel, actionPeriod, actionSelectionKey, actionSourceId, reprocess]);
+  useEffect(() => {
+    // A lista de fontes deste card precisa refletir o "Período da triagem"
+    // escolhido aqui — não o período da lista da Home, que é outro filtro,
+    // independente. Sem isso, uma fonte com vagas fora do período da Home
+    // some do dropdown mesmo com "Todas as vagas" selecionado aqui.
+    const controller = new AbortController();
+    const query = new URLSearchParams({ period: actionPeriod });
+    if (actionArea !== "all") query.set("area", actionArea);
+    if (actionChannel !== "all") query.set("channel", actionChannel);
+    void fetch(`/api/jobs?${query}`, { signal: controller.signal })
+      .then(async (response) => response.ok ? response.json() as Promise<{ filterOptions?: { sources?: FilterOption[] } }> : Promise.reject(new Error("Falha ao consultar fontes do período.")))
+      .then((data) => setActionSourceOptions(data.filterOptions?.sources ?? []))
+      .catch((error: unknown) => { if (!(error instanceof DOMException && error.name === "AbortError")) setActionSourceOptions(null); });
+    return () => controller.abort();
+  }, [actionArea, actionChannel, actionPeriod]);
   const date = (v: string) =>
     new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(v));
   const latestScheduled = batches.find((batch) => batch.trigger === "scheduled");
@@ -190,9 +206,10 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
   };
   const historyPageCount = Math.ceil(filteredHistory.length / historyPageSize);
   const hasActiveAdvancedFilters = draftFilter !== "all" || Boolean(publishedDateFilter) || Boolean(receivedDateFilter) || Boolean(analysedDateFilter);
-  const actionSources = sourceId && !sourceOptions.some((option) => option.id === sourceId)
-    ? [{ id: sourceId, label: sourceLabel ?? sourceName(sourceId), count: 0 }, ...sourceOptions]
-    : sourceOptions;
+  const periodScopedSourceOptions = actionSourceOptions ?? sourceOptions;
+  const actionSources = sourceId && !periodScopedSourceOptions.some((option) => option.id === sourceId)
+    ? [{ id: sourceId, label: sourceLabel ?? sourceName(sourceId), count: 0 }, ...periodScopedSourceOptions]
+    : periodScopedSourceOptions;
   const actionCandidateCount = actionCandidate?.key === actionSelectionKey && actionSourceId ? actionCandidate.count : null;
   const actionCandidateTotal = actionCandidate?.key === actionSelectionKey && actionSourceId ? actionCandidate.total : null;
   const manualSummary = (batch: Batch) => {
