@@ -118,10 +118,15 @@ export async function POST(request: Request) {
       .where(and(
         eq(userJobAnalyses.userId, user.userId),
         requestedJobIds ? inArray(userJobAnalyses.jobId, requestedJobIds) : undefined,
-        sourceId && sourceId !== "all" ? eq(jobs.sourceId, sourceId) : undefined,
-        roleArea && roleArea !== "all" ? eq(jobs.roleArea, roleArea) : undefined,
-        ingestionChannel && ingestionChannel !== "all" ? eq(jobs.ingestionChannel, ingestionChannel as "extension" | "email" | "connector" | "file" | "api") : undefined,
-        cutoff ? gte(jobs.firstSeenAt, cutoff) : undefined,
+        // Fonte/área/canal/período são recortes do painel de lote e não fazem
+        // sentido quando vagas específicas foram pedidas (ação de uma linha ou
+        // seleção manual): aplicá-los ali excluía vagas fora do recorte
+        // corrente mesmo com avaliação válida, e o rascunho falhava com
+        // "vaga não possui avaliação de triagem utilizável" mesmo existindo uma.
+        !requestedJobIds && sourceId && sourceId !== "all" ? eq(jobs.sourceId, sourceId) : undefined,
+        !requestedJobIds && roleArea && roleArea !== "all" ? eq(jobs.roleArea, roleArea) : undefined,
+        !requestedJobIds && ingestionChannel && ingestionChannel !== "all" ? eq(jobs.ingestionChannel, ingestionChannel as "extension" | "email" | "connector" | "file" | "api") : undefined,
+        !requestedJobIds && cutoff ? gte(jobs.firstSeenAt, cutoff) : undefined,
       ))
       .orderBy(desc(triageHistory.createdAt)),
     db.select({ id: draftOutbox.id, jobId: draftOutbox.jobId, status: draftOutbox.status }).from(draftOutbox).where(eq(draftOutbox.userId, user.userId)),
