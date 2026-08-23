@@ -1,10 +1,12 @@
 import { hasValidContactEmail } from "./contact-email.ts";
 
-/** LinkedIn é uma fonte de análise e candidatura pela própria plataforma;
- * ela não participa da outbox de e-mail, mesmo que um contato apareça por
- * engano no registro. */
-export function isDraftAllowedForSource(sourceId: string | null | undefined): boolean {
-  return sourceId !== "linkedin-extension";
+/** LinkedIn é, por padrão, uma fonte de análise e candidatura pela própria
+ * plataforma. Ainda assim, quando a vaga foi Aprovada (✅) e tem um e-mail de
+ * contato válido registrado, o rascunho é permitido — o contato explícito
+ * indica que a candidatura por e-mail também é possível para aquela vaga. */
+export function isDraftAllowedForSource(input: { sourceId: string | null | undefined; verdict: string; contactEmail: string | null | undefined }): boolean {
+  if (input.sourceId !== "linkedin-extension") return true;
+  return input.verdict === "✅" && hasValidContactEmail(input.contactEmail);
 }
 
 /** A fila de rascunhos aceita somente vereditos aproveitáveis e um contato
@@ -28,7 +30,7 @@ export function isSafeForDraft(input: {
   deterministicVerdict: "BATE" | "PROVAVEL" | "NAO_BATE";
   deterministicBlocker?: string | null;
 }): boolean {
-  return isDraftAllowedForSource(input.sourceId)
+  return isDraftAllowedForSource({ sourceId: input.sourceId, verdict: input.verdict, contactEmail: input.contactEmail })
     && isEligibleForDraftQueue(input)
     && !input.deterministicBlocker
     && (input.deterministicVerdict === "BATE" || input.deterministicVerdict === "PROVAVEL");

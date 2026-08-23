@@ -17,8 +17,11 @@ test("aprovação histórica não supera a revalidação determinística atual",
   assert.equal(isSafeForDraft({ ...base, deterministicVerdict: "NAO_BATE", deterministicBlocker: "Stack incompatível" }), false);
 });
 
-test("LinkedIn é fonte exclusiva de análise e nunca entra na fila de rascunhos", () => {
-  assert.equal(isDraftAllowedForSource("linkedin-extension"), false);
-  assert.equal(isSafeForDraft({ verdict: "✅", contactEmail: "rh@empresa.com", sourceId: "linkedin-extension", deterministicVerdict: "BATE" }), false);
-  assert.equal(isDraftAllowedForSource("apinfo-extension"), true);
+test("LinkedIn só entra na fila de rascunhos quando aprovada e com e-mail válido", () => {
+  assert.equal(isDraftAllowedForSource({ sourceId: "linkedin-extension", verdict: "🟡", contactEmail: "rh@empresa.com" }), false);
+  assert.equal(isDraftAllowedForSource({ sourceId: "linkedin-extension", verdict: "✅", contactEmail: null }), false);
+  assert.equal(isDraftAllowedForSource({ sourceId: "linkedin-extension", verdict: "✅", contactEmail: "rh@empresa.com" }), true);
+  assert.equal(isSafeForDraft({ verdict: "🟡", contactEmail: "rh@empresa.com", sourceId: "linkedin-extension", deterministicVerdict: "PROVAVEL" }), false);
+  assert.equal(isSafeForDraft({ verdict: "✅", contactEmail: "rh@empresa.com", sourceId: "linkedin-extension", deterministicVerdict: "BATE" }), true);
+  assert.equal(isDraftAllowedForSource({ sourceId: "apinfo-extension", verdict: "🟡", contactEmail: null }), true);
 });

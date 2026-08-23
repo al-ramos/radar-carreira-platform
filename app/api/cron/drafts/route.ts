@@ -196,7 +196,7 @@ export async function POST(request: Request) {
       location: row.location,
       publishedAt: row.publishedAt,
     }, canonicalProfile);
-    const safe = isDraftAllowedForSource(row.sourceId) && versionsCurrent && isSafeForDraft({
+    const safe = isDraftAllowedForSource({ sourceId: row.sourceId, verdict: row.analysisVerdict, contactEmail: row.contactEmail }) && versionsCurrent && isSafeForDraft({
       verdict: row.analysisVerdict,
       blocker: row.analysisBlocker,
       contactEmail: row.contactEmail,
@@ -205,8 +205,8 @@ export async function POST(request: Request) {
       deterministicBlocker: deterministic.blocker,
     });
     if (!safe) {
-      const reason = !isDraftAllowedForSource(row.sourceId)
-        ? "A fonte LinkedIn é exclusiva para análise e não permite rascunhos."
+      const reason = !isDraftAllowedForSource({ sourceId: row.sourceId, verdict: row.analysisVerdict, contactEmail: row.contactEmail })
+        ? "A fonte LinkedIn só permite rascunho quando aprovada (✅) e com e-mail de contato válido."
         : !versionsCurrent
         ? "Análise desatualizada; reavalie a vaga antes de criar rascunho."
         : !row.contactEmail?.trim()

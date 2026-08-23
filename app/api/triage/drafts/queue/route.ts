@@ -153,7 +153,7 @@ export async function POST(request: Request) {
       if (existing.status === "pending") priorityOutboxIds.push(existing.id);
       continue;
     }
-    if (!isDraftAllowedForSource(row.job.sourceId)) { notEligible += 1; continue; }
+    if (!isDraftAllowedForSource({ sourceId: row.job.sourceId, verdict: row.analysis.verdict, contactEmail: row.job.contactEmail })) { notEligible += 1; continue; }
     const analysisIsCurrent = row.analysis
       && row.analysis.profileRevision === versions.profileRevision
       && row.analysis.rulesRevision === versions.rulesRevision
