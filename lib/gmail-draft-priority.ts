@@ -17,12 +17,27 @@ export async function requestImmediateDraftCreation(outboxIds: string[]): Promis
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ action: "prioritizeDrafts", token, outboxIds }),
     });
-    const payload = await response.json().catch(() => null) as { ok?: boolean; created?: number; error?: string } | null;
-    if (!response.ok || !payload?.ok) return { requested: false, reason: payload?.error ?? "O conector Gmail não confirmou a criação imediata." };
+    const raw = await response.text();
+    const payload = parseJson(raw) as { ok?: boolean; created?: number; error?: string } | null;
+    if (!response.ok || !payload?.ok) return { requested: false, reason: describeConnectorFailure(response.status, payload?.error, raw) };
     return { requested: true, created: Number(payload.created ?? 0) };
-  } catch {
-    return { requested: false, reason: "Não foi possível acionar o conector Gmail agora. Tente novamente pela ação manual." };
+  } catch (error) {
+    return { requested: false, reason: `Não foi possível acionar o conector Gmail agora. Tente novamente pela ação manual. (${String(error)})` };
   }
+}
+
+function parseJson(raw: string): unknown {
+  try { return JSON.parse(raw); } catch { return null; }
+}
+
+// Sem essa checagem, uma resposta que não é JSON (ex.: página de login do
+// Google quando a implantação do Web App perde o acesso "Qualquer pessoa")
+// virava sempre a mesma mensagem genérica, escondendo a causa real.
+function describeConnectorFailure(status: number, error: string | undefined, raw: string): string {
+  if (error) return error;
+  const snippet = raw.trim().slice(0, 200);
+  if (!snippet) return `O conector Gmail não confirmou a criação imediata (HTTP ${status}, resposta vazia).`;
+  return `O conector Gmail não confirmou a criação imediata (HTTP ${status}): ${snippet}`;
 }
 
 /** Confere exclusivamente os rascunhos escolhidos na pasta Enviados do Gmail. */
@@ -37,10 +52,11 @@ export async function requestImmediateSentReconciliation(outboxIds: string[]): P
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ action: "reconcileSent", token, outboxIds }),
     });
-    const payload = await response.json().catch(() => null) as { ok?: boolean; confirmed?: number; error?: string } | null;
-    if (!response.ok || !payload?.ok) return { requested: false, reason: payload?.error ?? "O conector Gmail não confirmou a atualização do envio." };
+    const raw = await response.text();
+    const payload = parseJson(raw) as { ok?: boolean; confirmed?: number; error?: string } | null;
+    if (!response.ok || !payload?.ok) return { requested: false, reason: describeConnectorFailure(response.status, payload?.error, raw) };
     return { requested: true, confirmed: Number(payload.confirmed ?? 0) };
-  } catch {
-    return { requested: false, reason: "Não foi possível consultar o Gmail agora." };
+  } catch (error) {
+    return { requested: false, reason: `Não foi possível consultar o Gmail agora. (${String(error)})` };
   }
 }
