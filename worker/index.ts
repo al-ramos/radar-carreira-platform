@@ -180,17 +180,23 @@ const worker = {
 
     const response = await handler.fetch(request, env, ctx);
 
-    // A extensão APInfo é uma fonte push: assim que um lote de vagas é
-    // persistido com sucesso, inicia a triagem no próprio Worker. Isso evita
-    // depender de um cron separado e mantém o processamento após a coleta.
-    if (url.pathname === "/api/collector/import/apinfo-extension" && request.method === "POST" && response.ok) {
+    // As extensões APInfo e LinkedIn são fontes push: assim que um lote de
+    // vagas é persistido com sucesso, inicia a triagem no próprio Worker.
+    // Isso evita depender de um cron separado e mantém o processamento após
+    // a coleta.
+    const pushImportSourceId = url.pathname === "/api/collector/import/apinfo-extension"
+      ? "apinfo-extension"
+      : url.pathname === "/api/collector/import"
+      ? "linkedin-extension"
+      : null;
+    if (pushImportSourceId && request.method === "POST" && response.ok) {
       const result = await response.clone().json().catch(() => null) as { accepted?: unknown } | null;
       if (typeof result?.accepted === "number") {
         ctx.waitUntil(
           handler.fetch(new Request("https://collector.internal/api/triage/run", {
             method: "POST",
             headers: { "content-type": "application/json", "x-radar-collector-authenticated": "1" },
-            body: JSON.stringify({ trigger: "schedule", sourceId: "apinfo-extension", dateScope: "received", aiMode: "ambiguous" }),
+            body: JSON.stringify({ trigger: "schedule", sourceId: pushImportSourceId, dateScope: "received", aiMode: "ambiguous" }),
           }), env, ctx).catch(() => undefined),
         );
       }
