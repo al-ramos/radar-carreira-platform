@@ -7,7 +7,7 @@ name: Triagem agendada (APInfo)
 # Configurações, e esse interruptor começa desligado por padrão.
 on:
   schedule:
-    - cron: "0 11-22 * * 1-5" # 08h–19h em São Paulo (UTC-3), dias úteis
+    - cron: "0 11-22 * * *" # 08h–19h em São Paulo (UTC-3), todos os dias
   workflow_dispatch:
 
 jobs:
