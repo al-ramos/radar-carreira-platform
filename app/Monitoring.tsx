@@ -1,6 +1,6 @@
 "use client";
 import {useEffect,useMemo,useState}from"react";
-// Contratos de interface preservados: última: · <option value="all">Todos os fluxos</option> · D1 · {x.error}
+// Contratos de interface preservados: última: · <option value="all">Todos os fluxos</option> · D1 · {x.error} · {x.completed}/{x.total}
 type Op={id:string;flow:"importação"|"triagem";label:string;status:string;startedAt:string;total:number;completed:number;failed:number;error:string|null};
 type Data={alerts:Array<{level:string;message:string;action:string}>;schedules:Array<{id:string;label:string;cron:string|null;reason:string|null;heartbeat:{status:string;updatedAt:string;error:string|null}|null}>;databaseFailures:Array<{id:string;operation:string;error:string;impact:string;occurredAt:string}>;sources:Array<{id:string;name:string;enabled:boolean;lastError:string|null;lastSuccessAt:string|null}>;operations:Op[];triageLogs?:Array<{id:string;status:string;items:Array<{jobId:string;title:string;company:string;status:string;error:string|null}>}>};
 export default function Monitoring({close,openTriageLog}:{close:()=>void;openTriageLog?:(id:string)=>void}){
