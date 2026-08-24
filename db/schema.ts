@@ -209,6 +209,16 @@ export const importRuns = sqliteTable("import_runs", {
   startedAt: integer("started_at", { mode: "timestamp_ms" }).notNull(), finishedAt: integer("finished_at", { mode: "timestamp_ms" }),
 });
 
+/** Estado atual de cada automação, independente dos registros de negócio. */
+export const automationHeartbeats = sqliteTable("automation_heartbeats", {
+  id: text("id").primaryKey(),
+  status: text("status", { enum: ["running", "completed", "failed", "skipped"] }).notNull(),
+  startedAt: integer("started_at", { mode: "timestamp_ms" }).notNull(),
+  completedAt: integer("completed_at", { mode: "timestamp_ms" }),
+  error: text("error"),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+});
+
 export const jobImportRuns = sqliteTable("job_import_runs", {
   runId: text("run_id").notNull().references(() => importRuns.id),
   jobId: text("job_id").notNull().references(() => jobs.id),

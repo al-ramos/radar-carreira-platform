@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 import { can } from "../../../../lib/rbac";
 import { getDb } from "../../../../db/index";
-import { importRuns, jobSources, jobs, triageBatchItems, triageBatches } from "../../../../db/schema";
+import { automationHeartbeats, importRuns, jobSources, jobs, triageBatchItems, triageBatches } from "../../../../db/schema";
 
 export const dynamic = "force-dynamic";
 
@@ -20,12 +20,13 @@ export async function GET() {
 
   const started = Date.now();
   const db = getDb();
-  const [sources, importRows, batches, batchItems, jobRows] = await Promise.all([
+  const [sources, importRows, batches, batchItems, jobRows, heartbeats] = await Promise.all([
     db.select().from(jobSources),
     db.select().from(importRuns).orderBy(desc(importRuns.startedAt)).limit(20),
     db.select().from(triageBatches).orderBy(desc(triageBatches.createdAt)).limit(20),
     db.select().from(triageBatchItems),
     db.select({ status: jobs.status }).from(jobs),
+    db.select().from(automationHeartbeats),
   ]);
 
   const now = Date.now();
@@ -54,5 +55,6 @@ export async function GET() {
   ];
   const status = alerts.some((alert) => alert.level === "error") ? "attention" : alerts.length ? "warning" : "healthy";
 
-  return NextResponse.json({ status, responseMs: Date.now() - started, summary: { sources: sources.length, enabled: sources.filter((source) => source.enabled).length, active: jobRows.filter((job) => job.status === "active").length, closed: jobRows.filter((job) => job.status !== "active").length, failures: failedOperations.length, lastSuccess: operations.find((operation) => operation.status === "completed")?.completedAt ?? null }, alerts, sources: sources.map((source) => ({ ...source, lastError: safeError(source.lastError), stale: staleSources.some((item) => item.id === source.id) })), operations });
+  const schedules = [{ id: "collect", label: "Coleta, enriquecimento e ciclo de vida", cron: "Dias úteis, 08:15 (Brasília)" }, { id: "revalidate", label: "Revalidação de fontes", cron: "Segundas, 03:00 (Brasília)" }, { id: "email-import", label: "Importação Gmail", cron: null }].map((schedule) => ({ ...schedule, heartbeat: heartbeats.find((heartbeat) => heartbeat.id === schedule.id) ?? null, reason: schedule.cron ? null : "Executada pelo conector Gmail; não há agenda declarada no Radar." }));
+  return NextResponse.json({ status, responseMs: Date.now() - started, summary: { sources: sources.length, enabled: sources.filter((source) => source.enabled).length, active: jobRows.filter((job) => job.status === "active").length, closed: jobRows.filter((job) => job.status !== "active").length, failures: failedOperations.length, lastSuccess: operations.find((operation) => operation.status === "completed")?.completedAt ?? null }, alerts, schedules, sources: sources.map((source) => ({ ...source, lastError: safeError(source.lastError), stale: staleSources.some((item) => item.id === source.id) })), operations });
 }

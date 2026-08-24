@@ -7,15 +7,16 @@ import { enrichLinkedInJobs } from "../../../../lib/enrichment";
 import { inferJobArea } from "../../../../lib/job-area";
 import { recordImportRunJobs } from "../../../../lib/import-tracking";
 import { notifyImportRun } from "../../../../lib/notifications";
+import { heartbeat } from "../../../../lib/automation-heartbeat";
 
 export const dynamic="force-dynamic";
 const digest=async(value:string)=>Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(value)))).map(byte=>byte.toString(16).padStart(2,"0")).join("");
 export async function POST(request:Request){
   const provided=request.headers.get("authorization")?.replace(/^Bearer\s+/i,"")??"",db=getDb(),source=(await db.select().from(jobSources).where(eq(jobSources.id,"gmail-radarvagas")).limit(1))[0];
   let config:{hash:string;userId:string}|null=null;try{config=source?JSON.parse(source.externalRef):null}catch{config=null}
-  if(!config||!provided||await digest(provided)!==config.hash)return Response.json({error:"Não autorizado"},{status:401});
+  if(!config||!provided||await digest(provided)!==config.hash)return Response.json({error:"Não autorizado"},{status:401});await heartbeat("email-import","running");
   const settings=(await db.select({emailEnabled:platformSettings.emailImportEnabled,enrichmentEnabled:platformSettings.enrichmentEnabled}).from(platformSettings).where(eq(platformSettings.id,"global")).limit(1))[0];
-  if(settings&&!settings.emailEnabled)return Response.json({ok:true,skipped:true,message:"Importação por e-mail pausada pelo administrador"});
+  if(settings&&!settings.emailEnabled){await heartbeat("email-import","skipped");return Response.json({ok:true,skipped:true,message:"Importação por e-mail pausada pelo administrador"})};
   const payload=await request.json() as {label?:string;messages?:RadarEmail[]};
   if(payload.label!=="RadarVagas"||!Array.isArray(payload.messages))return Response.json({error:"Etiqueta RadarVagas obrigatória"},{status:400});
   const imported=payload.messages.flatMap(jobsFromEmail),runId=crypto.randomUUID(),now=new Date();
@@ -43,5 +44,5 @@ export async function POST(request:Request){
   await db.update(importRuns).set({status:"completed",inserted,updated,finishedAt:new Date()}).where(eq(importRuns.id,runId));
   await notifyImportRun(db,{runId,source:"Gmail RadarVagas",status:"completed",received:payload.messages.length,inserted,updated}).catch(()=>undefined);
   const enriched=settings?.enrichmentEnabled===false?0:await enrichLinkedInJobs();
-  return Response.json({ok:true,emails:payload.messages.length,jobs:imported.length,inserted,updated,pipelineEvents:events,enriched});
+  await heartbeat("email-import","completed");return Response.json({ok:true,emails:payload.messages.length,jobs:imported.length,inserted,updated,pipelineEvents:events,enriched});
 }
