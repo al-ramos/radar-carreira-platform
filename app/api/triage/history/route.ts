@@ -62,6 +62,9 @@ export async function GET() {
       draftUpdatedAt: draftOutbox.updatedAt,
       gmailSentId: draftOutbox.gmailSentId,
       sentAt: draftOutbox.sentAt,
+      lastSentCheckAt: draftOutbox.lastSentCheckAt,
+      lastSentCheckResult: draftOutbox.lastSentCheckResult,
+      sentCheckCount: draftOutbox.sentCheckCount,
     })
     .from(userJobAnalyses)
     .innerJoin(jobs, eq(userJobAnalyses.jobId, jobs.id))

@@ -1,7 +1,7 @@
-import { and, eq, inArray, ne, or } from "drizzle-orm";
+import { and, eq, inArray, ne, or, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getDb } from "../../../../db/index";
-import { draftOutbox, jobSources, jobs, platformSettings, profiles, triageHistory, userJobAnalyses } from "../../../../db/schema";
+import { draftOutbox, jobEvents, jobSources, jobs, platformSettings, profiles, triageHistory, userJobAnalyses } from "../../../../db/schema";
 import { getAnalysisVersions } from "../../../../lib/analysis-versions";
 import { buildApinfoApplicationEmail } from "../../../../lib/application-email";
 import { canonicalizeProfile, profileIsReadyForTriage } from "../../../../lib/canonical-profile";
@@ -42,9 +42,9 @@ export async function POST(request: Request) {
   const owner = await authenticate(request);
   if (!owner) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   const body = await request.json().catch(() => ({})) as {
-    action?: "prepare" | "confirm" | "fail" | "health" | "sentCandidates" | "reconcileSent";
+    action?: "prepare" | "confirm" | "fail" | "health" | "sentCandidates" | "reconcileSent" | "recordSentCheck";
     outboxId?: string; gmailDraftId?: string; gmailThreadId?: string; gmailSentId?: string; subject?: string; to?: string; sentAt?: string;
-    error?: string; limit?: number; retryFailed?: boolean; connectorVersion?: string; outboxIds?: string[]; automated?: boolean;
+    sentCheckResult?: "sent" | "not_sent"; error?: string; limit?: number; retryFailed?: boolean; connectorVersion?: string; outboxIds?: string[]; automated?: boolean;
   };
   const db = getDb();
 
@@ -70,9 +70,9 @@ export async function POST(request: Request) {
     }
   }
 
-  // Esta consulta não pesquisa o Gmail nem cria mensagens. Ela só devolve os
-  // rascunhos confirmados que podem ser comparados localmente pelo Apps Script
-  // com a pasta "Enviados".
+  // Esta consulta não pesquisa o Gmail nem cria mensagens. Ela devolve itens
+  // pendentes e rascunhos prontos para o conector impedir duplicidade antes
+  // de executar GmailApp.createDraft.
   if (body.action === "sentCandidates") {
     const limit = Math.max(1, Math.min(100, Math.floor(body.limit ?? 100)));
     const requestedOutboxIds = Array.isArray(body.outboxIds) ? [...new Set(body.outboxIds.filter((id): id is string => typeof id === "string" && id.length > 0))].slice(0, 20) : null;
@@ -88,7 +88,7 @@ export async function POST(request: Request) {
       draftedAt: draftOutbox.updatedAt,
     }).from(draftOutbox)
       .innerJoin(jobs, eq(draftOutbox.jobId, jobs.id))
-      .where(and(eq(draftOutbox.userId, owner.userId), eq(draftOutbox.status, "drafted"), requestedOutboxIds ? inArray(draftOutbox.id, requestedOutboxIds) : undefined))
+      .where(and(eq(draftOutbox.userId, owner.userId), or(eq(draftOutbox.status, "pending"), eq(draftOutbox.status, "drafted")), requestedOutboxIds ? inArray(draftOutbox.id, requestedOutboxIds) : undefined))
       .limit(limit);
     return NextResponse.json({
       candidates: candidates.flatMap((item) => {
@@ -99,6 +99,20 @@ export async function POST(request: Request) {
     });
   }
 
+  // A verificação negativa também é dado operacional: ela informa quando o
+  // Gmail foi consultado pela última vez e evita que a tela trate uma vaga
+  // ainda não enviada como se nunca tivesse sido conferida.
+  if (body.action === "recordSentCheck") {
+    if (!body.outboxId || body.sentCheckResult !== "not_sent") return NextResponse.json({ error: "Resultado da verificação inválido" }, { status: 400 });
+    const item = (await db.select({ id: draftOutbox.id, status: draftOutbox.status }).from(draftOutbox)
+      .where(and(eq(draftOutbox.id, body.outboxId), eq(draftOutbox.userId, owner.userId))).limit(1))[0];
+    if (!item) return NextResponse.json({ error: "Item da fila não encontrado" }, { status: 404 });
+    if (item.status !== "pending" && item.status !== "drafted") return NextResponse.json({ ok: true, changed: false, status: item.status });
+    const checkedAt = new Date();
+    await db.update(draftOutbox).set({ lastSentCheckAt: checkedAt, lastSentCheckResult: "not_sent", sentCheckCount: sql`${draftOutbox.sentCheckCount} + 1`, updatedAt: checkedAt }).where(eq(draftOutbox.id, item.id));
+    return NextResponse.json({ ok: true, changed: true, status: item.status, sentCheckResult: "not_sent" });
+  }
+
   // O Apps Script só chega aqui depois de encontrar, em "Enviados", uma
   // correspondência exata por destinatário e assunto. Mesmo assim, o Radar
   // valida novamente os dados persistidos e não aceita promover outro estado.
@@ -106,6 +120,7 @@ export async function POST(request: Request) {
     if (!body.outboxId || !body.gmailSentId) return NextResponse.json({ error: "Identificadores da fila e da mensagem enviada são obrigatórios" }, { status: 400 });
     const item = (await db.select({
       id: draftOutbox.id,
+      jobId: draftOutbox.jobId,
       status: draftOutbox.status,
       gmailSentId: draftOutbox.gmailSentId,
       gmailThreadId: draftOutbox.gmailThreadId,
@@ -122,7 +137,7 @@ export async function POST(request: Request) {
       if (item.gmailSentId === body.gmailSentId) return NextResponse.json({ ok: true, changed: false, status: "sent" });
       return NextResponse.json({ error: "A vaga já está vinculada a outra mensagem enviada" }, { status: 409 });
     }
-    if (item.status !== "drafted") return NextResponse.json({ error: "Somente rascunhos confirmados podem ser marcados como enviados" }, { status: 409 });
+    if (item.status !== "pending" && item.status !== "drafted") return NextResponse.json({ error: "Somente itens pendentes ou rascunhos confirmados podem ser marcados como enviados" }, { status: 409 });
     const expectedTo = normalizeContactEmail(item.contactEmail);
     const expectedSubject = subjectFor(item);
     const sentAt = parseSentAt(body.sentAt);
@@ -130,7 +145,14 @@ export async function POST(request: Request) {
     if (!expectedTo || normalizeContactEmail(body.to) !== expectedTo || (!matchesStoredThread && body.subject?.trim() !== expectedSubject) || !sentAt) {
       return NextResponse.json({ error: "A mensagem enviada não corresponde ao destinatário, assunto e data esperados" }, { status: 409 });
     }
-    await db.update(draftOutbox).set({ status: "sent", gmailSentId: body.gmailSentId.slice(0, 500), sentAt, error: null, updatedAt: new Date() }).where(eq(draftOutbox.id, item.id));
+    const checkedAt = new Date();
+    await db.update(draftOutbox).set({ status: "sent", gmailSentId: body.gmailSentId.slice(0, 500), sentAt, lastSentCheckAt: checkedAt, lastSentCheckResult: "sent", sentCheckCount: sql`${draftOutbox.sentCheckCount} + 1`, error: null, updatedAt: checkedAt }).where(eq(draftOutbox.id, item.id));
+    if (item.status === "pending") await db.insert(jobEvents).values({
+      jobId: item.jobId,
+      type: "draft_blocked_already_sent",
+      detail: JSON.stringify({ gmailSentId: body.gmailSentId.slice(0, 500), to: expectedTo, subject: expectedSubject, sentAt: sentAt.toISOString(), checkedAt: checkedAt.toISOString() }),
+      occurredAt: checkedAt,
+    });
     // Falha ao notificar não deve reverter nem repetir a reconciliação já
     // gravada — o estado "sent" já é a fonte de verdade; a notificação é só
     // um aviso complementar no sino do portal.
