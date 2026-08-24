@@ -326,8 +326,8 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
     if (!selectedHistory.length) return;
     const csvCell = (value: string | null | undefined) => `"${(value ?? "").replace(/"/g, '""')}"`;
     const csv = [
-      "codigo,titulo,status_atual,descricao_do_status",
-      ...selectedHistory.map((item) => [item.externalId ?? item.jobId, item.title, item.verdict || "⚪", item.label || "Não analisada"].map(csvCell).join(",")),
+      "codigo;titulo;status_atual;descricao_do_status",
+      ...selectedHistory.map((item) => [item.externalId ?? item.jobId, item.title, item.verdict || "⚪", item.label || "Não analisada"].map(csvCell).join(";")),
     ].join("\r\n");
     const link = document.createElement("a");
     link.href = URL.createObjectURL(new Blob([`\ufeff${csv}`], { type: "text/csv;charset=utf-8" }));
