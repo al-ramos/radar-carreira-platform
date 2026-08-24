@@ -66,7 +66,7 @@ test("monitoramento consolida importações e lotes de triagem sem expor o detal
  assert.match(monitor,/safeError/);
  assert.match(monitor,/operations/);
  assert.match(ui,/CENTRO OPERACIONAL/);
- assert.match(ui,/Todos os fluxos/);
+ assert.ok(ui.includes('<option value="all">Todos</option>'));
  assert.match(ui,/Precisa de atenção/);
 });
 
