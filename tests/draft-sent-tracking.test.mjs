@@ -36,6 +36,8 @@ test("envio manual é reconciliado por evidência do Gmail sem autorizar envio a
   assert.match(screen, /Ainda não enviado/);
   assert.match(screen, /Atualizar envio/);
   assert.match(screen, /Confirmar envio/);
+  assert.match(screen, /O Gmail ainda não localizou esta mensagem\. Você confirma que já a enviou\?/);
+  assert.match(screen, /await confirmSentDraft\(jobId, true\)/);
   const queueRoute = await read("../app/api/triage/drafts/queue/route.ts");
   assert.match(queueRoute, /action === "confirmSent"/);
   assert.match(queueRoute, /Somente um rascunho pronto pode ser confirmado como enviado/);

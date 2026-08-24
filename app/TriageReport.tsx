@@ -343,13 +343,20 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
       const response = await fetch("/api/triage/drafts/queue", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "reconcileSent", jobIds: [jobId] }) });
       const result = await readJsonResponse<{ confirmed?: number; alreadySent?: boolean; error?: string }>(response, "A atualização do envio");
       if (!response.ok) throw new Error(result.error ?? "Não foi possível consultar o Gmail agora.");
-      setMessage(result.alreadySent || result.confirmed ? "Envio confirmado pelo Gmail e atualizado no Radar." : "O Gmail ainda não encontrou esse envio. Confira o destinatário e o assunto e tente novamente.");
+      if (result.alreadySent || result.confirmed) {
+        setMessage("Envio confirmado pelo Gmail e atualizado no Radar.");
+      } else if (window.confirm("O Gmail ainda não localizou esta mensagem. Você confirma que já a enviou? O Radar atualizará somente o acompanhamento; nenhuma mensagem será enviada.")) {
+        await confirmSentDraft(jobId, true);
+        return;
+      } else {
+        setMessage("O Gmail ainda não encontrou esse envio. Confira o destinatário e o assunto e tente novamente.");
+      }
       await loadHistory();
     } catch (error) { setMessage(error instanceof Error ? error.message : "Não foi possível consultar o Gmail agora."); }
     finally { setReconcilingSentJobId(null); }
   };
-  const confirmSentDraft = async (jobId: string) => {
-    if (!window.confirm("Confirmar que este e-mail já foi enviado? O Radar somente atualizará o acompanhamento; nenhuma mensagem será enviada.")) return;
+  const confirmSentDraft = async (jobId: string, alreadyConfirmed = false) => {
+    if (!alreadyConfirmed && !window.confirm("Confirmar que este e-mail já foi enviado? O Radar somente atualizará o acompanhamento; nenhuma mensagem será enviada.")) return;
     setReconcilingSentJobId(jobId);
     try {
       const response = await fetch("/api/triage/drafts/queue", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "confirmSent", jobIds: [jobId] }) });
