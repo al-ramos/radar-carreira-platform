@@ -83,7 +83,13 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
         const legacy = await legacyResponse.json() as { items?: LegacyItem[] };
         if (!legacyResponse.ok) throw new Error("Falha ao consultar as avaliações existentes.");
         const items = (legacy.items ?? []).map((item): HistoryItem => ({ id: `legacy-${item.jobId}`, batchId: "legacy", jobId: item.jobId, verdict: item.veredito, label: item.motivo ?? "Avaliação registrada", blocker: null, source: "legacy", confidence: 0, rows: "", processedAt: item.processedAt, title: item.title, company: item.company, externalId: item.externalId, jobSource: item.sourceId, workMode: item.workMode, location: item.location, sourcePublishedAt: item.sourcePublishedAt, receivedAt: item.receivedAt, url: item.url, contactEmail: item.contactEmail, hasValidContactEmail: Boolean(item.contactEmail?.includes("@")), draftStatus: null, draftSubject: "", draftError: null, draftUpdatedAt: null, sentAt: null, trigger: "legacy" }));
-        setHistory(items); setBatches([]); setOperational(null); setMessage(items.length ? "Exibindo avaliações já registradas no Radar." : "Nenhuma vaga avaliada foi encontrada.");
+        // Uma falha transitória em /api/triage/history não pode apagar o lote
+        // manual em andamento: mantém batches/batchItems/operational como
+        // estavam e só complementa o histórico com o acervo legado. Sem isso,
+        // um 500 passageiro durante "Sincronizar agora" fazia o card "SEU
+        // ÚLTIMO LOTE" sumir mesmo com a triagem ainda rodando na fila.
+        setHistory((current) => current.length ? current : items);
+        setMessage(items.length ? "Exibindo avaliações já registradas no Radar." : "Nenhuma vaga avaliada foi encontrada.");
         return true;
       }
       const data = await response.json() as { items?: HistoryItem[]; batches?: Batch[]; batchItems?: BatchItem[]; operational?: Operational };
