@@ -1396,6 +1396,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .import-run-source-context.needs-attention p { color: #93323b; font-weight: 700; }
 .import-run-intake { background: #fafaff; border: 1px solid #e5e6ef; border-radius: 10px; color: #4f5875; margin: 14px 0; padding: 11px 13px; }
 .import-run-intake strong { color: #18264d; font-size: 11px; }.import-run-intake p { font-size: 11px; margin: 4px 0 0; }.import-run-intake ul { display: flex; flex-wrap: wrap; gap: 5px; list-style: none; margin: 8px 0 0; padding: 0; }.import-run-intake li { background: #fff2de; border-radius: 999px; color: #82560a; font-size: 10px; padding: 4px 7px; }
+.import-run-reasons { display: grid; gap: 7px; margin: 10px 0 0; }.import-run-reasons div { display: grid; gap: 1px; }.import-run-reasons dt { color: #18264d; font-size: 11px; font-weight: 700; }.import-run-reasons dd { color: #59627d; font-size: 11px; margin: 0; }.import-run-profile-rule { color: #59627d; font-size: 11px; }
 .import-run-jobs-head { display: flex; align-items: end; justify-content: space-between; gap: 12px; margin: 20px 0 8px; }
 .import-run-jobs-head h3 { margin: 0 0 3px; font-size: 15px; }
 .import-run-jobs-head p, .import-run-jobs-head small { margin: 0; color: #69718b; font-size: 11px; }

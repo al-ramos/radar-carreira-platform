@@ -62,6 +62,17 @@ type CollectorStatusPayload = {
   finishedAt?: string;
 };
 
+type ImportDetails = {
+  valid: number;
+  invalid: number;
+  invalidReasons: Record<string, number>;
+  rejectedProfile: number;
+  accepted: number;
+  profileRule: string;
+};
+
+const serializeDetails = (details: ImportDetails) => JSON.stringify(details);
+
 async function recordCollectorStatus(
   db: ReturnType<typeof getDb>,
   source: typeof jobSources.$inferSelect,
@@ -88,6 +99,7 @@ async function recordCollectorStatus(
     updated: count(statusPayload.updated),
     duplicates: count(statusPayload.duplicates),
     errors: status === "failed" ? 1 : 0,
+    details: null,
     actorUserId,
     startedAt,
     finishedAt,
@@ -101,6 +113,7 @@ async function recordCollectorStatus(
       updated: values.updated,
       duplicates: values.duplicates,
       errors: values.errors,
+      details: values.details,
       finishedAt: values.finishedAt,
     },
   });
@@ -193,6 +206,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ sou
     job,
   }));
   const duplicateRows = filtered.accepted.length - entries.length;
+  const importDetails: ImportDetails = {
+    valid: items.length,
+    invalid: input.rejected,
+    invalidReasons: input.reasons,
+    rejectedProfile: filtered.rejected,
+    accepted: entries.length,
+    profileRule: filtered.requiredStacks.length
+      ? `Exige ${filtered.stackMatchMode === "all" ? "todas" : "alguma"} das stacks obrigatórias: ${filtered.requiredStacks.join(", ")}.`
+      : "Esta fonte não aplica filtro de stack obrigatório no Radar.",
+  };
   const runId = collectorRunId(payload?.runId);
   const startedAt = new Date();
   await db.insert(importRuns).values({
@@ -203,18 +226,19 @@ export async function POST(request: Request, { params }: { params: Promise<{ sou
     status: "running",
     received: rawItems.length,
     duplicates: duplicateRows,
+    details: serializeDetails(importDetails),
     actorUserId: config.userId ?? "collector",
     startedAt,
   }).onConflictDoUpdate({
     target: importRuns.id,
-    set: { status: "running", received: rawItems.length, duplicates: duplicateRows, errors: 0, finishedAt: null },
+    set: { status: "running", received: rawItems.length, duplicates: duplicateRows, details: serializeDetails(importDetails), errors: 0, finishedAt: null },
   });
 
   let inserted = 0;
   let updated = 0;
   try {
     if (!entries.length) {
-      await db.update(importRuns).set({ status: "completed", finishedAt: new Date() }).where(eq(importRuns.id, runId));
+      await db.update(importRuns).set({ status: "completed", details: serializeDetails(importDetails), finishedAt: new Date() }).where(eq(importRuns.id, runId));
       const finishedAt = new Date();
       await db.update(jobSources).set({ lastRunAt: finishedAt, lastSuccessAt: finishedAt, lastError: null, consecutiveFailures: 0 }).where(eq(jobSources.id, sourceId));
       await notifyImportRun(db, { runId, source: sourceName, status: "completed", received: rawItems.length, valid: items.length, invalid: input.rejected, invalidReasons: input.reasons, rejectedProfile: filtered.rejected, inserted: 0, updated: 0, duplicates: 0 }).catch(() => undefined);
@@ -270,7 +294,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ sou
 
     await db
       .update(importRuns)
-      .set({ status: "completed", inserted, updated, duplicates: duplicateRows, finishedAt: new Date() })
+      .set({ status: "completed", inserted, updated, duplicates: duplicateRows, details: serializeDetails(importDetails), finishedAt: new Date() })
       .where(eq(importRuns.id, runId));
     const finishedAt = new Date();
     await db.update(jobSources).set({ lastRunAt: finishedAt, lastSuccessAt: finishedAt, lastError: null, consecutiveFailures: 0 }).where(eq(jobSources.id, sourceId));
@@ -280,7 +304,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ sou
     const detail = error instanceof Error ? error.message : "Falha desconhecida durante a gravação";
     await db
       .update(importRuns)
-      .set({ status: "failed", inserted, updated, duplicates: duplicateRows, errors: 1, finishedAt: new Date() })
+      .set({ status: "failed", inserted, updated, duplicates: duplicateRows, errors: 1, details: serializeDetails(importDetails), finishedAt: new Date() })
       .where(eq(importRuns.id, runId))
       .catch(() => undefined);
     await notifyImportRun(db, { runId, source: sourceName, status: "failed", received: rawItems.length, valid: items.length, invalid: input.rejected, invalidReasons: input.reasons, rejectedProfile: filtered.rejected, inserted, updated, duplicates: duplicateRows, error: detail.slice(0, 300) }).catch(() => undefined);

@@ -183,6 +183,13 @@
       "when": 1787062200000,
       "tag": "0026_clear_existing_verdicts",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1787572800000,
+      "tag": "0033_import_run_details",
+      "breakpoints": true
     }
   ]
 }

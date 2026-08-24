@@ -8,6 +8,7 @@ import { can } from "../../../../../lib/rbac";
 export const dynamic = "force-dynamic";
 
 const parseMetadata = (value: string) => { try { return JSON.parse(value) as Record<string, unknown>; } catch { return {}; } };
+const parseDetails = (value: string | null) => { try { return value ? JSON.parse(value) as Record<string, unknown> : {}; } catch { return {}; } };
 
 export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
   const user = await getChatGPTUser();
@@ -25,8 +26,10 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
   const notification = recentNotifications.find(item => parseMetadata(item.metadata).runId === id);
   const notificationError = notification ? parseMetadata(notification.metadata).error : null;
   const metadata = notification ? parseMetadata(notification.metadata) : {};
-  const intake = typeof metadata.valid === "number" || typeof metadata.invalid === "number"
-    ? { valid: typeof metadata.valid === "number" ? metadata.valid : null, invalid: typeof metadata.invalid === "number" ? metadata.invalid : 0, invalidReasons: typeof metadata.invalidReasons === "object" && metadata.invalidReasons ? metadata.invalidReasons : {}, rejectedProfile: typeof metadata.rejectedProfile === "number" ? metadata.rejectedProfile : 0 }
+  const details = parseDetails(run.details);
+  const intakeSource = Object.keys(details).length ? details : metadata;
+  const intake = typeof intakeSource.valid === "number" || typeof intakeSource.invalid === "number"
+    ? { valid: typeof intakeSource.valid === "number" ? intakeSource.valid : null, invalid: typeof intakeSource.invalid === "number" ? intakeSource.invalid : 0, invalidReasons: typeof intakeSource.invalidReasons === "object" && intakeSource.invalidReasons ? intakeSource.invalidReasons : {}, rejectedProfile: typeof intakeSource.rejectedProfile === "number" ? intakeSource.rejectedProfile : 0, accepted: typeof intakeSource.accepted === "number" ? intakeSource.accepted : null, profileRule: typeof intakeSource.profileRule === "string" ? intakeSource.profileRule : null }
     : null;
   return NextResponse.json({ run, jobs: affectedJobs, intake, error: typeof notificationError === "string" ? notificationError : (run.status === "failed" ? notification?.body ?? "Falha sem detalhe disponível para esta execução antiga." : null) });
 }

@@ -202,6 +202,10 @@ export const importRuns = sqliteTable("import_runs", {
   channel: text("channel", { enum: ["extension", "email", "connector", "file", "api"] }).notNull().default("api"),
   received: integer("received").notNull().default(0), inserted: integer("inserted").notNull().default(0), updated: integer("updated").notNull().default(0),
   duplicates: integer("duplicates").notNull().default(0), errors: integer("errors").notNull().default(0), actorUserId: text("actor_user_id"),
+  // Resumo estruturado e permanente do que aconteceu em uma importação. A
+  // notificação é apenas um atalho; este campo mantém os motivos disponíveis
+  // mesmo depois de o sino acumular novas notificações.
+  details: text("details"),
   startedAt: integer("started_at", { mode: "timestamp_ms" }).notNull(), finishedAt: integer("finished_at", { mode: "timestamp_ms" }),
 });
 
