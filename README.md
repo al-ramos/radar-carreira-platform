@@ -6,6 +6,28 @@ Portal multiusuário para reunir oportunidades, decidir quais vagas merecem aten
 
 **Documentação completa:** [visão do produto, arquitetura, recursos, regras de negócio, dados, APIs, segurança e operação](docs/visao-completa-do-projeto.md)
 
+## Prioridade principal — triagem inteligente e candidatura assistida
+
+> **A prioridade atual do Radar é transformar vagas recebidas em decisões seguras e ações acompanháveis:** triar, revisar, preparar a candidatura e confirmar o envio, mantendo a pessoa no controle.
+
+| Pilar prioritário | Resultado esperado | Estado |
+|---|---|:---:|
+| **1. Decidir** | aplicar perfil canônico, score, bloqueadores e veredito explicável | ✅ Em produção |
+| **2. Revisar** | confirmar o recorte pela IA do portal, pelo Codex ou por CSV, com histórico e origem | ✅ Em produção |
+| **3. Preparar** | criar somente rascunhos seguros, com contato válido e sem enviar e-mail | ✅ Em produção |
+| **4. Operar** | acompanhar filas, importações, triagens, falhas, retomadas e envios em um centro operacional | ✅ Em produção |
+
+### Próximos focos desta prioridade
+
+1. concluir a governança RBAC e a auditoria de acesso ponta a ponta;
+2. tornar ainda mais visível a precedência entre regras, IA do portal, Codex e CSV;
+3. ampliar a operação de filas de mensagens mortas, alertas e notificações para múltiplos operadores;
+4. validar continuamente backup, Gmail, LinkedIn e demais integrações críticas.
+
+**Princípio inegociável:** o Radar pode coletar, analisar, priorizar e preparar; a candidatura e o envio do e-mail continuam sendo decisões da pessoa usuária.
+
+> **Sincronização permanente:** toda mudança funcional relevante deve atualizar este README, a [visão completa do projeto](docs/visao-completa-do-projeto.md) e as páginas correspondentes no Notion na mesma entrega.
+
 > O portal está público, mas o visitante precisa entrar (e-mail/senha ou, quando hospedado em `*.chatgpt.site`, Sign in with ChatGPT) para acessar as áreas identificadas.
 
 ## O que o portal faz
@@ -20,9 +42,11 @@ Portal multiusuário para reunir oportunidades, decidir quais vagas merecem aten
 - permite copiar e compartilhar a descrição, exportar resultados e gerar uma mensagem de candidatura segura;
 - mantém um pipeline individual com notas, etapas e marcos de mensagem gerada, enviada e respondida;
 - executa triagem manual ou agendada por fonte e período, com histórico, idempotência, filas resilientes, tentativas e retomada;
+- após uma importação push do LinkedIn ou APInfo, percorre todo o lote em continuações de 10 vagas, usando IA apenas nas ambiguidades da primeira rodada;
 - permite revisar um recorte no portal, preparar até 50 vagas para o Codex ou reimportar vereditos externos por CSV;
 - prepara rascunhos elegíveis no Gmail, acompanha sua criação e reconcilia o envio sem enviar e-mail automaticamente;
 - registra notificações de importação, triagem e candidatura, com acesso direto aos relatórios operacionais;
+- centraliza importações e lotes de triagem no monitoramento, com alertas acionáveis, falhas, último sucesso e filtros por fluxo;
 - envia um resumo diário por Gmail quando existem oportunidades acima do score mínimo;
 - registra análises elegíveis, importações, as vagas e causas de aceite/rejeição de cada lote, eventos, consumo de IA, qualidade dos dados e ciclo de vida das vagas.
 
@@ -39,7 +63,7 @@ Portal multiusuário para reunir oportunidades, decidir quais vagas merecem aten
 - pipeline Kanban com notas e acompanhamento da candidatura;
 - alertas e resumo diário;
 - métricas pessoais de funil, conversão, empresas e tecnologias;
-- exportação CSV compatível com Excel.
+- exportação CSV compatível com Excel;
 - central de triagem com seleção em lote, filtros, progresso, histórico, logs, saúde operacional e ações por vaga;
 - análise consultiva assíncrona pela IA do portal e fila privada para análise no Codex;
 - preparação de rascunhos Gmail, reprocessamento de falhas e confirmação manual ou reconciliação do envio.
@@ -57,7 +81,7 @@ Portal multiusuário para reunir oportunidades, decidir quais vagas merecem aten
 - auditoria e qualidade dos dados;
 - gestão de usuários, roles e permissões granulares;
 - backup administrativo;
-- relatório compatível com Excel.
+- relatório compatível com Excel;
 - interruptores independentes para triagem agendada, entrada automática na fila de rascunhos e criação do rascunho no Gmail;
 - notificações operacionais com acesso ao relatório completo de importações e lotes de triagem.
 
@@ -125,7 +149,7 @@ npm run db:generate
 
 `npm test` executa o build e a suíte regular, que combina testes de regras de negócio com verificações estruturais do código. `npm run test:rbac-integration` chama `can()` de `lib/rbac.ts` contra SQLite real em memória (`node:sqlite`), populado com as migrations `0010`/`0011`, usando loaders que simulam `cloudflare:workers` e o binding D1. A esteira executa as duas suítes; o ambiente oficial continua usando Node.js 22 e os loaders também são compatíveis com Node.js 24 no Windows.
 
-Validação do escopo em 24/08/2026: **158 testes regulares + 26 testes de integração RBAC passando**; lint sem erros, com 7 avisos preexistentes.
+Validação do escopo em 24/08/2026: **159 testes regulares + 26 testes de integração RBAC passando**; lint sem erros, com 7 avisos preexistentes.
 
 ## Banco de dados
 
@@ -176,6 +200,7 @@ Quando a pessoa confirma um resultado da IA, do Codex ou do CSV, ele vira o vere
 ### Automação e segurança
 
 - importações push do LinkedIn ou APInfo podem iniciar a triagem logo após a persistência do lote;
+- lotes grandes continuam pela fila até que todas as vagas ainda não analisadas sejam processadas, sem alongar a requisição de importação;
 - três interruptores administrativos controlam separadamente a triagem agendada, a entrada na outbox e a criação real do rascunho no Gmail;
 - a automação agendada aceita somente vagas `✅` para rascunho;
 - o Apps Script cria rascunhos e consulta a pasta Enviados, mas nunca envia e-mail;

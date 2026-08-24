@@ -1,6 +1,6 @@
 # Radar Carreira Platform — visão completa do produto e da arquitetura
 
-> Documento de conhecimento do estado real do repositório em **24 de agosto de 2026**, cobrindo as funcionalidades publicadas até o commit `76c55a9` (`Define publicação isolada com mudanças locais`).
+> Documento de conhecimento do estado real do repositório em **24 de agosto de 2026**, cobrindo as funcionalidades publicadas até o commit `0edc88a` (`Processa todo lote importado na triagem`).
 
 ## Como ler este documento
 
@@ -21,6 +21,18 @@ O sistema é executado como um Cloudflare Worker, com interface Next.js/React co
 ### Estado funcional em uma frase
 
 O fluxo central — entrar, cadastrar perfil, descobrir vaga, triar em lote, revisar a decisão, preparar um rascunho e acompanhar a candidatura — está implementado. A governança RBAC avançada, a ampliação das notificações para múltiplos operadores e algumas validações operacionais permanecem como pontos de atenção descritos na seção 15.
+
+### Prioridade principal do produto
+
+A prioridade atual é consolidar o ciclo **triagem inteligente → revisão → rascunho seguro → acompanhamento do envio**. Isso significa:
+
+1. preservar decisões determinísticas explicáveis e versionadas;
+2. permitir revisão por IA, Codex ou CSV sem perder origem e histórico;
+3. gerar somente rascunhos aprovados, revalidados e com contato válido;
+4. tornar filas, importações, triagens, falhas, retomadas e envios visíveis em um centro operacional;
+5. manter a candidatura e o envio sob decisão da pessoa usuária.
+
+Esta prioridade deve permanecer sincronizada entre o README principal, este inventário técnico e o hub do projeto no Notion em toda entrega funcional relevante.
 
 ## 2. Arquitetura em alto nível
 
@@ -92,7 +104,7 @@ O dashboard organiza os módulos abaixo:
 | Métricas | Usuário | funil, conversão, empresas e tecnologias |
 | Triagem IA | Usuário/owner | lotes, filtros, fila, histórico, IA, Codex, CSV e rascunhos |
 | Notificações | Operação/owner | eventos de importação, triagem e candidatura com links para relatórios |
-| Monitoramento | Operação | saúde do banco, fontes, falhas e execuções recentes |
+| Monitoramento | Operação | centro operacional com banco, fontes, importações, triagens, alertas acionáveis, falhas e último sucesso |
 | Auditoria | Operação | linha do tempo de importações e eventos de vagas |
 | Qualidade | Operação | completude dos dados e enriquecimento |
 | Usuários | Administração | contas locais, perfis, convites e papel básico |
@@ -131,6 +143,7 @@ O dashboard organiza os módulos abaixo:
 
 - O recorte combina fonte, período de 24/72/168 horas ou histórico completo, área, canal de entrada e inclusão opcional de vagas já analisadas.
 - A triagem manual cria um lote e publica cada vaga na Cloudflare Queue; o histórico exibe `queued`, `processing`, `completed`, `failed` ou `skipped`, tentativas, erro e lease.
+- Uma importação push agenda continuações de 10 vagas até processar todo o lote; a primeira rodada pode usar IA para ambiguidades e as seguintes avançam deterministicamente sobre as vagas ainda sem análise.
 - Uma execução interrompida pode ser sincronizada e retomada sem recriar decisões já concluídas.
 - A idempotência considera usuário, vaga e revisões do perfil, das regras e das instruções.
 - O painel permite selecionar as vagas visíveis ou todas as filtradas, abrir a vaga no Radar, preparar rascunho, consultar IA, preparar para o Codex e conferir envio.
@@ -542,7 +555,7 @@ A base contém testes para:
 
 `npm test` executa build e testes `*.test.mjs`. A integração RBAC usa loaders que simulam bindings Cloudflare e as migrations reais `0010`/`0011`; a esteira executa ambas as suítes antes da publicação.
 
-Validação realizada em 24/08/2026: **158 testes regulares e 26 testes de integração RBAC passaram**. O lint terminou sem erros e com 7 avisos preexistentes em código de interface e versionamento de análise.
+Validação realizada em 24/08/2026: **159 testes regulares e 26 testes de integração RBAC passaram**. O lint terminou sem erros e com 7 avisos preexistentes em código de interface e versionamento de análise.
 
 ## 15. Pontos de atenção confirmados
 
