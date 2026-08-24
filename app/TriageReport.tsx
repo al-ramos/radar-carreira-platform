@@ -228,6 +228,7 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
     : periodScopedSourceOptions;
   const actionCandidateCount = actionCandidate?.key === actionSelectionKey && actionSourceId ? actionCandidate.count : null;
   const actionCandidateTotal = actionCandidate?.key === actionSelectionKey && actionSourceId ? actionCandidate.total : null;
+  const canPrepareDrafts = scopedHistory.some((item) => (item.verdict === "✅" || item.verdict === "🟡") && item.hasValidContactEmail && !item.draftStatus);
   const manualSummary = (batch: Batch) => {
     if (batch.total === 0) return "Nenhuma vaga ficou pendente neste recorte. Escolha outro período ou atualize os filtros para iniciar uma nova triagem.";
     if (batch.status === "queued") return `${batch.total} vaga(s) na fila. O Radar iniciará o processamento em instantes.`;
@@ -669,7 +670,7 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
                   </article>
                   <article className={`triage-action-step ${manualIsActive ? "waiting" : ""}`}>
                     <span>2</span><div><b>Preparar rascunhos</b><small>Use após a etapa 1 concluir. Separa apenas vagas ✅/🟡 com e-mail válido; não envia nada.</small></div>
-                    <button className="triage-queue-button" disabled={queueingDrafts || runningPilot || manualIsActive || !actionSourceId} onClick={queueDrafts} title={manualIsActive ? "Aguarde a triagem concluir antes de preparar rascunhos." : !actionSourceId ? "Selecione uma fonte para preparar rascunhos do recorte." : undefined}>{queueingDrafts ? "Preparando…" : "Preparar"}</button>
+                    <button className="triage-queue-button" disabled={queueingDrafts || runningPilot || manualIsActive || !actionSourceId || !canPrepareDrafts} onClick={queueDrafts} title={manualIsActive ? "Aguarde a triagem concluir antes de preparar rascunhos." : !actionSourceId ? "Selecione uma fonte para preparar rascunhos do recorte." : !canPrepareDrafts ? "Conclua a triagem e tenha uma vaga aprovada ou provável com e-mail válido." : undefined}>{queueingDrafts ? "Preparando…" : "Preparar"}</button>
                   </article>
                   <article className="triage-action-step triage-retry-step">
                     <span>↻</span><div><b>Reprocessar falhas</b><small>Use somente se a fila de rascunhos informar falha.</small></div>
