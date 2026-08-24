@@ -1,6 +1,6 @@
 # Radar Carreira Platform — visão completa do produto e da arquitetura
 
-> Documento de conhecimento do estado real do repositório em **24 de agosto de 2026**, cobrindo as funcionalidades publicadas até o commit `7d0ece2` (`Registra saúde das automações`).
+> Documento de conhecimento do estado real do repositório em **24 de agosto de 2026**, cobrindo as funcionalidades publicadas até o commit `63fa1d3` (`Corrige teste do centro operacional`).
 
 ## Como ler este documento
 
@@ -138,6 +138,7 @@ O dashboard organiza os módulos abaixo:
 - Contatos podem ser salvos com validação, corrigidos quando o domínio veio truncado e reutilizados individualmente em outras vagas da mesma empresa.
 - A mensagem de candidatura usa somente competências confirmadas, pode explicitar lacunas e nunca envia e-mail automaticamente.
 - Acompanhamento da candidatura distingue `generated`, `sent` e `responded`, com data própria para cada marco.
+- Ações que abririam uma nova candidatura ficam bloqueadas quando o acompanhamento já está em `sent` ou `responded`.
 
 ### Central de triagem
 
@@ -168,6 +169,8 @@ O dashboard organiza os módulos abaixo:
 - Três interruptores independentes controlam triagem agendada, entrada automática na outbox e criação real do rascunho. Na configuração atual, qualquer origem de aprovação `✅` pode preparar e criar o rascunho; `🟡` permanece para revisão humana.
 - O Apps Script cria rascunhos e reconhece o envio feito pela pessoa; nenhuma rota ou automação envia a candidatura.
 - Um gatilho opcional a cada 15 minutos consulta somente a pasta Enviados e reconcilia rascunhos comprovadamente usados.
+- Confirmações de candidatura do LinkedIn recebidas pela etiqueta RadarVagas atualizam o pipeline para `sent`, preservam estados mais avançados e geram uma única notificação na primeira detecção.
+- A reutilização em lote de contatos já conhecidos por empresa fica no painel de filtros de e-mail e atua somente sobre as vagas filtradas sem contato.
 
 ## 5. Perfil profissional
 
@@ -560,7 +563,7 @@ A base contém testes para:
 
 `npm test` executa build e testes `*.test.mjs`. A integração RBAC usa loaders que simulam bindings Cloudflare e as migrations reais `0010`/`0011`; a esteira executa ambas as suítes antes da publicação.
 
-Validação realizada em 24/08/2026: **159 testes regulares e 26 testes de integração RBAC passaram**. O lint terminou sem erros e com 7 avisos preexistentes em código de interface e versionamento de análise.
+Validação realizada em 24/08/2026: **161 testes regulares e 26 testes de integração RBAC passaram**. O lint terminou sem erros e com 7 avisos preexistentes em código de interface e versionamento de análise.
 
 ## 15. Pontos de atenção confirmados
 

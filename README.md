@@ -41,10 +41,12 @@ Portal multiusuário para reunir oportunidades, decidir quais vagas merecem aten
 - mostra a descrição dentro do Radar, infere tecnologias e mantém separadas a URL estável e a URL de candidatura;
 - permite copiar e compartilhar a descrição, exportar resultados e gerar uma mensagem de candidatura segura;
 - mantém um pipeline individual com notas, etapas e marcos de mensagem gerada, enviada e respondida;
+- bloqueia uma nova abertura de candidatura quando o acompanhamento já registra envio ou resposta;
 - executa triagem manual ou agendada por fonte e período, com histórico, idempotência, filas resilientes, tentativas e retomada;
 - após uma importação push do LinkedIn ou APInfo, percorre todo o lote em continuações de 10 vagas, usando IA apenas nas ambiguidades da primeira rodada;
 - permite revisar um recorte no portal, preparar até 50 vagas para o Codex ou reimportar vereditos externos por CSV;
 - prepara rascunhos elegíveis no Gmail, acompanha sua criação e reconcilia o envio sem enviar e-mail automaticamente;
+- reconhece confirmações de candidatura recebidas do LinkedIn pelo Gmail, marca o acompanhamento como enviado e notifica somente na primeira transição;
 - registra notificações de importação, triagem e candidatura, com acesso direto aos relatórios operacionais;
 - centraliza importações, lotes de triagem e a agenda das automações no monitoramento, com heartbeats persistidos, alertas acionáveis, falhas, último sucesso e filtros por fluxo;
 - envia um resumo diário por Gmail quando existem oportunidades acima do score mínimo;
@@ -67,6 +69,7 @@ Portal multiusuário para reunir oportunidades, decidir quais vagas merecem aten
 - central de triagem com seleção em lote, filtros, progresso, histórico, logs, saúde operacional e ações por vaga;
 - análise consultiva assíncrona pela IA do portal e fila privada para análise no Codex;
 - preparação de rascunhos Gmail, reprocessamento de falhas e confirmação manual ou reconciliação do envio.
+- reutilização em lote de contatos já cadastrados por empresa, disponível junto aos filtros de e-mail.
 
 ### Para administradores
 
@@ -147,7 +150,7 @@ npm run lint
 npm run db:generate
 ```
 
-`npm test` executa o build e a suíte regular, que combina testes de regras de negócio com verificações estruturais do código. `npm run test:rbac-integration` chama `can()` de `lib/rbac.ts` contra SQLite real em memória (`node:sqlite`), populado com as migrations `0010`/`0011`, usando loaders que simulam `cloudflare:workers` e o binding D1. A esteira executa as duas suítes; o ambiente oficial continua usando Node.js 22 e os loaders também são compatíveis com Node.js 24 no Windows.
+`npm test` executa o build e a suíte regular, atualmente com **161 testes**, que combina regras de negócio com verificações estruturais do código. `npm run test:rbac-integration` executa **26 testes** chamando `can()` de `lib/rbac.ts` contra SQLite real em memória (`node:sqlite`), populado com as migrations `0010`/`0011`, usando loaders que simulam `cloudflare:workers` e o binding D1. A esteira executa as duas suítes; o ambiente oficial continua usando Node.js 22 e os loaders também são compatíveis com Node.js 24 no Windows.
 
 Validação do escopo em 24/08/2026: **159 testes regulares + 26 testes de integração RBAC passando**; lint sem erros, com 7 avisos preexistentes.
 
