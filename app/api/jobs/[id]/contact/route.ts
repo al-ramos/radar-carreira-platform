@@ -2,7 +2,7 @@ import { and, desc, eq, isNull, or } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../../chatgpt-auth";
 import { getDb } from "../../../../../db/index";
-import { companyContacts, jobs } from "../../../../../db/schema";
+import { companyContacts, jobEvents, jobs } from "../../../../../db/schema";
 import { companyContactKey } from "../../../../../lib/company-contact";
 import { normalizeContactEmail } from "../../../../../lib/contact-email";
 
@@ -28,7 +28,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const existingEmail = normalizeContactEmail(job.contactEmail);
   const companyKey = companyContactKey(job.company);
   if (body?.useCompanyContact) {
-    if (existingEmail) return NextResponse.json({ ok: true, contactEmail: existingEmail, reused: true });
+    if (existingEmail) return NextResponse.json({ ok: true, contactEmail: existingEmail, reused: true, updated: false });
     let companyContact = companyKey
       ? (await db.select().from(companyContacts).where(eq(companyContacts.companyKey, companyKey)).limit(1))[0]
       : undefined;
@@ -50,8 +50,16 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const updated = await db.update(jobs)
       .set({ contactEmail: companyContact.contactEmail, contactSubject: companyContact.contactSubject, updatedAt: new Date() })
       .where(and(eq(jobs.id, id), or(isNull(jobs.contactEmail), eq(jobs.contactEmail, ""))))
-      .returning({ contactEmail: jobs.contactEmail, contactSubject: jobs.contactSubject });
-    return NextResponse.json({ ok: true, contactEmail: updated[0]?.contactEmail ?? companyContact.contactEmail, contactSubject: updated[0]?.contactSubject ?? companyContact.contactSubject, reused: true });
+      .returning({ id: jobs.id, contactEmail: jobs.contactEmail, contactSubject: jobs.contactSubject });
+    if (updated[0]) {
+      await db.insert(jobEvents).values({
+        jobId: updated[0].id,
+        type: "company_contact_reused",
+        detail: JSON.stringify({ email: updated[0].contactEmail, company: job.company, actorUserId: user.userId }),
+        occurredAt: new Date(),
+      });
+    }
+    return NextResponse.json({ ok: true, contactEmail: updated[0]?.contactEmail ?? companyContact.contactEmail, contactSubject: updated[0]?.contactSubject ?? companyContact.contactSubject, reused: true, updated: Boolean(updated[0]) });
   }
   const contactEmail = normalizeContactEmail(body?.contactEmail);
   if (!contactEmail) return NextResponse.json({ error: "Informe um único e-mail de contato válido" }, { status: 400 });
@@ -83,6 +91,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const now = new Date();
     await db.insert(companyContacts).values({ companyKey, companyName: job.company, contactEmail, contactSubject: body?.contactSubject?.trim() || null, createdAt: now, updatedAt: now }).onConflictDoNothing();
   }
+
+  await db.insert(jobEvents).values({
+    jobId: updated[0].id,
+    type: "contact_captured",
+    detail: JSON.stringify({ email: updated[0].contactEmail, actorUserId: user.userId }),
+    occurredAt: new Date(),
+  });
 
   return NextResponse.json({ ok: true, contactEmail: updated[0].contactEmail, contactSubject: updated[0].contactSubject, companyContactSaved: Boolean(companyKey) });
 }
