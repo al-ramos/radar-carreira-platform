@@ -21,7 +21,7 @@ const readJsonResponse = async <T,>(response: Response, action: string): Promise
   try { return JSON.parse(body) as T; }
   catch { throw new Error(`${action} recebeu uma resposta inválida do serviço. Tente novamente.`); }
 };
-export default function TriageReport({ close, openJobInRadar, sourceId, sourceLabel, sourceOptions = [], areaOptions = [], channelOptions = [], initialArea = "all", initialChannel = "all", homePeriod = "24" }: { close: () => void; openJobInRadar: (job: Pick<HistoryItem, "jobId" | "externalId" | "jobSource">) => void; sourceId?: string; sourceLabel?: string; sourceOptions?: FilterOption[]; areaOptions?: FilterOption[]; channelOptions?: FilterOption[]; initialArea?: string; initialChannel?: string; homePeriod?: "24" | "72" | "168" | "all" }) {
+export default function TriageReport({ close, openJobInRadar, sourceId, sourceLabel, sourceOptions = [], areaOptions = [], channelOptions = [], initialArea = "all", initialChannel = "all", homePeriod = "24", highlightBatchId }: { close: () => void; openJobInRadar: (job: Pick<HistoryItem, "jobId" | "externalId" | "jobSource">) => void; sourceId?: string; sourceLabel?: string; sourceOptions?: FilterOption[]; areaOptions?: FilterOption[]; channelOptions?: FilterOption[]; initialArea?: string; initialChannel?: string; homePeriod?: "24" | "72" | "168" | "all"; highlightBatchId?: string }) {
   const [message, setMessage] = useState("Carregando avaliações…"),
     [runningPilot, setRunningPilot] = useState(false),
     [resumingBatch, setResumingBatch] = useState(false),
@@ -148,6 +148,8 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
   const date = (v: string) =>
     new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(v));
   const latestScheduled = batches.find((batch) => batch.trigger === "scheduled");
+  const highlightedBatch = highlightBatchId ? batches.find((batch) => batch.id === highlightBatchId) : undefined;
+  const highlightedBatchItems = highlightedBatch ? batchItems.filter((item) => item.batchId === highlightedBatch.id) : [];
   const latestManual = batches.find((batch) => batch.trigger === "manual");
   // Um lote sem itens pode permanecer registrado como "queued" quando a fila
   // não encontrou trabalho. Ele deve continuar auditável, mas não pode impedir
@@ -167,6 +169,11 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
     const timer = window.setInterval(() => { if (document.visibilityState === "visible") void loadHistory(); }, 4000);
     return () => window.clearInterval(timer);
   }, [manualIsActive, latestManual?.id]);
+  useEffect(() => {
+    if (!highlightBatchId || !highlightedBatch) return;
+    const timer = window.setTimeout(() => document.getElementById("triage-notification-log")?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+    return () => window.clearTimeout(timer);
+  }, [highlightBatchId, highlightedBatch]);
   const dayKey = (value: string | null) => value ? new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date(value)) : "";
   const latestByJob = new Map<string, HistoryItem>();
   for (const item of history) if (!latestByJob.has(item.jobId)) latestByJob.set(item.jobId, item);
@@ -658,6 +665,13 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
             {operational.alerts.length > 0 && <ul>{operational.alerts.map((alert) => <li key={alert.message} className={alert.level}>{alert.message}</li>)}</ul>}
           </div>}
         </section>
+        {highlightBatchId && <section id="triage-notification-log" className="triage-notification-log" aria-label="Log completo da triagem agendada">
+          {highlightedBatch ? <>
+            <div><p className="eyebrow">LOG COMPLETO DA TRIAGEM AGENDADA</p><h3>{highlightedBatch.status === "completed" ? "Execução concluída" : `Execução: ${highlightedBatch.status}`}</h3><small>{date(highlightedBatch.completedAt ?? highlightedBatch.startedAt ?? highlightedBatch.createdAt)} · {highlightedBatch.completed}/{highlightedBatch.total} vaga(s) concluída(s) · {highlightedBatch.eligible} aderente(s) ou provável(is)</small></div>
+            {highlightedBatch.error && <p className="triage-batch-error">{highlightedBatch.error}</p>}
+            <details className="triage-batch-log" open><summary>Ver log do lote ({highlightedBatchItems.length} vaga(s))</summary><ol>{highlightedBatchItems.map((item) => <li key={item.jobId} className={item.status}><b>{batchItemStatus(item)}</b><span>{item.title} · {item.company}{item.externalId ? ` · código ${item.externalId}` : ""}</span><small>{item.attemptCount} tentativa(s) · atualização: {date(item.updatedAt)}{item.leaseUntil && item.status === "processing" ? ` · reserva até ${date(item.leaseUntil)}` : ""}</small>{item.error && <em>{item.error}</em>}</li>)}</ol></details>
+          </> : <p>Carregando o log desta execução agendada…</p>}
+        </section>}
         {(
           <section id="triage-history" className="triage-history" aria-label="Histórico persistido da nova triagem">
             <div className="triage-history-heading">

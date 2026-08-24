@@ -532,6 +532,7 @@ export default function Dashboard() {
   const [monitorOpen, setMonitorOpen] = useState(false);
   const [auditOpen, setAuditOpen] = useState(false);
   const [triageOpen, setTriageOpen] = useState(false);
+  const [triageLogBatchId, setTriageLogBatchId] = useState<string | undefined>();
   const [qualityOpen, setQualityOpen] = useState(false);
   const [usersOpen, setUsersOpen] = useState(false);
   const [linkedinOpen, setLinkedInOpen] = useState(false);
@@ -2416,7 +2417,7 @@ export default function Dashboard() {
                 Entrar
               </a>
             )}
-            {canManageSources && <NotificationBell onOpenImportRun={setImportReportRunId} />}
+            {canManageSources && <NotificationBell onOpenImportRun={setImportReportRunId} onOpenTriageLog={(batchId) => { setTriageLogBatchId(batchId); setTriageOpen(true); }} />}
             {currentUser && (
               <div className="report-menu-wrap">
                 <button
@@ -3764,7 +3765,7 @@ export default function Dashboard() {
       {qualityOpen && <DataQuality close={() => setQualityOpen(false)} />}
       {auditOpen && <AuditTrail close={() => setAuditOpen(false)} />}
       {triageOpen && isOwner && <TriageReport
-        close={() => setTriageOpen(false)}
+        close={() => { setTriageOpen(false); setTriageLogBatchId(undefined); }}
         openJobInRadar={(job) => {
           pendingTriageJobIdRef.current = job.jobId;
           setTriageOpen(false);
@@ -3791,6 +3792,7 @@ export default function Dashboard() {
         initialArea={areaFilter}
         initialChannel={channelFilter}
         homePeriod={effectivePeriod}
+        highlightBatchId={triageLogBatchId}
       />}
       {importReportRunId && <ImportRunReport runId={importReportRunId} close={() => setImportReportRunId(null)} />}
       {monitorOpen && <Monitoring close={() => setMonitorOpen(false)} />}

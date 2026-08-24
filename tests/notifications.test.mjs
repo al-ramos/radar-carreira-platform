@@ -66,7 +66,7 @@ test("os seis pontos de conclusão/falha de import_runs notificam o histórico",
   for (const route of routes) assert.match(route, /notifyImportRun/);
 });
 
-test("o sino abre o relatório detalhado da importação para quem administra fontes", async () => {
+test("o sino abre o relatório detalhado de importação e o log da triagem para quem administra fontes", async () => {
   const [dashboard, bell, styles, report, route] = await Promise.all([
     read("../app/Dashboard.tsx"),
     read("../app/NotificationBell.tsx"),
@@ -77,10 +77,13 @@ test("o sino abre o relatório detalhado da importação para quem administra fo
   assert.match(dashboard, /import NotificationBell from "\.\/NotificationBell"/);
   assert.match(dashboard, /import ImportRunReport from "\.\/ImportRunReport"/);
   assert.match(dashboard, /canManageSources && <NotificationBell onOpenImportRun=\{setImportReportRunId\}/);
+  assert.match(dashboard, /onOpenTriageLog=\{\(batchId\) => \{ setTriageLogBatchId\(batchId\); setTriageOpen\(true\); \}\}/);
   assert.match(dashboard, /<ImportRunReport runId=\{importReportRunId\}/);
   assert.match(bell, /fetch\("\/api\/notifications"\)/);
   assert.match(bell, /metadata\.runId/);
   assert.match(bell, /onOpenImportRun/);
+  assert.match(bell, /onOpenTriageLog/);
+  assert.match(bell, /notification\.type === "triage"/);
   assert.match(bell, /Abrir log completo/);
   assert.match(bell, /notification-bell-badge/);
   assert.match(styles, /\.notification-bell-dropdown/);
@@ -93,4 +96,13 @@ test("o sino abre o relatório detalhado da importação para quem administra fo
   assert.match(route, /invalidReasons/);
   assert.match(route, /jobImportRuns/);
   assert.match(route, /import\.run/);
+});
+
+test("a notificação de triagem destaca o log persistido do lote correspondente", async () => {
+  const report = await read("../app/TriageReport.tsx");
+  assert.match(report, /highlightBatchId\?: string/);
+  assert.match(report, /highlightedBatchItems/);
+  assert.match(report, /triage-notification-log/);
+  assert.match(report, /LOG COMPLETO DA TRIAGEM AGENDADA/);
+  assert.match(report, /scrollIntoView/);
 });

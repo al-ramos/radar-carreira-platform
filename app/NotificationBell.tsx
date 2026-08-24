@@ -33,7 +33,7 @@ function timeAgo(iso: string) {
  * por que não há segmentação por usuário: só a proprietária opera fontes
  * e importações, e a API já restringe a leitura a ela.
  */
-export default function NotificationBell({ onOpenImportRun }: { onOpenImportRun?: (runId: string) => void }) {
+export default function NotificationBell({ onOpenImportRun, onOpenTriageLog }: { onOpenImportRun?: (runId: string) => void; onOpenTriageLog?: (batchId: string) => void }) {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<Notification[]>([]);
   const [unread, setUnread] = useState(0);
@@ -83,6 +83,8 @@ export default function NotificationBell({ onOpenImportRun }: { onOpenImportRun?
     void markRead(notification.id);
     const runId = notification.type === "import" ? notification.metadata.runId : undefined;
     if (typeof runId === "string" && onOpenImportRun) onOpenImportRun(runId);
+    const batchId = notification.type === "triage" ? notification.metadata.batchId : undefined;
+    if (typeof batchId === "string" && onOpenTriageLog) onOpenTriageLog(batchId);
   }
 
   if (!loaded && !open) return null;
@@ -113,7 +115,7 @@ export default function NotificationBell({ onOpenImportRun }: { onOpenImportRun?
           <div className="notification-bell-list">
             {items.length === 0 && <p className="notification-bell-empty">Nenhuma notificação ainda.</p>}
             {items.map((n) => {
-              const canOpenReport = n.type === "import" && typeof n.metadata.runId === "string";
+              const canOpenReport = (n.type === "import" && typeof n.metadata.runId === "string") || (n.type === "triage" && typeof n.metadata.batchId === "string");
               return <article
                 key={n.id}
                 className={`${n.read ? "read " : ""}${canOpenReport ? "clickable" : ""}`}

@@ -159,3 +159,5 @@
 
 /* Verificação em lote dos envios já confirmados pelo conector Gmail. */
 .triage-operations-metrics button.triage-reconcile-all{background:#173f32;color:#fff;font-weight:700}.triage-operations-metrics button.triage-reconcile-all:hover{background:#245744}.triage-operations-metrics button.triage-reconcile-all:disabled{cursor:not-allowed;opacity:.6}
+
+.triage-notification-log{background:#f5f0ff;border:1px solid #ddd1fb;border-radius:14px;color:#27324c;display:grid;gap:10px;margin-top:18px;padding:16px}.triage-notification-log .eyebrow{color:#7857d9;font-size:9px;font-weight:800;letter-spacing:1px;margin:0}.triage-notification-log h3{font-size:16px;margin:0}.triage-notification-log>div{display:grid;gap:4px}.triage-notification-log small{color:#5f6780;font-size:10px;line-height:1.4}
