@@ -56,6 +56,8 @@ test("histórico da triagem preserva a data de publicação de importações API
   assert.match(route, /\.from\(userJobAnalyses\)/);
   assert.match(route, /eq\(userJobAnalyses\.userId, user\.userId\)/);
   assert.match(route, /draftStatus: draftOutbox\.status/);
+  assert.match(route, /description: jobs\.description/);
+  assert.match(route, /stack: jobs\.stack/);
 });
 
 test("migração classifica importações antigas e cria índices do filtro", async () => {

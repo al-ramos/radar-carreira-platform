@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 type PilotResult = { batchId: string; processed: Array<{ jobId: string; title: string; company: string; reference: string | null; contactEligible: boolean; aiEligible: boolean; aiStatus: string; verdict: string; label: string; blocker: string | null }>; skipped: number; aiCompleted?: number };
-type HistoryItem = { id: string; batchId: string; jobId: string; verdict: string; label: string; blocker: string | null; source: string; confidence: number; rows: string; processedAt: string; title: string; company: string; externalId: string | null; jobSource: string | null; workMode: string | null; location: string | null; sourcePublishedAt: string | null; receivedAt: string; url: string; contactEmail: string | null; hasValidContactEmail: boolean; draftStatus: "pending" | "drafted" | "sent" | "failed" | "cancelled" | null; draftSubject: string; draftError: string | null; draftUpdatedAt: string | null; gmailSentId: string | null; sentAt: string | null; trigger: string };
+type HistoryItem = { id: string; batchId: string; jobId: string; verdict: string; label: string; blocker: string | null; source: string; confidence: number; rows: string; processedAt: string; title: string; company: string; externalId: string | null; description: string; stack: string; jobSource: string | null; workMode: string | null; location: string | null; sourcePublishedAt: string | null; receivedAt: string; url: string; contactEmail: string | null; hasValidContactEmail: boolean; draftStatus: "pending" | "drafted" | "sent" | "failed" | "cancelled" | null; draftSubject: string; draftError: string | null; draftUpdatedAt: string | null; gmailSentId: string | null; sentAt: string | null; trigger: string };
 type Batch = { id: string; trigger: "manual" | "scheduled" | "assistant"; scope: string; status: string; startedAt: string | null; completedAt: string | null; createdAt: string; error: string | null; total: number; completed: number; failed: number; eligible: number; eligibleWithoutContact: number; draftsPending: number; draftsReady: number; draftsFailed: number };
 type BatchItem = { batchId: string; jobId: string; status: "queued" | "processing" | "completed" | "failed" | "skipped"; error: string | null; attemptCount: number; updatedAt: string; leaseUntil: string | null; title: string; company: string; externalId: string | null };
 type Operational = { pendingDrafts: number; readyDrafts: number; sentDrafts: number; failedDrafts: number; oldestPendingAt: string | null; alerts: Array<{ level: "warning" | "error"; message: string }> };
@@ -83,7 +83,7 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
         const legacyResponse = await fetch("/api/admin/triage");
         const legacy = await legacyResponse.json() as { items?: LegacyItem[] };
         if (!legacyResponse.ok) throw new Error("Falha ao consultar as avaliações existentes.");
-        const items = (legacy.items ?? []).map((item): HistoryItem => ({ id: `legacy-${item.jobId}`, batchId: "legacy", jobId: item.jobId, verdict: item.veredito, label: item.motivo ?? "Avaliação registrada", blocker: null, source: "legacy", confidence: 0, rows: "", processedAt: item.processedAt, title: item.title, company: item.company, externalId: item.externalId, jobSource: item.sourceId, workMode: item.workMode, location: item.location, sourcePublishedAt: item.sourcePublishedAt, receivedAt: item.receivedAt, url: item.url, contactEmail: item.contactEmail, hasValidContactEmail: Boolean(item.contactEmail?.includes("@")), draftStatus: null, draftSubject: "", draftError: null, draftUpdatedAt: null, gmailSentId: null, sentAt: null, trigger: "legacy" }));
+        const items = (legacy.items ?? []).map((item): HistoryItem => ({ id: `legacy-${item.jobId}`, batchId: "legacy", jobId: item.jobId, verdict: item.veredito, label: item.motivo ?? "Avaliação registrada", blocker: null, source: "legacy", confidence: 0, rows: "", processedAt: item.processedAt, title: item.title, company: item.company, externalId: item.externalId, description: "", stack: "[]", jobSource: item.sourceId, workMode: item.workMode, location: item.location, sourcePublishedAt: item.sourcePublishedAt, receivedAt: item.receivedAt, url: item.url, contactEmail: item.contactEmail, hasValidContactEmail: Boolean(item.contactEmail?.includes("@")), draftStatus: null, draftSubject: "", draftError: null, draftUpdatedAt: null, gmailSentId: null, sentAt: null, trigger: "legacy" }));
         // Uma falha transitória em /api/triage/history não pode apagar o lote
         // manual em andamento: mantém batches/batchItems/operational como
         // estavam e só complementa o histórico com o acervo legado. Sem isso,
@@ -325,9 +325,17 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
   const downloadSelectedHistoryCsv = () => {
     if (!selectedHistory.length) return;
     const csvCell = (value: string | null | undefined) => `"${(value ?? "").replace(/"/g, '""')}"`;
+    const jobDescription = (item: HistoryItem) => {
+      let stack: string[] = [];
+      try {
+        const parsed = JSON.parse(item.stack);
+        stack = Array.isArray(parsed) ? parsed.filter((skill): skill is string => typeof skill === "string") : [];
+      } catch { /* detalhes legados sem stack */ }
+      return [item.description.trim(), stack.length ? `Stack: ${stack.join(", ")}` : ""].filter(Boolean).join(" · ") || "Detalhes não informados";
+    };
     const csv = [
-      "codigo;titulo;status_atual;descricao_do_status",
-      ...selectedHistory.map((item) => [item.externalId ?? item.jobId, item.title, item.verdict || "⚪", item.label || "Não analisada"].map(csvCell).join(";")),
+      "codigo;titulo;status;descricao",
+      ...selectedHistory.map((item) => [item.externalId ?? item.jobId, item.title, item.label || "Não analisada", jobDescription(item)].map(csvCell).join(";")),
     ].join("\r\n");
     const link = document.createElement("a");
     link.href = URL.createObjectURL(new Blob([`\ufeff${csv}`], { type: "text/csv;charset=utf-8" }));

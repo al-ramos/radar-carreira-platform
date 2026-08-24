@@ -46,6 +46,8 @@ export async function GET() {
       title: jobs.title,
       company: jobs.company,
       externalId: jobs.externalId,
+      description: jobs.description,
+      stack: jobs.stack,
       jobSource: jobs.sourceId,
       workMode: jobs.workMode,
       location: jobs.location,
