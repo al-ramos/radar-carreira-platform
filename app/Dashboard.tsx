@@ -1249,6 +1249,10 @@ export default function Dashboard() {
   const selectedJobEligible = selectedJobVerdict?.emoji === "✅" || selectedJobVerdict?.emoji === "🟡";
   const selectedJobRejected = Boolean(selectedJobVerdict && !selectedJobEligible);
   const selectedApplication = selectedJob ? pipelineItems.find(item => item.id === selectedJob.id) : undefined;
+  function hasSentApplication(job: Job) {
+    const status = pipelineItems.find(item => item.id === job.id)?.applicationStatus;
+    return status === "sent" || status === "responded";
+  }
   function clearRadarFilters() {
     setQuery("");
     setFitFilter(0);
@@ -2181,6 +2185,10 @@ export default function Dashboard() {
    * Uma falha de captura nunca bloqueia a vaga.
    */
   function openJobApplication(job: Job) {
+    if (hasSentApplication(job)) {
+      setMessage("Candidatura já enviada e registrada no acompanhamento. Uma nova candidatura foi bloqueada.");
+      return;
+    }
     if (job.applyUrl) {
       open(job.applyUrl, "_blank");
     } else if (isApinfoJob(job) && job.externalId) {
@@ -3383,13 +3391,14 @@ export default function Dashboard() {
                 <button
                   type="button"
                   className="primary-job-action"
-                  title={selectedJobRejected ? `${selectedJobVerdict?.emoji} ${selectedJobVerdict?.label}: abrir mesmo assim` : "Abrir candidatura"}
+                  disabled={hasSentApplication(selectedJob)}
+                  title={hasSentApplication(selectedJob) ? "Candidatura já enviada — nova candidatura bloqueada" : selectedJobRejected ? `${selectedJobVerdict?.emoji} ${selectedJobVerdict?.label}: abrir mesmo assim` : "Abrir candidatura"}
                   onClick={() => {
                     openJobApplication(selectedJob);
                     advanceToNextJob();
                   }}
                 >
-                  Candidatar
+                  {hasSentApplication(selectedJob) ? "Candidatura enviada" : "Candidatar"}
                 </button>
                 {isApinfoJob(selectedJob) && (
                   <>
@@ -3709,10 +3718,11 @@ export default function Dashboard() {
             <div className="job-detail-buttons">
               <button
                 className="linkedin-action"
-                title="Abrir candidatura"
+                disabled={hasSentApplication(detailJob)}
+                title={hasSentApplication(detailJob) ? "Candidatura já enviada — nova candidatura bloqueada" : "Abrir candidatura"}
                 onClick={() => openJobApplication(detailJob)}
               >
-                {jobProviderLabel(detailJob)}
+                {hasSentApplication(detailJob) ? "Candidatura enviada" : jobProviderLabel(detailJob)}
               </button>
               <button className="primary" onClick={() => save(detailJob)}>
                 Salvar oportunidade

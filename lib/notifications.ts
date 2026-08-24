@@ -91,6 +91,31 @@ export type DraftSentOutcome = {
   sentAt: Date;
 };
 
+export type DetectedApplicationOutcome = {
+  jobId: string;
+  title: string;
+  company: string;
+  externalId?: string | null;
+  evidence: string;
+  detectedAt: Date;
+};
+
+/**
+ * Registra a confirmação que veio do LinkedIn (via a etiqueta RadarVagas).
+ * A função só é chamada na primeira transição para `sent`; assim uma mesma
+ * mensagem reimportada não cria alertas repetidos.
+ */
+export async function notifyDetectedApplication(db: ReturnType<typeof getDb>, outcome: DetectedApplicationOutcome) {
+  await createNotification(db, {
+    type: "application",
+    severity: "success",
+    title: `Candidatura já enviada — ${outcome.company}`,
+    body: `${outcome.title}${outcome.externalId ? ` (vaga ${outcome.externalId})` : ""} · confirmação do LinkedIn: ${outcome.evidence}`,
+    link: `/?job=${encodeURIComponent(outcome.jobId)}`,
+    metadata: { jobId: outcome.jobId, title: outcome.title, company: outcome.company, externalId: outcome.externalId ?? null, evidence: outcome.evidence, detectedAt: outcome.detectedAt.toISOString() },
+  });
+}
+
 /**
  * Notificação disparada quando `reconcileSent` confirma, por evidência da
  * pasta "Enviados" do Gmail, que um rascunho da outbox já foi enviado

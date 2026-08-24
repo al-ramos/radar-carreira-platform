@@ -23,6 +23,7 @@ test("lib/notifications expõe createNotification, notifyImportRun e notifyDraft
   assert.match(lib, /export async function createNotification/);
   assert.match(lib, /export async function notifyImportRun/);
   assert.match(lib, /export async function notifyDraftSent/);
+  assert.match(lib, /export async function notifyDetectedApplication/);
   // A notificação é global (ver comentário em db/schema.ts): nada aqui deve
   // gravar ou exigir um userId — só o texto explicativo pode mencionar a
   // palavra, por isso a checagem é no valor gravado, não no arquivo inteiro.
@@ -96,6 +97,19 @@ test("o sino abre o relatório detalhado de importação e o log da triagem para
   assert.match(route, /invalidReasons/);
   assert.match(route, /jobImportRuns/);
   assert.match(route, /import\.run/);
+});
+
+test("evidência do LinkedIn marca a candidatura como enviada e notifica apenas uma vez", async () => {
+  const [route, dashboard] = await Promise.all([
+    read("../app/api/cron/email-import/route.ts"),
+    read("../app/Dashboard.tsx"),
+  ]);
+  assert.match(route, /applicationStatus=alreadySent\?existing!\.applicationStatus:"sent"/);
+  assert.match(route, /notifyDetectedApplication\(db/);
+  assert.match(route, /if\(!alreadySent\)await notifyDetectedApplication/);
+  assert.match(dashboard, /function hasSentApplication\(job: Job\)/);
+  assert.match(dashboard, /Uma nova candidatura foi bloqueada/);
+  assert.match(dashboard, /disabled=\{hasSentApplication\(selectedJob\)\}/);
 });
 
 test("a notificação de triagem destaca o log persistido do lote correspondente", async () => {
