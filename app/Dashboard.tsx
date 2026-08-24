@@ -2235,6 +2235,24 @@ export default function Dashboard() {
     setDetailJob(job);
     void loadJobDetail(job);
   }
+  async function openNotificationJobDetail(jobId: string) {
+    const listedJob = items.find((job) => job.id === jobId);
+    if (listedJob) {
+      openJobDetail(listedJob);
+      return;
+    }
+    try {
+      // Candidaturas enviadas normalmente ficam fora da fila principal.
+      // A busca pontual mantém a notificação útil sem alterar os filtros ativos.
+      const response = await fetch(`/api/jobs?period=all&reviewVisibility=all&q=${encodeURIComponent(jobId)}&limit=1&sort=recent`);
+      const data = await response.json() as { jobs?: ApiJob[]; error?: string };
+      const job = data.jobs?.[0];
+      if (!response.ok || !job) throw new Error(data.error ?? "Vaga não encontrada");
+      openJobDetail(adapt(job));
+    } catch {
+      setMessage("Não foi possível abrir os detalhes desta vaga.");
+    }
+  }
   async function copyDescription() {
     const description = jobDetail?.description || detailJob?.description || selected?.description;
     if (!description) return;
@@ -2439,7 +2457,7 @@ export default function Dashboard() {
                 Entrar
               </a>
             )}
-            {canManageSources && <NotificationBell onOpenImportRun={setImportReportRunId} onOpenTriageLog={(batchId) => { setTriageLogBatchId(batchId); setTriageOpen(true); }} />}
+            {canManageSources && <NotificationBell onOpenImportRun={setImportReportRunId} onOpenTriageLog={(batchId) => { setTriageLogBatchId(batchId); setTriageOpen(true); }} onOpenJobDetail={openNotificationJobDetail} />}
             {currentUser && (
               <div className="report-menu-wrap">
                 <button

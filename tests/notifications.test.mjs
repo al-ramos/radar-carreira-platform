@@ -67,7 +67,7 @@ test("os seis pontos de conclusão/falha de import_runs notificam o histórico",
   for (const route of routes) assert.match(route, /notifyImportRun/);
 });
 
-test("o sino abre o relatório detalhado de importação e o log da triagem para quem administra fontes", async () => {
+test("o sino abre o relatório detalhado de importação, o log da triagem e os detalhes da vaga para quem administra fontes", async () => {
   const [dashboard, bell, styles, report, route] = await Promise.all([
     read("../app/Dashboard.tsx"),
     read("../app/NotificationBell.tsx"),
@@ -79,13 +79,19 @@ test("o sino abre o relatório detalhado de importação e o log da triagem para
   assert.match(dashboard, /import ImportRunReport from "\.\/ImportRunReport"/);
   assert.match(dashboard, /canManageSources && <NotificationBell onOpenImportRun=\{setImportReportRunId\}/);
   assert.match(dashboard, /onOpenTriageLog=\{\(batchId\) => \{ setTriageLogBatchId\(batchId\); setTriageOpen\(true\); \}\}/);
+  assert.match(dashboard, /onOpenJobDetail=\{openNotificationJobDetail\}/);
+  assert.match(dashboard, /function openNotificationJobDetail\(jobId: string\)/);
+  assert.match(dashboard, /reviewVisibility=all&q=\$\{encodeURIComponent\(jobId\)\}/);
   assert.match(dashboard, /<ImportRunReport runId=\{importReportRunId\}/);
   assert.match(bell, /fetch\("\/api\/notifications"\)/);
   assert.match(bell, /metadata\.runId/);
   assert.match(bell, /onOpenImportRun/);
   assert.match(bell, /onOpenTriageLog/);
+  assert.match(bell, /onOpenJobDetail/);
   assert.match(bell, /notification\.type === "triage"/);
+  assert.match(bell, /notification\.type === "application"/);
   assert.match(bell, /Abrir log completo/);
+  assert.match(bell, /Abrir detalhes da vaga/);
   assert.match(bell, /notification-bell-badge/);
   assert.match(styles, /\.notification-bell-dropdown/);
   assert.match(styles, /\.import-run-report/);
