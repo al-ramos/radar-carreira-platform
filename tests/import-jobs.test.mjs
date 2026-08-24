@@ -51,9 +51,23 @@ test("coletores registram início, conclusão e falha no monitoramento", async()
  assert.match(route,/lastSuccessAt: now/);
  assert.match(route,/consecutiveFailures: source\.consecutiveFailures \+ 1/);
  assert.match(route,/collectorRunId\(payload\?\.runId\)/);
- assert.match(monitor,/sources\.some\(s=>s\.enabled&&s\.lastError\)/);
+ assert.match(monitor,/sources\.filter\(\(source\) => source\.enabled && source\.lastError\)/);
  assert.match(ui,/última execução/);
- assert.match(ui,/r\.received.*r\.inserted.*r\.updated/);
+ assert.match(ui,/operation\.completed.*operation\.total.*operation\.failed/);
+});
+
+test("monitoramento consolida importações e lotes de triagem sem expor o detalhe bruto", async()=>{
+ const [monitor,ui]=await Promise.all([
+  readFile(new URL("../app/api/admin/monitor/route.ts",import.meta.url),"utf8"),
+  readFile(new URL("../app/Monitoring.tsx",import.meta.url),"utf8"),
+ ]);
+ assert.match(monitor,/triageBatches/);
+ assert.match(monitor,/triageBatchItems/);
+ assert.match(monitor,/safeError/);
+ assert.match(monitor,/operations/);
+ assert.match(ui,/CENTRO OPERACIONAL/);
+ assert.match(ui,/Todos os fluxos/);
+ assert.match(ui,/Precisa de atenção/);
 });
 
 test("rotas convertem Date para epoch antes de interpolar sourcePublishedAt no SQL do D1", async()=>{
