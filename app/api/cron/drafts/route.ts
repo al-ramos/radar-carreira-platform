@@ -1,4 +1,4 @@
-import { and, eq, inArray, or } from "drizzle-orm";
+import { and, eq, inArray, ne, or } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getDb } from "../../../../db/index";
 import { draftOutbox, jobSources, jobs, profiles, triageHistory, userJobAnalyses } from "../../../../db/schema";
@@ -131,6 +131,8 @@ export async function POST(request: Request) {
     if (item.status === "drafted" || item.status === "sent") return NextResponse.json({ ok: true, changed: false, status: item.status });
     if (body.action === "confirm") {
       if (!body.gmailDraftId) return NextResponse.json({ error: "Identificador do rascunho Gmail obrigatório" }, { status: 400 });
+      const linkedDraft = await db.select({ id: draftOutbox.id }).from(draftOutbox).where(and(eq(draftOutbox.gmailDraftId, body.gmailDraftId), ne(draftOutbox.id, item.id))).limit(1).then((rows) => rows[0]);
+      if (linkedDraft) return NextResponse.json({ error: "Este rascunho do Gmail já está vinculado a outra vaga; a vinculação duplicada foi bloqueada." }, { status: 409 });
       await db.update(draftOutbox).set({ status: "drafted", gmailDraftId: body.gmailDraftId, gmailThreadId: body.gmailThreadId?.slice(0, 500) || null, draftSubject: body.subject?.trim().slice(0, 500) || null, error: null, updatedAt: new Date() }).where(eq(draftOutbox.id, item.id));
       return NextResponse.json({ ok: true, changed: true, status: "drafted" });
     }

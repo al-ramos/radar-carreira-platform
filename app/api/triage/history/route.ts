@@ -58,6 +58,7 @@ export async function GET() {
       draftStatus: draftOutbox.status,
       draftError: draftOutbox.error,
       draftUpdatedAt: draftOutbox.updatedAt,
+      gmailSentId: draftOutbox.gmailSentId,
       sentAt: draftOutbox.sentAt,
     })
     .from(userJobAnalyses)

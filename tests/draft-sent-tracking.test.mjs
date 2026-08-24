@@ -5,10 +5,11 @@ import test from "node:test";
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
 test("envio manual é reconciliado por evidência do Gmail sem autorizar envio automático", async () => {
-  const [schema, migration, threadMigration, route, script, screen] = await Promise.all([
+  const [schema, migration, threadMigration, integrityMigration, route, script, screen] = await Promise.all([
     read("../db/schema.ts"),
     read("../drizzle/0028_draft_outbox_sent_tracking.sql"),
     read("../drizzle/0034_gmail_thread_tracking.sql"),
+    read("../drizzle/0035_draft_tracking_integrity.sql"),
     read("../app/api/cron/drafts/route.ts"),
     read("../public/gmail-radarvagas.gs"),
     read("../app/TriageReport.tsx"),
@@ -22,6 +23,8 @@ test("envio manual é reconciliado por evidência do Gmail sem autorizar envio a
   assert.match(migration, /gmail_sent_id/);
   assert.match(migration, /sent_at/);
   assert.match(threadMigration, /gmail_thread_id/);
+  assert.match(integrityMigration, /draft_outbox_gmail_draft_unique/);
+  assert.match(integrityMigration, /Rascunho duplicado removido/);
   assert.match(route, /action === "sentCandidates"/);
   assert.match(route, /action === "reconcileSent"/);
   assert.match(route, /requestedOutboxIds \? inArray\(draftOutbox\.id, requestedOutboxIds\)/);
@@ -29,6 +32,7 @@ test("envio manual é reconciliado por evidência do Gmail sem autorizar envio a
   assert.match(route, /normalizeContactEmail\(body\.to\) !== expectedTo/);
   assert.match(route, /body\.subject\?\.trim\(\) !== expectedSubject/);
   assert.match(route, /matchesStoredThread/);
+  assert.match(route, /vinculação duplicada foi bloqueada/);
   assert.match(route, /gmailThreadId/);
   assert.match(script, /function reconciliarEnviosManuaisRadar/);
   assert.match(script, /GmailApp\.getThreadById/);
@@ -44,7 +48,8 @@ test("envio manual é reconciliado por evidência do Gmail sem autorizar envio a
   const scheduledReconciliation = script.split("function reconciliarEnviosAgendadosRadar")[1];
   assert.doesNotMatch(scheduledReconciliation, /GmailApp\.sendEmail|GmailApp\.createDraft/);
   assert.match(screen, />Envio</);
-  assert.match(screen, /envios confirmados/);
+  assert.match(screen, /envios registrados/);
+  assert.match(screen, /Envio informado manualmente/);
   assert.match(screen, /Ainda não enviado/);
   assert.match(screen, /Atualizar envio/);
   assert.match(screen, /Confirmar envio/);
