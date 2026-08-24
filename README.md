@@ -1,6 +1,6 @@
 # Radar Carreira Platform
 
-Portal multiusuário para reunir oportunidades, decidir quais vagas merecem atenção e acompanhar candidaturas em um único lugar. O produto combina coleta multicanal, aderência explicável, bloqueadores estratégicos, inteligência opcional por IA e operação administrativa.
+Portal multiusuário para reunir oportunidades, decidir quais vagas merecem atenção e acompanhar candidaturas em um único lugar. O produto combina coleta multicanal, aderência explicável, triagem operacional em filas, revisão por IA ou Codex, preparação segura de rascunhos Gmail e operação administrativa.
 
 **Produção:** [radar-carreira-platform.al-ramos.workers.dev](https://radar-carreira-platform.al-ramos.workers.dev)
 
@@ -10,7 +10,7 @@ Portal multiusuário para reunir oportunidades, decidir quais vagas merecem aten
 
 ## O que o portal faz
 
-- reúne vagas recebidas por Gmail, extensões LinkedIn/APinfo, importação JSON/CSV e páginas públicas de carreiras;
+- reúne vagas recebidas por Gmail, integração LinkedIn, entradas APInfo, importação JSON/CSV e páginas públicas de carreiras;
 - evita duplicações por `fingerprint` e identificador externo;
 - exibe vagas paginadas das últimas 24 horas, 3 dias, 7 dias ou de todo o histórico;
 - calcula um score explicável considerando competências, áreas, senioridade, modalidade, localização, atualidade e termos a evitar;
@@ -19,8 +19,12 @@ Portal multiusuário para reunir oportunidades, decidir quais vagas merecem aten
 - mostra a descrição dentro do Radar, infere tecnologias e mantém separadas a URL estável e a URL de candidatura;
 - permite copiar e compartilhar a descrição, exportar resultados e gerar uma mensagem de candidatura segura;
 - mantém um pipeline individual com notas, etapas e marcos de mensagem gerada, enviada e respondida;
+- executa triagem manual ou agendada por fonte e período, com histórico, idempotência, filas resilientes, tentativas e retomada;
+- permite revisar um recorte no portal, preparar até 50 vagas para o Codex ou reimportar vereditos externos por CSV;
+- prepara rascunhos elegíveis no Gmail, acompanha sua criação e reconcilia o envio sem enviar e-mail automaticamente;
+- registra notificações de importação, triagem e candidatura, com acesso direto aos relatórios operacionais;
 - envia um resumo diário por Gmail quando existem oportunidades acima do score mínimo;
-- registra análises elegíveis, importações, as vagas de cada lote, eventos, consumo de IA, qualidade dos dados e ciclo de vida das vagas.
+- registra análises elegíveis, importações, as vagas e causas de aceite/rejeição de cada lote, eventos, consumo de IA, qualidade dos dados e ciclo de vida das vagas.
 
 ## Recursos disponíveis
 
@@ -36,6 +40,9 @@ Portal multiusuário para reunir oportunidades, decidir quais vagas merecem aten
 - alertas e resumo diário;
 - métricas pessoais de funil, conversão, empresas e tecnologias;
 - exportação CSV compatível com Excel.
+- central de triagem com seleção em lote, filtros, progresso, histórico, logs, saúde operacional e ações por vaga;
+- análise consultiva assíncrona pela IA do portal e fila privada para análise no Codex;
+- preparação de rascunhos Gmail, reprocessamento de falhas e confirmação manual ou reconciliação do envio.
 
 ### Para administradores
 
@@ -44,13 +51,15 @@ Portal multiusuário para reunir oportunidades, decidir quais vagas merecem aten
 - cadastro e ativação de fontes Greenhouse, Lever e Ashby;
 - coleta manual e agendada;
 - integração Gmail `RadarVagas`;
-- chaves protegidas para as extensões LinkedIn e APinfo;
+- chaves protegidas para integrações push LinkedIn e APInfo;
 - configurações e parâmetros operacionais;
 - monitoramento de coletas;
 - auditoria e qualidade dos dados;
 - gestão de usuários, roles e permissões granulares;
 - backup administrativo;
 - relatório compatível com Excel.
+- interruptores independentes para triagem agendada, entrada automática na fila de rascunhos e criação do rascunho no Gmail;
+- notificações operacionais com acesso ao relatório completo de importações e lotes de triagem.
 
 ## Como o Radar decide
 
@@ -60,18 +69,19 @@ O produto usa mecanismos complementares, cada um com uma finalidade:
 |---|---|---|
 | Score numérico | `0` a `100` | ordenar e filtrar oportunidades por aderência |
 | Veredito estratégico | `✅`, `🟡`, `🔴` ou `❌` | aplicar preferências e bloqueadores pessoais em quatro fases |
-| IA opcional | fatos, evidências, ambiguidades e perguntas | aprofundar o contexto sem substituir as regras determinísticas |
+| IA opcional | fatos, evidências, ambiguidades e perguntas | aprofundar o contexto e, quando confirmado, registrar um novo veredito oficial |
 
-Vagas fora do escopo de TI continuam visíveis, mas não recebem aderência. Apenas vagas com veredito **Bate** ou **Provável com ressalvas** podem ser persistidas na análise e incluídas no acompanhamento. O estado da candidatura não regride: **mensagem gerada → enviada → respondida**.
+Vagas fora do escopo de TI continuam visíveis, mas não recebem aderência. O perfil salvo no D1 é a única fonte de verdade da triagem; sem competências dominadas não há veredito. Análises do portal, do Codex ou importadas por CSV podem substituir explicitamente o veredito, mas um rascunho só é liberado se a vaga continuar segura na revalidação determinística, tiver contato válido e estiver em **Bate** ou **Provável com ressalvas**. O estado da candidatura não regride: **mensagem gerada → enviada → respondida**.
 
 ## Fluxo dos dados
 
 ```text
 Gmail/RadarVagas ─────┐
-Extensões do navegador ├─> normalização e deduplicação ─> Cloudflare D1 ─> Radar e pipeline
+LinkedIn/APInfo push ──┼─> normalização e deduplicação ─> Cloudflare D1 ─> Radar e pipeline
 JSON ou CSV ──────────┤                                  │
-ATS públicos ─────────┘                                  ├─> score e veredito
-                                                         └─> IA opcional, alertas e resumo diário
+ATS públicos ─────────┘                                  ├─> score e triagem em filas
+                                                         ├─> IA do portal ou Codex
+                                                         └─> rascunhos, notificações e resumo diário
 ```
 
 As senhas do Gmail não são armazenadas. O conector do Google Apps Script envia apenas mensagens recentes da etiqueta `RadarVagas`, usando uma chave exclusiva cujo hash fica registrado no banco.
@@ -85,6 +95,8 @@ As senhas do Gmail não são armazenadas. O conector do Google Apps Script envia
 - Tailwind CSS e identidade visual em Geist;
 - autenticação local e, em domínios `*.chatgpt.site`, Sign in with ChatGPT;
 - provedor opcional compatível com OpenAI Chat Completions;
+- Cloudflare Queues para triagem e análises assíncronas, com filas de mensagens mortas;
+- MCP privado do Radar para a fila de revisão pelo Codex;
 - GitHub Actions e Google Apps Script para automações.
 
 ## Executar localmente
@@ -113,21 +125,25 @@ npm run db:generate
 
 `npm test` executa o build e a suíte regular, que combina testes de regras de negócio com verificações estruturais do código. `npm run test:rbac-integration` chama `can()` de `lib/rbac.ts` contra SQLite real em memória (`node:sqlite`), populado com as migrations `0010`/`0011`, usando loaders que simulam `cloudflare:workers` e o binding D1. A esteira executa as duas suítes; o ambiente oficial continua usando Node.js 22 e os loaders também são compatíveis com Node.js 24 no Windows.
 
+Validação do escopo em 24/08/2026: **158 testes regulares + 26 testes de integração RBAC passando**; lint sem erros, com 7 avisos preexistentes.
+
 ## Banco de dados
 
 O projeto usa Cloudflare D1. O schema principal está em `db/schema.ts` e as migrações estão em `drizzle/`.
 
-Principais tabelas:
+Principais grupos de tabelas:
 
 - carreira e acesso: `profiles` e `local_accounts`;
-- vagas e operação: `job_sources`, `jobs`, `job_events` e `import_runs`;
+- vagas e operação: `job_sources`, `jobs`, `company_contacts`, `job_events`, `import_runs` e `job_import_runs`;
 - acompanhamento: `user_job_status` e `user_job_analyses`;
+- triagem: `triage_batches`, `triage_history`, `triage_batch_items`, `triage_deduplication`, `triage_ai_reviews`, `triage_ai_review_chunks` e `job_ai_triage`;
+- candidatura assistida: `draft_outbox`;
 - inteligência: `job_ai_facts` e `ai_usage_events`;
 - alertas: `alert_preferences`, `alert_reads` e `alert_deliveries`;
-- administração: `platform_settings`;
+- administração: `platform_settings` e `notifications`;
 - RBAC: `roles`, `permissions`, `role_permissions`, `groups`, `group_roles`, `user_roles`, `user_groups` e `access_audit_log`.
 
-O schema possui 22 tabelas. Preferências e resultados estruturados são armazenados como JSON textual quando apropriado para D1/SQLite. As chaves compostas usuário + vaga isolam pipeline, análise e leitura por pessoa.
+O schema possui **33 tabelas**. Preferências, snapshots e resultados estruturados são armazenados como JSON textual quando apropriado para D1/SQLite. As chaves compostas e o `userId` isolam pipeline, análise, triagem e leitura por pessoa; leases, chaves de idempotência e outbox protegem os fluxos assíncronos.
 
 Cada projeto publicado no Sites possui seu próprio banco D1. Publicar o mesmo código em um novo endereço não transfere automaticamente vagas, perfis, fontes ou configurações do banco anterior.
 
@@ -143,6 +159,28 @@ Antes do primeiro push com deploy, crie estes **Repository secrets** em `Setting
 As credenciais não devem ser adicionadas a arquivos do repositório ou ao código-fonte. O binding `DB`, o ID do D1 e as migrations ficam em `wrangler.jsonc` e `drizzle/`.
 
 Para ativar o aprofundamento opcional com IA, configure diretamente no ambiente do Worker `OPENAI_API_KEY` e `OPENAI_MODEL`. Alternativamente, `AI_API_KEY`, `AI_MODEL` e `AI_PROVIDER` permitem um provedor compatível com Chat Completions; `OPENAI_BASE_URL` ou `AI_BASE_URL` define um endpoint diferente. As regras determinísticas continuam funcionando sem essas variáveis. Cada perfil define seu limite mensal de tokens; resultados factuais são armazenados em cache por versão da descrição da vaga, e o uso devolvido pelo provedor é contabilizado no servidor.
+
+## Triagem inteligente e candidatura assistida
+
+A central de triagem transforma um recorte da Home em um lote rastreável. O recorte pode combinar fonte, período, área, canal e vagas já analisadas; a execução manual entra em Cloudflare Queue e cada vaga mantém estado, número de tentativas, lease, erro e histórico. Lotes interrompidos podem ser retomados, e a chave de idempotência inclui usuário, vaga e versões do perfil, das regras e das instruções.
+
+O fluxo de decisão possui quatro caminhos:
+
+1. **Regras determinísticas:** classificação `✅`, `🟡`, `🔴` ou `❌` usando somente o perfil canônico salvo no Radar.
+2. **IA no portal:** consulta assíncrona, dividida em partes e consolidada em segundo plano; o consumo entra no orçamento mensal.
+3. **Codex:** o portal congela o perfil, o pedido e até 50 vagas em uma fila privada, acessível pelo MCP do Radar.
+4. **CSV externo:** a administração pode reimportar até 2.000 vereditos por código externo.
+
+Quando a pessoa confirma um resultado da IA, do Codex ou do CSV, ele vira o veredito oficial e entra na mesma trilha de histórico. Para liberar um rascunho, o servidor ainda exige `✅` ou `🟡`, ausência de bloqueador, contato válido e aprovação da checagem determinística atual. No LinkedIn, somente `✅` com e-mail explícito admite candidatura por e-mail.
+
+### Automação e segurança
+
+- importações push do LinkedIn ou APInfo podem iniciar a triagem logo após a persistência do lote;
+- três interruptores administrativos controlam separadamente a triagem agendada, a entrada na outbox e a criação real do rascunho no Gmail;
+- a automação agendada aceita somente vagas `✅` para rascunho;
+- o Apps Script cria rascunhos e consulta a pasta Enviados, mas nunca envia e-mail;
+- criação, falha e envio ficam registrados em `draft_outbox`, e a candidatura é atualizada após confirmação;
+- notificações no sino abrem o log completo do lote ou da importação correspondente.
 
 ## Integração Gmail RadarVagas
 
@@ -183,6 +221,8 @@ O conector atual:
 Quando a opção **Criar rascunho de verdade no Gmail** estiver ativa, o Radar cria imediatamente o rascunho de uma vaga aprovada (✅), sem bloqueador e com e-mail de contato válido. Isso nunca envia e-mails. Se o conector imediato estiver indisponível, a vaga permanece na fila e você pode executar `executarRascunhosPendentesRadar` no Apps Script para criar os rascunhos pendentes e conferir envios feitos por você.
 
 Para atualizar automaticamente os envios manuais, execute `instalarVerificacaoEnviosRadar` **uma única vez** no Apps Script depois de salvar a versão atual do arquivo. Ela instala um gatilho a cada 15 minutos que consulta somente a pasta **Enviados** e marca no Radar os rascunhos comprovadamente enviados. A rotina não cria rascunhos e não envia e-mails. Para desligá-la, execute `removerVerificacaoEnviosRadar`.
+
+A tela permite reprocessar falhas, consultar a pasta Enviados e confirmar explicitamente um envio que o Gmail não localizou. Essas ações atualizam somente o acompanhamento; nunca disparam uma mensagem.
 
 ## Coleta de fontes públicas
 
@@ -233,7 +273,7 @@ Já implantado:
 - portal público e banco D1;
 - contas locais, Sign in with ChatGPT, perfis e autorização RBAC;
 - vagas persistentes e deduplicação;
-- importação JSON/CSV e extensões LinkedIn/APinfo;
+- importação JSON/CSV, integração LinkedIn e entrada push APInfo;
 - integração Gmail RadarVagas validada;
 - conectores Greenhouse, Lever e Ashby;
 - score explicável, veredito estratégico e análise personalizada persistida;
@@ -242,6 +282,12 @@ Já implantado:
 - backup, relatório e gestão de usuários;
 - coleta agendada, enriquecimento e ciclo de vida;
 - recuperação de coleta por `start_offset`, tentativas controladas e limite seguro para descrições extensas;
+- triagem manual e pós-importação em Cloudflare Queue, com idempotência, leases, retomada e histórico por vaga;
+- revisão assíncrona pela IA do portal, fila privada do Codex e reimportação de vereditos por CSV;
+- veredito de IA aplicável como decisão oficial, preservando a revalidação determinística antes de qualquer rascunho;
+- outbox de rascunhos Gmail, criação imediata ou controlada por interruptores, reprocessamento e reconciliação de envios;
+- notificações operacionais de importação, triagem e candidatura, com acesso direto aos logs;
+- filtros e seleção em lote na Home e na triagem, exportação somente das vagas selecionadas e reutilização de contato por empresa;
 - build, testes de regras, limites de Worker e integração RBAC.
 
 Pontos de atenção confirmados no código atual:
@@ -251,7 +297,10 @@ Pontos de atenção confirmados no código atual:
 3. ampliar o diagnóstico de saúde além do banco D1, incluindo integrações e configurações essenciais;
 4. bloquear coletas gerais concorrentes e alertar administradores após falhas consecutivas;
 5. processar também a coleta manual de ATS em lotes;
-6. concluir a validação operacional manual da extensão LinkedIn 2.2.0 e registrar aceitas, rejeitadas, novas e atualizadas.
+6. concluir a validação operacional manual da extensão LinkedIn 2.2.0 e registrar aceitas, rejeitadas, novas e atualizadas;
+7. remover ou atualizar referências restantes ao coletor APInfo legado, cujo código foi retirado do repositório em 23/08/2026;
+8. consolidar a política de precedência entre veredito determinístico, IA do portal, Codex e CSV em uma única tela de auditoria;
+9. ampliar notificações e trilhas de acesso para cenários com múltiplos operadores, pois o fluxo atual de notificações é restrito à proprietária.
 
 Concluídos neste ciclo: permissão `report.export`, etapa `offer`, limpeza referencial de IA, efeito das configurações operacionais, política mínima de 8 caracteres para novas senhas, filtros sem teto fixo de 150 candidatas, loaders RBAC no Windows/Node.js 24, documentação APinfo 1.6.2, backup funcional/RBAC ampliado e execução das duas suítes na esteira.
 

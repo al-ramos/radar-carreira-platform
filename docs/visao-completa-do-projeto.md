@@ -1,6 +1,6 @@
 # Radar Carreira Platform — visão completa do produto e da arquitetura
 
-> Documento de conhecimento do estado real do repositório em **13 de agosto de 2026**, baseado no commit `455010c` (`Corrige ações de candidatura e contato`).
+> Documento de conhecimento do estado real do repositório em **24 de agosto de 2026**, cobrindo as funcionalidades publicadas até o commit `76c55a9` (`Define publicação isolada com mudanças locais`).
 
 ## Como ler este documento
 
@@ -8,18 +8,19 @@ Este material descreve o que está implementado no código, não apenas o que ap
 
 ## 1. Resumo executivo
 
-O Radar Carreira é uma plataforma web multiusuário para centralizar oportunidades, decidir quais vagas merecem atenção e acompanhar o processo seletivo. O produto combina quatro capacidades principais:
+O Radar Carreira é uma plataforma web multiusuário para centralizar oportunidades, decidir quais vagas merecem atenção e acompanhar o processo seletivo. O produto combina cinco capacidades principais:
 
-1. **Aquisição:** recebe vagas de ATS públicos, extensões de navegador, Gmail e arquivos JSON/CSV.
+1. **Aquisição:** recebe vagas de ATS públicos, integração LinkedIn, entradas push APInfo, Gmail e arquivos JSON/CSV.
 2. **Qualificação:** normaliza, deduplica, infere tecnologias, calcula aderência e aplica bloqueadores pessoais.
-3. **Decisão e candidatura:** oferece veredito, análise persistida, aprofundamento opcional por IA, mensagem de candidatura e preparação para entrevista.
-4. **Operação:** mantém pipeline pessoal, alertas, métricas, RBAC, auditoria, qualidade, backup, coleta agendada e publicação contínua.
+3. **Triagem e revisão:** processa lotes em filas, preserva histórico e permite revisão pela IA do portal, pelo Codex ou por CSV externo.
+4. **Candidatura assistida:** valida contato e elegibilidade, prepara rascunhos Gmail, reconcilia envios e atualiza o acompanhamento sem enviar e-mail automaticamente.
+5. **Operação:** mantém pipeline pessoal, notificações, alertas, métricas, RBAC, auditoria, qualidade, backup, coleta agendada e publicação contínua.
 
 O sistema é executado como um Cloudflare Worker, com interface Next.js/React compilada por vinext/Vite e persistência em Cloudflare D1 via Drizzle ORM.
 
 ### Estado funcional em uma frase
 
-O fluxo central — entrar, cadastrar perfil, descobrir vaga, avaliar aderência, acompanhar candidatura e operar as fontes — está implementado; a governança RBAC avançada e alguns parâmetros administrativos ainda têm lacunas de integração descritas na seção 14.
+O fluxo central — entrar, cadastrar perfil, descobrir vaga, triar em lote, revisar a decisão, preparar um rascunho e acompanhar a candidatura — está implementado. A governança RBAC avançada, a ampliação das notificações para múltiplos operadores e algumas validações operacionais permanecem como pontos de atenção descritos na seção 15.
 
 ## 2. Arquitetura em alto nível
 
@@ -27,7 +28,7 @@ O fluxo central — entrar, cadastrar perfil, descobrir vaga, avaliar aderência
 flowchart LR
     subgraph Entrada["Aquisição de vagas"]
         ATS["Greenhouse · Lever · Ashby"]
-        EXT["Extensões LinkedIn · APinfo"]
+        EXT["LinkedIn · APInfo push"]
         GMAIL["Gmail · etiqueta RadarVagas"]
         FILE["JSON · CSV"]
     end
@@ -39,8 +40,10 @@ flowchart LR
     NORM --> D1["Cloudflare D1"]
     D1 --> RADAR["Radar · busca · filtros · detalhe"]
     D1 --> DECISAO["Score · veredito · análise personalizada"]
-    DECISAO --> IA["IA opcional · fatos · entrevista"]
-    DECISAO --> PIPE["Pipeline · candidatura · alertas"]
+    DECISAO --> FILA["Cloudflare Queues · lotes · histórico"]
+    FILA --> IA["IA do portal · Codex · CSV"]
+    IA --> OUTBOX["Outbox · rascunhos Gmail · reconciliação"]
+    OUTBOX --> PIPE["Pipeline · candidatura · notificações"]
     D1 --> OPS["Fontes · qualidade · monitoramento · auditoria"]
     GHA["GitHub Actions"] --> ATS
     GHA --> DEPLOY["Migrations D1 · deploy do Worker"]
@@ -51,8 +54,8 @@ flowchart LR
 - **Navegador:** React, experiência do Radar e extensões locais.
 - **Servidor:** rotas App Router e regras sensíveis executadas no Worker.
 - **Persistência:** um banco D1 identificado pelo binding `DB`.
-- **Automação:** GitHub Actions chama endpoints protegidos e publica a aplicação.
-- **Serviços externos:** APIs públicas dos ATS, Gmail via Apps Script e provedor compatível com OpenAI Chat Completions.
+- **Automação:** GitHub Actions chama endpoints protegidos e publica a aplicação; Cloudflare Queues processa triagem e revisão assíncrona.
+- **Serviços externos:** APIs públicas dos ATS, Gmail via Apps Script, provedor compatível com OpenAI Chat Completions e MCP privado para o Codex.
 
 ## 3. Stack e ferramentas
 
@@ -66,18 +69,20 @@ flowchart LR
 | Imagens | Cloudflare Images binding | Otimização pelo endpoint do vinext |
 | Banco | Cloudflare D1 / SQLite | Dados do produto e operação |
 | ORM | Drizzle ORM 0.45.2 | Schema tipado e consultas |
-| Migrations | Drizzle Kit / SQL | Evolução do banco; 20 migrations (`0000` a `0019`) |
+| Migrations | Drizzle Kit / SQL | Evolução do banco; arquivos versionados de `0000` a `0033` |
 | Estilos | CSS próprio + Tailwind/PostCSS 4 | Identidade visual e layout |
 | Fonte | Geist | Tipografia do produto |
 | Automação | GitHub Actions | validação, coleta, revalidação e deploy |
 | Integração Gmail | Google Apps Script | leitura da etiqueta e envio do resumo diário |
-| Extensão | Chrome Manifest V3, JavaScript puro | coleta local do APinfo e integração com o Radar |
+| Integração de navegador | Chrome Manifest V3 | extensão LinkedIn externa; o coletor APInfo legado foi removido deste repositório |
+| Filas | Cloudflare Queues + DLQ | triagem e consultas assíncronas à IA, com tentativas controladas |
+| Assistente | MCP privado do Radar | entrega snapshots de triagem ao Codex sem expor SQL ou ações irrestritas |
 | Testes | Node.js test runner | testes estruturais, de regras e integração RBAC |
 | Runtime mínimo | Node.js 22.13 | desenvolvimento, build e testes |
 
 ## 4. Experiência e módulos visíveis
 
-O dashboard possui 14 entradas de navegação:
+O dashboard organiza os módulos abaixo:
 
 | Módulo | Público-alvo | O que entrega |
 |---|---|---|
@@ -85,12 +90,14 @@ O dashboard possui 14 entradas de navegação:
 | Pipeline | Usuário | acompanhamento individual, etapa, nota e candidatura |
 | Alertas | Usuário | oportunidades dos últimos 7 dias, leitura e preferências |
 | Métricas | Usuário | funil, conversão, empresas e tecnologias |
+| Triagem IA | Usuário/owner | lotes, filtros, fila, histórico, IA, Codex, CSV e rascunhos |
+| Notificações | Operação/owner | eventos de importação, triagem e candidatura com links para relatórios |
 | Monitoramento | Operação | saúde do banco, fontes, falhas e execuções recentes |
 | Auditoria | Operação | linha do tempo de importações e eventos de vagas |
 | Qualidade | Operação | completude dos dados e enriquecimento |
 | Usuários | Administração | contas locais, perfis, convites e papel básico |
 | Extensão LinkedIn | Administração | chave exclusiva e instruções de conexão |
-| Extensão APinfo | Administração | chave exclusiva, conexão e importação alternativa |
+| Integração APInfo | Administração | chave push e dados recebidos; o coletor local legado não integra mais este repositório |
 | Gmail RadarVagas | Administração | chave do Apps Script e integração de e-mail |
 | Fontes | Operação | catálogo, cadastro, teste, ativação e coleta de ATS |
 | Importações | Operação | envio manual de JSON ou CSV |
@@ -105,7 +112,7 @@ O dashboard possui 14 entradas de navegação:
 - Veredito: todos, `✅`, `🟡`, `🔴` ou `❌`.
 - Aderência mínima numérica, inclusive o mínimo definido no perfil.
 - Ordenação por aderência/publicação ou por importação.
-- Paginação no banco; filtros que exigem cálculo pós-consulta examinam até 150 candidatas.
+- Paginação no banco, com proteção de período mínimo quando score ou veredito exigem cálculo mais amplo.
 - Modo degradado: em falha da personalização, tenta novamente e carrega uma resposta enxuta sem dados demonstrativos.
 - Estado de filtros, vaga selecionada e rolagem preservados na sessão do navegador.
 - Descrição carregada sob demanda, higienizada e organizada em blocos.
@@ -116,9 +123,36 @@ O dashboard possui 14 entradas de navegação:
 - Identifica LinkedIn, APinfo, Greenhouse, Lever, Ashby, Gupy e Quickin pela URL para nomear a ação.
 - Mantém `url` estável separada de `applyUrl`, que pode conter token temporário de candidatura.
 - Em vagas APinfo, pode abrir a busca pelo código usando o formulário POST exigido pelo site.
-- Contato APinfo é capturado manualmente pela extensão e salvo uma única vez; concorrência é protegida com atualização condicional.
+- Contatos podem ser salvos com validação, corrigidos quando o domínio veio truncado e reutilizados individualmente em outras vagas da mesma empresa.
 - A mensagem de candidatura usa somente competências confirmadas, pode explicitar lacunas e nunca envia e-mail automaticamente.
 - Acompanhamento da candidatura distingue `generated`, `sent` e `responded`, com data própria para cada marco.
+
+### Central de triagem
+
+- O recorte combina fonte, período de 24/72/168 horas ou histórico completo, área, canal de entrada e inclusão opcional de vagas já analisadas.
+- A triagem manual cria um lote e publica cada vaga na Cloudflare Queue; o histórico exibe `queued`, `processing`, `completed`, `failed` ou `skipped`, tentativas, erro e lease.
+- Uma execução interrompida pode ser sincronizada e retomada sem recriar decisões já concluídas.
+- A idempotência considera usuário, vaga e revisões do perfil, das regras e das instruções.
+- O painel permite selecionar as vagas visíveis ou todas as filtradas, abrir a vaga no Radar, preparar rascunho, consultar IA, preparar para o Codex e conferir envio.
+- O sino de notificações abre diretamente o lote e seu log completo.
+- Se a reconciliação não localizar o envio no Gmail, a interface permite confirmação explícita da pessoa antes de atualizar somente o acompanhamento.
+
+### Revisão por IA, Codex e CSV
+
+- **IA do portal:** consulta consultiva em fila, dividida em chunks, com consolidação, contabilidade de tokens, status e falhas parciais.
+- **Codex:** snapshot persistido do perfil, prompt, filtros e até 50 vagas; o MCP privado permite listar, reivindicar e concluir somente itens autorizados.
+- **CSV externo:** reimporta até 2.000 linhas/2 MB por código externo, informa ausentes e ambiguidades e substitui explicitamente o veredito.
+- Um veredito confirmado pela IA, Codex ou CSV vira a análise oficial com `source = ai` e nova entrada aditiva no histórico.
+- `✅` e `🟡` só liberam rascunho se a revalidação determinística atual continuar segura e houver contato válido; `🔴` e `❌` nunca enfileiram rascunho.
+
+### Rascunhos Gmail
+
+- A outbox persiste `pending`, `drafted`, `sent`, `failed` ou `cancelled`, IDs do Gmail, assunto, erro e datas.
+- A pessoa pode preparar uma vaga ou seleção, reprocessar falhas, solicitar reconciliação da pasta Enviados ou confirmar o envio manualmente.
+- Para LinkedIn, o caminho por e-mail exige `✅` e contato explícito válido.
+- Três interruptores independentes controlam triagem agendada, entrada automática na outbox e criação real do rascunho. Na configuração atual, qualquer origem de aprovação `✅` pode preparar e criar o rascunho; `🟡` permanece para revisão humana.
+- O Apps Script cria rascunhos e reconhece o envio feito pela pessoa; nenhuma rota ou automação envia a candidatura.
+- Um gatilho opcional a cada 15 minutos consulta somente a pasta Enviados e reconcilia rascunhos comprovadamente usados.
 
 ## 5. Perfil profissional
 
@@ -269,19 +303,9 @@ O conector:
 
 ### Extensões de coleta
 
-O endpoint genérico aceita somente `linkedin-extension` e `apinfo-extension`. Cada fonte tem uma chave própria, armazenada apenas como hash. Há CORS para `POST` e `OPTIONS`, teste de conexão e importação idempotente.
+O endpoint dinâmico aceita somente `linkedin-extension` e `apinfo-extension`. Cada origem possui uma chave própria, armazenada apenas como hash. Há CORS para `POST` e `OPTIONS`, teste de conexão, importação idempotente e registro do lote.
 
-O repositório inclui a extensão APinfo Manifest V3 (manifesto atual `1.6.2`), que:
-
-- coleta a página atual ou percorre páginas sem filtro com intervalo configurável;
-- interrompe diante do limite de consultas do site;
-- acumula e deduplica localmente por código;
-- filtra por stacks na exportação;
-- gera CSV/JSON no navegador;
-- envia vagas ao Radar quando autorizado;
-- captura contato somente após ação explícita e login manual no APinfo;
-- usa uma ponte nas páginas do Radar para devolver o contato correto por código;
-- não lê senha, não automatiza login e não envia candidatura.
+O coletor APInfo legado que existia em `extensao-apinfo/` foi removido do repositório em 23/08/2026. O contrato push `apinfo-extension` e os dados já recebidos permanecem compatíveis, mas o código atual não distribui nem mantém uma extensão APInfo local. A extensão LinkedIn continua em repositório próprio. Quando um lote dessas duas origens é persistido com sucesso, o Worker pode iniciar a triagem agendada da fonte, se o interruptor administrativo estiver ativo.
 
 ### Enriquecimento e ciclo de vida
 
@@ -292,7 +316,7 @@ O repositório inclui a extensão APinfo Manifest V3 (manifesto atual `1.6.2`), 
 
 ## 10. Dados e persistência
 
-O schema atual possui 22 tabelas:
+O schema atual possui **33 tabelas**:
 
 | Tabela | Responsabilidade |
 |---|---|
@@ -300,16 +324,27 @@ O schema atual possui 22 tabelas:
 | `local_accounts` | credenciais locais derivadas e origem do convite |
 | `job_sources` | configuração, modo, saúde e validação das fontes |
 | `jobs` | registro canônico, URLs, contato, status e datas da vaga |
+| `company_contacts` | contato validado e reutilizável por chave normalizada da empresa |
 | `user_job_status` | pipeline, nota e marcos da candidatura por usuário |
 | `user_job_analyses` | análise elegível persistida por usuário e vaga |
+| `triage_batches` | lotes manuais, agendados ou assistidos e seu estado global |
+| `triage_history` | decisões aditivas por vaga, origem e versões das regras |
+| `triage_batch_items` | fila, tentativas, lease, erro e resultado por vaga do lote |
+| `triage_ai_reviews` | pedidos e snapshots destinados ao portal ou ao Codex |
+| `triage_ai_review_chunks` | partes assíncronas e resultados parciais da revisão pela IA |
+| `triage_deduplication` | chave de idempotência e lease por perfil/vaga/versões |
+| `draft_outbox` | preparação, criação e confirmação dos rascunhos Gmail |
 | `job_ai_facts` | cache factual de IA por vaga e versão da descrição |
+| `job_ai_triage` | classificação automática legada mantida para compatibilidade |
 | `ai_usage_events` | consumo, operação e resultado de chamadas de IA |
 | `job_events` | eventos de ciclo de vida, enriquecimento e candidatura |
 | `import_runs` | execução, origem, contadores, ator e falhas de importação |
+| `job_import_runs` | vínculo entre uma vaga e o lote que a recebeu |
 | `platform_settings` | parâmetros operacionais globais |
 | `alert_preferences` | ativação, frequência e score mínimo individual |
 | `alert_reads` | vagas já lidas pelo usuário |
 | `alert_deliveries` | preparação e confirmação de resumos diários |
+| `notifications` | sino operacional para importação, triagem e candidatura |
 | `roles` | perfis RBAC |
 | `permissions` | catálogo fixo de capacidades administrativas |
 | `role_permissions` | permissões de cada role |
@@ -322,14 +357,16 @@ O schema atual possui 22 tabelas:
 ### Relações relevantes
 
 - `jobs.source_id` aponta para `job_sources`.
-- Pipeline, análises, fatos de IA, eventos e leituras apontam para `jobs`.
+- Pipeline, análises, triagem, outbox, fatos de IA, eventos, importações e leituras apontam para `jobs`.
 - A chave composta usuário + vaga impede duplicidade no pipeline, na análise e nas leituras.
+- A chave de idempotência da triagem combina usuário, vaga e versões de perfil/regras/instruções; leases protegem retomada e concorrência.
+- `draft_outbox` limita uma entrada por usuário/vaga e um único `gmail_sent_id`.
 - Roles chegam ao usuário diretamente ou pela associação grupo → role.
 - Várias listas são armazenadas como JSON textual por compatibilidade com D1/SQLite.
 
 ### Evolução do banco
 
-As migrations cobrem plataforma inicial, alertas, entregas, contas locais, saúde/modo das fontes, papel administrativo global, validação, RBAC e seeds, URLs/contato, correção de datas, regras de carreira, análises, contabilidade de IA, remoção de análises inelegíveis e acompanhamento de candidatura.
+As migrations cobrem plataforma inicial, alertas, contas locais, fontes, RBAC, URLs e contatos, regras de carreira, análises, contabilidade de IA, importações rastreáveis e suas causas persistidas, notificações, perfil canônico, lotes e idempotência de triagem, outbox, revisão assíncrona, fila Codex e interruptores da automação agendada.
 
 ## 11. Autenticação, autorização e segurança
 
@@ -381,6 +418,15 @@ Perfis iniciais:
 | `GET/PUT/POST /api/alerts` | consultar, configurar e marcar alertas lidos |
 | `GET /api/analytics` | métricas pessoais e rankings |
 | `GET /api/ai/status` | provedor e consumo mensal de IA |
+| `GET /api/notifications` | listar, marcar como lidas e abrir relatórios operacionais |
+| `GET /api/triage/preview` | contar vagas do recorte antes de iniciar uma ação |
+| `POST /api/triage/queue` | criar ou retomar um lote de triagem em fila |
+| `POST /api/triage/run` | executar uma vaga ou rotina agendada com autenticação interna |
+| `GET /api/triage/history` | lotes, itens, decisões, outbox e saúde operacional |
+| `GET/POST /api/triage/ai-review` | criar e acompanhar revisão assíncrona pela IA do portal |
+| `POST /api/triage/ai-review/run` | consumidor interno dos chunks da revisão |
+| `GET/POST/PATCH /api/triage/codex-queue` | preparar, listar e concluir snapshots privados do Codex |
+| `POST /api/triage/drafts/queue` | preparar, repetir, reconciliar ou confirmar rascunhos |
 
 ### Autenticação
 
@@ -402,11 +448,14 @@ Perfis iniciais:
 | `GET/POST /api/admin/collector-key/:sourceId` | chave por extensão permitida |
 | `POST /api/admin/gmail-key` | configurar a chave Gmail |
 | `POST /api/admin/import` | importar JSON/CSV |
+| `GET /api/admin/imports/:id` | relatório detalhado de uma execução de importação |
 | `GET/DELETE /api/admin/jobs` | estatísticas e exclusão de vagas |
 | `GET /api/admin/monitor` | diagnóstico operacional |
 | `GET /api/admin/permissions` | catálogo RBAC |
 | `GET/POST /api/admin/quality` | relatório e enriquecimento |
 | `POST /api/admin/report` | exportação CSV compatível com Excel |
+| `GET /api/admin/triage` | consulta legada de triagem automática |
+| `POST /api/admin/triage-import` | substituir vereditos a partir de CSV externo |
 | `GET/POST /api/admin/roles` | listar e criar roles |
 | `PATCH/DELETE /api/admin/roles/:roleId` | editar e excluir roles |
 | `GET/PUT /api/admin/settings` | consultar e editar parâmetros |
@@ -427,6 +476,8 @@ Perfis iniciais:
 | `POST /api/cron/digest` | preparar/confirmar resumo diário |
 | `POST /api/cron/enrich` | enriquecer vagas por fonte oficial |
 | `POST /api/cron/lifecycle` | reconciliar vagas desatualizadas |
+| `POST /api/cron/drafts` | criar rascunhos pendentes e reconciliar envios pelo conector Gmail |
+| `POST /mcp/radar` | MCP privado para a fila de revisão do Codex |
 
 ## 13. Operação e entrega contínua
 
@@ -438,7 +489,7 @@ Perfis iniciais:
 | `Coleta diária de vagas` | 11:15 UTC em dias úteis, manual | percorre fontes por offset; depois enriquece e reconcilia ciclo de vida |
 | `Revalidar fontes` | segunda, 06:00 UTC, manual | chama a revalidação do ambiente de produção |
 
-O deploy tem concorrência exclusiva para produção e não cancela publicação em andamento. A validação do workflow executa apenas `tests/rendered-html.test.mjs`; a suíte local completa é mais ampla.
+O deploy tem concorrência exclusiva para produção e não cancela publicação em andamento. A validação executa build, lint, toda a suíte `*.test.mjs` e a integração RBAC. Antes do Worker, o job aplica migrations, garante as filas de triagem e suas DLQs e configura os segredos privados do Codex e do conector Gmail quando disponíveis.
 
 ### Variáveis e segredos operacionais
 
@@ -451,6 +502,9 @@ O deploy tem concorrência exclusiva para produção e não cancela publicação
 | `REVALIDATION_SECRET` | GitHub/Worker secret | revalidar fontes |
 | `RADAR_SESSION_SECRET` | Worker secret | assinar sessões locais |
 | variáveis `OPENAI_*` ou `AI_*` | Worker secrets/vars | aprofundamento por IA |
+| `RADAR_CODEX_MCP_TOKEN` | GitHub/Worker secret | autenticar o MCP privado do Codex |
+| `GMAIL_DRAFTS_WEBHOOK_URL` | GitHub/Worker secret | solicitar criação ou reconciliação imediata de rascunhos |
+| `GMAIL_DRAFTS_WEBHOOK_TOKEN` | GitHub/Worker secret | autenticar o webhook do Apps Script |
 
 ### Comandos de desenvolvimento
 
@@ -479,8 +533,16 @@ A base contém testes para:
 - RBAC estrutural e integração real com SQLite em memória;
 - paginação e limites de recursos do Worker;
 - período padrão e busca por código.
+- perfil canônico e revisões de entrada da análise;
+- decisão determinística, idempotência, armazenamento, escopo por usuário e retomada das filas de triagem;
+- revisão assíncrona, chunks, fila Codex e aplicação de vereditos de IA;
+- elegibilidade, prioridade, repetição e reconciliação da outbox Gmail;
+- importação CSV de vereditos, contatos por empresa e ações individuais/em lote;
+- notificações, relatórios de importação e saúde operacional da triagem.
 
 `npm test` executa build e testes `*.test.mjs`. A integração RBAC usa loaders que simulam bindings Cloudflare e as migrations reais `0010`/`0011`; a esteira executa ambas as suítes antes da publicação.
+
+Validação realizada em 24/08/2026: **158 testes regulares e 26 testes de integração RBAC passaram**. O lint terminou sem erros e com 7 avisos preexistentes em código de interface e versionamento de análise.
 
 ## 15. Pontos de atenção confirmados
 
@@ -493,18 +555,22 @@ Estes itens foram observados no código atual e devem orientar próximas decisõ
 | Média | coletas gerais não possuem trava explícita de concorrência e falhas consecutivas aparecem no monitor sem alerta proativo | execuções sobrepostas ou falhas não observadas podem degradar a operação |
 | Média | a coleta manual de ATS ainda consulta e grava cada vaga individualmente | fontes grandes podem consumir mais tempo e operações D1 que a coleta agendada em lotes |
 | Média | a validação integrada manual da extensão LinkedIn 2.2.0 ainda precisa registrar aceitas, rejeitadas, novas e atualizadas | os testes automatizados cobrem as regras, mas não substituem a confirmação do fluxo real no navegador |
+| Média | o código do coletor APInfo legado foi removido, mas o contrato `apinfo-extension` e referências operacionais ainda existem | é preciso manter clara a origem externa dos lotes e remover instruções que indiquem distribuição local da extensão |
+| Média | vereditos podem vir de regras, IA do portal, Codex ou CSV | a trilha é persistida, mas a política de precedência e auditoria deve continuar explícita para evitar decisões opacas |
+| Média | notificações e algumas rotas de triagem assistida são restritas à proprietária | a expansão para múltiplos operadores exigirá `userId`/broadcast e permissões específicas |
+| Baixa | DLQs existem no Cloudflare, mas não há painel dedicado para inspecionar ou reprocessar mensagens mortas | falhas esgotadas dependem de observabilidade e operação externa |
 | Baixa | health verifica banco; não verifica ATS, Gmail, IA nem secrets | “healthy” significa essencialmente D1 disponível |
 
 Itens concluídos no ciclo de 13/08/2026: `report.export`, alinhamento de `offer`, exclusão referencial de IA, efeito integral das configurações operacionais, senha mínima unificada em 8 caracteres para novos cadastros/convites/bootstrap, paginação pós-filtro sem teto fixo de 150 candidatas, loader RBAC compatível com Windows/Node.js 24, documentação APinfo 1.6.2, backup ampliado e execução da suíte regular completa mais integração RBAC na esteira.
 
 ### Limitações assumidas pelo desenho
 
-- ATS e APinfo podem mudar APIs/HTML sem aviso.
+- ATS, LinkedIn e a origem externa APInfo podem mudar APIs/HTML sem aviso.
 - A URL de candidatura APinfo pode expirar; a URL estável é apenas referência por código.
 - O enriquecimento exige uma única correspondência exata de empresa e cargo normalizados.
 - Alertas no portal examinam 100 vagas de 7 dias; o resumo diário examina 250 vagas de 24 horas e envia no máximo 10.
 - Métricas de mercado usam as 500 vagas mais recentes, não toda a base.
-- O backup administrativo não inclui perfis, contas locais, preferências, pipeline, RBAC, análises ou uso de IA; portanto é operacional, não uma restauração integral do produto.
+- O backup foi ampliado, mas sua capacidade de restauração deve ser validada sempre que novas tabelas de triagem/outbox forem adicionadas.
 - Cada implantação com outro D1 começa com dados independentes.
 
 ## 16. Mapa do repositório
@@ -519,6 +585,10 @@ Itens concluídos no ciclo de 13/08/2026: `report.export`, alinhamento de `offer
 | `lib/personalized-analysis.ts` | composição da análise por perfil |
 | `lib/ai-provider.ts` | provedor, extração e validação de fatos |
 | `lib/job-intelligence.ts` | preparação de entrevista |
+| `lib/canonical-profile.ts` / `analysis-versions.ts` | fonte de verdade e versionamento da decisão |
+| `lib/deterministic-triage.ts` / `triage-orchestrator.ts` | regras, recortes e execução dos lotes |
+| `lib/draft-eligibility.ts` / `gmail-draft-priority.ts` | segurança e acionamento dos rascunhos |
+| `lib/apply-ai-verdict.ts` | aplicação oficial de vereditos do portal ou Codex |
 | `lib/connectors.ts` | Greenhouse, Lever e Ashby |
 | `lib/import-jobs.ts` / `csv-jobs.ts` | normalização de importações |
 | `lib/email-jobs.ts` | alertas e candidatura via Gmail |
@@ -526,9 +596,8 @@ Itens concluídos no ciclo de 13/08/2026: `report.export`, alinhamento de `offer
 | `lib/rbac.ts` / `access.ts` | autorização granular e proteção do owner |
 | `db/schema.ts` | modelo de dados tipado |
 | `drizzle/` | histórico de migrations |
-| `worker/index.ts` | fronteira Cloudflare, cron e imagens |
+| `worker/index.ts` | fronteira Cloudflare, MCP, filas, pós-importação, cron e imagens |
 | `.github/workflows/` | validação, deploy e rotinas |
-| `extensao-apinfo/` | extensão Chrome independente |
 | `public/gmail-radarvagas.gs` | conector Apps Script |
 | `tests/` | regras, integração e limites operacionais |
 
@@ -560,6 +629,36 @@ sequenceDiagram
     R->>D: Valida elegibilidade e atualiza pipeline
 ```
 
+### Triagem até o rascunho
+
+```mermaid
+sequenceDiagram
+    participant U as Pessoa usuária
+    participant R as Radar
+    participant Q as Cloudflare Queue
+    participant A as IA ou Codex
+    participant G as Gmail Apps Script
+    participant D as D1
+
+    U->>R: Escolhe fonte, período, área e canal
+    R->>D: Cria lote e itens idempotentes
+    R->>Q: Publica uma mensagem por vaga
+    Q->>R: Executa regras com perfil canônico
+    R->>D: Grava análise e histórico aditivo
+    opt Revisão confirmada
+        U->>R: Solicita IA, Codex ou importa CSV
+        R->>A: Envia snapshot autorizado
+        A-->>R: Vereditos e evidências
+        R->>D: Registra veredito oficial de origem IA
+    end
+    R->>R: Revalida regras, contato e elegibilidade
+    R->>D: Insere item seguro na outbox
+    R->>G: Solicita criação do rascunho
+    G-->>R: ID do rascunho ou envio encontrado
+    R->>D: Atualiza outbox, pipeline e notificação
+    Note over G: O conector nunca envia o e-mail
+```
+
 ### Coleta agendada
 
 ```mermaid
@@ -587,6 +686,6 @@ Em caso de indisponibilidade transitória, a chamada é repetida com intervalo c
 
 ## 18. Definição prática do produto hoje
 
-O Radar já é mais que um agregador: ele é um sistema pessoal de decisão de carreira com operação multiusuário. Seu diferencial técnico está na combinação de regras explicáveis, veto estratégico, rastreabilidade e IA limitada a fatos, mantendo a pessoa no controle da candidatura.
+O Radar já é mais que um agregador: ele é um sistema pessoal de decisão e candidatura assistida com operação multiusuário. Seu diferencial técnico está na combinação de regras explicáveis, veto estratégico, filas rastreáveis, revisão por IA/Codex e automação limitada à preparação — a pessoa continua responsável pelo envio da candidatura.
 
-Para evoluir com segurança, os próximos ajustes devem priorizar consistência de autorização e modelo de pipeline, aplicação efetiva dos parâmetros administrativos, cobertura de exclusão referencial e conclusão da administração RBAC. Essas correções consolidam estruturas que já existem sem exigir uma mudança de arquitetura.
+Para evoluir com segurança, os próximos ajustes devem priorizar a administração RBAC ponta a ponta, a política de precedência dos vereditos, a operação das DLQs, a expansão das notificações para múltiplos operadores e a remoção das referências residuais ao coletor APInfo legado.

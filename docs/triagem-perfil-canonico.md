@@ -17,7 +17,7 @@ Sem `mastered_skills` no perfil canônico, a triagem não produz veredito. A aç
 | **NÃO BATE** (`🔴`) | Não há veto estrutural, porém o fit técnico falha ou há duas ou mais condições desfavoráveis. |
 | **BLOQUEADA** (`❌`) | Um veto estrutural impede candidatura: stack principal incompatível, idioma obrigatório não cadastrado, senioridade/tipo de atuação bloqueados ou local/híbrido fora do limite. |
 
-O rótulo **BLOQUEADA** integra o histórico como não aderente, com `blocker` explícito. Somente BATE e PROVÁVEL podem seguir, nas próximas histórias, à fila de candidatura e à geração de rascunho.
+O rótulo **BLOQUEADA** integra o histórico como não aderente, com `blocker` explícito. Somente BATE e PROVÁVEL podem seguir à fila de candidatura e à geração de rascunho, sempre após validar contato e repetir a checagem determinística com a versão atual do perfil. Vereditos confirmados pela IA do portal, pelo Codex ou por CSV podem substituir a classificação oficial, mas não ignoram esse portão final de segurança.
 
 ## Casos verificáveis
 
