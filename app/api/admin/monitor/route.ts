@@ -3,7 +3,8 @@ import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 import { can } from "../../../../lib/rbac";
 import { getDb } from "../../../../db/index";
-import { automationHeartbeats, importRuns, jobSources, jobs, triageBatchItems, triageBatches } from "../../../../db/schema";
+import { automationHeartbeats, databaseFailures, importRuns, jobSources, jobs, triageBatchItems, triageBatches } from "../../../../db/schema";
+import { trackDatabaseOperation } from "../../../../lib/database-failure";
 
 export const dynamic = "force-dynamic";
 
@@ -20,14 +21,15 @@ export async function GET() {
 
   const started = Date.now();
   const db = getDb();
-  const [sources, importRows, batches, batchItems, jobRows, heartbeats] = await Promise.all([
+  const [sources, importRows, batches, batchItems, jobRows, heartbeats, dbFailures] = await trackDatabaseOperation("monitor.read", "O Centro Operacional não conseguiu consultar o D1.", () => Promise.all([
     db.select().from(jobSources),
     db.select().from(importRuns).orderBy(desc(importRuns.startedAt)).limit(20),
     db.select().from(triageBatches).orderBy(desc(triageBatches.createdAt)).limit(20),
     db.select().from(triageBatchItems),
     db.select({ status: jobs.status }).from(jobs),
     db.select().from(automationHeartbeats),
-  ]);
+    db.select().from(databaseFailures).orderBy(desc(databaseFailures.occurredAt)).limit(10),
+  ]));
 
   const now = Date.now();
   const staleSources = sources.filter((source) => source.enabled && source.collectionMode === "pull" && (!source.lastRunAt || source.lastRunAt.getTime() < now - 48 * 36e5));
@@ -52,9 +54,10 @@ export async function GET() {
     ...staleSources.map((source) => ({ level: "warning" as const, message: `${source.name}: coleta atrasada há mais de 48 horas.`, action: "Verificar fonte e agenda." })),
     ...sources.filter((source) => source.enabled && source.lastError).map((source) => ({ level: "error" as const, message: `${source.name}: ${safeError(source.lastError)}`, action: "Reexecutar ou corrigir a fonte." })),
     ...failedOperations.slice(0, 5).map((operation) => ({ level: "error" as const, message: `${operation.label}: execução com falha.`, action: operation.flow === "triagem" ? "Abrir Triagem e retomar itens pendentes." : "Consultar detalhe da importação." })),
+    ...dbFailures.slice(0, 3).map((failure) => ({ level: "error" as const, message: `D1: ${safeError(failure.error) ?? "falha registrada"}`, action: `${failure.impact} (${failure.operation})` })),
   ];
   const status = alerts.some((alert) => alert.level === "error") ? "attention" : alerts.length ? "warning" : "healthy";
 
   const schedules = [{ id: "collect", label: "Coleta de fontes", cron: "Dias úteis, 08:15 (Brasília)" }, { id: "enrich", label: "Enriquecimento", cron: "Após a coleta" }, { id: "lifecycle", label: "Ciclo de vida", cron: "Após a coleta" }, { id: "revalidate", label: "Revalidação de fontes", cron: "Segundas, 03:00 (Brasília)" }, { id: "email-import", label: "Importação Gmail", cron: null }].map((schedule) => ({ ...schedule, heartbeat: heartbeats.find((heartbeat) => heartbeat.id === schedule.id) ?? null, reason: schedule.cron ? null : "Executada pelo conector Gmail; não há agenda declarada no Radar." }));
-  return NextResponse.json({ status, responseMs: Date.now() - started, summary: { sources: sources.length, enabled: sources.filter((source) => source.enabled).length, active: jobRows.filter((job) => job.status === "active").length, closed: jobRows.filter((job) => job.status !== "active").length, failures: failedOperations.length, lastSuccess: operations.find((operation) => operation.status === "completed")?.completedAt ?? null }, alerts, schedules, sources: sources.map((source) => ({ ...source, lastError: safeError(source.lastError), stale: staleSources.some((item) => item.id === source.id) })), operations });
+  return NextResponse.json({ status, responseMs: Date.now() - started, summary: { sources: sources.length, enabled: sources.filter((source) => source.enabled).length, active: jobRows.filter((job) => job.status === "active").length, closed: jobRows.filter((job) => job.status !== "active").length, failures: failedOperations.length + dbFailures.length, lastSuccess: operations.find((operation) => operation.status === "completed")?.completedAt ?? null }, alerts, schedules, databaseFailures: dbFailures.map((failure) => ({ ...failure, error: safeError(failure.error), impact: safeError(failure.impact) })), sources: sources.map((source) => ({ ...source, lastError: safeError(source.lastError), stale: staleSources.some((item) => item.id === source.id) })), operations });
 }

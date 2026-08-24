@@ -8,6 +8,7 @@ import { inferJobArea } from "../../../../lib/job-area";
 import { recordImportRunJobs } from "../../../../lib/import-tracking";
 import { notifyImportRun } from "../../../../lib/notifications";
 import { heartbeat } from "../../../../lib/automation-heartbeat";
+import { recordDatabaseFailure } from "../../../../lib/database-failure";
 
 export const dynamic = "force-dynamic";
 
@@ -97,6 +98,7 @@ export async function POST(request: Request) {
       await getDb().update(jobSources).set({ lastRunAt: finishedAt, lastSuccessAt: finishedAt, lastError: null, consecutiveFailures: 0 }).where(eq(jobSources.id, source.id));
     } catch (error) {
       errors++;
+      await recordDatabaseFailure("cron.collect", error, "A coleta de vagas não conseguiu concluir uma fonte.", runId);
       const message = error instanceof Error ? error.message.slice(0, 300) : "Falha desconhecida na coleta";
       await getDb().update(importRuns).set({ status: "failed", errors: 1, finishedAt: new Date() }).where(eq(importRuns.id, runId));
       await getDb().update(jobSources).set({ lastError: message, consecutiveFailures: source.consecutiveFailures + 1 }).where(eq(jobSources.id, source.id));

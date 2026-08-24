@@ -70,6 +70,21 @@ test("monitoramento consolida importações e lotes de triagem sem expor o detal
  assert.match(ui,/Precisa de atenção/);
 });
 
+test("monitoramento mantém histórico sanitizado de falhas do D1", async()=>{
+ const [schema,monitor,ui,logger]=await Promise.all([
+  readFile(new URL("../db/schema.ts",import.meta.url),"utf8"),
+  readFile(new URL("../app/api/admin/monitor/route.ts",import.meta.url),"utf8"),
+  readFile(new URL("../app/Monitoring.tsx",import.meta.url),"utf8"),
+  readFile(new URL("../lib/database-failure.ts",import.meta.url),"utf8"),
+ ]);
+ assert.match(schema,/databaseFailures/);
+ assert.match(monitor,/databaseFailures/);
+ assert.match(monitor,/trackDatabaseOperation/);
+ assert.match(ui,/Falhas recentes do banco/);
+ assert.match(logger,/e-mail redigido/);
+ assert.match(logger,/Falha D1 não persistida/);
+});
+
 test("rotas convertem Date para epoch antes de interpolar sourcePublishedAt no SQL do D1", async()=>{
  const files=[
   "../app/api/collector/import/route.ts",

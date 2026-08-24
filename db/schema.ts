@@ -219,6 +219,16 @@ export const automationHeartbeats = sqliteTable("automation_heartbeats", {
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
 });
 
+/** Histórico aditivo de falhas conhecidas do D1, sem dados pessoais ou payloads. */
+export const databaseFailures = sqliteTable("database_failures", {
+  id: text("id").primaryKey(),
+  operation: text("operation").notNull(),
+  impact: text("impact").notNull(),
+  error: text("error").notNull(),
+  correlationId: text("correlation_id"),
+  occurredAt: integer("occurred_at", { mode: "timestamp_ms" }).notNull(),
+}, table => [index("database_failures_occurred_at_idx").on(table.occurredAt)]);
+
 export const jobImportRuns = sqliteTable("job_import_runs", {
   runId: text("run_id").notNull().references(() => importRuns.id),
   jobId: text("job_id").notNull().references(() => jobs.id),
