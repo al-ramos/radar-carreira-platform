@@ -492,7 +492,7 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
     }
   };
   const copyCodexRequest = async () => {
-    const text = "Analise a última triagem preparada para o Codex.";
+    const text = "Analise todas as triagens pendentes preparadas para o Codex.";
     try { await navigator.clipboard.writeText(text); setMessage("Pedido para o Codex copiado. Cole-o nesta conversa para iniciar a análise."); }
     catch { setMessage(`Escreva nesta conversa: “${text}”`); }
   };

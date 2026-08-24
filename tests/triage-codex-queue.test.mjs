@@ -23,6 +23,7 @@ test("fila de análise pelo Codex persiste o recorte e oferece consumo protegido
   assert.match(screen, /response\.status === 429/);
   assert.match(screen, /Baixar CSV/);
   assert.match(screen, /codigo,titulo,status_atual,descricao_do_status/);
+  assert.match(screen, /Analise todas as triagens pendentes preparadas para o Codex/);
   assert.match(schema, /codexStatus/);
   assert.match(migration, /triage_ai_reviews_codex_queue_idx/);
 });
