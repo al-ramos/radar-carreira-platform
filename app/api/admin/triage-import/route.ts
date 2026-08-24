@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db/index";
@@ -18,6 +18,13 @@ const MAX_BYTES = 2_000_000;
 
 function parseStack(value: string): string[] {
   try { const parsed = JSON.parse(value); return Array.isArray(parsed) ? parsed : []; } catch { return []; }
+}
+
+async function csvImportScope(text: string): Promise<string> {
+  const bytes = new TextEncoder().encode(text.trim());
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  const hash = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `csv-import:${hash}`;
 }
 
 /**
@@ -43,7 +50,13 @@ export async function POST(request: Request) {
   if (!rows.length) return NextResponse.json({ error: "Nenhuma linha válida encontrada. Colunas esperadas: código, status, descrição.", rejected }, { status: 400 });
   if (rows.length > MAX_ROWS) return NextResponse.json({ error: `O limite é de ${MAX_ROWS} linhas por importação.` }, { status: 400 });
 
+  const scope = await csvImportScope(text);
   const db = getDb();
+  const previousImport = await db.select({ id: triageBatches.id }).from(triageBatches).where(and(
+    eq(triageBatches.userId, user.userId), eq(triageBatches.scope, scope), eq(triageBatches.status, "completed"),
+  )).limit(1).then((result) => result[0]);
+  if (previousImport) return NextResponse.json({ ok: true, duplicate: true, batchId: previousImport.id });
+
   const profile = await db.select().from(profiles).where(eq(profiles.userId, user.userId)).limit(1).then((r) => r[0]);
   if (!profile) return NextResponse.json({ error: "Complete seu perfil antes de importar uma análise." }, { status: 412 });
   const canonicalProfile = canonicalizeProfile(profile);
@@ -51,7 +64,7 @@ export async function POST(request: Request) {
 
   const batchId = crypto.randomUUID();
   const now = new Date();
-  await db.insert(triageBatches).values({ id: batchId, userId: user.userId, trigger: "manual", scope: "csv-import", status: "running", startedAt: now, createdAt: now });
+  await db.insert(triageBatches).values({ id: batchId, userId: user.userId, trigger: "manual", scope, status: "running", startedAt: now, createdAt: now });
 
   let applied = 0, draftsQueued = 0;
   const notFound: string[] = [];

@@ -10,5 +10,8 @@ test("reimportação de análise externa substitui veredito, gera rascunho quand
   assert.match(route, /isSafeForDraft\(/, "reaproveita a mesma checagem de segurança do fluxo normal antes de enfileirar rascunho");
   assert.match(route, /db\.insert\(draftOutbox\)/, "veredito aprovado pode entrar na fila de rascunho, como um veredito normal");
   assert.match(route, /db\.insert\(triageHistory\)/, "preserva o histórico aditivo");
-  assert.match(route, /trigger: "manual", scope: "csv-import"/, "fica auditável como um lote");
+  assert.match(route, /async function csvImportScope/, "gera uma chave estável para cada CSV");
+  assert.match(route, /eq\(triageBatches\.scope, scope\)/, "não reaplica um CSV já concluído");
+  assert.match(route, /duplicate: true/, "informa ao cliente que o CSV não foi reenviado");
+  assert.match(route, /trigger: "manual", scope/, "fica auditável como um lote");
 });
