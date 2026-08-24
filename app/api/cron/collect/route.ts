@@ -7,6 +7,7 @@ import { fingerprint, recordedJobDate, sourcePublishedJobDate } from "../../../.
 import { inferJobArea } from "../../../../lib/job-area";
 import { recordImportRunJobs } from "../../../../lib/import-tracking";
 import { notifyImportRun } from "../../../../lib/notifications";
+import { heartbeat } from "../../../../lib/automation-heartbeat";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +24,7 @@ export async function POST(request: Request) {
   if (request.headers.get("x-radar-collector-authenticated") !== "1") {
     return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   }
+  await heartbeat("collect", "running");
 
   const config = (await getDb().select().from(platformSettings).where(eq(platformSettings.id, "global")).limit(1))[0];
   if (config && !config.collectionEnabled) {
@@ -106,6 +108,7 @@ export async function POST(request: Request) {
     }
   }
 
+  await heartbeat("collect", errors ? "failed" : "completed", errors ? "Uma ou mais fontes falharam." : undefined);
   return NextResponse.json({
     ok: errors === 0,
     sources: batch.length,
