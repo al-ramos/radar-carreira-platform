@@ -19,4 +19,8 @@ test("retoma falhas de rascunho sem criar duplicidade ou enviar e-mail", async (
   assert.doesNotMatch(script, /GmailApp\.sendEmail\(item\./);
   assert.match(route, /isSafeForDraft/);
   assert.match(route, /status: "cancelled"/);
+  assert.match(route, /platformSettings/);
+  assert.match(route, /body\.automated/);
+  assert.match(script, /criarRascunhosRadar\(\{ automated:true \}\)/);
+  assert.match(script, /automated:automated/);
 });

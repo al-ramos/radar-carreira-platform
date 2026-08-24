@@ -1,7 +1,7 @@
 import { and, eq, inArray, ne, or } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getDb } from "../../../../db/index";
-import { draftOutbox, jobSources, jobs, profiles, triageHistory, userJobAnalyses } from "../../../../db/schema";
+import { draftOutbox, jobSources, jobs, platformSettings, profiles, triageHistory, userJobAnalyses } from "../../../../db/schema";
 import { getAnalysisVersions } from "../../../../lib/analysis-versions";
 import { buildApinfoApplicationEmail } from "../../../../lib/application-email";
 import { canonicalizeProfile, profileIsReadyForTriage } from "../../../../lib/canonical-profile";
@@ -44,7 +44,7 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => ({})) as {
     action?: "prepare" | "confirm" | "fail" | "health" | "sentCandidates" | "reconcileSent";
     outboxId?: string; gmailDraftId?: string; gmailThreadId?: string; gmailSentId?: string; subject?: string; to?: string; sentAt?: string;
-    error?: string; limit?: number; retryFailed?: boolean; connectorVersion?: string; outboxIds?: string[];
+    error?: string; limit?: number; retryFailed?: boolean; connectorVersion?: string; outboxIds?: string[]; automated?: boolean;
   };
   const db = getDb();
 
@@ -53,6 +53,22 @@ export async function POST(request: Request) {
   }
 
   if (body.action === "health") return NextResponse.json({ ok: true, connectorVersion: CONNECTOR_VERSION, sent: false });
+
+  // O Apps Script informa explicitamente quando esta é a rotina recorrente.
+  // Assim, o interruptor administrativo governa também o gatilho de 30 min,
+  // sem bloquear a criação manual solicitada pelo usuário no Portal.
+  if (body.automated) {
+    const settings = (await db.select({
+      draftQueueEnabled: platformSettings.scheduledTriageDraftQueueEnabled,
+      autoCreateEnabled: platformSettings.scheduledTriageAutoCreateEnabled,
+    }).from(platformSettings).where(eq(platformSettings.id, "global")).limit(1))[0];
+    if (!settings?.draftQueueEnabled || !settings.autoCreateEnabled) {
+      return NextResponse.json({
+        drafts: [], scanned: 0, hasMore: false, connectorVersion: CONNECTOR_VERSION, sent: false,
+        reason: "Criação automática de rascunhos desligada em Parâmetros operacionais.",
+      });
+    }
+  }
 
   // Esta consulta não pesquisa o Gmail nem cria mensagens. Ela só devolve os
   // rascunhos confirmados que podem ser comparados localmente pelo Apps Script

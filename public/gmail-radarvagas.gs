@@ -55,13 +55,14 @@ function criarRascunhosRadar(options) {
   const secret = PropertiesService.getScriptProperties().getProperty('RADAR_SECRET');
   if (!secret) throw new Error('Configure RADAR_SECRET nas propriedades do script.');
   const outboxIds = options && Array.isArray(options.outboxIds) ? options.outboxIds.filter(id => typeof id === 'string' && id) : null;
+  const automated = Boolean(options && options.automated);
   let processed = 0, scanned = 0;
   // 10 lotes de 10 cobrem com margem a rotina diária e preservam o limite
   // por chamada. Itens que deixaram de ser seguros são cancelados pelo Radar.
   for (let batch = 0; batch < 10; batch += 1) {
     const response = UrlFetchApp.fetch(`${radarUrl()}/api/cron/drafts`, {
       method:'post', contentType:'application/json', headers:{Authorization:`Bearer ${secret}`},
-      payload:JSON.stringify({action:'prepare',limit:outboxIds ? Math.min(20, outboxIds.length) : 10,retryFailed:true,connectorVersion:RADAR_DRAFT_CONNECTOR_VERSION,outboxIds:outboxIds || undefined}), muteHttpExceptions:true
+      payload:JSON.stringify({action:'prepare',limit:outboxIds ? Math.min(20, outboxIds.length) : 10,retryFailed:true,connectorVersion:RADAR_DRAFT_CONNECTOR_VERSION,outboxIds:outboxIds || undefined,automated:automated}), muteHttpExceptions:true
     });
     if (response.getResponseCode() >= 300) throw new Error(response.getContentText());
     const payload = JSON.parse(response.getContentText());
@@ -143,7 +144,7 @@ function removerAgendamentoRascunhosRadar() {
 }
 
 function executarRascunhosPendentesRadar() {
-  criarRascunhosRadar();
+  criarRascunhosRadar({ automated:true });
   reconciliarEnviosManuaisRadar();
 }
 
