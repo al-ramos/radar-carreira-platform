@@ -46,7 +46,7 @@ Portal multiusuário para reunir oportunidades, decidir quais vagas merecem aten
 - permite revisar um recorte no portal, preparar até 50 vagas para o Codex ou reimportar vereditos externos por CSV;
 - prepara rascunhos elegíveis no Gmail, acompanha sua criação e reconcilia o envio sem enviar e-mail automaticamente;
 - registra notificações de importação, triagem e candidatura, com acesso direto aos relatórios operacionais;
-- centraliza importações e lotes de triagem no monitoramento, com alertas acionáveis, falhas, último sucesso e filtros por fluxo;
+- centraliza importações, lotes de triagem e a agenda das automações no monitoramento, com heartbeats persistidos, alertas acionáveis, falhas, último sucesso e filtros por fluxo;
 - envia um resumo diário por Gmail quando existem oportunidades acima do score mínimo;
 - registra análises elegíveis, importações, as vagas e causas de aceite/rejeição de cada lote, eventos, consumo de IA, qualidade dos dados e ciclo de vida das vagas.
 
@@ -77,7 +77,7 @@ Portal multiusuário para reunir oportunidades, decidir quais vagas merecem aten
 - integração Gmail `RadarVagas`;
 - chaves protegidas para integrações push LinkedIn e APInfo;
 - configurações e parâmetros operacionais;
-- monitoramento de coletas;
+- monitoramento de coletas, agendas e última execução das automações;
 - auditoria e qualidade dos dados;
 - gestão de usuários, roles e permissões granulares;
 - backup administrativo;
@@ -167,7 +167,7 @@ Principais grupos de tabelas:
 - administração: `platform_settings` e `notifications`;
 - RBAC: `roles`, `permissions`, `role_permissions`, `groups`, `group_roles`, `user_roles`, `user_groups` e `access_audit_log`.
 
-O schema possui **33 tabelas**. Preferências, snapshots e resultados estruturados são armazenados como JSON textual quando apropriado para D1/SQLite. As chaves compostas e o `userId` isolam pipeline, análise, triagem e leitura por pessoa; leases, chaves de idempotência e outbox protegem os fluxos assíncronos.
+O schema possui **34 tabelas**. Preferências, snapshots e resultados estruturados são armazenados como JSON textual quando apropriado para D1/SQLite. As chaves compostas e o `userId` isolam pipeline, análise, triagem e leitura por pessoa; leases, chaves de idempotência, heartbeats e outbox protegem e tornam observáveis os fluxos assíncronos.
 
 Cada projeto publicado no Sites possui seu próprio banco D1. Publicar o mesmo código em um novo endereço não transfere automaticamente vagas, perfis, fontes ou configurações do banco anterior.
 
@@ -204,7 +204,7 @@ Quando a pessoa confirma um resultado da IA, do Codex ou do CSV, ele vira o vere
 - três interruptores administrativos controlam separadamente a triagem agendada, a entrada na outbox e a criação real do rascunho no Gmail;
 - a automação agendada aceita somente vagas `✅` para rascunho;
 - o Apps Script cria rascunhos e consulta a pasta Enviados, mas nunca envia e-mail;
-- criação, falha e envio ficam registrados em `draft_outbox`, e a candidatura é atualizada após confirmação;
+- criação, falha e envio ficam registrados em `draft_outbox`; cada rascunho e cada mensagem do Gmail só podem pertencer a uma vaga, e a interface distingue confirmação pelo Gmail de informação manual;
 - notificações no sino abrem o log completo do lote ou da importação correspondente.
 
 ## Integração Gmail RadarVagas

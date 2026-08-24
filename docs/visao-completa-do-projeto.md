@@ -1,6 +1,6 @@
 # Radar Carreira Platform — visão completa do produto e da arquitetura
 
-> Documento de conhecimento do estado real do repositório em **24 de agosto de 2026**, cobrindo as funcionalidades publicadas até o commit `6c26118` (`Remove limite de continuações da triagem`).
+> Documento de conhecimento do estado real do repositório em **24 de agosto de 2026**, cobrindo as funcionalidades publicadas até o commit `7d0ece2` (`Registra saúde das automações`).
 
 ## Como ler este documento
 
@@ -104,7 +104,7 @@ O dashboard organiza os módulos abaixo:
 | Métricas | Usuário | funil, conversão, empresas e tecnologias |
 | Triagem IA | Usuário/owner | lotes, filtros, fila, histórico, IA, Codex, CSV e rascunhos |
 | Notificações | Operação/owner | eventos de importação, triagem e candidatura com links para relatórios |
-| Monitoramento | Operação | centro operacional com banco, fontes, importações, triagens, alertas acionáveis, falhas e último sucesso |
+| Monitoramento | Operação | centro operacional com banco, fontes, agenda e heartbeats das automações, importações, triagens, alertas acionáveis, falhas e último sucesso |
 | Auditoria | Operação | linha do tempo de importações e eventos de vagas |
 | Qualidade | Operação | completude dos dados e enriquecimento |
 | Usuários | Administração | contas locais, perfis, convites e papel básico |
@@ -161,6 +161,8 @@ O dashboard organiza os módulos abaixo:
 ### Rascunhos Gmail
 
 - A outbox persiste `pending`, `drafted`, `sent`, `failed` ou `cancelled`, IDs do Gmail, assunto, erro e datas.
+- Índices únicos impedem que o mesmo rascunho ou a mesma mensagem enviada do Gmail sejam associados a duas vagas; a migration 0035 saneia duplicidades legadas antes de aplicar a restrição.
+- O histórico diferencia um envio comprovado pelo Gmail de uma confirmação informada manualmente pela pessoa usuária.
 - A pessoa pode preparar uma vaga ou seleção, reprocessar falhas, solicitar reconciliação da pasta Enviados ou confirmar o envio manualmente.
 - Para LinkedIn, o caminho por e-mail exige `✅` e contato explícito válido.
 - Três interruptores independentes controlam triagem agendada, entrada automática na outbox e criação real do rascunho. Na configuração atual, qualquer origem de aprovação `✅` pode preparar e criar o rascunho; `🟡` permanece para revisão humana.
@@ -329,7 +331,7 @@ O coletor APInfo legado que existia em `extensao-apinfo/` foi removido do reposi
 
 ## 10. Dados e persistência
 
-O schema atual possui **33 tabelas**:
+O schema atual possui **34 tabelas**:
 
 | Tabela | Responsabilidade |
 |---|---|
@@ -352,6 +354,7 @@ O schema atual possui **33 tabelas**:
 | `ai_usage_events` | consumo, operação e resultado de chamadas de IA |
 | `job_events` | eventos de ciclo de vida, enriquecimento e candidatura |
 | `import_runs` | execução, origem, contadores, ator e falhas de importação |
+| `automation_heartbeats` | último estado, horários e erro sanitizado de cada automação monitorada |
 | `job_import_runs` | vínculo entre uma vaga e o lote que a recebeu |
 | `platform_settings` | parâmetros operacionais globais |
 | `alert_preferences` | ativação, frequência e score mínimo individual |
@@ -373,13 +376,13 @@ O schema atual possui **33 tabelas**:
 - Pipeline, análises, triagem, outbox, fatos de IA, eventos, importações e leituras apontam para `jobs`.
 - A chave composta usuário + vaga impede duplicidade no pipeline, na análise e nas leituras.
 - A chave de idempotência da triagem combina usuário, vaga e versões de perfil/regras/instruções; leases protegem retomada e concorrência.
-- `draft_outbox` limita uma entrada por usuário/vaga e um único `gmail_sent_id`.
+- `draft_outbox` limita uma entrada por usuário/vaga e garante unicidade tanto para `gmail_draft_id` quanto para `gmail_sent_id`.
 - Roles chegam ao usuário diretamente ou pela associação grupo → role.
 - Várias listas são armazenadas como JSON textual por compatibilidade com D1/SQLite.
 
 ### Evolução do banco
 
-As migrations cobrem plataforma inicial, alertas, contas locais, fontes, RBAC, URLs e contatos, regras de carreira, análises, contabilidade de IA, importações rastreáveis e suas causas persistidas, notificações, perfil canônico, lotes e idempotência de triagem, outbox, revisão assíncrona, fila Codex e interruptores da automação agendada.
+As migrations cobrem plataforma inicial, alertas, contas locais, fontes, RBAC, URLs e contatos, regras de carreira, análises, contabilidade de IA, importações rastreáveis e suas causas persistidas, notificações, perfil canônico, lotes e idempotência de triagem, outbox, revisão assíncrona, fila Codex, interruptores da automação agendada e heartbeats operacionais.
 
 ## 11. Autenticação, autorização e segurança
 
@@ -503,6 +506,8 @@ Perfis iniciais:
 | `Revalidar fontes` | segunda, 06:00 UTC, manual | chama a revalidação do ambiente de produção |
 
 O deploy tem concorrência exclusiva para produção e não cancela publicação em andamento. A validação executa build, lint, toda a suíte `*.test.mjs` e a integração RBAC. Antes do Worker, o job aplica migrations, garante as filas de triagem e suas DLQs e configura os segredos privados do Codex e do conector Gmail quando disponíveis.
+
+O centro operacional apresenta a agenda declarada da coleta e da revalidação, além de identificar que a importação Gmail depende do conector externo. As execuções gravam `running`, `completed`, `failed` ou `skipped` em `automation_heartbeats`, com horários e erro sanitizado, permitindo distinguir uma agenda configurada de uma execução realmente observada.
 
 ### Variáveis e segredos operacionais
 
