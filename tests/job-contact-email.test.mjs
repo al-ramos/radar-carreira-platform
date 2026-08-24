@@ -66,6 +66,8 @@ test("triagem permite reutilizar o e-mail já cadastrado para a mesma empresa", 
   assert.match(dashboard, /useCompanyContact: true/);
   assert.match(dashboard, /reuseCompanyContactsInTable/);
   assert.match(dashboard, /tableJobs\.filter\(\(job\) => !job\.contactEmail\)/);
+  const contactFilter = dashboard.match(/<div className="compact-filter-group contact-filter-group">([\s\S]*?)<\/div>\s*<\/div>\s*<div className="compact-filter-group ingestion-filter-group">/)?.[1] ?? "";
+  assert.match(contactFilter, /reuse-company-contacts-filter-action/);
   assert.match(route, /companyContacts/);
   assert.match(route, /useCompanyContact/);
   assert.match(schema, /company_contacts/);

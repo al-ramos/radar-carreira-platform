@@ -2747,6 +2747,17 @@ export default function Dashboard() {
                     {emailMissingCount} {emailMissingCount === 1 ? "vaga sem e-mail" : "vagas sem e-mail"} cadastrado{emailMissingCount === 1 ? "" : "s"} (dentro dos filtros atuais).
                   </span>
                 )}
+                {tableJobs.some((job) => !job.contactEmail) && (
+                  <button
+                    type="button"
+                    className="analysis-toggle-btn reuse-company-contacts-filter-action"
+                    disabled={companyContactsReusing}
+                    onClick={() => void reuseCompanyContactsInTable()}
+                    title="Verifica todas as vagas filtradas sem e-mail e usa o contato já cadastrado para cada empresa."
+                  >
+                    {companyContactsReusing ? "Verificando e-mails…" : "Usar e-mail da empresa (todos)"}
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -2974,11 +2985,6 @@ export default function Dashboard() {
                     <input type="text" placeholder="Filtrar e-mail…" value={tableColumnFilters.contactEmail} onChange={(e) => setTableColumnFilter("contactEmail", e.target.value)} aria-label="Filtrar por e-mail" />
                   </span>
                   <span role="cell" className="job-table-filter-cell job-table-filter-clear-cell">
-                    {tableJobs.some((job) => !job.contactEmail) && (
-                      <button type="button" className="analysis-toggle-btn job-table-reuse-company-contacts" disabled={companyContactsReusing} onClick={() => void reuseCompanyContactsInTable()} title="Verifica todas as vagas filtradas sem e-mail e usa o contato já cadastrado para cada empresa.">
-                        {companyContactsReusing ? "Verificando e-mails…" : "Usar e-mail da empresa (todos)"}
-                      </button>
-                    )}
                     {activeTableColumnFilterCount > 0 && <button type="button" className="job-table-filter-clear" onClick={clearTableColumnFilters}>Limpar ({activeTableColumnFilterCount})</button>}
                   </span>
                 </div>
