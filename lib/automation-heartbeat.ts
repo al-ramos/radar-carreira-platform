@@ -1,4 +1,3 @@
-import { eq } from "drizzle-orm";
 import { getDb } from "../db/index";
 import { automationHeartbeats } from "../db/schema";
 
