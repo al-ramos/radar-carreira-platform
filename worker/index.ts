@@ -116,6 +116,11 @@ type TriageQueueMessage = {
   jobId: string;
   run: Record<string, unknown>;
 };
+type ScheduledTriageQueueMessage = {
+  kind: "scheduled-triage";
+  run: { sourceId: string; dateScope: "received"; aiMode: "ambiguous" | "off"; batchSize: number };
+  continuation: number;
+};
 type AiReviewQueueMessage = { kind: "ai-review"; reviewId: string; chunkId?: string; action: "chunk" | "consolidate" };
 
 type QueueMessage = {
@@ -193,11 +198,14 @@ const worker = {
       const result = await response.clone().json().catch(() => null) as { accepted?: unknown } | null;
       if (typeof result?.accepted === "number") {
         ctx.waitUntil(
-          handler.fetch(new Request("https://collector.internal/api/triage/run", {
-            method: "POST",
-            headers: { "content-type": "application/json", "x-radar-collector-authenticated": "1" },
-            body: JSON.stringify({ trigger: "schedule", sourceId: pushImportSourceId, dateScope: "received", aiMode: "ambiguous" }),
-          }), env, ctx).catch(() => undefined),
+          // Uma importação pode conter centenas de vagas. A Queue preserva
+          // o limite de 10 por execução e permite continuar sem estourar o
+          // tempo da requisição de coleta.
+          env.TRIAGE_QUEUE.send({
+            kind: "scheduled-triage",
+            run: { sourceId: pushImportSourceId, dateScope: "received", aiMode: "ambiguous", batchSize: 10 },
+            continuation: 0,
+          }).catch(() => undefined),
         );
       }
     }
@@ -207,10 +215,35 @@ const worker = {
   async queue(batch: { messages: QueueMessage[] }, env: Env, ctx: ExecutionContext): Promise<void> {
     for (const message of batch.messages) {
       try {
-        const payload = message.body as TriageQueueMessage | AiReviewQueueMessage;
+        const payload = message.body as TriageQueueMessage | ScheduledTriageQueueMessage | AiReviewQueueMessage;
         if ("kind" in payload && payload.kind === "ai-review") {
           const response = await handler.fetch(new Request("https://queue.internal/api/triage/ai-review/run", { method: "POST", headers: { "content-type": "application/json", "x-radar-ai-review-authenticated": "1" }, body: JSON.stringify(payload) }), env, ctx);
           if (response.ok) message.ack(); else message.retry({ delaySeconds: 15 });
+          continue;
+        }
+        if ("kind" in payload && payload.kind === "scheduled-triage") {
+          const response = await handler.fetch(new Request("https://queue.internal/api/triage/run", {
+            method: "POST",
+            headers: { "content-type": "application/json", "x-radar-collector-authenticated": "1" },
+            body: JSON.stringify({ trigger: "schedule", ...payload.run }),
+          }), env, ctx);
+          const result = await response.clone().json().catch(() => null) as { processed?: unknown[]; skipped?: number } | null;
+          if (!response.ok) {
+            message.retry({ delaySeconds: 15 });
+            continue;
+          }
+          // A primeira rodada usa IA somente para as ambiguidades (máximo 10
+          // por importação). As continuações selecionam apenas vagas ainda
+          // sem análise, evitando repetir falhas de IA e avançando no lote.
+          const handled = (Array.isArray(result?.processed) ? result.processed.length : 0) + (result?.skipped ?? 0);
+          if (handled >= payload.run.batchSize && payload.continuation < 99) {
+            await env.TRIAGE_QUEUE.send({
+              kind: "scheduled-triage",
+              run: { ...payload.run, aiMode: "off" },
+              continuation: payload.continuation + 1,
+            } satisfies ScheduledTriageQueueMessage);
+          }
+          message.ack();
           continue;
         }
         const response = await handler.fetch(new Request("https://queue.internal/api/triage/run", {
