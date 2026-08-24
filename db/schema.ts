@@ -144,7 +144,7 @@ export const triageDeduplication = sqliteTable("triage_deduplication", {
 export const draftOutbox = sqliteTable("draft_outbox", {
   id: text("id").primaryKey(), userId: text("user_id").notNull(), jobId: text("job_id").notNull().references(() => jobs.id), historyId: text("history_id").notNull().references(() => triageHistory.id),
   status: text("status", { enum: ["pending", "drafted", "sent", "failed", "cancelled"] }).notNull().default("pending"),
-  gmailDraftId: text("gmail_draft_id"), draftSubject: text("draft_subject"), gmailSentId: text("gmail_sent_id"), sentAt: integer("sent_at", { mode: "timestamp_ms" }), error: text("error"),
+  gmailDraftId: text("gmail_draft_id"), gmailThreadId: text("gmail_thread_id"), draftSubject: text("draft_subject"), gmailSentId: text("gmail_sent_id"), sentAt: integer("sent_at", { mode: "timestamp_ms" }), error: text("error"),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(), updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
 }, t => [uniqueIndex("draft_outbox_user_job_unique").on(t.userId, t.jobId), uniqueIndex("draft_outbox_gmail_sent_unique").on(t.gmailSentId), index("draft_outbox_status_idx").on(t.userId, t.status)]);
 

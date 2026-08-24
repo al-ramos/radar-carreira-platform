@@ -43,7 +43,7 @@ export async function POST(request: Request) {
   if (!owner) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   const body = await request.json().catch(() => ({})) as {
     action?: "prepare" | "confirm" | "fail" | "health" | "sentCandidates" | "reconcileSent";
-    outboxId?: string; gmailDraftId?: string; gmailSentId?: string; subject?: string; to?: string; sentAt?: string;
+    outboxId?: string; gmailDraftId?: string; gmailThreadId?: string; gmailSentId?: string; subject?: string; to?: string; sentAt?: string;
     error?: string; limit?: number; retryFailed?: boolean; connectorVersion?: string; outboxIds?: string[];
   };
   const db = getDb();
@@ -68,6 +68,7 @@ export async function POST(request: Request) {
       externalId: jobs.externalId,
       contactSubject: jobs.contactSubject,
       draftSubject: draftOutbox.draftSubject,
+      gmailThreadId: draftOutbox.gmailThreadId,
       draftedAt: draftOutbox.updatedAt,
     }).from(draftOutbox)
       .innerJoin(jobs, eq(draftOutbox.jobId, jobs.id))
@@ -76,7 +77,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       candidates: candidates.flatMap((item) => {
         const to = normalizeContactEmail(item.to);
-        return to ? [{ outboxId: item.outboxId, to, subject: subjectFor(item), draftedAt: item.draftedAt.toISOString() }] : [];
+        return to ? [{ outboxId: item.outboxId, to, subject: subjectFor(item), gmailThreadId: item.gmailThreadId, draftedAt: item.draftedAt.toISOString() }] : [];
       }),
       sent: false,
     });
@@ -91,6 +92,7 @@ export async function POST(request: Request) {
       id: draftOutbox.id,
       status: draftOutbox.status,
       gmailSentId: draftOutbox.gmailSentId,
+      gmailThreadId: draftOutbox.gmailThreadId,
       draftSubject: draftOutbox.draftSubject,
       contactEmail: jobs.contactEmail,
       contactSubject: jobs.contactSubject,
@@ -108,7 +110,8 @@ export async function POST(request: Request) {
     const expectedTo = normalizeContactEmail(item.contactEmail);
     const expectedSubject = subjectFor(item);
     const sentAt = parseSentAt(body.sentAt);
-    if (!expectedTo || normalizeContactEmail(body.to) !== expectedTo || body.subject?.trim() !== expectedSubject || !sentAt) {
+    const matchesStoredThread = Boolean(item.gmailThreadId && body.gmailThreadId === item.gmailThreadId);
+    if (!expectedTo || normalizeContactEmail(body.to) !== expectedTo || (!matchesStoredThread && body.subject?.trim() !== expectedSubject) || !sentAt) {
       return NextResponse.json({ error: "A mensagem enviada não corresponde ao destinatário, assunto e data esperados" }, { status: 409 });
     }
     await db.update(draftOutbox).set({ status: "sent", gmailSentId: body.gmailSentId.slice(0, 500), sentAt, error: null, updatedAt: new Date() }).where(eq(draftOutbox.id, item.id));
@@ -128,7 +131,7 @@ export async function POST(request: Request) {
     if (item.status === "drafted" || item.status === "sent") return NextResponse.json({ ok: true, changed: false, status: item.status });
     if (body.action === "confirm") {
       if (!body.gmailDraftId) return NextResponse.json({ error: "Identificador do rascunho Gmail obrigatório" }, { status: 400 });
-      await db.update(draftOutbox).set({ status: "drafted", gmailDraftId: body.gmailDraftId, draftSubject: body.subject?.trim().slice(0, 500) || null, error: null, updatedAt: new Date() }).where(eq(draftOutbox.id, item.id));
+      await db.update(draftOutbox).set({ status: "drafted", gmailDraftId: body.gmailDraftId, gmailThreadId: body.gmailThreadId?.slice(0, 500) || null, draftSubject: body.subject?.trim().slice(0, 500) || null, error: null, updatedAt: new Date() }).where(eq(draftOutbox.id, item.id));
       return NextResponse.json({ ok: true, changed: true, status: "drafted" });
     }
     await db.update(draftOutbox).set({ status: "failed", error: (body.error ?? "Falha ao criar rascunho").slice(0, 1000), updatedAt: new Date() }).where(eq(draftOutbox.id, item.id));

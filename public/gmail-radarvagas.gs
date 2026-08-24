@@ -46,6 +46,7 @@ function instalarColetaDiaria() {
 }
 
 const RADAR_DRAFT_CONNECTOR_VERSION = 'radar-drafts-v2';
+const RADAR_SENT_RECONCILIATION_HANDLER = 'reconciliarEnviosAgendadosRadar';
 
 // Executa manualmente ou por gatilho. Nunca envia mensagens: apenas cria ou
 // reaproveita rascunhos que já foram aprovados e enfileirados pelo Radar.
@@ -70,7 +71,8 @@ function criarRascunhosRadar(options) {
           return message.getTo().toLowerCase() === item.to.toLowerCase() && message.getSubject() === item.subject;
         });
         const draft = existing || GmailApp.createDraft(item.to, item.subject, item.body);
-        const confirm = confirmarRascunhoRadar(secret, item.outboxId, draft.getId(), item.subject);
+        const gmailThreadId = draft.getMessage().getThread().getId();
+        const confirm = confirmarRascunhoRadar(secret, item.outboxId, draft.getId(), item.subject, gmailThreadId);
         if (confirm.getResponseCode() >= 300) throw new Error(confirm.getContentText());
         processed += 1;
       } catch (error) {
@@ -135,10 +137,34 @@ function executarRascunhosPendentesRadar() {
   reconciliarEnviosManuaisRadar();
 }
 
-function confirmarRascunhoRadar(secret, outboxId, gmailDraftId, subject) {
+// Instala uma verificação leve e independente da criação de rascunhos. Ela
+// lê apenas a pasta Enviados e atualiza o Radar quando encontra evidência de
+// uma mensagem já enviada manualmente; nunca cria ou envia e-mails.
+function instalarVerificacaoEnviosRadar() {
+  ScriptApp.getProjectTriggers()
+    .filter(trigger => trigger.getHandlerFunction() === RADAR_SENT_RECONCILIATION_HANDLER)
+    .forEach(trigger => ScriptApp.deleteTrigger(trigger));
+  ScriptApp.newTrigger(RADAR_SENT_RECONCILIATION_HANDLER).timeBased().everyMinutes(15).create();
+  console.log('Verificação de envios instalada: a cada 15 minutos. Nenhum e-mail será criado ou enviado.');
+}
+
+function removerVerificacaoEnviosRadar() {
+  ScriptApp.getProjectTriggers()
+    .filter(trigger => trigger.getHandlerFunction() === RADAR_SENT_RECONCILIATION_HANDLER)
+    .forEach(trigger => ScriptApp.deleteTrigger(trigger));
+  console.log('Verificação automática de envios removida.');
+}
+
+function reconciliarEnviosAgendadosRadar() {
+  const confirmed = reconciliarEnviosManuaisRadar();
+  console.log(`Verificação automática concluída: ${confirmed} envio(s) confirmado(s). Nenhum e-mail foi criado ou enviado.`);
+  return confirmed;
+}
+
+function confirmarRascunhoRadar(secret, outboxId, gmailDraftId, subject, gmailThreadId) {
   return UrlFetchApp.fetch(`${radarUrl()}/api/cron/drafts`, {
     method:'post',contentType:'application/json',headers:{Authorization:`Bearer ${secret}`},
-    payload:JSON.stringify({action:'confirm',outboxId:outboxId,gmailDraftId:gmailDraftId,subject:subject}),muteHttpExceptions:true
+    payload:JSON.stringify({action:'confirm',outboxId:outboxId,gmailDraftId:gmailDraftId,gmailThreadId:gmailThreadId,subject:subject}),muteHttpExceptions:true
   });
 }
 
@@ -170,7 +196,7 @@ function reconciliarEnviosManuaisRadar(options) {
       method:'post',contentType:'application/json',headers:{Authorization:`Bearer ${secret}`},
       payload:JSON.stringify({
         action:'reconcileSent',outboxId:candidate.outboxId,gmailSentId:message.getId(),
-        to:candidate.to,subject:candidate.subject,sentAt:message.getDate().toISOString(),
+        to:candidate.to,subject:message.getSubject(),gmailThreadId:candidate.gmailThreadId,sentAt:message.getDate().toISOString(),
         connectorVersion:RADAR_DRAFT_CONNECTOR_VERSION
       }),muteHttpExceptions:true
     });
@@ -187,11 +213,18 @@ function reconciliarEnviosManuaisRadar(options) {
 function encontrarMensagemEnviadaRadar(candidate) {
   const escapedSubject = String(candidate.subject || '').replace(/["\\]/g, ' ');
   const since = new Date(candidate.draftedAt).getTime() - 60 * 1000;
-  const query = `in:sent to:${candidate.to} subject:"${escapedSubject}"`;
-  const messages = GmailApp.search(query, 0, 20).flatMap(thread => thread.getMessages());
+  let messages = [];
+  if (candidate.gmailThreadId) {
+    try { messages = GmailApp.getThreadById(candidate.gmailThreadId).getMessages(); }
+    catch (error) { console.warn(`Conversa Gmail não encontrada para ${candidate.outboxId}: ${String(error)}`); }
+  }
+  if (!messages.length) {
+    const query = `in:sent to:${candidate.to} subject:"${escapedSubject}"`;
+    messages = GmailApp.search(query, 0, 20).flatMap(thread => thread.getMessages());
+  }
   return messages
     .filter(message => message.getDate().getTime() >= since)
-    .filter(message => message.getSubject() === candidate.subject)
+    .filter(message => candidate.gmailThreadId || message.getSubject() === candidate.subject)
     .filter(message => extrairDestinatarioUnicoRadar(message.getTo()) === candidate.to.toLowerCase())
     .sort((left, right) => right.getDate().getTime() - left.getDate().getTime())[0] || null;
 }
