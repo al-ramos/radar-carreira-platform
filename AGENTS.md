@@ -5,6 +5,14 @@
 - Preserve alterações locais não relacionadas e nunca as inclua silenciosamente no commit.
 - Se a publicação estiver bloqueada por testes, autenticação, conflito ou falha do workflow, não ignore o bloqueio: corrija-o quando estiver no escopo ou informe claramente o impedimento.
 
+## Publicação com alterações locais pendentes
+
+- Antes de editar e antes de publicar, registre `git status --short` e confirme a fonte de verdade do componente.
+- Se houver alterações locais não relacionadas, publique a entrega a partir de um clone limpo ou `git worktree` separado e sincronizado. Leve para ele somente os arquivos validados.
+- Não use o índice principal para misturar uma entrega com mudanças já preparadas. Um índice temporário é último recurso e requer verificar antes se não há processos Git concorrentes.
+- Diante de um arquivo `.git/index.lock` ou de lock de índice em uso, não encerre processos Git nem remova locks sem confirmação explícita da pessoa usuária. Aguarde, identifique o processo ou use um clone/worktree novo.
+- Não declare publicação concluída até confirmar commit, push e o resultado operacional aplicável; para extensões Chrome locais, informe também que o código enviado só entra em uso após recarregar a pasta no `chrome://extensions`.
+
 ## Padrões operacionais permanentes
 
 - Registre no card correspondente do Notion toda correção, entrega funcional ou incidente: contexto, causa, evidências, correção aplicada, validação e próximo passo.
