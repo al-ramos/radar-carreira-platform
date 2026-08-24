@@ -63,6 +63,7 @@ type CollectorStatusPayload = {
 };
 
 type ImportDetails = {
+  traceId: string;
   valid: number;
   invalid: number;
   invalidReasons: Record<string, number>;
@@ -72,6 +73,28 @@ type ImportDetails = {
 };
 
 const serializeDetails = (details: ImportDetails) => JSON.stringify(details);
+
+/**
+ * A extensão não tem acesso aos logs do Worker. Uma falha antes de o D1
+ * aceitar a execução (por exemplo, indisponibilidade do banco) não deixa um
+ * `import_runs` para consultar. O trace liga a resposta mostrada no Chrome
+ * ao evento estruturado emitido no log operacional, sem registrar a chave do
+ * coletor nem o conteúdo das vagas.
+ */
+function unavailableCollectorResponse(traceId: string, sourceId: string, error: unknown) {
+  const detail = error instanceof Error ? error.message.slice(0, 500) : "Falha desconhecida";
+  console.error(JSON.stringify({
+    event: "collector_import_unavailable",
+    traceId,
+    sourceId,
+    detail,
+    occurredAt: new Date().toISOString(),
+  }));
+  return json(
+    { error: `O Radar não conseguiu registrar a importação agora. Referência: ${traceId}. Tente novamente em instantes.`, traceId },
+    { status: 503, headers: { "x-radar-trace-id": traceId } },
+  );
+}
 
 async function recordCollectorStatus(
   db: ReturnType<typeof getDb>,
@@ -163,7 +186,7 @@ export async function OPTIONS() {
   return new Response(null, { status: 204, headers: CORS_HEADERS });
 }
 
-export async function POST(request: Request, { params }: { params: Promise<{ sourceId: string }> }) {
+async function importCollectorJobs(request: Request, { params }: { params: Promise<{ sourceId: string }> }, traceId: string) {
   const { sourceId } = await params;
   const sourceName = KNOWN_SOURCES[sourceId];
   if (!sourceName) return json({ error: "Fonte de coleta desconhecida" }, { status: 404 });
@@ -207,6 +230,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ sou
   }));
   const duplicateRows = filtered.accepted.length - entries.length;
   const importDetails: ImportDetails = {
+    traceId,
     valid: items.length,
     invalid: input.rejected,
     invalidReasons: input.reasons,
@@ -242,7 +266,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ sou
       const finishedAt = new Date();
       await db.update(jobSources).set({ lastRunAt: finishedAt, lastSuccessAt: finishedAt, lastError: null, consecutiveFailures: 0 }).where(eq(jobSources.id, sourceId));
       await notifyImportRun(db, { runId, source: sourceName, status: "completed", received: rawItems.length, valid: items.length, invalid: input.rejected, invalidReasons: input.reasons, rejectedProfile: filtered.rejected, inserted: 0, updated: 0, duplicates: 0 }).catch(() => undefined);
-      return json({ ok: true, runId, accepted: 0, received: rawItems.length, valid: items.length, invalid: input.rejected, invalidReasons: input.reasons, duplicates: 0, rejected: filtered.rejected, inserted: 0, updated: 0, requiredStacks: filtered.requiredStacks, stackMatchMode: filtered.stackMatchMode, message: "Nenhuma vaga atende ao perfil de stacks obrigatórias" });
+      return json({ ok: true, traceId, runId, accepted: 0, received: rawItems.length, valid: items.length, invalid: input.rejected, invalidReasons: input.reasons, duplicates: 0, rejected: filtered.rejected, inserted: 0, updated: 0, requiredStacks: filtered.requiredStacks, stackMatchMode: filtered.stackMatchMode, message: "Nenhuma vaga atende ao perfil de stacks obrigatórias" });
     }
     const existing = new Set<string>();
     for (const batch of chunks(entries.map((entry) => entry.fp), LOOKUP_BATCH_SIZE)) {
@@ -299,7 +323,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ sou
     const finishedAt = new Date();
     await db.update(jobSources).set({ lastRunAt: finishedAt, lastSuccessAt: finishedAt, lastError: null, consecutiveFailures: 0 }).where(eq(jobSources.id, sourceId));
     await notifyImportRun(db, { runId, source: sourceName, status: "completed", received: rawItems.length, valid: items.length, invalid: input.rejected, invalidReasons: input.reasons, rejectedProfile: filtered.rejected, inserted, updated, duplicates: duplicateRows }).catch(() => undefined);
-    return json({ ok: true, runId, accepted: filtered.accepted.length, received: rawItems.length, valid: items.length, invalid: input.rejected, invalidReasons: input.reasons, duplicates: duplicateRows, rejected: filtered.rejected, inserted, updated, requiredStacks: filtered.requiredStacks, stackMatchMode: filtered.stackMatchMode });
+    return json({ ok: true, traceId, runId, accepted: filtered.accepted.length, received: rawItems.length, valid: items.length, invalid: input.rejected, invalidReasons: input.reasons, duplicates: duplicateRows, rejected: filtered.rejected, inserted, updated, requiredStacks: filtered.requiredStacks, stackMatchMode: filtered.stackMatchMode });
   } catch (error) {
     const detail = error instanceof Error ? error.message : "Falha desconhecida durante a gravação";
     await db
@@ -309,8 +333,18 @@ export async function POST(request: Request, { params }: { params: Promise<{ sou
       .catch(() => undefined);
     await notifyImportRun(db, { runId, source: sourceName, status: "failed", received: rawItems.length, valid: items.length, invalid: input.rejected, invalidReasons: input.reasons, rejectedProfile: filtered.rejected, inserted, updated, duplicates: duplicateRows, error: detail.slice(0, 300) }).catch(() => undefined);
     return json(
-      { error: "A importação foi interrompida. Reenvie o mesmo lote para concluir as vagas pendentes.", runId, inserted, updated },
+      { error: `A importação foi interrompida. Referência: ${traceId}. Reenvie o mesmo lote para concluir as vagas pendentes.`, traceId, runId, inserted, updated },
       { status: 500 },
     );
+  }
+}
+
+export async function POST(request: Request, context: { params: Promise<{ sourceId: string }> }) {
+  const traceId = crypto.randomUUID();
+  const sourceId = await context.params.then(({ sourceId }) => sourceId).catch(() => "unknown");
+  try {
+    return await importCollectorJobs(request, { params: Promise.resolve({ sourceId }) }, traceId);
+  } catch (error) {
+    return unavailableCollectorResponse(traceId, sourceId, error);
   }
 }
