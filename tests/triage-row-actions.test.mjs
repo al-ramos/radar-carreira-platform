@@ -49,6 +49,8 @@ test("triagem permite ações avulsas por vaga sem contornar os guardrails", asy
   assert.match(dashboard, /openJobInRadar=\{\(job\)/);
   assert.match(dashboard, /setQuery\(job\.externalId \?\? job\.jobId\)/);
   assert.match(dashboard, /setSourceFilter\(job\.jobSource \?\? "all"\)/);
+  assert.match(dashboard, /\$\{j\.id\} \$\{j\.externalId \?\? ""\}/);
+  assert.match(await read("../app/api/jobs/route.ts"), /eq\(jobs\.id, searchQuery\)/);
   assert.match(styles, /triage-selection-actions/);
   assert.match(styles, /triage-row-actions/);
   assert.match(styles, /triage-job-link/);

@@ -988,7 +988,7 @@ export default function Dashboard() {
         // A busca principal promete código, cargo, empresa ou tecnologia. Não usamos a
         // descrição aqui: palavras comuns no texto longo (como "squad") faziam
         // parecer que o campo não estava filtrando a lista.
-        const text = `${j.externalId ?? ""} ${j.title} ${j.company} ${j.location} ${j.seniority ?? ""} ${j.stack.join(" ")}`.toLowerCase();
+        const text = `${j.id} ${j.externalId ?? ""} ${j.title} ${j.company} ${j.location} ${j.seniority ?? ""} ${j.stack.join(" ")}`.toLowerCase();
         const searchQuery = query.trim().toLowerCase();
         return (
           j.score >= visibleMinScore &&
