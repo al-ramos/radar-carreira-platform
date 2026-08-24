@@ -200,7 +200,7 @@ Quando a pessoa confirma um resultado da IA, do Codex ou do CSV, ele vira o vere
 ### Automação e segurança
 
 - importações push do LinkedIn ou APInfo podem iniciar a triagem logo após a persistência do lote;
-- lotes grandes continuam pela fila até que todas as vagas ainda não analisadas sejam processadas, sem alongar a requisição de importação;
+- lotes grandes continuam pela fila, em blocos de 10 e sem teto fixo de continuações, até que todas as vagas ainda não analisadas sejam processadas, sem alongar a requisição de importação;
 - três interruptores administrativos controlam separadamente a triagem agendada, a entrada na outbox e a criação real do rascunho no Gmail;
 - a automação agendada aceita somente vagas `✅` para rascunho;
 - o Apps Script cria rascunhos e consulta a pasta Enviados, mas nunca envia e-mail;

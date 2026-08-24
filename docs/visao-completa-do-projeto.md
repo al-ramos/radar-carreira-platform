@@ -1,6 +1,6 @@
 # Radar Carreira Platform — visão completa do produto e da arquitetura
 
-> Documento de conhecimento do estado real do repositório em **24 de agosto de 2026**, cobrindo as funcionalidades publicadas até o commit `0edc88a` (`Processa todo lote importado na triagem`).
+> Documento de conhecimento do estado real do repositório em **24 de agosto de 2026**, cobrindo as funcionalidades publicadas até o commit `6c26118` (`Remove limite de continuações da triagem`).
 
 ## Como ler este documento
 
@@ -143,7 +143,7 @@ O dashboard organiza os módulos abaixo:
 
 - O recorte combina fonte, período de 24/72/168 horas ou histórico completo, área, canal de entrada e inclusão opcional de vagas já analisadas.
 - A triagem manual cria um lote e publica cada vaga na Cloudflare Queue; o histórico exibe `queued`, `processing`, `completed`, `failed` ou `skipped`, tentativas, erro e lease.
-- Uma importação push agenda continuações de 10 vagas até processar todo o lote; a primeira rodada pode usar IA para ambiguidades e as seguintes avançam deterministicamente sobre as vagas ainda sem análise.
+- Uma importação push agenda continuações de 10 vagas, sem teto fixo de continuações, até processar todo o lote; a primeira rodada pode usar IA para ambiguidades e as seguintes avançam deterministicamente sobre as vagas ainda sem análise.
 - Uma execução interrompida pode ser sincronizada e retomada sem recriar decisões já concluídas.
 - A idempotência considera usuário, vaga e revisões do perfil, das regras e das instruções.
 - O painel permite selecionar as vagas visíveis ou todas as filtradas, abrir a vaga no Radar, preparar rascunho, consultar IA, preparar para o Codex e conferir envio.
