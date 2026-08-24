@@ -195,8 +195,8 @@ O fluxo de decisão possui quatro caminhos:
 
 1. **Regras determinísticas:** classificação `✅`, `🟡`, `🔴` ou `❌` usando somente o perfil canônico salvo no Radar.
 2. **IA no portal:** consulta assíncrona, dividida em partes e consolidada em segundo plano; o consumo entra no orçamento mensal.
-3. **Codex:** o portal congela o perfil, o pedido e até 50 vagas em uma fila privada, acessível pelo MCP do Radar.
-4. **CSV externo:** a administração pode reimportar até 2.000 vereditos por código externo.
+3. **Codex:** o portal congela o perfil e o pedido em uma fila privada, acessível pelo MCP do Radar. Seleções maiores são enviadas automaticamente em lotes sequenciais de até 50 vagas, respeitando o teto técnico de cada registro.
+4. **CSV externo:** a administração pode reimportar até 2.000 vereditos por código externo. No histórico, as vagas selecionadas também podem ser baixadas em CSV com código, título, status atual e descrição do status.
 
 Quando a pessoa confirma um resultado da IA, do Codex ou do CSV, ele vira o veredito oficial e entra na mesma trilha de histórico. Para liberar um rascunho, o servidor ainda exige `✅` ou `🟡`, ausência de bloqueador, contato válido e aprovação da checagem determinística atual. No LinkedIn, somente `✅` com e-mail explícito admite candidatura por e-mail.
 

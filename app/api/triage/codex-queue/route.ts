@@ -26,7 +26,8 @@ export const dynamic = "force-dynamic";
 // até 3.200 caracteres por vaga), não um limite de token de IA — a fila do
 // Codex não chama IA paga, só grava dados para leitura manual nesta
 // conversa. Lotes maiores que isso arriscam estourar o tamanho prático de
-// uma linha no D1; processe em várias rodadas de "Preparar para o Codex".
+// uma linha no D1. A tela divide automaticamente seleções maiores em vários
+// lotes sequenciais, mantendo este limite por registro da fila.
 const MAX_CODEX_REVIEW_JOBS = 50;
 const channels = new Set(["extension", "email", "connector", "file", "api"]);
 

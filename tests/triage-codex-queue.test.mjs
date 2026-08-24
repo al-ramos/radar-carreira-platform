@@ -18,6 +18,11 @@ test("fila de análise pelo Codex persiste o recorte e oferece consumo protegido
   assert.match(route, /ingestionChannelInput === "all" \? "" : ingestionChannelInput/);
   assert.match(screen, /Preparar para o Codex/);
   assert.match(screen, /\/api\/triage\/codex-queue/);
+  assert.match(screen, /const CODEX_BATCH_SIZE = 50/);
+  assert.match(screen, /Enviando lote \$\{index \+ 1\} de \$\{batches\.length\}/);
+  assert.match(screen, /response\.status === 429/);
+  assert.match(screen, /Baixar CSV/);
+  assert.match(screen, /codigo,titulo,status_atual,descricao_do_status/);
   assert.match(schema, /codexStatus/);
   assert.match(migration, /triage_ai_reviews_codex_queue_idx/);
 });

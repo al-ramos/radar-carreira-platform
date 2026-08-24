@@ -12,6 +12,7 @@ type AiProfile = { name: string | null; seniority: string[]; preferredMode: stri
 type LegacyItem = { jobId: string; veredito: string; motivo: string | null; processedAt: string; title: string; company: string; externalId: string | null; sourceId: string | null; workMode: string | null; location: string | null; sourcePublishedAt: string | null; receivedAt: string; url: string; contactEmail: string | null };
 type FilterOption = { id: string; label: string; count: number };
 const rowClass: Record<string, string> = { "✅": "approved", "🟡": "partial", "❌": "rejected", "🔴": "rejected" };
+const CODEX_BATCH_SIZE = 50;
 const sourceName = (source: string) => source === "apinfo-extension" ? "APInfo" : source === "linkedin-extension" ? "LinkedIn" : source;
 const homePeriodLabel = (period: string) => period === "24" ? "recebidas nas últimas 24h" : period === "72" ? "recebidas nos últimos 3 dias" : period === "168" ? "recebidas nos últimos 7 dias" : "todas as vagas";
 const profileList = (values: string[], fallback: string) => values.length ? values.join(" · ") : fallback;
@@ -321,6 +322,22 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
       setQueueingDrafts(false);
     }
   };
+  const downloadSelectedHistoryCsv = () => {
+    if (!selectedHistory.length) return;
+    const csvCell = (value: string | null | undefined) => `"${(value ?? "").replace(/"/g, '""')}"`;
+    const csv = [
+      "codigo,titulo,status_atual,descricao_do_status",
+      ...selectedHistory.map((item) => [item.externalId ?? item.jobId, item.title, item.verdict || "⚪", item.label || "Não analisada"].map(csvCell).join(",")),
+    ].join("\r\n");
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(new Blob([`\ufeff${csv}`], { type: "text/csv;charset=utf-8" }));
+    link.download = `triagem-vagas-selecionadas-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(link.href);
+    setMessage(`CSV baixado com ${selectedHistory.length} vaga(s) selecionada(s).`);
+  };
   const retryFailedDrafts = async () => {
     if (draftCounts.failed === 0) {
       setMessage(`Nenhuma falha para reprocessar. ${draftCounts.drafted} rascunho(s) já está(ão) pronto(s) para revisão.`);
@@ -398,19 +415,38 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
     if (jobIds?.length === 1) { setActiveCodexJobId(jobIds[0]); setCodexJobStatus("preparing"); }
     setMessage(`Preparando ${jobIds ? "a seleção de" : "o recorte de"} ${aiCount} vaga(s) para a análise no Codex…`);
     try {
-      const response = await fetch("/api/triage/codex-queue", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ sourceId: actionSourceId, homePeriod: actionPeriod, roleArea: actionArea, ingestionChannel: actionChannel, includeTriaged: reprocess, jobIds: jobIds ?? undefined, prompt: aiPrompt }),
-      });
-      const result = await readJsonResponse<{ id: string; queued?: number; status?: CodexQueueItem["status"]; error?: string }>(response, "A preparação para o Codex");
-      if (!response.ok) throw new Error(result.error ?? "Não foi possível preparar a análise para o Codex.");
+      const batches = jobIds ? Array.from({ length: Math.ceil(jobIds.length / CODEX_BATCH_SIZE) }, (_, index) => jobIds.slice(index * CODEX_BATCH_SIZE, (index + 1) * CODEX_BATCH_SIZE)) : [undefined];
+      let queued = 0;
+      const created: CodexQueueItem[] = [];
+      for (let index = 0; index < batches.length; index += 1) {
+        const batchJobIds = batches[index];
+        let response: Response | null = null;
+        let result: { id: string; queued?: number; status?: CodexQueueItem["status"]; error?: string } | null = null;
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          setMessage(`Enviando lote ${index + 1} de ${batches.length} para a fila do Codex (${batchJobIds?.length ?? aiCount} vaga(s))…`);
+          response = await fetch("/api/triage/codex-queue", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ sourceId: actionSourceId, homePeriod: actionPeriod, roleArea: actionArea, ingestionChannel: actionChannel, includeTriaged: reprocess, jobIds: batchJobIds, prompt: aiPrompt }),
+          });
+          if (response.status === 429) {
+            const retryAfter = Number(response.headers.get("retry-after"));
+            if (attempt < 2) await new Promise((resolve) => window.setTimeout(resolve, Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : (attempt + 1) * 1000));
+            continue;
+          }
+          result = await readJsonResponse<{ id: string; queued?: number; status?: CodexQueueItem["status"]; error?: string }>(response, "A preparação para o Codex");
+          break;
+        }
+        if (!response?.ok || !result) throw new Error("A fila do Codex continua limitada no momento. Aguarde alguns instantes e envie novamente os lotes que faltaram.");
+        queued += result.queued ?? batchJobIds?.length ?? 0;
+        created.push({ id: result.id, status: result.status ?? "pending", createdAt: new Date().toISOString(), selection: { filters: { jobIds: batchJobIds } } });
+      }
       if (jobIds?.length === 1) {
         setCodexJobStatus("ready");
-        setCodexQueueItems((items) => [{ id: result.id, status: result.status ?? "pending", createdAt: new Date().toISOString(), selection: { filters: { jobIds } }, ...items.filter((item) => item.id !== result.id) }]);
       }
+      setCodexQueueItems((items) => [...created, ...items.filter((item) => !created.some((review) => review.id === item.id))]);
       setAiPromptOpen(false);
-      setMessage(`${result.queued ?? aiCount} vaga(s) foram preparadas e aguardam a sua solicitação nesta conversa do Codex. Quando o Codex concluir com veredito ✅ ou 🟡, o rascunho é liberado automaticamente.`);
+      setMessage(`${queued} vaga(s) foram preparadas em ${batches.length} lote(s) de até ${CODEX_BATCH_SIZE} e aguardam a sua solicitação nesta conversa do Codex. Quando o Codex concluir com veredito ✅ ou 🟡, o rascunho é liberado automaticamente.`);
     } catch (error) {
       if (jobIds?.length === 1) setCodexJobStatus("failed");
       setMessage(error instanceof Error ? error.message : "Não foi possível preparar a análise para o Codex.");
@@ -723,6 +759,7 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
               {selectedHistory.length > 0 && <div className="triage-selection-actions" aria-live="polite">
                 <span><b>{selectedHistory.length}</b> vaga(s) selecionada(s)</span>
                 <button type="button" className="triage-queue-button" disabled={aiReviewLoading} onClick={() => void openAiPrompt(selectedHistory.map((item) => item.jobId))}>Consultar IA</button>
+                <button type="button" className="triage-queue-button" onClick={downloadSelectedHistoryCsv} title="Baixa código, título, status atual e descrição do status das vagas selecionadas.">Baixar CSV</button>
                 {selectedHistory.length === 1 && selectedHistory[0].draftStatus === "drafted" && <><button type="button" className="triage-queue-button" disabled={reconcilingSentJobId === selectedHistory[0].jobId} onClick={() => void reconcileSentDraft(selectedHistory[0].jobId)}>{reconcilingSentJobId === selectedHistory[0].jobId ? "Consultando Gmail…" : "Atualizar envio"}</button><button type="button" className="triage-queue-button" disabled={reconcilingSentJobId === selectedHistory[0].jobId} onClick={() => void confirmSentDraft(selectedHistory[0].jobId)}>Confirmar envio</button></>}
                 <button type="button" className="triage-queue-button" disabled={queueingDrafts || selectedHistory.length > 100} onClick={() => void queueDrafts(selectedHistory.map((item) => item.jobId))} title={selectedHistory.length > 100 ? "Prepare até 100 vagas por vez." : undefined}>Preparar rascunhos</button>
                 <button type="button" className="triage-selection-clear" onClick={() => setSelectedHistoryJobIds([])}>Limpar seleção</button>
