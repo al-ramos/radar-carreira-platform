@@ -47,6 +47,7 @@ function instalarColetaDiaria() {
 
 const RADAR_DRAFT_CONNECTOR_VERSION = 'radar-drafts-v2';
 const RADAR_SENT_RECONCILIATION_HANDLER = 'reconciliarEnviosAgendadosRadar';
+const RADAR_DRAFT_HANDLER = 'executarRascunhosPendentesRadar';
 
 // Executa manualmente ou por gatilho. Nunca envia mensagens: apenas cria ou
 // reaproveita rascunhos que já foram aprovados e enfileirados pelo Radar.
@@ -124,11 +125,20 @@ function verificarConectorRascunhosRadar() {
   console.log('Conector de rascunhos verificado. Nenhum e-mail foi criado ou enviado.');
 }
 
-// Remove acionadores legados caso algum tenha sido criado em versões anteriores.
-// A criação de rascunhos agora é exclusivamente manual.
+// Instala uma rotina independente para materializar a fila aprovada no Gmail.
+// Ela só cria rascunhos que o Radar já validou; nunca envia e-mails.
+function instalarRascunhosAutomaticosRadar() {
+  ScriptApp.getProjectTriggers()
+    .filter(trigger => trigger.getHandlerFunction() === RADAR_DRAFT_HANDLER)
+    .forEach(trigger => ScriptApp.deleteTrigger(trigger));
+  ScriptApp.newTrigger(RADAR_DRAFT_HANDLER).timeBased().everyMinutes(30).create();
+  console.log('Criação automática de rascunhos instalada: a cada 30 minutos. Nenhum e-mail será enviado.');
+}
+
+// Remove acionadores atuais e legados de criação de rascunhos.
 function removerAgendamentoRascunhosRadar() {
   ScriptApp.getProjectTriggers()
-    .filter(trigger => ['executarTriagemDiariaERascunhos', 'executarRascunhosPendentesRadar'].includes(trigger.getHandlerFunction()))
+    .filter(trigger => ['executarTriagemDiariaERascunhos', RADAR_DRAFT_HANDLER].includes(trigger.getHandlerFunction()))
     .forEach(trigger => ScriptApp.deleteTrigger(trigger));
 }
 

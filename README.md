@@ -246,7 +246,7 @@ O conector atual:
 
 ### Rascunhos de candidatura
 
-Quando a opção **Criar rascunho de verdade no Gmail** estiver ativa, o Radar cria imediatamente o rascunho de uma vaga aprovada (✅), sem bloqueador e com e-mail de contato válido. Isso nunca envia e-mails. Se o conector imediato estiver indisponível, o Worker tenta novamente a fila automaticamente em até 5 minutos e mantém o motivo da última falha visível na vaga.
+Quando a opção **Criar rascunho de verdade no Gmail** estiver ativa, o Radar cria imediatamente o rascunho de uma vaga aprovada (✅), sem bloqueador e com e-mail de contato válido. Isso nunca envia e-mails. Se o conector imediato estiver indisponível, o Worker tenta novamente a fila automaticamente em até 5 minutos e mantém o motivo da última falha visível na vaga. Como contingência adicional, execute `instalarRascunhosAutomaticosRadar` uma única vez no Apps Script: ela cria um acionador a cada 30 minutos para materializar somente os itens já aprovados e pendentes. Também é possível executar `executarRascunhosPendentesRadar` manualmente a qualquer momento.
 
 Para atualizar automaticamente os envios manuais, execute `instalarVerificacaoEnviosRadar` **uma única vez** no Apps Script depois de salvar a versão atual do arquivo. Ela instala um gatilho a cada 15 minutos que consulta somente a pasta **Enviados** e marca no Radar os rascunhos comprovadamente enviados. A rotina não cria rascunhos e não envia e-mails. Para desligá-la, execute `removerVerificacaoEnviosRadar`.
 

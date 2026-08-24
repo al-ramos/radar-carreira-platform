@@ -12,6 +12,8 @@ test("retoma falhas de rascunho sem criar duplicidade ou enviar e-mail", async (
   assert.match(script, /retryFailed:true/);
   assert.match(script, /connectorVersion:RADAR_DRAFT_CONNECTOR_VERSION/);
   assert.match(script, /verificarConectorRascunhosRadar/);
+  assert.match(script, /function instalarRascunhosAutomaticosRadar\(\)/);
+  assert.match(script, /everyMinutes\(30\)/);
   assert.match(script, /GmailApp\.getDrafts\(\)\.find/);
   assert.match(script, /confirm\.getResponseCode\(\) >= 300/);
   assert.doesNotMatch(script, /GmailApp\.sendEmail\(item\./);
