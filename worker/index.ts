@@ -236,7 +236,7 @@ const worker = {
           // por importação). As continuações selecionam apenas vagas ainda
           // sem análise, evitando repetir falhas de IA e avançando no lote.
           const handled = (Array.isArray(result?.processed) ? result.processed.length : 0) + (result?.skipped ?? 0);
-          if (handled >= payload.run.batchSize && payload.continuation < 99) {
+          if (handled >= payload.run.batchSize) {
             await env.TRIAGE_QUEUE.send({
               kind: "scheduled-triage",
               run: { ...payload.run, aiMode: "off" },
