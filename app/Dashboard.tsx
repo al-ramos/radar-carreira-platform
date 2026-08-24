@@ -3867,7 +3867,7 @@ export default function Dashboard() {
         highlightBatchId={triageLogBatchId}
       />}
       {importReportRunId && <ImportRunReport runId={importReportRunId} close={() => setImportReportRunId(null)} />}
-      {monitorOpen && <Monitoring close={() => setMonitorOpen(false)} />}
+      {monitorOpen && <Monitoring close={() => setMonitorOpen(false)} openTriageLog={(batchId) => { setMonitorOpen(false); setTriageLogBatchId(batchId); setTriageOpen(true); }} />}
       {analyticsOpen && <Analytics close={() => setAnalyticsOpen(false)} />}
       {alertsOpen && <AlertCenter close={() => setAlertsOpen(false)} />}
       {importing && (

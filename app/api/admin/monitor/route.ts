@@ -1,4 +1,4 @@
-import { desc } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 import { can } from "../../../../lib/rbac";
@@ -25,7 +25,7 @@ export async function GET() {
     db.select().from(jobSources),
     db.select().from(importRuns).orderBy(desc(importRuns.startedAt)).limit(20),
     db.select().from(triageBatches).orderBy(desc(triageBatches.createdAt)).limit(20),
-    db.select().from(triageBatchItems),
+    db.select({ batchId: triageBatchItems.batchId, jobId: triageBatchItems.jobId, status: triageBatchItems.status, error: triageBatchItems.error, attemptCount: triageBatchItems.attemptCount, updatedAt: triageBatchItems.updatedAt, title: jobs.title, company: jobs.company }).from(triageBatchItems).innerJoin(jobs, eq(triageBatchItems.jobId, jobs.id)),
     db.select({ status: jobs.status }).from(jobs),
     db.select().from(automationHeartbeats),
     db.select().from(databaseFailures).orderBy(desc(databaseFailures.occurredAt)).limit(10),
@@ -59,5 +59,6 @@ export async function GET() {
   const status = alerts.some((alert) => alert.level === "error") ? "attention" : alerts.length ? "warning" : "healthy";
 
   const schedules = [{ id: "collect", label: "Coleta de fontes", cron: "Dias úteis, 08:15 (Brasília)" }, { id: "enrich", label: "Enriquecimento", cron: "Após a coleta" }, { id: "lifecycle", label: "Ciclo de vida", cron: "Após a coleta" }, { id: "revalidate", label: "Revalidação de fontes", cron: "Segundas, 03:00 (Brasília)" }, { id: "email-import", label: "Importação Gmail", cron: null }].map((schedule) => ({ ...schedule, heartbeat: heartbeats.find((heartbeat) => heartbeat.id === schedule.id) ?? null, reason: schedule.cron ? null : "Executada pelo conector Gmail; não há agenda declarada no Radar." }));
-  return NextResponse.json({ status, responseMs: Date.now() - started, summary: { sources: sources.length, enabled: sources.filter((source) => source.enabled).length, active: jobRows.filter((job) => job.status === "active").length, closed: jobRows.filter((job) => job.status !== "active").length, failures: failedOperations.length + dbFailures.length, lastSuccess: operations.find((operation) => operation.status === "completed")?.completedAt ?? null }, alerts, schedules, databaseFailures: dbFailures.map((failure) => ({ ...failure, error: safeError(failure.error), impact: safeError(failure.impact) })), sources: sources.map((source) => ({ ...source, lastError: safeError(source.lastError), stale: staleSources.some((item) => item.id === source.id) })), operations });
+  const triageLogs = batches.map(batch => ({ id: batch.id, status: batch.status, error: safeError(batch.error), items: batchItems.filter(item => item.batchId === batch.id).slice(0, 100).map(item => ({ ...item, error: safeError(item.error) })) }));
+  return NextResponse.json({ status, responseMs: Date.now() - started, summary: { sources: sources.length, enabled: sources.filter((source) => source.enabled).length, active: jobRows.filter((job) => job.status === "active").length, closed: jobRows.filter((job) => job.status !== "active").length, failures: failedOperations.length + dbFailures.length, lastSuccess: operations.find((operation) => operation.status === "completed")?.completedAt ?? null }, alerts, schedules, databaseFailures: dbFailures.map((failure) => ({ ...failure, error: safeError(failure.error), impact: safeError(failure.impact) })), sources: sources.map((source) => ({ ...source, lastError: safeError(source.lastError), stale: staleSources.some((item) => item.id === source.id) })), operations, triageLogs });
 }
