@@ -214,7 +214,7 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
   const toggleHistoryJob = (jobId: string) => setSelectedHistoryJobIds((current) => current.includes(jobId) ? current.filter((id) => id !== jobId) : [...current, jobId]);
   const toggleVisibleHistory = () => setSelectedHistoryJobIds((current) => allVisibleSelected ? current.filter((id) => !visibleHistory.some((item) => item.jobId === id)) : [...new Set([...current, ...visibleHistory.map((item) => item.jobId)])]);
   const draftActionBlocker = (item: HistoryItem) => {
-    if (item.draftStatus) return item.draftStatus === "sent" ? (item.gmailSentId ? "Enviado confirmado pelo Gmail" : "Envio informado manualmente") : item.draftStatus === "drafted" ? "Rascunho pronto" : item.draftStatus === "pending" ? `Aguardando você acionar a criação pela fila. Fila atualizada: ${date(item.draftUpdatedAt ?? item.processedAt)}` : "Reveja a falha antes";
+    if (item.draftStatus) return item.draftStatus === "sent" ? (item.gmailSentId ? "Enviado confirmado pelo Gmail" : "Envio informado manualmente") : item.draftStatus === "drafted" ? "Rascunho pronto" : item.draftStatus === "pending" ? (item.draftError ? `${item.draftError} Próxima tentativa automática: em até 5 minutos.` : `Criação automática em andamento. Fila atualizada: ${date(item.draftUpdatedAt ?? item.processedAt)}`) : "Reveja a falha antes";
     if (item.jobSource === "linkedin-extension") return "LinkedIn não permite rascunho";
     if (item.verdict !== "✅" && item.verdict !== "🟡") return "Exige vaga aderente ou provável";
     if (!item.hasValidContactEmail) return "E-mail válido exigido";

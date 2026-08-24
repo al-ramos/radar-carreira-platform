@@ -156,6 +156,7 @@ const worker = {
     headers.delete("x-radar-triage-queue-authenticated");
     headers.delete("x-radar-triage-user-id");
     headers.delete("x-radar-ai-review-authenticated");
+    headers.delete("x-radar-draft-dispatch-authenticated");
 
     const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
     // A mesma rota aceita sessões do portal. Somente uma chamada com bearer
@@ -211,6 +212,16 @@ const worker = {
     }
 
     return response;
+  },
+  async scheduled(_event: unknown, env: Env, ctx: ExecutionContext): Promise<void> {
+    // A tentativa imediata cobre o caso normal. Este acionador é a rede de
+    // segurança para indisponibilidade transitória do Apps Script/Gmail: ele
+    // só processa itens já aprovados e pendentes e jamais envia mensagens.
+    const response = await handler.fetch(new Request("https://scheduled.internal/api/cron/drafts/dispatch", {
+      method: "POST",
+      headers: { "x-radar-draft-dispatch-authenticated": "1" },
+    }), env, ctx);
+    if (!response.ok) console.error("Falha ao reprocessar a fila automática de rascunhos:", response.status);
   },
   async queue(batch: { messages: QueueMessage[] }, env: Env, ctx: ExecutionContext): Promise<void> {
     for (const message of batch.messages) {

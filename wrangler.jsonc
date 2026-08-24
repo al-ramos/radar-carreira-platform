@@ -26,6 +26,11 @@
   "observability": {
     "enabled": true
   },
+  "triggers": {
+    "crons": [
+      "*/5 * * * *"
+    ]
+  },
   "queues": {
     "producers": [
       {
