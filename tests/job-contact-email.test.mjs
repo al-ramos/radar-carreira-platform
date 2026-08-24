@@ -15,12 +15,13 @@ test("considera ausente um e-mail nulo, indefinido ou vazio", () => {
   assert.equal(normalizeContactEmail("   "), undefined);
 });
 
-test("a tela de detalhes possui um único campo de e-mail e preserva as ações", async () => {
+test("a tela de detalhes permite criar rascunho para qualquer vaga com e-mail cadastrado", async () => {
   const dashboard = await readFile(new URL("../app/Dashboard.tsx", import.meta.url), "utf8");
   assert.equal(dashboard.match(/data-testid="job-contact-email"/g)?.length, 1);
   assert.match(dashboard, /\{selectedJob\.contactEmail && \([\s\S]*?<strong>E-mail:<\/strong>/);
   assert.match(dashboard, /"Copiar e-mail"/);
-  assert.match(dashboard, />\s*✉ Abrir no Outlook\s*</);
+  assert.match(dashboard, /\{selectedJob\.contactEmail && \([\s\S]*?>\s*✉ Criar rascunho de e-mail\s*</);
+  assert.match(dashboard, /Cria uma mensagem pronta para \$\{selectedJob\.contactEmail\}; revise antes de enviar/);
 });
 
 test("candidatar abre a vaga antes de capturar o contato sem bloquear o fluxo", async () => {

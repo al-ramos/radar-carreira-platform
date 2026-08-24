@@ -127,7 +127,7 @@ test("análise personalizada persiste somente vagas elegíveis e prepara orçame
   assert.match(profile, /Como o Radar deve representar você/);
   assert.match(profile, /Limite mensal de tokens/);
   assert.match(dashboard, /persistJobAnalysis/);
-  assert.match(dashboard, /Abrir no Outlook/);
+  assert.match(dashboard, /Criar rascunho de e-mail/);
   assert.match(dashboard, /window\.location\.href = mailto/);
   assert.doesNotMatch(dashboard, /await updateApplicationStatus\(selectedJob, "generated"\)/);
   assert.match(dashboard, /Esta análise é apenas explicativa e não foi adicionada ao acompanhamento/);

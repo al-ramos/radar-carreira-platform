@@ -3484,7 +3484,7 @@ export default function Dashboard() {
                   <button
                     type="button"
                     className="primary-job-action"
-                    title={`Abre seu cliente de e-mail com mensagem pronta para ${selectedJob.contactEmail}`}
+                    title={`Cria uma mensagem pronta para ${selectedJob.contactEmail}; revise antes de enviar`}
                     onClick={() => {
                       const mailto = buildContactMailto(selectedJob);
                       if (mailto) {
@@ -3496,12 +3496,12 @@ export default function Dashboard() {
                           selectedJob,
                           "generated",
                           AUTOMATIC_ACTION_STAGE.open_outlook,
-                          "Outlook aberto e status salvo como Candidatura.",
+                          "Rascunho aberto no cliente de e-mail e status salvo como Candidatura.",
                         );
                       }
                     }}
                   >
-                    ✉ Abrir no Outlook
+                    ✉ Criar rascunho de e-mail
                   </button>
                 )}
                 {selectedApplication?.applicationStatus && (
