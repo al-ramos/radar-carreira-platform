@@ -28,6 +28,8 @@ import { buildApinfoApplicationEmail } from "../lib/application-email";
 import { jobAreaLabel } from "../lib/job-area";
 import { normalizeContactEmail } from "../lib/jobs";
 import { AUTOMATIC_ACTION_STAGE, resolveAutomaticStage } from "../lib/pipeline-stage";
+type ApplicationStatus = "generated" | "sent" | "responded";
+type ReviewVisibility = "pending" | "all";
 type Job = {
   id: string;
   score: number;
@@ -55,6 +57,7 @@ type Job = {
   stack: string[];
   reasons: string[];
   stage: string;
+  applicationStatus?: ApplicationStatus;
 };
 type ApiJob = {
   id: string;
@@ -80,8 +83,8 @@ type ApiJob = {
   description?: string;
   stack?: string[];
   reasons?: string[];
+  applicationStatus?: ApplicationStatus | null;
 };
-type ApplicationStatus = "generated" | "sent" | "responded";
 type JobIntelligence = {
   facts: {
     contract: string; languageRequirement: string; companyType: string; businessDomain: string;
@@ -428,6 +431,7 @@ const adapt = (j: ApiJob): Job => ({
   roleArea: j.roleArea ?? "other",
   sourceName: j.sourceName,
   description: j.description,
+  applicationStatus: j.applicationStatus ?? undefined,
 });
 
 const formatJobDate = (value?: string) =>
@@ -521,6 +525,9 @@ export default function Dashboard() {
    *  preenchido. Quando "all", emailMissingCount (vindo da API, respeitando
    *  os demais filtros ativos) mostra quantas ficariam de fora. */
   const [hasEmailFilter, setHasEmailFilter] = useState<"all" | "yes">("all");
+  // Por padrão, o Radar é uma fila de nova análise: rascunhos e candidaturas
+  // já enviadas ficam fora dela, mas continuam acessíveis pelo filtro.
+  const [reviewVisibility, setReviewVisibility] = useState<ReviewVisibility>("pending");
   const [emailMissingCount, setEmailMissingCount] = useState(0);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [profileMinScore, setProfileMinScore] = useState(60);
@@ -746,6 +753,7 @@ export default function Dashboard() {
       if (receivedFrom) params.set("receivedFrom", new Date(receivedFrom).toISOString());
       if (receivedTo) params.set("receivedTo", new Date(receivedTo).toISOString());
       if (hasEmailFilter !== "all") params.set("hasEmail", hasEmailFilter);
+      params.set("reviewVisibility", reviewVisibility);
       if (debouncedQuery) params.set("q", debouncedQuery);
       // Sempre pedimos o filtro que a pessoa escolheu, mesmo vindo de uma
       // resposta simplificada — quem decide se o pedido é atendido é o
@@ -759,7 +767,7 @@ export default function Dashboard() {
       params.set("sort", sortOrder === "recent" ? "imported" : "score");
       return params.toString();
     },
-    [effectivePeriod, sourceFilter, areaFilter, channelFilter, importRunFilter, ingestionMode, receivedFrom, receivedTo, hasEmailFilter, debouncedQuery, requestedMinScore, pipelineFilter, verdictFilter, sortOrder],
+    [effectivePeriod, sourceFilter, areaFilter, channelFilter, importRunFilter, ingestionMode, receivedFrom, receivedTo, hasEmailFilter, reviewVisibility, debouncedQuery, requestedMinScore, pipelineFilter, verdictFilter, sortOrder],
   );
   useEffect(() => {
     if (!profileReady || profileLoadFailed) return;
@@ -994,6 +1002,7 @@ export default function Dashboard() {
         return (
           j.score >= visibleMinScore &&
           (!searchQuery || text.includes(searchQuery)) &&
+          (reviewVisibility === "all" || !j.applicationStatus) &&
           (pipelineFilter === "all" ||
             (pipelineFilter === "unseen"
               ? !pipelineStageMap.has(j.id)
@@ -1005,6 +1014,7 @@ export default function Dashboard() {
       items,
       query,
       visibleMinScore,
+      reviewVisibility,
       pipelineFilter,
       pipelineStageMap,
       verdictFilter,
@@ -1025,7 +1035,7 @@ export default function Dashboard() {
    * clicar num cabeçalho de coluna ordena só a tabela. Opera sobre a mesma
    * `orderedJobs` (já filtrada pelos controles da tela), então herda busca,
    * aderência mínima, período etc. automaticamente. */
-  const [tableSort, setTableSort] = useState<{ column: "externalId" | "company" | "title" | "score" | "stack" | "location" | "source" | "contactEmail" | "publishedAt"; direction: "asc" | "desc" }>(
+  const [tableSort, setTableSort] = useState<{ column: "externalId" | "company" | "title" | "score" | "stack" | "location" | "source" | "contactEmail" | "applicationStatus" | "publishedAt"; direction: "asc" | "desc" }>(
     { column: "score", direction: "desc" },
   );
   const toggleTableSort = useCallback((column: typeof tableSort.column) => {
@@ -1039,8 +1049,8 @@ export default function Dashboard() {
    * em Modalidade/Veredito/Fonte. Roda em cima da página já carregada
    * (client-side), não chama a API de novo. */
   const [tableColumnFilters, setTableColumnFilters] = useState<{
-    company: string; title: string; mode: string; verdict: string; stack: string; source: string; contactEmail: string; missingContact: boolean;
-  }>({ company: "", title: "", mode: "", verdict: "", stack: "", source: "", contactEmail: "", missingContact: false });
+    company: string; title: string; mode: string; verdict: string; stack: string; source: string; contactEmail: string; applicationStatus: string; missingContact: boolean;
+  }>({ company: "", title: "", mode: "", verdict: "", stack: "", source: "", contactEmail: "", applicationStatus: "", missingContact: false });
   /** Seleção temporária para exportação. Ela não altera o card aberto, o
    * pipeline nem o status da vaga: serve exclusivamente ao relatório. */
   const [exportSelectionIds, setExportSelectionIds] = useState<Set<string>>(() => new Set());
@@ -1048,14 +1058,14 @@ export default function Dashboard() {
     setTableColumnFilters((current) => ({ ...current, [column]: value }));
   }, []);
   const clearTableColumnFilters = useCallback(() => {
-    setTableColumnFilters({ company: "", title: "", mode: "", verdict: "", stack: "", source: "", contactEmail: "", missingContact: false });
+    setTableColumnFilters({ company: "", title: "", mode: "", verdict: "", stack: "", source: "", contactEmail: "", applicationStatus: "", missingContact: false });
   }, []);
   const activeTableColumnFilterCount = Object.values(tableColumnFilters).filter(Boolean).length;
   const tableJobs = useMemo(() => {
     const { column, direction } = tableSort;
     const factor = direction === "asc" ? 1 : -1;
     const filters = tableColumnFilters;
-    const filtered = filters.company || filters.title || filters.mode || filters.verdict || filters.stack || filters.source || filters.contactEmail || filters.missingContact
+    const filtered = filters.company || filters.title || filters.mode || filters.verdict || filters.stack || filters.source || filters.contactEmail || filters.applicationStatus || filters.missingContact
       ? orderedJobs.filter((j) => {
           if (filters.company && !j.company.toLowerCase().includes(filters.company.toLowerCase())) return false;
           if (filters.title && !j.title.toLowerCase().includes(filters.title.toLowerCase())) return false;
@@ -1068,6 +1078,7 @@ export default function Dashboard() {
           if (filters.stack && !j.stack.some((s) => s.toLowerCase().includes(filters.stack.toLowerCase()))) return false;
           if (filters.source && (j.sourceName ?? "") !== filters.source) return false;
           if (filters.contactEmail && !(j.contactEmail ?? "").toLowerCase().includes(filters.contactEmail.toLowerCase())) return false;
+          if (filters.applicationStatus && (j.applicationStatus ?? "none") !== filters.applicationStatus) return false;
           if (filters.missingContact && j.contactEmail) return false;
           return true;
         })
@@ -1086,6 +1097,8 @@ export default function Dashboard() {
           return (left.sourceName ?? "").localeCompare(right.sourceName ?? "", "pt-BR") * factor;
         case "contactEmail":
           return (left.contactEmail ?? "").localeCompare(right.contactEmail ?? "", "pt-BR") * factor;
+        case "applicationStatus":
+          return (left.applicationStatus ?? "").localeCompare(right.applicationStatus ?? "", "pt-BR") * factor;
         case "publishedAt":
           return (new Date(left.sourcePublishedAt ?? 0).getTime() - new Date(right.sourcePublishedAt ?? 0).getTime()) * factor;
         default:
@@ -1266,6 +1279,7 @@ export default function Dashboard() {
     setReceivedFrom("");
     setReceivedTo("");
     setHasEmailFilter("all");
+    setReviewVisibility("pending");
     setPipelineFilter("all");
     setVerdictFilter("all");
   }
@@ -2720,6 +2734,17 @@ export default function Dashboard() {
                   return <option key={id} value={id}>{count > 0 ? `${label} (${count})` : label}</option>;
                 })}
                 </select>
+                <label className="sr-only" htmlFor="review-visibility">Visibilidade de candidaturas por e-mail</label>
+                <select
+                  id="review-visibility"
+                  className="pipeline-filter-select"
+                  value={reviewVisibility}
+                  onChange={(event) => setReviewVisibility(event.target.value as ReviewVisibility)}
+                  aria-label="Visibilidade de rascunhos e candidaturas enviadas"
+                >
+                  <option value="pending">Pendentes de nova análise</option>
+                  <option value="all">Incluir rascunhos e enviadas</option>
+                </select>
               </div>
             </div>
             <div className="compact-filter-group contact-filter-group">
@@ -2930,6 +2955,7 @@ export default function Dashboard() {
                     { column: "stack" as const, label: "Stack" },
                     { column: "source" as const, label: "Fonte" },
                     { column: "contactEmail" as const, label: "E-mail" },
+                    { column: "applicationStatus" as const, label: "Situação" },
                     { column: "publishedAt" as const, label: "Publicada" },
                   ]).map(({ column, label }) => (
                     <button
@@ -2983,6 +3009,15 @@ export default function Dashboard() {
                   </span>
                   <span role="cell" className="job-table-filter-cell job-table-filter-cell-email">
                     <input type="text" placeholder="Filtrar e-mail…" value={tableColumnFilters.contactEmail} onChange={(e) => setTableColumnFilter("contactEmail", e.target.value)} aria-label="Filtrar por e-mail" />
+                  </span>
+                  <span role="cell" className="job-table-filter-cell">
+                    <select value={tableColumnFilters.applicationStatus} onChange={(e) => setTableColumnFilter("applicationStatus", e.target.value)} aria-label="Filtrar por situação da candidatura">
+                      <option value="">Situação</option>
+                      <option value="none">Pendente de análise</option>
+                      <option value="generated">Rascunho</option>
+                      <option value="sent">E-mail enviado</option>
+                      <option value="responded">Resposta recebida</option>
+                    </select>
                   </span>
                   <span role="cell" className="job-table-filter-cell job-table-filter-clear-cell">
                     {activeTableColumnFilterCount > 0 && <button type="button" className="job-table-filter-clear" onClick={clearTableColumnFilters}>Limpar ({activeTableColumnFilterCount})</button>}
@@ -3070,6 +3105,9 @@ export default function Dashboard() {
                             {j.contactEmail}
                           </a>
                         ) : "—"}
+                      </span>
+                      <span role="cell" className="job-table-cell">
+                        {j.applicationStatus === "generated" ? "Rascunho" : j.applicationStatus === "sent" ? "E-mail enviado" : j.applicationStatus === "responded" ? "Resposta recebida" : "Pendente"}
                       </span>
                       <span role="cell" className="job-table-cell job-table-cell-date">
                         {j.sourcePublishedAt ? formatJobDateTime(j.sourcePublishedAt) : j.age}

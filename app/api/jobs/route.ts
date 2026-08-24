@@ -64,6 +64,10 @@ const requestedMinScore = minScoreParam !== null && Number.isFinite(Number(minSc
 ? Math.max(0, Math.min(100, Number(minScoreParam)))
 : 0;
 const pipelineFilter = degradedMode ? "all" : url.searchParams.get("pipeline") ?? "all";
+// A tela principal é uma fila de nova análise. Por padrão, não voltamos a
+// apresentar vagas cujo e-mail já está em rascunho ou foi enviado; a pessoa
+// pode pedir explicitamente para incluí-las de novo.
+const reviewVisibility = url.searchParams.get("reviewVisibility") === "all" ? "all" : "pending";
 const verdictFilter = degradedMode ? "all" : url.searchParams.get("verdict") ?? "all";
 const sort = url.searchParams.get("sort") === "imported" ? "imported" : "score";
 const sourceType = url.searchParams.get("sourceType") ?? "all";
@@ -168,6 +172,12 @@ like(jobs.stack, searchPattern),
 )
 : undefined;
 const pipelineIds = pipeline.map((item) => item.jobId);
+const applicationIds = pipeline
+  .filter((item) => item.applicationStatus === "generated" || item.applicationStatus === "sent" || item.applicationStatus === "responded")
+  .map((item) => item.jobId);
+const applicationVisibilityCondition = reviewVisibility === "pending" && applicationIds.length
+  ? notInArray(jobs.id, applicationIds)
+  : undefined;
 const stageIds = pipeline.filter((item) => item.stage === pipelineFilter).map((item) => item.jobId);
 const pipelineCondition = pipelineFilter === "all"
 ? undefined
@@ -206,7 +216,7 @@ const affinityCandidateCondition = minScore > BASE_TECH_SCORE
   gte(jobs.firstSeenAt, recentAffinityCutoff),
 )
 : undefined;
-const condition = and(exactSourceCondition, roleAreaCondition, channelCondition, importRunCondition, seniorityCondition, searchCondition, pipelineCondition, affinityCandidateCondition);
+const condition = and(exactSourceCondition, roleAreaCondition, channelCondition, importRunCondition, seniorityCondition, searchCondition, pipelineCondition, applicationVisibilityCondition, affinityCandidateCondition);
 // Contagem "sem e-mail" mostrada junto ao checkbox — sempre calculada com os
 // mesmos filtros ativos (fonte, área, canal, importação, busca, pipeline),
 // mas ignorando o próprio filtro de e-mail, para o número não desaparecer
@@ -224,14 +234,15 @@ const exactSourceConditionNoEmailFilter = sourceId === "unidentified"
 ? and(baseConditionWithoutEmailFilter, notLike(jobs.url, "%linkedin.com%"), notLike(jobs.url, "%apinfo.com%"), sql`(${jobs.sourceId} is null or ${jobs.sourceId} != ${"apinfo-extension"})`)
 : baseConditionWithoutEmailFilter;
 const emailMissingCondition = and(
-exactSourceConditionNoEmailFilter,
-noEmailCondition,
+  exactSourceConditionNoEmailFilter,
+  noEmailCondition,
 roleAreaCondition,
 channelCondition,
 importRunCondition,
 seniorityCondition,
-searchCondition,
-pipelineCondition,
+  searchCondition,
+  pipelineCondition,
+  applicationVisibilityCondition,
 );
 
 const rowsQuery = getDb().select({
@@ -275,12 +286,12 @@ total: sql<number>`count(*)`,
 linkedIn: sql<number>`sum(case when ${jobs.url} like ${"%linkedin.com%"} then 1 else 0 end)`,
 apinfo: sql<number>`sum(case when ${jobs.sourceId} = ${"apinfo-extension"} or ${jobs.url} like ${"%apinfo.com%"} then 1 else 0 end)`,
 sources: sql<number>`count(distinct ${jobs.sourceId})`,
-}).from(jobs).where(baseCondition),
+}).from(jobs).where(and(baseCondition, applicationVisibilityCondition)),
 getDb().select({ id: jobs.sourceId, label: jobSources.name, count: sql<number>`count(*)` })
-  .from(jobs).leftJoin(jobSources, eq(jobs.sourceId, jobSources.id)).where(baseCondition)
+  .from(jobs).leftJoin(jobSources, eq(jobs.sourceId, jobSources.id)).where(and(baseCondition, applicationVisibilityCondition))
   .groupBy(jobs.sourceId, jobSources.name).orderBy(asc(jobSources.name)),
-getDb().select({ id: jobs.roleArea, count: sql<number>`count(*)` }).from(jobs).where(baseCondition).groupBy(jobs.roleArea),
-getDb().select({ id: jobs.ingestionChannel, count: sql<number>`count(*)` }).from(jobs).where(baseCondition).groupBy(jobs.ingestionChannel),
+getDb().select({ id: jobs.roleArea, count: sql<number>`count(*)` }).from(jobs).where(and(baseCondition, applicationVisibilityCondition)).groupBy(jobs.roleArea),
+getDb().select({ id: jobs.ingestionChannel, count: sql<number>`count(*)` }).from(jobs).where(and(baseCondition, applicationVisibilityCondition)).groupBy(jobs.ingestionChannel),
 getDb().select({ id: importRuns.id, source: importRuns.source, sourceId: importRuns.sourceId, channel: importRuns.channel, startedAt: importRuns.startedAt, received: importRuns.received, inserted: importRuns.inserted, updated: importRuns.updated, jobs: sql<number>`count(distinct ${jobImportRuns.jobId})` })
   .from(importRuns).innerJoin(jobImportRuns, eq(jobImportRuns.runId, importRuns.id))
   .groupBy(importRuns.id).orderBy(desc(importRuns.startedAt)).limit(30),
@@ -341,6 +352,7 @@ const totalCount = requiresPostFiltering
 ? filtered.length
 : Number(eligibleTotals[0]?.total ?? 0);
 const pageRows = requiresPostFiltering ? filtered.slice(offset, offset + limit) : filtered;
+const applicationStatusByJobId = new Map(pipeline.map((item) => [item.jobId, item.applicationStatus]));
 const result = pageRows.map(({ job, stack, score, reasons, scored }) => ({
 ...job,
 description: "",
@@ -348,6 +360,7 @@ stack,
 score,
 reasons,
 scored,
+applicationStatus: applicationStatusByJobId.get(job.id) ?? null,
 }));
 
 const totalLinkedIn = Number(sourceTotals[0]?.linkedIn ?? 0);
