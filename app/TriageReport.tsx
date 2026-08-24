@@ -325,17 +325,57 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
   const downloadSelectedHistoryCsv = () => {
     if (!selectedHistory.length) return;
     const csvCell = (value: string | null | undefined) => `"${(value ?? "").replace(/"/g, '""')}"`;
-    const jobDescription = (item: HistoryItem) => {
+    const jobDetails = (item: HistoryItem) => {
       let stack: string[] = [];
       try {
         const parsed = JSON.parse(item.stack);
         stack = Array.isArray(parsed) ? parsed.filter((skill): skill is string => typeof skill === "string") : [];
       } catch { /* detalhes legados sem stack */ }
-      return [item.description.trim(), stack.length ? `Stack: ${stack.join(", ")}` : ""].filter(Boolean).join(" · ") || "Detalhes não informados";
+      const text = `${item.title} ${item.description} ${stack.join(" ")}`.toLocaleLowerCase("pt-BR");
+      const evidence = [
+        ["c#", "C#"], [".net", ".NET"], ["dotnet", ".NET"], ["vb.net", "VB.NET"], ["vb6", "VB6"], ["visual basic", "Visual Basic"],
+        ["sql server", "SQL Server"], ["postgresql", "PostgreSQL"], ["mysql", "MySQL"], ["oracle", "Oracle"], ["sqlite", "SQLite"],
+      ].flatMap(([term, label]) => text.includes(term) ? [label] : []);
+      const uniqueEvidence = [...new Set(evidence)];
+      const dotnetInTitle = /(?:c#|\.net|dot\.net|vb\.?net|vb6|visual basic)/i.test(item.title);
+      const technicalRole = /desenvolv|programador|engenheir|backend|fullstack|tech lead|arquiteto/i.test(item.title);
+      const stackValidation = !uniqueEvidence.length
+        ? "Não identificada"
+        : dotnetInTitle || technicalRole
+          ? "Confirmada"
+          : "Secundária";
+      const contract = /\bclt\b/i.test(text) && /\bpj\b/i.test(text) ? "PJ ou CLT" : /\bclt\b/i.test(text) ? "CLT" : /\bpj\b/i.test(text) ? "PJ" : "Não informado";
+      const hybridFrequency = item.description.match(/(?:\d+\s*(?:x|dias?)\s*(?:por\s*)?(?:semana|m[eê]s)|\d+\s*vez(?:es)?\s*(?:por\s*)?m[eê]s)[^.;\n]{0,45}(?:presencial|remoto)|(?:presencial|remoto)[^.;\n]{0,45}(?:\d+\s*(?:x|dias?|vez(?:es)?))/i)?.[0];
+      const modality = /h[ií]brid/i.test(`${item.workMode ?? ""} ${item.description}`)
+        ? `Híbrido${hybridFrequency ? ` — ${hybridFrequency.trim()}` : ""}`
+        : /remot|home office/i.test(`${item.workMode ?? ""} ${item.description}`)
+          ? "Remoto"
+          : /presencial/i.test(`${item.workMode ?? ""} ${item.description}`)
+            ? "Presencial"
+            : item.workMode || "Não informada";
+      const caveats = [
+        stackValidation === "Secundária" ? ".NET/C# aparece como tecnologia de contexto, não como foco explícito da função." : "",
+        !uniqueEvidence.length ? "Sem evidência da sua stack dominada no texto capturado." : "",
+        /ingl[eê]s|espanhol/i.test(text) ? "A descrição menciona idioma em termo evitado do perfil." : "",
+        contract === "Não informado" ? "Contrato não informado." : "",
+      ].filter(Boolean).join(" ") || "Nenhuma ressalva estrutural identificada no texto capturado.";
+      return {
+        company: item.company || "Não informada",
+        location: item.location || "Não informado",
+        modality,
+        contract,
+        stackValidation,
+        evidence: uniqueEvidence.length ? `Evidências: ${uniqueEvidence.join(", ")}.` : "Sem evidência técnica identificada.",
+        caveats,
+        confirmation: item.description.trim() ? "Dados capturados no Radar" : "Descrição ainda não capturada; confirmar na fonte.",
+      };
     };
     const csv = [
-      "codigo;titulo;status;descricao",
-      ...selectedHistory.map((item) => [item.externalId ?? item.jobId, item.title, item.label || "Não analisada", jobDescription(item)].map(csvCell).join(";")),
+      "código;título;empresa;local exato;modalidade;contrato;stack .NET validada;evidências;ressalvas;confirmação",
+      ...selectedHistory.map((item) => {
+        const details = jobDetails(item);
+        return [item.externalId ?? item.jobId, item.title, details.company, details.location, details.modality, details.contract, details.stackValidation, details.evidence, details.caveats, details.confirmation].map(csvCell).join(";");
+      }),
     ].join("\r\n");
     const link = document.createElement("a");
     link.href = URL.createObjectURL(new Blob([`\ufeff${csv}`], { type: "text/csv;charset=utf-8" }));
@@ -767,7 +807,7 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
               {selectedHistory.length > 0 && <div className="triage-selection-actions" aria-live="polite">
                 <span><b>{selectedHistory.length}</b> vaga(s) selecionada(s)</span>
                 <button type="button" className="triage-queue-button" disabled={aiReviewLoading} onClick={() => void openAiPrompt(selectedHistory.map((item) => item.jobId))}>Consultar IA</button>
-                <button type="button" className="triage-queue-button" onClick={downloadSelectedHistoryCsv} title="Baixa código, título, status atual e descrição do status das vagas selecionadas.">Baixar CSV</button>
+                <button type="button" className="triage-queue-button" onClick={downloadSelectedHistoryCsv} title="Baixa o detalhamento de modalidade, contrato, stack .NET, evidências e ressalvas das vagas selecionadas.">Baixar CSV detalhado</button>
                 {selectedHistory.length === 1 && selectedHistory[0].draftStatus === "drafted" && <><button type="button" className="triage-queue-button" disabled={reconcilingSentJobId === selectedHistory[0].jobId} onClick={() => void reconcileSentDraft(selectedHistory[0].jobId)}>{reconcilingSentJobId === selectedHistory[0].jobId ? "Consultando Gmail…" : "Atualizar envio"}</button><button type="button" className="triage-queue-button" disabled={reconcilingSentJobId === selectedHistory[0].jobId} onClick={() => void confirmSentDraft(selectedHistory[0].jobId)}>Confirmar envio</button></>}
                 <button type="button" className="triage-queue-button" disabled={queueingDrafts || selectedHistory.length > 100} onClick={() => void queueDrafts(selectedHistory.map((item) => item.jobId))} title={selectedHistory.length > 100 ? "Prepare até 100 vagas por vez." : undefined}>Preparar rascunhos</button>
                 <button type="button" className="triage-selection-clear" onClick={() => setSelectedHistoryJobIds([])}>Limpar seleção</button>
