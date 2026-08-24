@@ -180,7 +180,9 @@ O conector atual:
 
 ### Rascunhos de candidatura
 
-Os rascunhos de candidatura não são agendados. Depois de colocá-los na fila pelo Radar, abra o Apps Script e execute `executarRascunhosPendentesRadar` manualmente. A função cria os rascunhos pendentes e confere envios feitos por você; ela nunca envia e-mails. Caso uma versão anterior tenha criado esse acionador automaticamente, execute `removerAgendamentoRascunhosRadar` uma vez para removê-lo.
+Quando a opção **Criar rascunho de verdade no Gmail** estiver ativa, o Radar cria imediatamente o rascunho de uma vaga aprovada (✅), sem bloqueador e com e-mail de contato válido. Isso nunca envia e-mails. Se o conector imediato estiver indisponível, a vaga permanece na fila e você pode executar `executarRascunhosPendentesRadar` no Apps Script para criar os rascunhos pendentes e conferir envios feitos por você.
+
+Para atualizar automaticamente os envios manuais, execute `instalarVerificacaoEnviosRadar` **uma única vez** no Apps Script depois de salvar a versão atual do arquivo. Ela instala um gatilho a cada 15 minutos que consulta somente a pasta **Enviados** e marca no Radar os rascunhos comprovadamente enviados. A rotina não cria rascunhos e não envia e-mails. Para desligá-la, execute `removerVerificacaoEnviosRadar`.
 
 ## Coleta de fontes públicas
 

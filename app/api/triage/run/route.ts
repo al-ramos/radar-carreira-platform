@@ -90,24 +90,15 @@ export async function POST(request: Request) {
   if (!userId) return NextResponse.json({ error: "Autenticação necessária" }, { status: 401 });
 
   const db = getDb();
-  // Etapa 1 da automação ponta a ponta: a rotina agendada só roda com o
-  // interruptor ligado em Configurações, e só enfileira rascunho se o
-  // segundo interruptor (mais restritivo) também estiver ligado. Ambos
-  // desligados por padrão até serem validados; evita reprocessar tudo ou
-  // enfileirar rascunhos silenciosamente se alguém ligar a agenda antes de
-  // revisar o comportamento.
-  let scheduledDraftQueueEnabled = false;
-  let scheduledAutoCreateEnabled = false;
+  // A agenda de triagem continua sendo uma opção independente. Já a criação
+  // de rascunhos vale para qualquer origem de aprovação (portal, fila, IA ou
+  // agenda), sempre sob as regras de segurança abaixo.
+  const settings = await db.select({ enabled: platformSettings.scheduledTriageEnabled, draftQueueEnabled: platformSettings.scheduledTriageDraftQueueEnabled, autoCreateEnabled: platformSettings.scheduledTriageAutoCreateEnabled }).from(platformSettings).where(eq(platformSettings.id, "global")).limit(1).then(rows => rows[0]);
+  const draftQueueEnabled = settings?.draftQueueEnabled ?? true;
+  const autoCreateEnabled = draftQueueEnabled && (settings?.autoCreateEnabled ?? true);
   if (run.trigger === "schedule") {
-    const settings = await db.select({ enabled: platformSettings.scheduledTriageEnabled, draftQueueEnabled: platformSettings.scheduledTriageDraftQueueEnabled, autoCreateEnabled: platformSettings.scheduledTriageAutoCreateEnabled }).from(platformSettings).where(eq(platformSettings.id, "global")).limit(1).then(rows => rows[0]);
-    // Sem linha em platform_settings, o padrão é desligado (mesma postura do
-    // schema): nunca inferir "ligado" por ausência de configuração.
+    // Sem linha de parâmetros, a agenda continua desligada por segurança.
     if (!settings?.enabled) return NextResponse.json({ ok: true, skipped: true, message: "Triagem agendada desligada em Configurações" });
-    scheduledDraftQueueEnabled = settings.draftQueueEnabled;
-    // Criar de verdade no Gmail exige a fila ligada também — nunca aciona o
-    // conector sozinho, mesmo que alguém ligue só este interruptor (a UI já
-    // trava isso, mas a rota não confia só na UI).
-    scheduledAutoCreateEnabled = settings.draftQueueEnabled && settings.autoCreateEnabled;
   }
   const profile = await db.select().from(profiles).where(eq(profiles.userId, userId)).limit(1).then(rows => rows[0]);
   if (!profile) return NextResponse.json({ error: "Complete seu perfil antes de iniciar a triagem." }, { status: 412 });
@@ -280,12 +271,9 @@ export async function POST(request: Request) {
       await db.update(triageBatchItems).set({ status: "completed", historyId, leaseOwner: null, leaseUntil: null, updatedAt: now }).where(and(eq(triageBatchItems.batchId, batchId), eq(triageBatchItems.jobId, job.id)));
       await db.update(triageDeduplication).set({ status: "completed", historyId, leaseOwner: null, leaseUntil: null, updatedAt: now }).where(eq(triageDeduplication.idempotencyKey, key));
       const safelyRefined = !aiRefinement.eligible || finalSource === "ai";
-      // Etapa 2 da automação ponta a ativação: o caminho agendado só
-      // enfileira rascunho para veredito ✅ Aprovada. 🟡 Provável fica
-      // parada no histórico para revisão sua (ou pedido explícito de
-      // refino à IA) — a fila manual do portal continua aceitando ✅ e 🟡
-      // como sempre, isSafeForDraft não muda para ninguém além daqui.
-      if (run.trigger === "schedule" && scheduledDraftQueueEnabled && safelyRefined && finalVerdict.result.emoji === "✅" && isSafeForDraft({
+      // A automação só trata ✅ como aprovação. 🟡 fica no histórico para
+      // revisão humana, mesmo que a fila manual ainda aceite esse veredito.
+      if (draftQueueEnabled && safelyRefined && finalVerdict.result.emoji === "✅" && isSafeForDraft({
         verdict: finalVerdict.result.emoji,
         blocker: finalVerdict.blocker,
         contactEmail: job.contactEmail,
@@ -322,7 +310,7 @@ export async function POST(request: Request) {
   // triagem — a vaga já está salva como "pending" e continua disponível
   // para a ação manual de sempre.
   let immediateDraft: { requested: boolean; created?: number; reason?: string } | null = null;
-  if (scheduledAutoCreateEnabled && scheduledOutboxIds.length) {
+  if (autoCreateEnabled && scheduledOutboxIds.length) {
     try {
       immediateDraft = await requestImmediateDraftCreation(scheduledOutboxIds);
     } catch (error) {
@@ -342,7 +330,7 @@ export async function POST(request: Request) {
       rejected: processed.filter(item => item.verdict === "NAO_BATE").length,
       draftsQueued: scheduledDraftsQueued,
       draftsCreated: immediateDraft?.created ?? 0,
-      gmailReason: scheduledAutoCreateEnabled && scheduledOutboxIds.length && !immediateDraft?.requested ? immediateDraft?.reason ?? "conector não confirmou a criação" : null,
+      gmailReason: autoCreateEnabled && scheduledOutboxIds.length && !immediateDraft?.requested ? immediateDraft?.reason ?? "conector não confirmou a criação" : null,
     }).catch(() => undefined);
   }
 
