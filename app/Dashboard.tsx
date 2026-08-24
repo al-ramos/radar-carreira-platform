@@ -2323,7 +2323,7 @@ export default function Dashboard() {
           {visiblePrimaryNav.map((n) => (
             <button
               key={n}
-              className={`${active === n ? "active " : ""}${n === "Prioridades" ? "priority-nav-item" : ""}`}
+              className={`${active === n ? "active " : ""}${n === "Prioridades" ? "priority-nav-item" : ""}${n === "Monitoramento" ? "monitor-nav-item" : ""}`}
               onClick={() => {
                 setActive(n);
                 if (n === "Prioridades") setTriageOpen(true);
