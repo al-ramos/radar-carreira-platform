@@ -234,6 +234,9 @@ export const platformSettings = sqliteTable("platform_settings", {
   // Etapa 1 da automação ponta a ponta: liga a triagem agendada (avaliação
   // por regras + IA ambígua). Desligado por padrão até a rotina ser validada.
   scheduledTriageEnabled: integer("scheduled_triage_enabled", { mode: "boolean" }).notNull().default(false),
+  // Limite por rodada da triagem agendada. As continuações pela Queue usam o
+  // mesmo valor, sem prender a importação que disparou a rotina.
+  scheduledTriageBatchSize: integer("scheduled_triage_batch_size").notNull().default(10),
   // Etapa 2/3: só quando ligado a triagem agendada pode inserir vagas seguras
   // na fila de rascunho. Fica desligado enquanto ✅ e 🟡 não forem separados.
   scheduledTriageDraftQueueEnabled: integer("scheduled_triage_draft_queue_enabled", { mode: "boolean" }).notNull().default(false),

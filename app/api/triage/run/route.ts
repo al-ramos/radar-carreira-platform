@@ -20,6 +20,8 @@ export const dynamic = "force-dynamic";
 const AI_FACTS_VERSION = "job-facts-v1";
 const RESERVED_OUTPUT_TOKENS = 1200;
 const MAX_AI_PER_BATCH = 10;
+const DEFAULT_SCHEDULED_TRIAGE_BATCH_SIZE = 10;
+const MAX_SCHEDULED_TRIAGE_BATCH_SIZE = 100;
 
 async function finishQueuedBatch(batchId: string) {
   const db = getDb();
@@ -93,12 +95,15 @@ export async function POST(request: Request) {
   // A agenda de triagem continua sendo uma opção independente. Já a criação
   // de rascunhos vale para qualquer origem de aprovação (portal, fila, IA ou
   // agenda), sempre sob as regras de segurança abaixo.
-  const settings = await db.select({ enabled: platformSettings.scheduledTriageEnabled, draftQueueEnabled: platformSettings.scheduledTriageDraftQueueEnabled, autoCreateEnabled: platformSettings.scheduledTriageAutoCreateEnabled }).from(platformSettings).where(eq(platformSettings.id, "global")).limit(1).then(rows => rows[0]);
+  const settings = await db.select({ enabled: platformSettings.scheduledTriageEnabled, batchSize: platformSettings.scheduledTriageBatchSize, draftQueueEnabled: platformSettings.scheduledTriageDraftQueueEnabled, autoCreateEnabled: platformSettings.scheduledTriageAutoCreateEnabled }).from(platformSettings).where(eq(platformSettings.id, "global")).limit(1).then(rows => rows[0]);
   const draftQueueEnabled = settings?.draftQueueEnabled ?? true;
   const autoCreateEnabled = draftQueueEnabled && (settings?.autoCreateEnabled ?? true);
   if (run.trigger === "schedule") {
     // Sem linha de parâmetros, a agenda continua desligada por segurança.
     if (!settings?.enabled) return NextResponse.json({ ok: true, skipped: true, message: "Triagem agendada desligada em Configurações" });
+    // O Worker nunca determina a capacidade: ela é um parâmetro operacional
+    // persistido e validado no servidor, aplicado também às continuações.
+    run = { ...run, batchSize: Math.max(1, Math.min(MAX_SCHEDULED_TRIAGE_BATCH_SIZE, Math.floor(settings?.batchSize ?? DEFAULT_SCHEDULED_TRIAGE_BATCH_SIZE))) };
   }
   const profile = await db.select().from(profiles).where(eq(profiles.userId, userId)).limit(1).then(rows => rows[0]);
   if (!profile) return NextResponse.json({ error: "Complete seu perfil antes de iniciar a triagem." }, { status: 412 });
@@ -338,5 +343,5 @@ export async function POST(request: Request) {
     }).catch(() => undefined);
   }
 
-  return NextResponse.json({ ok: true, batchId, referenceDate: run.referenceDate, processed, skipped, aiEligible: processed.filter(item => item.aiEligible).length, aiCompleted: processed.filter(item => item.aiStatus === "completed" || item.aiStatus === "cached").length, draftsCreated: immediateDraft?.created ?? 0, immediateDraft, aiUsed: processed.some(item => item.aiStatus === "completed" || item.aiStatus === "cached") });
+  return NextResponse.json({ ok: true, batchId, referenceDate: run.referenceDate, processed, skipped, hasMore: run.trigger === "schedule" && candidates.length === run.batchSize, aiEligible: processed.filter(item => item.aiEligible).length, aiCompleted: processed.filter(item => item.aiStatus === "completed" || item.aiStatus === "cached").length, draftsCreated: immediateDraft?.created ?? 0, immediateDraft, aiUsed: processed.some(item => item.aiStatus === "completed" || item.aiStatus === "cached") });
 }

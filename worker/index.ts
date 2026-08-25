@@ -198,12 +198,12 @@ const worker = {
       const result = await response.clone().json().catch(() => null) as { accepted?: unknown } | null;
       if (typeof result?.accepted === "number") {
         ctx.waitUntil(
-          // Uma importação pode conter centenas de vagas. A Queue preserva
-          // o limite de 10 por execução e permite continuar sem estourar o
-          // tempo da requisição de coleta.
+          // Uma importação pode conter centenas de vagas. O servidor lê o
+          // limite salvo pelo administrador e a Queue continua até esgotar
+          // as vagas novas, sem prender a requisição de coleta.
           env.TRIAGE_QUEUE.send({
             kind: "scheduled-triage",
-            run: { sourceId: pushImportSourceId, dateScope: "received", aiMode: "ambiguous", batchSize: 10 },
+            run: { sourceId: pushImportSourceId, dateScope: "received", aiMode: "ambiguous", batchSize: 100 },
             continuation: 0,
           }).catch(() => undefined),
         );
@@ -227,16 +227,14 @@ const worker = {
             headers: { "content-type": "application/json", "x-radar-collector-authenticated": "1" },
             body: JSON.stringify({ trigger: "schedule", ...payload.run }),
           }), env, ctx);
-          const result = await response.clone().json().catch(() => null) as { processed?: unknown[]; skipped?: number } | null;
+          const result = await response.clone().json().catch(() => null) as { hasMore?: unknown } | null;
           if (!response.ok) {
             message.retry({ delaySeconds: 15 });
             continue;
           }
-          // A primeira rodada usa IA somente para as ambiguidades (máximo 10
-          // por importação). As continuações selecionam apenas vagas ainda
-          // sem análise, evitando repetir falhas de IA e avançando no lote.
-          const handled = (Array.isArray(result?.processed) ? result.processed.length : 0) + (result?.skipped ?? 0);
-          if (handled >= payload.run.batchSize) {
+          // A primeira rodada usa IA somente para as ambiguidades. O próprio
+          // servidor informa se há mais vagas sob o limite configurado.
+          if (result?.hasMore === true) {
             await env.TRIAGE_QUEUE.send({
               kind: "scheduled-triage",
               run: { ...payload.run, aiMode: "off" },
