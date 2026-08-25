@@ -20,8 +20,8 @@ export const dynamic = "force-dynamic";
 const AI_FACTS_VERSION = "job-facts-v1";
 const RESERVED_OUTPUT_TOKENS = 1200;
 const MAX_AI_PER_BATCH = 10;
-const DEFAULT_SCHEDULED_TRIAGE_BATCH_SIZE = 10;
-const MAX_SCHEDULED_TRIAGE_BATCH_SIZE = 100;
+const DEFAULT_SCHEDULED_TRIAGE_BATCH_SIZE = 100;
+const MAX_SCHEDULED_TRIAGE_BATCH_SIZE = 1000;
 
 async function finishQueuedBatch(batchId: string) {
   const db = getDb();
