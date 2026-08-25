@@ -213,7 +213,7 @@ test("triagem por IA fica visível só ao proprietário e consulta job_ai_triage
   assert.match(dashboard, /\[triageOpen, setTriageOpen\]/);
   assert.match(dashboard, /"Prioridades"/);
   assert.match(dashboard, /item !== "Prioridades" \|\| isOwner/);
-  assert.match(dashboard, /\{triageOpen && isOwner && <TriageReport/);
+  assert.match(dashboard, /\{triageMounted && isOwner && <TriageReport/);
   assert.match(route, /isOwnerEmail\(user\.email\)/);
   assert.match(route, /Acesso restrito ao proprietário/);
   assert.match(route, /includeBacklog/);

@@ -22,7 +22,7 @@ const readJsonResponse = async <T,>(response: Response, action: string): Promise
   try { return JSON.parse(body) as T; }
   catch { throw new Error(`${action} recebeu uma resposta inválida do serviço. Tente novamente.`); }
 };
-export default function TriageReport({ close, openJobInRadar, sourceId, sourceLabel, sourceOptions = [], areaOptions = [], channelOptions = [], initialArea = "all", initialChannel = "all", homePeriod = "24", highlightBatchId }: { close: () => void; openJobInRadar: (job: Pick<HistoryItem, "jobId" | "externalId" | "jobSource">) => void; sourceId?: string; sourceLabel?: string; sourceOptions?: FilterOption[]; areaOptions?: FilterOption[]; channelOptions?: FilterOption[]; initialArea?: string; initialChannel?: string; homePeriod?: "24" | "72" | "168" | "all"; highlightBatchId?: string }) {
+export default function TriageReport({ open = true, close, openJobInRadar, sourceId, sourceLabel, sourceOptions = [], areaOptions = [], channelOptions = [], initialArea = "all", initialChannel = "all", homePeriod = "24", highlightBatchId }: { open?: boolean; close: () => void; openJobInRadar: (job: Pick<HistoryItem, "jobId" | "externalId" | "jobSource">) => void; sourceId?: string; sourceLabel?: string; sourceOptions?: FilterOption[]; areaOptions?: FilterOption[]; channelOptions?: FilterOption[]; initialArea?: string; initialChannel?: string; homePeriod?: "24" | "72" | "168" | "all"; highlightBatchId?: string }) {
   const [message, setMessage] = useState("Carregando avaliações…"),
     [runningPilot, setRunningPilot] = useState(false),
     [resumingBatch, setResumingBatch] = useState(false),
@@ -541,7 +541,7 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
     }
   };
   return (
-    <div className="modal-backdrop" onClick={close}>
+    <div className="modal-backdrop" onClick={close} hidden={!open}>
       <section className="modal triage-modal" onClick={(e) => e.stopPropagation()}>
         <button className="modal-close" onClick={close}>
           ×

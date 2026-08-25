@@ -539,6 +539,10 @@ export default function Dashboard() {
   const [monitorOpen, setMonitorOpen] = useState(false);
   const [auditOpen, setAuditOpen] = useState(false);
   const [triageOpen, setTriageOpen] = useState(false);
+  // Mantém a Triagem montada depois da primeira abertura. Assim, ao consultar
+  // uma vaga no Radar e voltar para Prioridades, filtros e página continuam
+  // exatamente onde estavam.
+  const [triageMounted, setTriageMounted] = useState(false);
   const [triageLogBatchId, setTriageLogBatchId] = useState<string | undefined>();
   const [qualityOpen, setQualityOpen] = useState(false);
   const [usersOpen, setUsersOpen] = useState(false);
@@ -2305,7 +2309,8 @@ export default function Dashboard() {
               className={`${active === n ? "active " : ""}${n === "Prioridades" ? "priority-nav-item" : ""}`}
               onClick={() => {
                 setActive(n);
-                if (n === "Prioridades") setTriageOpen(true);
+                if (n === "Prioridades") { setTriageMounted(true); setTriageOpen(true); }
+                if (n === "Radar") setTriageOpen(false);
                 if (n === "Pipeline") openPipeline();
                 if (n === "Alertas") setAlertsOpen(true);
                 if (n === "Métricas") setAnalyticsOpen(true);
@@ -2439,7 +2444,7 @@ export default function Dashboard() {
                 Entrar
               </a>
             )}
-            {canManageSources && <NotificationBell onOpenImportRun={setImportReportRunId} onOpenTriageLog={(batchId) => { setTriageLogBatchId(batchId); setTriageOpen(true); }} />}
+            {canManageSources && <NotificationBell onOpenImportRun={setImportReportRunId} onOpenTriageLog={(batchId) => { setTriageLogBatchId(batchId); setTriageMounted(true); setTriageOpen(true); }} />}
             {currentUser && (
               <div className="report-menu-wrap">
                 <button
@@ -3818,11 +3823,13 @@ export default function Dashboard() {
       {usersOpen && isOwner && <UserManagement close={() => setUsersOpen(false)} />}
       {qualityOpen && <DataQuality close={() => setQualityOpen(false)} />}
       {auditOpen && <AuditTrail close={() => setAuditOpen(false)} />}
-      {triageOpen && isOwner && <TriageReport
-        close={() => { setTriageOpen(false); setTriageLogBatchId(undefined); }}
+      {triageMounted && isOwner && <TriageReport
+        open={triageOpen}
+        close={() => { setTriageOpen(false); setActive("Radar"); }}
         openJobInRadar={(job) => {
           pendingTriageJobIdRef.current = job.jobId;
           setTriageOpen(false);
+          setActive("Radar");
           setViewMode("table");
           setFitFilter(0);
           setRequestedMinScore(0);
