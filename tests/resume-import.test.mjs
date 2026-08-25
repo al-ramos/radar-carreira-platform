@@ -31,6 +31,9 @@ test("a rota limita arquivo, preserva revisão humana e não persiste o PDF", as
   assert.match(route, /MAX_FILE_SIZE = 10 \* 1024 \* 1024/);
   assert.match(route, /file\.arrayBuffer\(\)/);
   assert.doesNotMatch(route, /\.put\(/);
+  const extractor = await readFile(new URL("../lib/resume-import.ts", import.meta.url), "utf8");
+  assert.match(extractor, /pdf\.worker\.mjs/);
+  assert.match(extractor, /pdfjsWorker/);
   assert.match(profile, /Revise as tecnologias antes de incluí-las/);
   assert.match(profile, /Adicionar ao formulário/);
   assert.match(profile, /Não selecionamos nenhuma automaticamente/);

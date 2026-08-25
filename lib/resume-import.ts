@@ -36,10 +36,17 @@ class ResumeDOMMatrix {
 }
 
 async function pdfLoader(data: Uint8Array) {
-  const runtime = globalThis as typeof globalThis & { DOMMatrix?: typeof ResumeDOMMatrix };
+  const runtime = globalThis as typeof globalThis & { DOMMatrix?: typeof ResumeDOMMatrix; pdfjsWorker?: { WorkerMessageHandler: unknown } };
   if (!runtime.DOMMatrix) runtime.DOMMatrix = ResumeDOMMatrix;
-  const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  return getDocument({ data, disableWorker: true, stopAtErrors: true });
+  // Em Workers, o PDF.js recua para um "fake worker". Pré-carregamos o
+  // handler do pacote para ele não tentar importar assets/pdf.worker.mjs,
+  // caminho que não existe no bundle de produção.
+  const [pdf, worker] = await Promise.all([
+    import("pdfjs-dist/legacy/build/pdf.mjs"),
+    import("pdfjs-dist/legacy/build/pdf.worker.mjs"),
+  ]);
+  runtime.pdfjsWorker ??= { WorkerMessageHandler: worker.WorkerMessageHandler };
+  return pdf.getDocument({ data, stopAtErrors: true });
 }
 
 const aliases: Array<{ canonical: string; values: string[] }> = [
