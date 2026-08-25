@@ -1,6 +1,6 @@
 # Radar Carreira Platform — visão completa do produto e da arquitetura
 
-> Documento de conhecimento do estado real do repositório em **24 de agosto de 2026**, cobrindo as funcionalidades publicadas até o commit `63fa1d3` (`Corrige teste do centro operacional`).
+> Documento de conhecimento do estado real do repositório em **25 de agosto de 2026**, cobrindo as funcionalidades publicadas até o commit `0e25875` (`Mantém recuperação contínua do Radar`).
 
 ## Como ler este documento
 
@@ -33,6 +33,12 @@ A prioridade atual é consolidar o ciclo **triagem inteligente → revisão → 
 5. manter a candidatura e o envio sob decisão da pessoa usuária.
 
 Esta prioridade deve permanecer sincronizada entre o README principal, este inventário técnico e o hub do projeto no Notion em toda entrega funcional relevante.
+
+### Publicações de 24–25 de agosto de 2026
+
+O inventário cronológico consolidado das melhorias, correções e práticas de publicação implantadas nesse período está na seção [Publicações recentes do README](../README.md#publicações-recentes--2425-de-agosto-de-2026). Além do ciclo de candidatura assistida, o período consolidou triagem para todas as fontes, recuperação contínua do histórico, navegação preservada, limites operacionais parametrizáveis, monitoramento de automações, integridade dos rascunhos Gmail e manutenção segura de vagas antigas.
+
+Todas as entregas listadas estão na `main` e tiveram publicação confirmada no Cloudflare; commits de merge sem alteração própria não entram no inventário.
 
 ## 2. Arquitetura em alto nível
 

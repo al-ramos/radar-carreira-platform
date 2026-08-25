@@ -28,6 +28,59 @@ Portal multiusuário para reunir oportunidades, decidir quais vagas merecem aten
 
 > **Sincronização permanente:** toda mudança funcional relevante deve atualizar este README, a [visão completa do projeto](docs/visao-completa-do-projeto.md) e as páginas correspondentes no Notion na mesma entrega.
 
+## Publicações recentes — 24–25 de agosto de 2026
+
+> **Estado:** todas as entregas abaixo estão na `main` e em produção no Cloudflare. Foram omitidos apenas commits de merge sem alteração própria.
+
+### Melhorias implantadas
+
+- tabela de candidaturas integrada à triagem, com exibição da candidatura e descrição com limite ampliado;
+- navegação do Radar preservada no histórico do navegador e ao retornar da triagem;
+- navegação anterior/próxima entre as vagas do recorte filtrado;
+- indicação da última atualização dos dados do Radar;
+- triagem por período mesmo sem fonte definida, inclusive para todas as fontes;
+- triagem automática ampliada para todas as fontes elegíveis;
+- lotes manuais protegidos por limite operacional e triagem agendada com tamanho parametrizável;
+- vagas pendentes exibidas no histórico e recuperação de decisões concluídas ausentes;
+- reavaliação de chaves idempotentes sem histórico e recuperação contínua do Radar;
+- limpeza administrativa de vagas por data de recebimento, com prévia da quantidade afetada;
+- limpeza e arquivamento de vagas antigas usando publicação e paginação para não perder itens;
+- coleta LinkedIn com registro de candidaturas durante a coleta;
+- criação automática de rascunhos Gmail para vagas aprovadas, com retentativa automática e gatilho parametrizável;
+- criação manual de rascunho por e-mail diretamente no Radar;
+- ação de e-mail posicionada no painel de filtros;
+- reconciliação automática dos envios do Gmail;
+- bloqueio de rascunhos para vagas inelegíveis, candidaturas já enviadas ou já preparadas;
+- candidaturas já preparadas ocultadas da lista principal do Radar;
+- triagem contínua de todo o lote importado, sem limite artificial de continuações;
+- análises do Codex enfileiradas em lotes, com solicitação conjunta de todas as filas pendentes;
+- monitoramento operacional centralizado, separando a saúde das automações;
+- registro de saúde, referências de falha e causas de importação no histórico operacional;
+- filtros e log de triagem integrados ao monitor;
+- detalhes da vaga acessíveis diretamente pelas notificações;
+- CSV de triagem enriquecido, com delimitador corrigido e proteção contra reimportação duplicada;
+- atualizações por contato registradas nas vagas e reutilização de e-mails por empresa;
+- confirmação antes da ação de atualização;
+- escopo de candidaturas, contatos e operação sincronizado entre README, documentação técnica e Notion.
+
+### Correções implantadas
+
+- carregamento administrativo e prévia de limpeza por data corrigidos;
+- lint que bloqueava a publicação da limpeza administrativa corrigido;
+- monitoramento operacional, filtro temporal, contratos e tipagem corrigidos;
+- rastreio de rascunhos Gmail e integridade dos identificadores corrigidos;
+- rastreio de falhas do coletor e de falhas D1 corrigido;
+- atalho para vaga sem código corrigido;
+- teste de coleta LinkedIn no CI corrigido;
+- testes do centro operacional, monitoramento, histórico pendente e tabela de candidaturas atualizados;
+- aviso introduzido pelo heartbeat operacional removido;
+- documentação e escopo operacional do README atualizados.
+
+### Operação e publicação
+
+- trabalho concorrente deve usar publicação isolada, preservando alterações locais não relacionadas;
+- depois da confirmação em produção, worktrees e clones temporários exclusivos da publicação são removidos automaticamente quando estão limpos; a cópia principal e trabalhos ativos permanecem preservados.
+
 > O portal está público, mas o visitante precisa entrar (e-mail/senha ou, quando hospedado em `*.chatgpt.site`, Sign in with ChatGPT) para acessar as áreas identificadas.
 
 ## O que o portal faz
