@@ -316,8 +316,11 @@ O painel aceita os identificadores públicos de páginas hospedadas em:
 O GitHub Actions executa, em dias úteis:
 
 1. coleta das fontes ativas;
-2. enriquecimento das vagas;
-3. verificação de vagas possivelmente encerradas.
+2. enfileiramento da triagem para cada fonte concluída, incluindo vagas pendentes de ciclos anteriores;
+3. enriquecimento das vagas;
+4. verificação de vagas possivelmente encerradas.
+
+Se uma fonte exceder temporariamente o limite do Worker (`503`/`1102`), a rotina continua pelas demais fontes e conclui as etapas posteriores. A execução fica marcada com falha para investigação, e a fonte afetada é tentada novamente na próxima agenda ou a partir do seu `start_offset`.
 
 Configuração do repositório:
 

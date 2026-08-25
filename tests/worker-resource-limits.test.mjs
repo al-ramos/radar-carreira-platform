@@ -49,6 +49,9 @@ test("o agendamento tolera indisponibilidade transitória sem sobrecarregar o Wo
   assert.match(workflow, /start_offset/);
   assert.match(workflow, /offset="\$\{\{ inputs\.start_offset \|\| '0' \}\}"/);
   assert.match(workflow, /--retry 6 --retry-all-errors --retry-delay 15 --retry-max-time 120/);
+  assert.match(workflow, /if ! response=\$\(curl --silent --show-error --fail-with-body/);
+  assert.match(workflow, /offset=\$\(\(offset \+ 1\)\)/);
+  assert.match(workflow, /\[ "\$collect_errors" -eq 0 \]/);
   assert.match(workflow, /sleep 1/);
   assert.match(connectors, /MAX_JOB_DESCRIPTION_CHARS=12_000/);
   assert.match(connectors, /\.slice\(0,MAX_JOB_DESCRIPTION_CHARS\)/);

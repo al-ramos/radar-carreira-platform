@@ -701,6 +701,7 @@ sequenceDiagram
         W->>ATS: Coleta uma fonte
         ATS-->>W: Vagas
         W->>D: Deduplica e grava em lotes
+        W->>W: enfileira a triagem da fonte, inclusive backlog pendente
         W-->>G: contadores e nextOffset
     end
     G->>W: POST /api/cron/enrich
@@ -709,7 +710,7 @@ sequenceDiagram
     W->>D: Fecha ou reativa vagas
 ```
 
-Em caso de indisponibilidade transitória, a chamada é repetida com intervalo controlado. Se for necessário retomar manualmente uma execução, o workflow aceita `start_offset`, evitando reprocessar as fontes anteriores. A validação operacional de 13/08/2026 confirmou o percurso das fontes restantes — incluindo Capco, com 734 vagas — e verificou enriquecimento e reconciliação do ciclo de vida. Um ciclo integral que se recupere de um `503` continua como verificação operacional pendente.
+Em caso de indisponibilidade transitória, a chamada é repetida com intervalo controlado. Se os limites do Worker continuarem devolvendo `503`/`1102`, a rodada registra falha, avança para as fontes restantes e preserva o enriquecimento, ciclo de vida e triagem do que foi coletado; a fonte falha é retomada na próxima agenda ou por `start_offset`. Cada fonte concluída também enfileira a triagem do seu backlog ativo ainda pendente, sem depender de vagas novas. A validação operacional de 13/08/2026 confirmou o percurso das fontes restantes — incluindo Capco, com 734 vagas — e verificou enriquecimento e reconciliação do ciclo de vida.
 
 ## 18. Definição prática do produto hoje
 

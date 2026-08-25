@@ -22,19 +22,34 @@ jobs:
           collect_errors=0
           offset="${{ inputs.start_offset || '0' }}"
           while true; do
-            response=$(curl --fail-with-body --retry 6 --retry-all-errors --retry-delay 15 --retry-max-time 120 --max-time 120 \
+            if ! response=$(curl --silent --show-error --fail-with-body --retry 6 --retry-all-errors --retry-delay 15 --retry-max-time 120 --max-time 120 \
               -X POST \
               -H "Authorization: Bearer ${COLLECTOR_SECRET}" \
-              "${RADAR_BASE_URL}/api/cron/collect?offset=${offset}")
+              "${RADAR_BASE_URL}/api/cron/collect?offset=${offset}"); then
+              # Um 503/1102 de uma fonte não pode encerrar as fontes restantes.
+              # A fonte é tentada novamente na próxima rodada (ou por start_offset),
+              # enquanto as demais ainda coletam, enriquecem e entram na triagem.
+              echo "Falha transitória ao coletar a fonte no offset ${offset}; continuando a rodada." >&2
+              collect_errors=1
+              offset=$((offset + 1))
+              sleep 1
+              continue
+            fi
             echo "$response"
-            if [ "$(jq -r '.ok' <<< "$response")" != "true" ]; then collect_errors=1; fi
+            if ! jq -e '.ok == true' >/dev/null <<< "$response"; then
+              echo "Resposta inválida da coleta no offset ${offset}; continuando a rodada." >&2
+              collect_errors=1
+              offset=$((offset + 1))
+              sleep 1
+              continue
+            fi
             offset=$(jq -r '.nextOffset // empty' <<< "$response")
             [ -z "$offset" ] && break
             sleep 1
           done
-          [ "$collect_errors" -eq 0 ]
           for endpoint in /api/cron/enrich /api/cron/lifecycle; do
-            response=$(curl --fail-with-body --retry 2 --max-time 120 -X POST -H "Authorization: Bearer ${COLLECTOR_SECRET}" "${RADAR_BASE_URL}${endpoint}")
+            response=$(curl --silent --show-error --fail --retry 2 --retry-all-errors --retry-delay 15 --max-time 120 -X POST -H "Authorization: Bearer ${COLLECTOR_SECRET}" "${RADAR_BASE_URL}${endpoint}")
             echo "$response"
             jq -e '.ok == true' >/dev/null <<< "$response"
           done
+          [ "$collect_errors" -eq 0 ]

@@ -244,8 +244,12 @@ const worker = {
       const sourceIds = new Set<string>();
       if (importMatch && typeof result?.accepted === "number" && result.accepted > 0) sourceIds.add(importMatch[1]);
       if (url.pathname === "/api/cron/email-import" && typeof result?.jobs === "number" && result.jobs > 0) sourceIds.add("gmail-radarvagas");
+      // A coleta de uma fonte é também a oportunidade diária de escoar o
+      // respectivo backlog ainda não triado. Não condicione o disparo a
+      // linhas novas: um lote anterior pode ter parado antes da triagem e a
+      // fonte não necessariamente terá mudanças no ciclo seguinte.
       for (const outcome of result?.outcomes ?? []) {
-        if (typeof outcome.id === "string" && (Number(outcome.inserted) > 0 || Number(outcome.updated) > 0)) sourceIds.add(outcome.id);
+        if (typeof outcome.id === "string") sourceIds.add(outcome.id);
       }
       if (sourceIds.size) {
         ctx.waitUntil(Promise.all([...sourceIds].map((sourceId) => env.TRIAGE_QUEUE.send({

@@ -16,11 +16,12 @@ test("toda importação inicia a triagem agendada pela fila e preserva a separa�
   assert.doesNotMatch(worker, /knownPushSourceIds/);
   assert.match(worker, /homePeriod: "all"/);
   assert.match(worker, /\/api\/cron\/collect/);
+  assert.match(worker, /if \(typeof outcome\.id === "string"\) sourceIds\.add\(outcome\.id\)/);
   assert.match(worker, /\/api\/cron\/email-import/);
   assert.match(worker, /\/api\/admin\/collect/);
   assert.match(worker, /continuation: payload\.continuation \+ 1/);
   assert.match(worker, /aiMode: "off"/);
-  assert.doesNotMatch(workflow, /"trigger":"schedule"/);
+  assert.match(workflow, /Falha transitória ao coletar a fonte no offset/);
   assert.match(route, /x-radar-collector-authenticated/);
   assert.match(route, /x-radar-triage-user-id/);
   assert.match(route, /A rotina agendada só pode ser iniciada pelo backend do Radar/);
