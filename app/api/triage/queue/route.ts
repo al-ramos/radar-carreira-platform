@@ -3,7 +3,7 @@ import { env } from "cloudflare:workers";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db/index";
-import { jobs, profiles, triageBatches, triageBatchItems, userJobAnalyses } from "../../../../db/schema";
+import { jobs, platformSettings, profiles, triageBatches, triageBatchItems, userJobAnalyses } from "../../../../db/schema";
 import { canonicalizeProfile } from "../../../../lib/canonical-profile";
 import { normalizeTriageRunRequest, saoPauloDayWindow, type TriageRunRequest } from "../../../../lib/triage-orchestrator";
 
@@ -14,10 +14,8 @@ type QueueMessage = { body: QueuePayload };
 type QueueRequest = Partial<TriageRunRequest> & { action?: "resume"; batchId?: string };
 
 const STALE_QUEUE_ITEM_MS = 5 * 60_000;
-// Registrar centenas de itens e mensagens em uma única requisição excede o
-// orçamento do Worker. A Queue processa cada vaga depois, com concorrência
-// limitada; este teto protege apenas a criação do lote manual.
-const MANUAL_TRIAGE_BATCH_SIZE = 100;
+const DEFAULT_SCHEDULED_TRIAGE_BATCH_SIZE = 100;
+const MAX_SCHEDULED_TRIAGE_BATCH_SIZE = 1000;
 
 async function resumePendingBatch({ userId, batchId, queue }: { userId: string; batchId: string; queue: { sendBatch(messages: QueueMessage[]): Promise<void> } }) {
   const db = getDb();
@@ -80,12 +78,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: detail }, { status: 503 });
     }
   }
+  const db = getDb();
+  // A ação manual e a automação usam a mesma capacidade operacional. O
+  // cliente não define esse limite para que a tela e a fila não divirjam.
+  const settings = await db.select({ batchSize: platformSettings.scheduledTriageBatchSize })
+    .from(platformSettings).where(eq(platformSettings.id, "global")).limit(1).then((rows) => rows[0]);
+  const batchSize = Math.max(1, Math.min(MAX_SCHEDULED_TRIAGE_BATCH_SIZE, Math.floor(settings?.batchSize ?? DEFAULT_SCHEDULED_TRIAGE_BATCH_SIZE)));
   let run;
   try {
     run = normalizeTriageRunRequest({
       trigger: "portal", referenceDate: body.referenceDate, sourceId: body.sourceId,
       dateScope: body.dateScope, roleArea: body.roleArea, ingestionChannel: body.ingestionChannel,
-      homePeriod: body.homePeriod, batchSize: Math.min(Number(body.batchSize) || MANUAL_TRIAGE_BATCH_SIZE, MANUAL_TRIAGE_BATCH_SIZE), reprocess: body.reprocess,
+      homePeriod: body.homePeriod, batchSize, reprocess: body.reprocess,
       aiMode: body.aiMode ?? "off", createDrafts: false,
     });
   } catch (error) {
@@ -93,7 +97,6 @@ export async function POST(request: Request) {
   }
   if (run.aiMode !== "off") return NextResponse.json({ error: "A execução em fila usa as regras do Radar; a IA continua em fluxo próprio." }, { status: 400 });
 
-  const db = getDb();
   const profile = await db.select().from(profiles).where(eq(profiles.userId, user.userId)).limit(1).then((rows) => rows[0]);
   if (!profile) return NextResponse.json({ error: "Complete seu perfil antes de iniciar a triagem." }, { status: 412 });
   canonicalizeProfile(profile);
@@ -143,5 +146,5 @@ export async function POST(request: Request) {
     await db.update(triageBatches).set({ status: "failed", completedAt: new Date(), error: detail }).where(eq(triageBatches.id, batchId));
     return NextResponse.json({ error: detail, batchId }, { status: 503 });
   }
-  return NextResponse.json({ ok: true, batchId, queued: candidates.length, hasMore: candidates.length === MANUAL_TRIAGE_BATCH_SIZE, asynchronous: true }, { status: 202 });
+  return NextResponse.json({ ok: true, batchId, queued: candidates.length, batchSize: run.batchSize, hasMore: candidates.length === run.batchSize, asynchronous: true }, { status: 202 });
 }

@@ -64,7 +64,7 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
     [verdictFilter, setVerdictFilter] = useState("all"),
     [sourceFilter, setSourceFilter] = useState("all"),
     [draftFilter, setDraftFilter] = useState("all"),
-    [jobSourceFilter, setJobSourceFilter] = useState("apinfo-extension"),
+    [jobSourceFilter, setJobSourceFilter] = useState("all"),
     [codeFilter, setCodeFilter] = useState(""),
     [publishedDateFilter, setPublishedDateFilter] = useState(""),
     [receivedDateFilter, setReceivedDateFilter] = useState(""),
@@ -128,9 +128,13 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
     } catch { /* A triagem continua disponível mesmo se o histórico do Codex não carregar. */ }
   };
   useEffect(() => {
+    // O painel pode montar fechado enquanto a Home termina de carregar. Só
+    // consulta o histórico quando ele estiver visível e refaz a carga na
+    // primeira abertura, sem depender de alterar um filtro.
+    if (!open) return;
     const timer = window.setTimeout(() => { void loadHistory(); void loadCodexQueue(); }, 0);
     return () => window.clearTimeout(timer);
-  }, []);
+  }, [open]);
   useEffect(() => {
     if (!aiReview?.id || ["completed", "partial_failed", "failed", "blocked"].includes(aiReview.status ?? "")) return;
     const timer = window.setInterval(() => void fetch(`/api/triage/ai-review?id=${aiReview.id}`).then(async (response) => response.ok ? readJsonResponse<AiReview>(response, "Acompanhamento da análise") : null).then(result => { if (result) { setAiReview(result); if (["completed", "partial_failed", "failed"].includes(result.status ?? "")) setMessage(result.status === "completed" ? "Análise da IA concluída. Nenhuma decisão operacional foi alterada." : result.error ?? "A análise terminou com falhas parciais."); } }).catch(() => undefined), 3000);
@@ -296,12 +300,12 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
       const response = await fetch("/api/triage/queue", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ sourceId: actionSourceId, dateScope: "received", homePeriod: actionPeriod, roleArea: actionArea, ingestionChannel: actionChannel, batchSize: Math.min(actionCandidateCount, 100), reprocess, aiMode: "off" }),
+        body: JSON.stringify({ sourceId: actionSourceId, dateScope: "received", homePeriod: actionPeriod, roleArea: actionArea, ingestionChannel: actionChannel, reprocess, aiMode: "off" }),
       });
-      const result = await readJsonResponse<{ batchId: string | null; queued?: number; hasMore?: boolean; error?: string }>(response, "A fila de triagem");
+      const result = await readJsonResponse<{ batchId: string | null; queued?: number; batchSize?: number; hasMore?: boolean; error?: string }>(response, "A fila de triagem");
       if (!response.ok) throw new Error(result.error ?? "Não foi possível iniciar a fila de triagem.");
       setPilot(null);
-      setMessage(result.queued ? `Lote iniciado: ${result.queued} vaga(s) de ${sourceName(actionSourceId)} serão processadas em segundo plano.${result.hasMore ? " Quando este lote concluir, inicie o próximo lote de 100 vagas." : ""} Acompanhe o progresso no histórico.` : "Nenhuma vaga nova precisa ser triada nesse recorte.");
+      setMessage(result.queued ? `Lote iniciado: ${result.queued} vaga(s) de ${sourceName(actionSourceId)} serão processadas em segundo plano.${result.hasMore ? ` Quando este lote concluir, inicie o próximo lote de ${result.batchSize ?? result.queued} vagas.` : ""} Acompanhe o progresso no histórico.` : "Nenhuma vaga nova precisa ser triada nesse recorte.");
       void loadHistory();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Não foi possível concluir o piloto.");
