@@ -449,6 +449,9 @@ const formatJobDateTime = (value?: string) =>
       }).format(new Date(value))
     : "não informada";
 
+const formatRefreshTime = (value: Date) =>
+  new Intl.DateTimeFormat("pt-BR", { timeStyle: "short" }).format(value);
+
 const channelLabel = (channel: Job["ingestionChannel"]) => ({ extension: "Extensão", email: "E-mail", connector: "Coleta agendada", file: "Arquivo", api: "API" }[channel]);
 
 /** Mantém a paginação navegável sem despejar dezenas de botões na tela. */
@@ -503,8 +506,10 @@ export default function Dashboard() {
     CollectionOutcome[]
   >([]);
   const [totalJobs, setTotalJobs] = useState<number | null>(null);
+  const [lastJobsUpdatedAt, setLastJobsUpdatedAt] = useState<Date | null>(null);
   const [sourcesCount, setSourcesCount] = useState<number | null>(null);
   const loadedJobsRef = useRef<Job[]>([]);
+  const lastJobsUpdatedAtRef = useRef<Date | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [loadingMore, setLoadingMore] = useState(false);
   const pendingTriageJobIdRef = useRef<string | null>(null);
@@ -809,6 +814,9 @@ export default function Dashboard() {
         setSimplifiedList(Boolean(data.degraded));
         setMode("database");
         setLoadError(null);
+        const refreshedAt = new Date();
+        lastJobsUpdatedAtRef.current = refreshedAt;
+        setLastJobsUpdatedAt(refreshedAt);
         staleRetryCountRef.current = 0;
         setMessage((current) => {
           if (data.degraded) {
@@ -824,7 +832,8 @@ export default function Dashboard() {
         if (controller.signal.aborted || (error instanceof DOMException && error.name === "AbortError")) return;
         if (loadedJobsRef.current.length) {
           setMode("database");
-          setMessage("Não foi possível atualizar agora. A lista anterior pode estar desatualizada; nova tentativa automática em instantes.");
+          const lastUpdated = lastJobsUpdatedAtRef.current;
+          setMessage(`Não foi possível atualizar agora. A lista anterior pode estar desatualizada${lastUpdated ? `; Última atualização bem-sucedida às ${formatRefreshTime(lastUpdated)}` : ""}. Nova tentativa automática em instantes.`);
           if (staleRetryCountRef.current < 3) {
             staleRetryCountRef.current += 1;
             staleRetryTimer = setTimeout(() => setJobsRefreshVersion((version) => version + 1), 3_000);
@@ -2524,6 +2533,7 @@ export default function Dashboard() {
             <span aria-live="polite">
               <strong>{(totalJobs ?? orderedJobs.length).toLocaleString("pt-BR")}</strong> vagas encontradas
               <span className="list-head-dim"> · {orderedJobs.length} exibida{orderedJobs.length !== 1 ? "s" : ""}</span>
+              {lastJobsUpdatedAt && <span className="list-head-dim"> · Atualizada às {formatRefreshTime(lastJobsUpdatedAt)}</span>}
             </span>
           </div>
           <div className="toolbar">

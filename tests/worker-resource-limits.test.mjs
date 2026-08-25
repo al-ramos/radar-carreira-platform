@@ -65,6 +65,8 @@ test("falha da API não exibe as quatro vagas demonstrativas", async () => {
   assert.match(dashboard, /searchParams\.set\("degraded", "1"\)/);
   assert.match(dashboard, /modo simplificado/);
   assert.match(dashboard, /A lista anterior pode estar desatualizada/);
+  assert.match(dashboard, /Última atualização bem-sucedida/);
+  assert.match(dashboard, /Atualizada às/);
   assert.match(dashboard, /staleRetryCountRef\.current < 3/);
   assert.match(dashboard, /sem score/);
   assert.doesNotMatch(dashboard, /score: j\.score \?\? 70/);
