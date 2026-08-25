@@ -10,7 +10,7 @@ test("rascunhos e candidaturas enviadas ficam ocultos por padr√£o na fila de an√
     read("../app/api/jobs/route.ts"),
   ]);
 
-  assert.match(dashboard, /useState<ReviewVisibility>\("pending"\)/);
+  assert.match(dashboard, /useState<ReviewVisibility>\(\(\) => initialNavigation\.reviewVisibility\)/);
   assert.match(dashboard, /params\.set\("reviewVisibility", reviewVisibility\)/);
   assert.match(jobsRoute, /reviewVisibility.*=== "all" \? "all" : "pending"/);
   assert.match(jobsRoute, /item\.applicationStatus === "generated" \|\| item\.applicationStatus === "sent" \|\| item\.applicationStatus === "responded"/);
