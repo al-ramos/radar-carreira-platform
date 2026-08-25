@@ -42,7 +42,7 @@ export const jobs = sqliteTable("jobs", {
   url: text("url").notNull(), applyUrl: text("apply_url"),
   contactEmail: text("contact_email"), contactSubject: text("contact_subject"), description: text("description").notNull().default(""),
   firstSeenAt: integer("first_seen_at", { mode: "timestamp_ms" }).notNull(), lastSeenAt: integer("last_seen_at", { mode: "timestamp_ms" }).notNull(),
-  status: text("status", { enum: ["active", "possibly_closed", "closed"] }).notNull().default("active"),
+  status: text("status", { enum: ["active", "possibly_closed", "closed", "archived"] }).notNull().default("active"),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(), updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
 }, t => [uniqueIndex("jobs_fingerprint_unique").on(t.fingerprint)]);
 
