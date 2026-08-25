@@ -194,6 +194,8 @@ As regras estratégicas incluem nome e título profissional, resumo, localizaç�
 
 Listas legadas separadas por vírgula continuam aceitas, mas são persistidas como JSON. Entradas são normalizadas e limitadas antes da gravação.
 
+O perfil também pode receber uma proposta a partir de currículo em PDF. A leitura é transitória (o arquivo não é retido), remove contatos antes de acionar a IA opcional e exige revisão humana antes de mesclar competências. A stack principal, por afetar a filtragem na origem, nunca é preenchida automaticamente.
+
 ## 6. Motor de decisão
 
 O produto possui três mecanismos complementares; eles não devem ser confundidos.

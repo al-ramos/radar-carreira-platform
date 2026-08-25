@@ -18,7 +18,7 @@ export const SKILL_GROUPS = [
   { label: "APIs, qualidade e arquitetura", options: ["REST", "GraphQL", "gRPC", "SOAP", "OpenAPI", "Microservices", "Event-driven", "Jest", "Vitest", "Cypress", "Playwright", "Selenium", "JUnit", "Pytest", "TDD", "DDD"] },
   { label: "IA, analytics e BI", options: ["R", "Pandas", "NumPy", "scikit-learn", "TensorFlow", "PyTorch", "LLM", "OpenAI", "LangChain", "MLOps", "Power BI", "Tableau", "Looker", "Qlik", "ETL", "Data Lake"] },
   { label: "Segurança", options: ["Cybersecurity", "AppSec", "DevSecOps", "IAM", "SIEM", "SOC", "SAST", "DAST", "OWASP", "Zero Trust", "Splunk", "CrowdStrike", "Palo Alto"] },
-  { label: "Sistemas corporativos", options: ["SAP", "Salesforce", "ServiceNow", "Dynamics 365", "TOTVS", "ERP", "CRM"] },
+  { label: "Sistemas corporativos e legados", options: ["Visual Basic 6", "VBA", "Access", "WCF", "WebForms", "SAP", "Salesforce", "ServiceNow", "Dynamics 365", "TOTVS", "ERP", "CRM"] },
 ];
 
 export const SKILL_OPTIONS = SKILL_GROUPS.flatMap(group => group.options);
@@ -99,7 +99,7 @@ export function alexsandroProfilePreset(): ProfileChoices {
     preferredMode: ["Remoto", "Híbrido"],
     masteredSkills: [
       "C#", ".NET", "AWS", "RabbitMQ", "SQL Server", "React",
-      "GitHub Actions", "Terraform", "VB6", "WCF",
+      "GitHub Actions", "Terraform", "Visual Basic 6", "VBA", "WCF",
     ],
     desiredAreas: ["Desenvolvimento Back-end", "Arquitetura de Software", "Cloud", "Full Stack", "Qualidade / QA"],
     avoidTerms: [],

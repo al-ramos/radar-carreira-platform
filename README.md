@@ -141,6 +141,10 @@ Portal multiusuário para reunir oportunidades, decidir quais vagas merecem aten
 - interruptores independentes para triagem agendada, entrada automática na fila de rascunhos e criação do rascunho no Gmail;
 - notificações operacionais com acesso ao relatório completo de importações e lotes de triagem.
 
+### Importar currículo em PDF
+
+Em **Preferências do Radar**, use **Importar currículo em PDF** para gerar uma proposta de competências. O PDF é lido em memória, não é armazenado pelo Radar, e contatos como e-mail, telefone e CPF são removidos antes da leitura opcional por IA. A pessoa revisa cada tecnologia e escolhe separadamente qualquer sugestão para a **stack principal obrigatória**; nada é salvo até clicar em **Adicionar ao formulário** e, depois, em **Salvar preferências**. Nesta primeira versão, o arquivo precisa ter texto selecionável, até 10 MB e 30 páginas; PDFs escaneados aguardam a etapa de OCR.
+
 ## Como o Radar decide
 
 O produto usa mecanismos complementares, cada um com uma finalidade:

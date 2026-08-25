@@ -182,7 +182,7 @@ export const aiUsageEvents = sqliteTable("ai_usage_events", {
   id: text("id").primaryKey(),
   userId: text("user_id").notNull(),
   jobId: text("job_id").references(() => jobs.id),
-  operation: text("operation", { enum: ["extract_job", "resolve_ambiguity", "review_selection", "generate_email"] }).notNull(),
+  operation: text("operation", { enum: ["extract_job", "resolve_ambiguity", "review_selection", "generate_email", "extract_resume"] }).notNull(),
   provider: text("provider").notNull(),
   model: text("model").notNull(),
   inputTokens: integer("input_tokens").notNull().default(0),

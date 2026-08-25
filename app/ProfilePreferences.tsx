@@ -1,10 +1,11 @@
 "use client";
 
-import { KeyboardEvent, useState } from "react";
+import { ChangeEvent, KeyboardEvent, useRef, useState } from "react";
 import {
   alexsandroProfilePreset, AREA_OPTIONS, AVOID_TERM_OPTIONS, BLOCKED_WORK_TYPE_OPTIONS, CONTRACT_OPTIONS, DAILY_LANGUAGE_OPTIONS,
   ProfileChoices, REGION_OPTIONS, SENIORITY_OPTIONS, SKILL_GROUPS, SKILL_OPTIONS, WORK_MODE_OPTIONS,
 } from "../lib/profile-options";
+import type { ResumeProposal } from "../lib/resume-import";
 import AdminSettings from "./AdminSettings";
 
 type Props = {
@@ -70,9 +71,45 @@ function ChoiceField({ label, hint, options, groups, value, onChange, customPlac
 
 export default function ProfilePreferences({ value, onChange, onSave, onClose, message, isAdmin, isOwner, aiStatus }: Props) {
   const [presetLoaded, setPresetLoaded] = useState(false);
+  const [resumeImporting, setResumeImporting] = useState(false);
+  const [resumeProposal, setResumeProposal] = useState<ResumeProposal | null>(null);
+  const [resumeWarning, setResumeWarning] = useState("");
+  const [selectedResumeSkills, setSelectedResumeSkills] = useState<string[]>([]);
+  const [selectedCoreSkills, setSelectedCoreSkills] = useState<string[]>([]);
+  const resumeInput = useRef<HTMLInputElement>(null);
   const update = <K extends keyof ProfileChoices>(key: K, next: ProfileChoices[K]) => onChange({ ...value, [key]: next });
   const updateCareerRule = <K extends keyof ProfileChoices["careerRules"]>(key: K, next: ProfileChoices["careerRules"][K]) =>
     update("careerRules", { ...value.careerRules, [key]: next });
+  const toggleResumeSkill = (name: string) => setSelectedResumeSkills(current => current.includes(name) ? current.filter(item => item !== name) : [...current, name]);
+  const toggleCoreSkill = (name: string) => setSelectedCoreSkills(current => current.includes(name) ? current.filter(item => item !== name) : [...current, name]);
+  const importResume = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setResumeImporting(true); setResumeProposal(null); setResumeWarning("");
+    try {
+      const form = new FormData(); form.set("resume", file);
+      const response = await fetch("/api/profile/resume-extract", { method: "POST", body: form });
+      const data = await response.json().catch(() => null) as { proposal?: ResumeProposal; warning?: string; error?: string } | null;
+      if (!response.ok || !data?.proposal) throw new Error(data?.error ?? "Não foi possível ler o currículo.");
+      setResumeProposal(data.proposal);
+      setResumeWarning(data.warning ?? "");
+      setSelectedResumeSkills(data.proposal.skills.map(skill => skill.name));
+      setSelectedCoreSkills([]);
+    } catch (error) {
+      setResumeWarning(error instanceof Error ? error.message : "Não foi possível ler o currículo.");
+    } finally { setResumeImporting(false); }
+  };
+  const applyResumeProposal = () => {
+    const lower = (item: string) => item.toLocaleLowerCase("pt-BR");
+    const mergedSkills = [...value.masteredSkills];
+    for (const skill of selectedResumeSkills) if (!mergedSkills.some(item => lower(item) === lower(skill))) mergedSkills.push(skill);
+    const mergedCore = [...value.careerRules.coreStack];
+    for (const skill of selectedCoreSkills) if (!mergedCore.some(item => lower(item) === lower(skill))) mergedCore.push(skill);
+    onChange({ ...value, masteredSkills: mergedSkills, careerRules: { ...value.careerRules, coreStack: mergedCore } });
+    setResumeWarning(`${selectedResumeSkills.length} competência(s) adicionada(s) para revisão. Salve as preferências para concluir.`);
+    setResumeProposal(null);
+  };
   // Este formulário concentra muitas preferências ainda não salvas. Um clique
   // fora dele não deve descartá-las; o fechamento fica restrito ao X e ao Esc.
   return <div className="modal-backdrop">
@@ -87,9 +124,17 @@ export default function ProfilePreferences({ value, onChange, onSave, onClose, m
         </div>
         <div className="career-preset-row">
           <div><strong>Perfil estratégico Alexsandro Ramos</strong><small>Carrega posicionamento, stack, projeto AMR, preferências e bloqueadores do documento.</small></div>
-          <button type="button" onClick={() => { onChange(alexsandroProfilePreset()); setPresetLoaded(true); }}>Carregar perfil completo</button>
+          <div className="career-preset-actions"><button type="button" onClick={() => { onChange(alexsandroProfilePreset()); setPresetLoaded(true); }}>Carregar perfil completo</button><button type="button" onClick={() => resumeInput.current?.click()} disabled={resumeImporting}>{resumeImporting ? "Lendo currículo…" : "Importar currículo em PDF"}</button><input ref={resumeInput} type="file" accept="application/pdf,.pdf" onChange={importResume} hidden /></div>
         </div>
         {presetLoaded && <p className="career-preset-notice" role="status">Perfil carregado para revisão. Clique em “Salvar preferências” para aplicá-lo somente à sua conta.</p>}
+        {resumeWarning && <p className="career-preset-notice" role="status">{resumeWarning}</p>}
+        {resumeProposal && <section className="resume-import-review" aria-live="polite">
+          <div><span>CURRÍCULO ANALISADO</span><h4>Revise as tecnologias antes de incluí-las</h4><small>{resumeProposal.pageCount} página(s) lida(s) · {resumeProposal.source === "ai" ? "IA com evidências" : "leitura local"} · o PDF não é armazenado pelo Radar.</small></div>
+          <p>Marque somente competências que você domina. A stack principal é separada porque ela altera o filtro de vagas na origem.</p>
+          <div className="resume-import-list">{resumeProposal.skills.map(skill => <label key={skill.name}><input type="checkbox" checked={selectedResumeSkills.includes(skill.name)} onChange={() => toggleResumeSkill(skill.name)} /><span><b>{skill.name}</b><small>{skill.evidence}</small></span></label>)}</div>
+          {resumeProposal.coreStackCandidates.length > 0 && <fieldset className="resume-core-candidates"><legend>Sugeridas para stack principal obrigatória</legend><small>Não selecionamos nenhuma automaticamente.</small>{resumeProposal.coreStackCandidates.map(skill => <label key={skill}><input type="checkbox" checked={selectedCoreSkills.includes(skill)} onChange={() => toggleCoreSkill(skill)} />{skill}</label>)}</fieldset>}
+          <div className="resume-import-actions"><button type="button" onClick={() => setResumeProposal(null)}>Descartar proposta</button><button type="button" className="primary" onClick={applyResumeProposal}>Adicionar ao formulário</button></div>
+        </section>}
         <div className="career-profile-grid">
           <label>Nome profissional<input value={value.careerRules.professionalName} onChange={event => updateCareerRule("professionalName", event.target.value)} placeholder="Ex.: Alexsandro Ramos" /></label>
           <label>Título de apresentação<input value={value.careerRules.professionalTitle} onChange={event => updateCareerRule("professionalTitle", event.target.value)} placeholder="Ex.: Desenvolvedor .NET Pleno" /></label>
