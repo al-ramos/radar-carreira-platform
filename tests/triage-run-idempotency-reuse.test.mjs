@@ -15,7 +15,8 @@ test("reaproveitamento por idempotência também atualiza user_job_analyses", as
   const nextContinueIndex = route.indexOf("continue;", reuseBranchStart);
   assert.notEqual(nextContinueIndex, -1);
   const reuseBranch = route.slice(reuseBranchStart, nextContinueIndex);
-  assert.match(reuseBranch, /triageHistory\)\.where\(eq\(triageHistory\.id, claimed\.historyId\)\)/, "deve buscar o histórico reaproveitado");
+  assert.match(route, /triageHistory\)\.where\(eq\(triageHistory\.id, claimed\.historyId\)\)/, "deve buscar o histórico reaproveitado");
   assert.match(reuseBranch, /db\.insert\(userJobAnalyses\)/, "deve upsertar user_job_analyses no caminho de reaproveitamento");
   assert.match(reuseBranch, /target: \[userJobAnalyses\.userId, userJobAnalyses\.jobId\]/, "o upsert deve usar a chave (userId, jobId)");
+  assert.match(route, /db\.delete\(triageDeduplication\)/, "chaves concluídas sem histórico devem permitir uma nova avaliação");
 });

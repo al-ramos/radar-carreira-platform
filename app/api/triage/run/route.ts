@@ -164,7 +164,10 @@ export async function POST(request: Request) {
       // histórico aditivo, mas não deixa uma execução normal duplicar o mesmo
       // perfil/vaga/versões.
       const retryAi = run.aiMode === "ambiguous" && analysis?.source === "rules" && analysis.confidence < 100 && !analysis.blocker;
-      if (claimed?.status === "completed" && !run.reprocess && !retryAi) {
+      const reusedHistory = claimed?.historyId
+        ? await db.select().from(triageHistory).where(eq(triageHistory.id, claimed.historyId)).limit(1).then(rows => rows[0])
+        : null;
+      if (claimed?.status === "completed" && !run.reprocess && !retryAi && reusedHistory) {
         skipped += 1;
         // A idempotência barra o reprocessamento, mas o item deste lote
         // precisa refletir o resultado já existente — senão fica "queued"
@@ -179,23 +182,24 @@ export async function POST(request: Request) {
         // A tela de Histórico lê de user_job_analyses, não de triage_history.
         // Sem este upsert, uma vaga reaproveitada por idempotência fica com
         // veredito salvo mas invisível na tela — mesmo incidente do lote acima.
-        if (claimed.historyId) {
-          const reusedHistory = await db.select().from(triageHistory).where(eq(triageHistory.id, claimed.historyId)).limit(1).then(rows => rows[0]);
-          if (reusedHistory) {
-            const reusedVerdict = evaluateDeterministicTriage({ ...job, stack: parseStack(job.stack) }, canonicalProfile);
-            await db.insert(userJobAnalyses).values({
+        const reusedVerdict = evaluateDeterministicTriage({ ...job, stack: parseStack(job.stack) }, canonicalProfile);
+        await db.insert(userJobAnalyses).values({
               userId, jobId: job.id, profileVersion: profile.updatedAt, ...versions,
               verdict: reusedHistory.verdict, label: reusedHistory.label, blocker: reusedHistory.blocker, rows: reusedHistory.rows,
               matchingSkills: JSON.stringify(reusedVerdict.matchingSkills), missingSkills: JSON.stringify(reusedVerdict.missingSkills),
               source: reusedHistory.source, confidence: reusedHistory.confidence,
               explanation: null, createdAt: now, updatedAt: now,
-            }).onConflictDoUpdate({
+        }).onConflictDoUpdate({
               target: [userJobAnalyses.userId, userJobAnalyses.jobId],
               set: { profileVersion: profile.updatedAt, ...versions, verdict: reusedHistory.verdict, label: reusedHistory.label, blocker: reusedHistory.blocker, rows: reusedHistory.rows, matchingSkills: JSON.stringify(reusedVerdict.matchingSkills), missingSkills: JSON.stringify(reusedVerdict.missingSkills), source: reusedHistory.source, confidence: reusedHistory.confidence, updatedAt: now },
-            });
-          }
-        }
+        });
         continue;
+      }
+      // A limpeza física anterior pode ter removido o histórico, deixando uma
+      // chave "completed" órfã. Ela não representa uma avaliação reutilizável:
+      // removemos a trava para avaliar a vaga novamente e repovoar a tela.
+      if (claimed?.status === "completed" && !run.reprocess && !retryAi && !reusedHistory) {
+        await db.delete(triageDeduplication).where(eq(triageDeduplication.idempotencyKey, key));
       }
 
       const historyId = crypto.randomUUID();
