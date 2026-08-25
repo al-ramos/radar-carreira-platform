@@ -17,10 +17,13 @@ test("rascunhos e candidaturas enviadas ficam ocultos por padrão na fila de an�
   assert.match(jobsRoute, /notInArray\(jobs\.id, applicationIds\)/);
 });
 
-test("tabela informa a situação da candidatura", async () => {
+test("tabela informa candidatura ou envio com a data correspondente", async () => {
   const dashboard = await read("../app/Dashboard.tsx");
-  assert.match(dashboard, /label: "Situação"/);
+  assert.match(dashboard, /label: "Candidatura \/ envio"/);
+  assert.match(dashboard, /E-mail APInfo/);
+  assert.match(dashboard, /Candidatura LinkedIn/);
+  assert.match(dashboard, /formatJobDateTime\(j\.respondedAt \?\? j\.sentAt \?\? j\.generatedAt\)/);
   assert.match(dashboard, /Rascunho/);
-  assert.match(dashboard, /E-mail enviado/);
+  assert.match(dashboard, /Enviado/);
   assert.match(dashboard, /Resposta recebida/);
 });
