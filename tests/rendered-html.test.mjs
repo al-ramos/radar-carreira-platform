@@ -232,9 +232,13 @@ test("a tabela permite filtrar colunas e abre detalhes sem reduzir a área de re
   ]);
   assert.match(dashboard, /tableColumnFilters/);
   assert.match(dashboard, /Filtrar empresa/);
+  assert.match(dashboard, /Filtrar descrição/);
   assert.match(dashboard, /Filtrar por e-mail/);
-  assert.match(dashboard, /label: "E-mail"/);
-  assert.match(dashboard, /hidden=\{!filtersOpen && activeTableColumnFilterCount === 0\}/);
+  assert.match(dashboard, /label: "Candidatura \/ envio"/);
+  assert.match(dashboard, /applicationActivityAt/);
+  assert.match(dashboard, /E-mail APInfo/);
+  assert.match(dashboard, /Candidatura LinkedIn/);
+  assert.doesNotMatch(dashboard, /hidden=\{!filtersOpen && activeTableColumnFilterCount === 0\}/);
   assert.match(dashboard, /Limpar filtros de coluna/);
   assert.match(dashboard, /workspace-table-mode/);
   assert.match(dashboard, /detail-drawer/);

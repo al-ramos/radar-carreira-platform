@@ -122,6 +122,9 @@ type Job = {
   reasons: string[];
   stage: string;
   applicationStatus?: ApplicationStatus;
+  generatedAt?: string;
+  sentAt?: string;
+  respondedAt?: string;
 };
 type ApiJob = {
   id: string;
@@ -148,6 +151,9 @@ type ApiJob = {
   stack?: string[];
   reasons?: string[];
   applicationStatus?: ApplicationStatus | null;
+  generatedAt?: string | null;
+  sentAt?: string | null;
+  respondedAt?: string | null;
 };
 type JobIntelligence = {
   facts: {
@@ -496,6 +502,9 @@ const adapt = (j: ApiJob): Job => ({
   sourceName: j.sourceName,
   description: j.description,
   applicationStatus: j.applicationStatus ?? undefined,
+  generatedAt: j.generatedAt ?? undefined,
+  sentAt: j.sentAt ?? undefined,
+  respondedAt: j.respondedAt ?? undefined,
 });
 
 const formatJobDate = (value?: string) =>
@@ -1167,22 +1176,22 @@ export default function Dashboard() {
    * clicar num cabeçalho de coluna ordena só a tabela. Opera sobre a mesma
    * `orderedJobs` (já filtrada pelos controles da tela), então herda busca,
    * aderência mínima, período etc. automaticamente. */
-  const [tableSort, setTableSort] = useState<{ column: "externalId" | "company" | "title" | "score" | "stack" | "location" | "source" | "contactEmail" | "applicationStatus" | "publishedAt"; direction: "asc" | "desc" }>(
+  const [tableSort, setTableSort] = useState<{ column: "externalId" | "company" | "title" | "description" | "score" | "stack" | "location" | "source" | "contactEmail" | "applicationActivityAt" | "publishedAt"; direction: "asc" | "desc" }>(
     { column: "score", direction: "desc" },
   );
   const toggleTableSort = useCallback((column: typeof tableSort.column) => {
     setTableSort((current) =>
       current.column === column
         ? { column, direction: current.direction === "asc" ? "desc" : "asc" }
-        : { column, direction: column === "score" || column === "publishedAt" ? "desc" : "asc" },
+        : { column, direction: column === "score" || column === "applicationActivityAt" || column === "publishedAt" ? "desc" : "asc" },
     );
   }, []);
   /** Filtro por coluna da tabela — texto livre em Empresa/Vaga/Stack, exato
    * em Modalidade/Veredito/Fonte. Roda em cima da página já carregada
    * (client-side), não chama a API de novo. */
   const [tableColumnFilters, setTableColumnFilters] = useState<{
-    company: string; title: string; mode: string; verdict: string; stack: string; source: string; contactEmail: string; applicationStatus: string; missingContact: boolean;
-  }>({ company: "", title: "", mode: "", verdict: "", stack: "", source: "", contactEmail: "", applicationStatus: "", missingContact: false });
+    company: string; title: string; description: string; mode: string; verdict: string; stack: string; source: string; contactEmail: string; applicationStatus: string; missingContact: boolean;
+  }>({ company: "", title: "", description: "", mode: "", verdict: "", stack: "", source: "", contactEmail: "", applicationStatus: "", missingContact: false });
   /** Seleção temporária para exportação. Ela não altera o card aberto, o
    * pipeline nem o status da vaga: serve exclusivamente ao relatório. */
   const [exportSelectionIds, setExportSelectionIds] = useState<Set<string>>(() => new Set());
@@ -1190,17 +1199,18 @@ export default function Dashboard() {
     setTableColumnFilters((current) => ({ ...current, [column]: value }));
   }, []);
   const clearTableColumnFilters = useCallback(() => {
-    setTableColumnFilters({ company: "", title: "", mode: "", verdict: "", stack: "", source: "", contactEmail: "", applicationStatus: "", missingContact: false });
+    setTableColumnFilters({ company: "", title: "", description: "", mode: "", verdict: "", stack: "", source: "", contactEmail: "", applicationStatus: "", missingContact: false });
   }, []);
   const activeTableColumnFilterCount = Object.values(tableColumnFilters).filter(Boolean).length;
   const tableJobs = useMemo(() => {
     const { column, direction } = tableSort;
     const factor = direction === "asc" ? 1 : -1;
     const filters = tableColumnFilters;
-    const filtered = filters.company || filters.title || filters.mode || filters.verdict || filters.stack || filters.source || filters.contactEmail || filters.applicationStatus || filters.missingContact
+    const filtered = filters.company || filters.title || filters.description || filters.mode || filters.verdict || filters.stack || filters.source || filters.contactEmail || filters.applicationStatus || filters.missingContact
       ? orderedJobs.filter((j) => {
           if (filters.company && !j.company.toLowerCase().includes(filters.company.toLowerCase())) return false;
           if (filters.title && !j.title.toLowerCase().includes(filters.title.toLowerCase())) return false;
+          if (filters.description && !(j.description ?? "").toLowerCase().includes(filters.description.toLowerCase())) return false;
           if (filters.mode && j.mode !== filters.mode) return false;
           if (filters.verdict) {
             const v = verdictMap.get(j.id);
@@ -1229,8 +1239,11 @@ export default function Dashboard() {
           return (left.sourceName ?? "").localeCompare(right.sourceName ?? "", "pt-BR") * factor;
         case "contactEmail":
           return (left.contactEmail ?? "").localeCompare(right.contactEmail ?? "", "pt-BR") * factor;
-        case "applicationStatus":
-          return (left.applicationStatus ?? "").localeCompare(right.applicationStatus ?? "", "pt-BR") * factor;
+        case "applicationActivityAt": {
+          const leftDate = new Date(left.respondedAt ?? left.sentAt ?? left.generatedAt ?? 0).getTime();
+          const rightDate = new Date(right.respondedAt ?? right.sentAt ?? right.generatedAt ?? 0).getTime();
+          return (leftDate - rightDate) * factor;
+        }
         case "publishedAt":
           return (new Date(left.sourcePublishedAt ?? 0).getTime() - new Date(right.sourcePublishedAt ?? 0).getTime()) * factor;
         default:
@@ -3099,12 +3112,13 @@ export default function Dashboard() {
                     { column: "externalId" as const, label: "Código" },
                     { column: "company" as const, label: "Empresa" },
                     { column: "title" as const, label: "Vaga" },
+                    { column: "description" as const, label: "Descrição" },
                     { column: "location" as const, label: "Local / Modalidade" },
                     { column: "score" as const, label: "Score / Veredito" },
                     { column: "stack" as const, label: "Stack" },
                     { column: "source" as const, label: "Fonte" },
                     { column: "contactEmail" as const, label: "E-mail" },
-                    { column: "applicationStatus" as const, label: "Situação" },
+                    { column: "applicationActivityAt" as const, label: "Candidatura / envio" },
                     { column: "publishedAt" as const, label: "Publicada" },
                   ]).map(({ column, label }) => (
                     <button
@@ -3122,7 +3136,7 @@ export default function Dashboard() {
                     </button>
                   ))}
                 </div>
-                <div className="job-table-filter-row" role="row" hidden={!filtersOpen && activeTableColumnFilterCount === 0}>
+                <div className="job-table-filter-row" role="row">
                   <span role="cell" className="job-table-selection-header" aria-label="Seleção para exportação" />
                   <span role="cell" className="job-table-filter-cell job-table-filter-cell-disabled" aria-hidden="true" />
                   <span role="cell" className="job-table-filter-cell">
@@ -3130,6 +3144,9 @@ export default function Dashboard() {
                   </span>
                   <span role="cell" className="job-table-filter-cell">
                     <input type="text" placeholder="Filtrar vaga…" value={tableColumnFilters.title} onChange={(e) => setTableColumnFilter("title", e.target.value)} aria-label="Filtrar por título da vaga" />
+                  </span>
+                  <span role="cell" className="job-table-filter-cell">
+                    <input type="text" placeholder="Filtrar descrição…" value={tableColumnFilters.description} onChange={(e) => setTableColumnFilter("description", e.target.value)} aria-label="Filtrar por descrição da vaga" />
                   </span>
                   <span role="cell" className="job-table-filter-cell">
                     <select value={tableColumnFilters.mode} onChange={(e) => setTableColumnFilter("mode", e.target.value)} aria-label="Filtrar por modalidade">
@@ -3213,6 +3230,9 @@ export default function Dashboard() {
                       <span role="cell" className="job-table-cell job-table-cell-title">
                         {j.title}
                       </span>
+                      <span role="cell" className="job-table-cell job-table-cell-description" title={j.description || undefined}>
+                        {j.description ? j.description.replace(/\s+/g, " ").trim().slice(0, 140) : "—"}
+                      </span>
                       <span role="cell" className="job-table-cell job-table-cell-location">
                         <span className="job-table-location-line">⌖ {j.location}</span>
                         <span className="job-table-mode-tag">{j.mode}</span>
@@ -3255,8 +3275,13 @@ export default function Dashboard() {
                           </a>
                         ) : "—"}
                       </span>
-                      <span role="cell" className="job-table-cell">
-                        {j.applicationStatus === "generated" ? "Rascunho" : j.applicationStatus === "sent" ? "E-mail enviado" : j.applicationStatus === "responded" ? "Resposta recebida" : "Pendente"}
+                      <span role="cell" className="job-table-cell job-table-cell-application">
+                        {j.applicationStatus ? (
+                          <>
+                            <strong>{isApinfoJob(j) ? "E-mail APInfo" : "Candidatura LinkedIn"}</strong>
+                            <small>{j.applicationStatus === "generated" ? "Rascunho preparado" : j.applicationStatus === "sent" ? "Enviado" : "Resposta recebida"}{j.respondedAt ?? j.sentAt ?? j.generatedAt ? ` · ${formatJobDateTime(j.respondedAt ?? j.sentAt ?? j.generatedAt)}` : ""}</small>
+                          </>
+                        ) : "Pendente"}
                       </span>
                       <span role="cell" className="job-table-cell job-table-cell-date">
                         {j.sourcePublishedAt ? formatJobDateTime(j.sourcePublishedAt) : j.age}
