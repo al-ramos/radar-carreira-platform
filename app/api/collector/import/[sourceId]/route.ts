@@ -69,6 +69,7 @@ type ImportDetails = {
   invalidReasons: Record<string, number>;
   rejectedProfile: number;
   accepted: number;
+  skippedExisting: number;
   profileRule: string;
 };
 
@@ -161,6 +162,32 @@ function valuesFor(sourceId: string, job: ImportedJob, now: Date) {
   };
 }
 
+/**
+ * A extensão reenviará naturalmente a listagem inteira a cada coleta. Antes
+ * de gravar, comparamos somente os campos que ela pode trazer ou enriquecer;
+ * `lastSeenAt` não entra na comparação, pois sozinho faria toda vaga virar
+ * uma escrita redundante em cada rodada.
+ */
+function differsFromStoredJob(sourceId: string, job: ImportedJob, stored: typeof jobs.$inferSelect) {
+  const sourcePublishedAt = sourcePublishedJobDate(job.publishedAt);
+  return stored.sourceId !== sourceId ||
+    stored.externalId !== (job.externalId ?? null) ||
+    stored.company !== job.company ||
+    stored.title !== job.title ||
+    stored.seniority !== (job.seniority ?? null) ||
+    stored.workMode !== (job.workMode ?? null) ||
+    stored.location !== (job.location ?? null) ||
+    stored.stack !== JSON.stringify(job.stack ?? []) ||
+    stored.roleArea !== inferJobArea(job) ||
+    stored.url !== job.url ||
+    (job.applyUrl !== undefined && stored.applyUrl !== job.applyUrl) ||
+    (job.contactEmail !== undefined && stored.contactEmail !== job.contactEmail) ||
+    (job.contactSubject !== undefined && stored.contactSubject !== job.contactSubject) ||
+    stored.description !== (job.description ?? "") ||
+    (sourcePublishedAt !== null && stored.sourcePublishedAt?.getTime() !== sourcePublishedAt.getTime()) ||
+    stored.status !== "active";
+}
+
 export async function OPTIONS() {
   return new Response(null, { status: 204, headers: CORS_HEADERS });
 }
@@ -214,6 +241,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ sou
     invalidReasons: input.reasons,
     rejectedProfile: filtered.rejected,
     accepted: entries.length,
+    skippedExisting: 0,
     profileRule: filtered.requiredStacks.length
       ? `Exige ${filtered.stackMatchMode === "all" ? "todas" : "alguma"} das stacks obrigatórias: ${filtered.requiredStacks.join(", ")}.`
       : "Esta fonte não aplica filtro de stack obrigatório no Radar.",
@@ -238,6 +266,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ sou
 
   let inserted = 0;
   let updated = 0;
+  let skippedExisting = 0;
   try {
     if (!entries.length) {
       await db.update(importRuns).set({ status: "completed", details: serializeDetails(importDetails), finishedAt: new Date() }).where(eq(importRuns.id, runId));
@@ -246,13 +275,19 @@ export async function POST(request: Request, { params }: { params: Promise<{ sou
       await notifyImportRun(db, { runId, source: sourceName, status: "completed", received: rawItems.length, valid: items.length, invalid: input.rejected, invalidReasons: input.reasons, rejectedProfile: filtered.rejected, inserted: 0, updated: 0, duplicates: 0 }).catch(() => undefined);
       return json({ ok: true, runId, accepted: 0, received: rawItems.length, valid: items.length, invalid: input.rejected, invalidReasons: input.reasons, duplicates: 0, rejected: filtered.rejected, inserted: 0, updated: 0, requiredStacks: filtered.requiredStacks, stackMatchMode: filtered.stackMatchMode, message: "Nenhuma vaga atende ao perfil de stacks obrigatórias" });
     }
-    const existing = new Set<string>();
+    const existing = new Map<string, typeof jobs.$inferSelect>();
     for (const batch of chunks(entries.map((entry) => entry.fp), LOOKUP_BATCH_SIZE)) {
-      const rows = await db.select({ fingerprint: jobs.fingerprint }).from(jobs).where(inArray(jobs.fingerprint, batch));
-      rows.forEach((row) => existing.add(row.fingerprint));
+      const rows = await db.select().from(jobs).where(inArray(jobs.fingerprint, batch));
+      rows.forEach((row) => existing.set(row.fingerprint, row));
     }
+    const entriesToWrite = entries.filter((entry) => {
+      const stored = existing.get(entry.fp);
+      return !stored || differsFromStoredJob(sourceId, entry.job, stored);
+    });
+    skippedExisting = entries.length - entriesToWrite.length;
+    importDetails.skippedExisting = skippedExisting;
 
-    for (const batch of chunks(entries, WRITE_BATCH_SIZE)) {
+    for (const batch of chunks(entriesToWrite, WRITE_BATCH_SIZE)) {
       const now = new Date();
       const statements = batch.map(({ job }) => {
         const values = valuesFor(sourceId, job, now);
@@ -291,7 +326,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ sou
       await db.batch(statements as [typeof statements[number], ...typeof statements[number][]]);
       await recordImportRunJobs(db, runId, batch.map(entry => entry.fp), existing, now);
       batch.forEach((entry) => (existing.has(entry.fp) ? updated++ : inserted++));
-      await db.update(importRuns).set({ inserted, updated, duplicates: duplicateRows }).where(eq(importRuns.id, runId));
+      await db.update(importRuns).set({ inserted, updated, duplicates: duplicateRows, details: serializeDetails(importDetails) }).where(eq(importRuns.id, runId));
     }
 
     await db
@@ -300,8 +335,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ sou
       .where(eq(importRuns.id, runId));
     const finishedAt = new Date();
     await db.update(jobSources).set({ lastRunAt: finishedAt, lastSuccessAt: finishedAt, lastError: null, consecutiveFailures: 0 }).where(eq(jobSources.id, sourceId));
-    await notifyImportRun(db, { runId, source: sourceName, status: "completed", received: rawItems.length, valid: items.length, invalid: input.rejected, invalidReasons: input.reasons, rejectedProfile: filtered.rejected, inserted, updated, duplicates: duplicateRows }).catch(() => undefined);
-    return json({ ok: true, runId, accepted: filtered.accepted.length, received: rawItems.length, valid: items.length, invalid: input.rejected, invalidReasons: input.reasons, duplicates: duplicateRows, rejected: filtered.rejected, inserted, updated, requiredStacks: filtered.requiredStacks, stackMatchMode: filtered.stackMatchMode });
+    await notifyImportRun(db, { runId, source: sourceName, status: "completed", received: rawItems.length, valid: items.length, invalid: input.rejected, invalidReasons: input.reasons, rejectedProfile: filtered.rejected, skippedExisting, inserted, updated, duplicates: duplicateRows }).catch(() => undefined);
+    return json({ ok: true, runId, accepted: filtered.accepted.length, received: rawItems.length, valid: items.length, invalid: input.rejected, invalidReasons: input.reasons, duplicates: duplicateRows, rejected: filtered.rejected, skippedExisting, inserted, updated, requiredStacks: filtered.requiredStacks, stackMatchMode: filtered.stackMatchMode });
   } catch (error) {
     const detail = error instanceof Error ? error.message : "Falha desconhecida durante a gravação";
     await db
@@ -309,7 +344,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ sou
       .set({ status: "failed", inserted, updated, duplicates: duplicateRows, errors: 1, details: serializeDetails(importDetails), finishedAt: new Date() })
       .where(eq(importRuns.id, runId))
       .catch(() => undefined);
-    await notifyImportRun(db, { runId, source: sourceName, status: "failed", received: rawItems.length, valid: items.length, invalid: input.rejected, invalidReasons: input.reasons, rejectedProfile: filtered.rejected, inserted, updated, duplicates: duplicateRows, error: detail.slice(0, 300) }).catch(() => undefined);
+    await notifyImportRun(db, { runId, source: sourceName, status: "failed", received: rawItems.length, valid: items.length, invalid: input.rejected, invalidReasons: input.reasons, rejectedProfile: filtered.rejected, skippedExisting, inserted, updated, duplicates: duplicateRows, error: detail.slice(0, 300) }).catch(() => undefined);
     return json(
       { error: "A importação foi interrompida. Reenvie o mesmo lote para concluir as vagas pendentes.", runId, inserted, updated },
       { status: 500 },

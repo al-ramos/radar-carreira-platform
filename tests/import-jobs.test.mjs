@@ -65,6 +65,18 @@ test("coletores registram início, conclusão e falha no monitoramento", async()
  assert.match(ui,/operation\.completed.*operation\.total.*operation\.failed/);
 });
 
+test("coletor evita escrita quando uma vaga recebida já está idêntica no banco", async()=>{
+ const [route,notifications]=await Promise.all([
+  readFile(new URL("../app/api/collector/import/[sourceId]/route.ts",import.meta.url),"utf8"),
+  readFile(new URL("../lib/notifications.ts",import.meta.url),"utf8"),
+ ]);
+ assert.match(route,/differsFromStoredJob/);
+ assert.match(route,/const entriesToWrite = entries\.filter/);
+ assert.match(route,/skippedExisting = entries\.length - entriesToWrite\.length/);
+ assert.match(route,/for \(const batch of chunks\(entriesToWrite, WRITE_BATCH_SIZE\)\)/);
+ assert.match(notifications,/já existente/);
+});
+
 test("monitoramento consolida importações e lotes de triagem sem expor o detalhe bruto", async()=>{
  const [monitor,ui]=await Promise.all([
   readFile(new URL("../app/api/admin/monitor/route.ts",import.meta.url),"utf8"),

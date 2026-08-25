@@ -44,6 +44,7 @@ export type ImportRunOutcome = {
   invalid?: number;
   invalidReasons?: Record<string, number>;
   rejectedProfile?: number;
+  skippedExisting?: number;
   inserted: number;
   updated: number;
   duplicates?: number;
@@ -69,6 +70,7 @@ export async function notifyImportRun(db: ReturnType<typeof getDb>, outcome: Imp
         ...(outcome.rejectedProfile ? [`${numberFormat.format(outcome.rejectedProfile)} rejeitada${outcome.rejectedProfile === 1 ? "" : "s"} pelo perfil`] : []),
         `${numberFormat.format(outcome.inserted)} nova${outcome.inserted === 1 ? "" : "s"}`,
         `${numberFormat.format(outcome.updated)} atualizada${outcome.updated === 1 ? "" : "s"}`,
+        ...(outcome.skippedExisting ? [`${numberFormat.format(outcome.skippedExisting)} já existente${outcome.skippedExisting === 1 ? "" : "s"}`] : []),
         ...(outcome.duplicates ? [`${numberFormat.format(outcome.duplicates)} duplicada${outcome.duplicates === 1 ? "" : "s"}`] : []),
       ]
     : [outcome.error?.trim() || "Falha não identificada. Veja Auditoria para detalhes."];
@@ -78,7 +80,7 @@ export async function notifyImportRun(db: ReturnType<typeof getDb>, outcome: Imp
     title,
     body: parts.join(" · "),
     link: "/?open=importacoes",
-    metadata: { runId: outcome.runId, source: outcome.source, received: outcome.received, valid: outcome.valid ?? null, invalid: outcome.invalid ?? 0, invalidReasons: outcome.invalidReasons ?? {}, rejectedProfile: outcome.rejectedProfile ?? 0, inserted: outcome.inserted, updated: outcome.updated, duplicates: outcome.duplicates ?? 0, error: outcome.error ?? null },
+    metadata: { runId: outcome.runId, source: outcome.source, received: outcome.received, valid: outcome.valid ?? null, invalid: outcome.invalid ?? 0, invalidReasons: outcome.invalidReasons ?? {}, rejectedProfile: outcome.rejectedProfile ?? 0, skippedExisting: outcome.skippedExisting ?? 0, inserted: outcome.inserted, updated: outcome.updated, duplicates: outcome.duplicates ?? 0, error: outcome.error ?? null },
   });
 }
 
