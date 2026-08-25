@@ -1,4 +1,3 @@
-import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import { SKILL_OPTIONS } from "./profile-options.ts";
 
 export type ResumeSkillSuggestion = {
@@ -17,6 +16,31 @@ export type ResumeProposal = {
 
 const MAX_PAGES = 30;
 const MAX_TEXT_CHARACTERS = 50_000;
+
+/**
+ * Workers não expõe DOMMatrix. O PDF.js também o instancia no módulo de
+ * renderização, embora a importação do currículo use somente getTextContent.
+ * A implementação mínima mantém o carregamento seguro sem introduzir Canvas.
+ */
+class ResumeDOMMatrix {
+  a = 1; b = 0; c = 0; d = 1; e = 0; f = 0;
+  constructor(values?: number[] | ResumeDOMMatrix) {
+    if (Array.isArray(values)) [this.a, this.b, this.c, this.d, this.e, this.f] = values;
+    else if (values) Object.assign(this, values);
+  }
+  multiplySelf() { return this; }
+  preMultiplySelf() { return this; }
+  translate() { return this; }
+  scale() { return this; }
+  invertSelf() { return this; }
+}
+
+async function pdfLoader(data: Uint8Array) {
+  const runtime = globalThis as typeof globalThis & { DOMMatrix?: typeof ResumeDOMMatrix };
+  if (!runtime.DOMMatrix) runtime.DOMMatrix = ResumeDOMMatrix;
+  const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  return getDocument({ data, disableWorker: true, stopAtErrors: true });
+}
 
 const aliases: Array<{ canonical: string; values: string[] }> = [
   { canonical: "Visual Basic 6", values: ["visual basic 6", "visual basic 6.0", "vb6", "vb 6"] },
@@ -53,7 +77,7 @@ export async function extractTextFromPdf(bytes: ArrayBuffer): Promise<{ text: st
   const data = new Uint8Array(bytes);
   const signature = new TextDecoder().decode(data.slice(0, 5));
   if (signature !== "%PDF-") throw new Error("O arquivo não é um PDF válido.");
-  const loadingTask = getDocument({ data, disableWorker: true, stopAtErrors: true });
+  const loadingTask = await pdfLoader(data);
   try {
     const document = await loadingTask.promise;
     if (document.numPages > MAX_PAGES) throw new Error(`O currículo tem ${document.numPages} páginas; o limite é ${MAX_PAGES}.`);
