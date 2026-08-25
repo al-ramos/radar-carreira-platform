@@ -7,6 +7,7 @@ import { fingerprint, recordedJobDate, sourcePublishedJobDate } from "../../../.
 import { inferJobArea } from "../../../../lib/job-area";
 import { recordImportRunJobs } from "../../../../lib/import-tracking";
 import { notifyImportRun } from "../../../../lib/notifications";
+import { shouldArchiveImportedJob } from "../../../../lib/job-archive-policy";
 
 export const dynamic = "force-dynamic";
 
@@ -69,17 +70,18 @@ export async function POST(request: Request) {
       for (const entryBatch of chunks(entries, WRITE_BATCH_SIZE)) {
         const now = new Date();
         const statements = entryBatch.map(({ job, jobFingerprint }) => {
+          const sourcePublishedAt = sourcePublishedJobDate(job.publishedAt);
           const values = {
             id: crypto.randomUUID(), fingerprint: jobFingerprint, sourceId: source.id,
             externalId: job.externalId ?? null, company: job.company, title: job.title, seniority: job.seniority ?? null,
             workMode: job.workMode ?? null, location: job.location ?? null, stack: JSON.stringify(job.stack ?? []),
-            publishedAt: recordedJobDate(job.publishedAt, now), sourcePublishedAt: sourcePublishedJobDate(job.publishedAt), ingestionMode: "automatic" as const, ingestionChannel: "connector" as const, roleArea: inferJobArea(job),
+            publishedAt: recordedJobDate(job.publishedAt, now), sourcePublishedAt, ingestionMode: "automatic" as const, ingestionChannel: "connector" as const, roleArea: inferJobArea(job),
             url: job.url, description: job.description ?? "",
-            firstSeenAt: now, lastSeenAt: now, status: "active" as const, createdAt: now, updatedAt: now,
+            firstSeenAt: now, lastSeenAt: now, status: shouldArchiveImportedJob(sourcePublishedAt, now) ? "archived" as const : "active" as const, createdAt: now, updatedAt: now,
           };
           return getDb().insert(jobs).values(values).onConflictDoUpdate({
             target: jobs.fingerprint,
-            set: { sourceId: source.id, title: values.title, location: values.location, workMode: values.workMode, ingestionChannel: values.ingestionChannel, roleArea: values.roleArea, publishedAt: values.publishedAt, sourcePublishedAt: sql`coalesce(${values.sourcePublishedAt?.getTime() ?? null}, ${jobs.sourcePublishedAt})`, url: values.url, description: values.description, lastSeenAt: now, status: "active", updatedAt: now },
+            set: { sourceId: source.id, title: values.title, location: values.location, workMode: values.workMode, ingestionChannel: values.ingestionChannel, roleArea: values.roleArea, publishedAt: values.publishedAt, sourcePublishedAt: sql`coalesce(${values.sourcePublishedAt?.getTime() ?? null}, ${jobs.sourcePublishedAt})`, url: values.url, description: values.description, lastSeenAt: now, status: values.status === "archived" ? "archived" : sql`case when ${jobs.status} = 'archived' then 'archived' else 'active' end`, updatedAt: now },
           });
         });
         if (statements.length) {

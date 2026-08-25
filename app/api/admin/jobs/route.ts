@@ -2,7 +2,7 @@ import { inArray } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db/index";
-import { jobs } from "../../../../db/schema";
+import { draftOutbox, jobs, triageBatchItems, triageDeduplication, triageHistory } from "../../../../db/schema";
 import { can } from "../../../../lib/rbac";
 import { deleteJobsAndRelated } from "../../../../lib/job-deletion";
 
@@ -26,6 +26,15 @@ export async function DELETE(request:Request){
  const target=all?await db.select({id:jobs.id}).from(jobs):await db.select({id:jobs.id}).from(jobs).where(inArray(jobs.id,ids));
  if(!target.length)return NextResponse.json({ok:true,deleted:0});
  const targetIds=target.map(job=>job.id);
+ // Histórico é evidência operacional. A exclusão física não pode apagar nem
+ // deixar parcialmente apagada uma vaga já colocada em qualquer fila.
+ const dependencies=await Promise.all([
+  db.select({id:triageHistory.id}).from(triageHistory).where(inArray(triageHistory.jobId,targetIds)).limit(1),
+  db.select({id:draftOutbox.id}).from(draftOutbox).where(inArray(draftOutbox.jobId,targetIds)).limit(1),
+  db.select({jobId:triageBatchItems.jobId}).from(triageBatchItems).where(inArray(triageBatchItems.jobId,targetIds)).limit(1),
+  db.select({key:triageDeduplication.idempotencyKey}).from(triageDeduplication).where(inArray(triageDeduplication.jobId,targetIds)).limit(1),
+ ]);
+ if(dependencies.some(rows=>rows.length))return NextResponse.json({error:"Exclusão bloqueada: há histórico de triagem ou rascunho vinculado. Arquive a vaga para removê-la da operação sem perder evidências."},{status:409});
  await deleteJobsAndRelated(targetIds);
  return NextResponse.json({ok:true,deleted:targetIds.length,scope:all?"all":"selected"});
 }

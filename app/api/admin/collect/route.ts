@@ -9,6 +9,7 @@ import { findCuratedSource } from "../../../../lib/curated-sources";
 import { can } from "../../../../lib/rbac";
 import { inferJobArea } from "../../../../lib/job-area";
 import { recordImportRunJobs } from "../../../../lib/import-tracking";
+import { shouldArchiveImportedJob } from "../../../../lib/job-archive-policy";
 
 export const dynamic = "force-dynamic";
 
@@ -69,18 +70,19 @@ export async function POST(request: Request) {
         const fp = fingerprint(job);
         const now = new Date();
         const existing = (await db.select({ id: jobs.id }).from(jobs).where(eq(jobs.fingerprint, fp)).limit(1))[0];
+        const sourcePublishedAt = sourcePublishedJobDate(job.publishedAt);
         const values = {
           id: existing?.id ?? crypto.randomUUID(), fingerprint: fp, sourceId: source.id,
           externalId: job.externalId ?? null, company: job.company, title: job.title,
           seniority: job.seniority ?? null, workMode: job.workMode ?? null,
           location: job.location ?? null, stack: JSON.stringify(job.stack ?? []),
-          publishedAt: recordedJobDate(job.publishedAt, now), sourcePublishedAt: sourcePublishedJobDate(job.publishedAt), ingestionMode: "automatic" as const, ingestionChannel: "connector" as const, roleArea: inferJobArea(job),
+          publishedAt: recordedJobDate(job.publishedAt, now), sourcePublishedAt, ingestionMode: "automatic" as const, ingestionChannel: "connector" as const, roleArea: inferJobArea(job),
           url: job.url, description: job.description ?? "", firstSeenAt: now,
-          lastSeenAt: now, status: "active" as const, createdAt: now, updatedAt: now,
+          lastSeenAt: now, status: shouldArchiveImportedJob(sourcePublishedAt, now) ? "archived" as const : "active" as const, createdAt: now, updatedAt: now,
         };
         await db.insert(jobs).values(values).onConflictDoUpdate({
           target: jobs.fingerprint,
-          set: { sourceId: source.id, title: values.title, location: values.location, workMode: values.workMode, ingestionChannel: values.ingestionChannel, roleArea: values.roleArea, publishedAt: values.publishedAt, sourcePublishedAt: sql`coalesce(${values.sourcePublishedAt?.getTime() ?? null}, ${jobs.sourcePublishedAt})`, url: values.url, description: values.description, lastSeenAt: now, status: "active", updatedAt: now },
+          set: { sourceId: source.id, title: values.title, location: values.location, workMode: values.workMode, ingestionChannel: values.ingestionChannel, roleArea: values.roleArea, publishedAt: values.publishedAt, sourcePublishedAt: sql`coalesce(${values.sourcePublishedAt?.getTime() ?? null}, ${jobs.sourcePublishedAt})`, url: values.url, description: values.description, lastSeenAt: now, status: values.status === "archived" ? "archived" : sql`case when ${jobs.status} = 'archived' then 'archived' else 'active' end`, updatedAt: now },
         });
         await recordImportRunJobs(db,runId,[fp],new Set(existing?[fp]:[]),now);
         existing ? sourceUpdated++ : sourceInserted++;

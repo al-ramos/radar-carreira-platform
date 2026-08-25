@@ -8,6 +8,7 @@ import { normalizeCareerRules } from "../../../../../lib/profile-options";
 import { inferJobArea } from "../../../../../lib/job-area";
 import { recordImportRunJobs } from "../../../../../lib/import-tracking";
 import { notifyImportRun } from "../../../../../lib/notifications";
+import { shouldArchiveImportedJob } from "../../../../../lib/job-archive-policy";
 
 export const dynamic = "force-dynamic";
 
@@ -130,6 +131,7 @@ async function recordCollectorStatus(
 }
 
 function valuesFor(sourceId: string, job: ImportedJob, now: Date) {
+  const sourcePublishedAt = sourcePublishedJobDate(job.publishedAt);
   return {
     id: crypto.randomUUID(),
     fingerprint: fingerprint(job),
@@ -142,7 +144,7 @@ function valuesFor(sourceId: string, job: ImportedJob, now: Date) {
     location: job.location ?? null,
     stack: JSON.stringify(job.stack ?? []),
     publishedAt: recordedJobDate(job.publishedAt, now),
-    sourcePublishedAt: sourcePublishedJobDate(job.publishedAt),
+    sourcePublishedAt,
     ingestionMode: "automatic" as const,
     ingestionChannel: "extension" as const,
     roleArea: inferJobArea(job),
@@ -153,7 +155,7 @@ function valuesFor(sourceId: string, job: ImportedJob, now: Date) {
     description: job.description ?? "",
     firstSeenAt: now,
     lastSeenAt: now,
-    status: "active" as const,
+    status: shouldArchiveImportedJob(sourcePublishedAt, now) ? "archived" as const : "active" as const,
     createdAt: now,
     updatedAt: now,
   };
@@ -281,7 +283,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ sou
             contactSubject: sql`coalesce(${values.contactSubject}, ${jobs.contactSubject})`,
             description: values.description,
             lastSeenAt: now,
-            status: "active",
+            status: values.status === "archived" ? "archived" : sql`case when ${jobs.status} = 'archived' then 'archived' else 'active' end`,
             updatedAt: now,
           },
         });
