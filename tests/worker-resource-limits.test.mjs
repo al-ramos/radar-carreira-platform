@@ -96,6 +96,14 @@ test("falha da API não exibe as quatro vagas demonstrativas", async () => {
   assert.doesNotMatch(dashboard, /\.catch\(\(\) => \{\s*setItems\(\[\]\)/);
 });
 
+test("a lista expõe telemetria de latência e registra falhas para observabilidade", async () => {
+  const route = await read("../app/api/jobs/route.ts");
+  assert.match(route, /Server-Timing/);
+  assert.match(route, /X-Radar-Jobs-Mode/);
+  assert.match(route, /event: "jobs_list"/);
+  assert.match(route, /event: "jobs_list_failed"/);
+});
+
 test("a página autenticada não renderiza o dashboard pesado no Worker", async () => {
   const [page, shell] = await Promise.all([
     read("../app/page.tsx"),

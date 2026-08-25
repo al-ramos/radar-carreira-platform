@@ -29,6 +29,7 @@ return [];
 };
 
 export async function GET(request: Request) {
+const startedAt = performance.now();
 try {
 const url = new URL(request.url);
 const degradedMode = url.searchParams.get("degraded") === "1";
@@ -366,6 +367,10 @@ applicationStatus: applicationStatusByJobId.get(job.id) ?? null,
 const totalLinkedIn = Number(sourceTotals[0]?.linkedIn ?? 0);
 const totalApinfo = Number(sourceTotals[0]?.apinfo ?? 0);
 const baseTotal = Number(sourceTotals[0]?.total ?? 0);
+const headers = new Headers(degradedMode ? { "Cache-Control": "private, max-age=30, stale-while-revalidate=120" } : undefined);
+headers.set("Server-Timing", `radar-jobs;dur=${Math.round(performance.now() - startedAt)}`);
+headers.set("X-Radar-Jobs-Mode", degradedMode ? "degraded" : "full");
+console.log(JSON.stringify({ event: "jobs_list", mode: degradedMode ? "degraded" : "full", durationMs: Math.round(performance.now() - startedAt), period }));
 return NextResponse.json({
 jobs: result,
 total: totalCount,
@@ -398,11 +403,12 @@ mode: "database",
 personalized: profileHasScoringSignals,
 degraded: degradedMode,
 period: period === "all" ? "all" : hours,
-}, degradedMode ? { headers: { "Cache-Control": "private, max-age=30, stale-while-revalidate=120" } } : undefined);
+}, { headers });
 } catch (error) {
+console.error(JSON.stringify({ event: "jobs_list_failed", durationMs: Math.round(performance.now() - startedAt), error: error instanceof Error ? error.message : "Banco indisponível" }));
 return NextResponse.json(
 { jobs: [], mode: "unavailable", error: error instanceof Error ? error.message : "Banco indisponível" },
-{ status: 503 },
+{ status: 503, headers: { "Server-Timing": `radar-jobs;dur=${Math.round(performance.now() - startedAt)}`, "X-Radar-Jobs-Mode": "unavailable" } },
 );
 }
 }

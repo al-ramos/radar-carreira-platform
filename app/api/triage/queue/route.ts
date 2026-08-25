@@ -64,7 +64,8 @@ export async function POST(request: Request) {
   if (!user) return NextResponse.json({ error: "Autenticação necessária" }, { status: 401 });
 
   const body = await request.json().catch(() => ({})) as QueueRequest;
-  const queue = (env as { TRIAGE_QUEUE?: { sendBatch(messages: QueueMessage[]): Promise<void> } }).TRIAGE_QUEUE;
+  // Ação manual não disputa capacidade com a automação de coleta.
+  const queue = (env as { MANUAL_TRIAGE_QUEUE?: { sendBatch(messages: QueueMessage[]): Promise<void> } }).MANUAL_TRIAGE_QUEUE;
   if (!queue) return NextResponse.json({ error: "Fila de triagem indisponível no ambiente." }, { status: 503 });
   if (body.action === "resume") {
     if (!body.batchId) return NextResponse.json({ error: "Informe o lote a retomar." }, { status: 400 });

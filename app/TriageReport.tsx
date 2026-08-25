@@ -252,7 +252,7 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
   const actionCandidateTotal = actionCandidate?.key === actionSelectionKey && actionSourceId ? actionCandidate.total : null;
   const manualSummary = (batch: Batch) => {
     if (batch.total === 0) return "Nenhuma vaga ficou pendente neste recorte. Escolha outro período ou atualize os filtros para iniciar uma nova triagem.";
-    if (batch.status === "queued") return `${batch.total} vaga(s) na fila. O Radar iniciará o processamento em instantes.`;
+    if (batch.status === "queued") return `${batch.total} vaga(s) na fila prioritária. O processamento deve iniciar em até 2 minutos; se não houver avanço, o Radar reenfileira automaticamente com segurança.`;
     if (batch.status === "running") return `Processando: ${batch.completed + batch.failed}/${batch.total} vaga(s).`;
     if (batch.status === "failed") return `Falhou em ${batch.failed} de ${batch.total} vaga(s). Veja o histórico antes de preparar rascunhos.`;
     if (batch.status === "completed") return `Concluído: ${batch.completed}/${batch.total} vaga(s) triada(s). Agora você pode preparar os rascunhos elegíveis.`;
@@ -626,7 +626,7 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
                 </div>
                 <div className="triage-action-steps">
                   {recoverableManualItemCount > 0 && <article className="triage-action-step waiting">
-                    <span>↻</span><div><b>Fila interrompida</b><small>{recoverableManualItemCount} vaga(s) ficaram sem atualização por mais de 5 minutos. Retome-as com segurança.</small></div>
+                    <span>↻</span><div><b>Fila em recuperação</b><small>{recoverableManualItemCount} vaga(s) ficaram sem atualização. O Radar reenfileira automaticamente em até 2 minutos; você também pode retomar agora.</small></div>
                     <button className="triage-queue-button" disabled={resumingBatch} onClick={() => void resumePendingBatch()}>{resumingBatch ? "Retomando…" : `Retomar (${recoverableManualItemCount})`}</button>
                   </article>}
                   <article className="triage-action-step">

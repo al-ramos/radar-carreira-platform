@@ -74,6 +74,8 @@ jobs:
       - name: Garantir filas da triagem
         shell: bash
         run: |
+          npx wrangler queues create radar-carreira-triage-manual || true
+          npx wrangler queues create radar-carreira-triage-manual-dlq || true
           npx wrangler queues create radar-carreira-triage || true
           npx wrangler queues create radar-carreira-triage-dlq || true
           npx wrangler queues create radar-carreira-ai-review || true

@@ -26,8 +26,15 @@
   "observability": {
     "enabled": true
   },
+  "triggers": {
+    "crons": ["*/2 * * * *"]
+  },
   "queues": {
     "producers": [
+      {
+        "binding": "MANUAL_TRIAGE_QUEUE",
+        "queue": "radar-carreira-triage-manual"
+      },
       {
         "binding": "TRIAGE_QUEUE",
         "queue": "radar-carreira-triage"
@@ -38,6 +45,14 @@
       }
     ],
     "consumers": [
+      {
+        "queue": "radar-carreira-triage-manual",
+        "max_batch_size": 1,
+        "max_batch_timeout": 5,
+        "max_retries": 3,
+        "max_concurrency": 4,
+        "dead_letter_queue": "radar-carreira-triage-manual-dlq"
+      },
       {
         "queue": "radar-carreira-triage",
         "max_batch_size": 1,

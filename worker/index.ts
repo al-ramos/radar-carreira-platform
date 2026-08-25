@@ -10,6 +10,10 @@ interface Env {
   DB: D1Database;
   COLLECTOR_SECRET: string;
   RADAR_CODEX_MCP_TOKEN: string;
+  MANUAL_TRIAGE_QUEUE: {
+    send(message: unknown): Promise<void>;
+    sendBatch(messages: unknown[]): Promise<void>;
+  };
   TRIAGE_QUEUE: {
     send(message: unknown): Promise<void>;
     sendBatch(messages: unknown[]): Promise<void>;
@@ -134,6 +138,36 @@ interface ExecutionContext {
   passThroughOnException(): void;
 }
 
+const STALE_MANUAL_TRIAGE_MS = 2 * 60_000;
+
+/** Reenvia somente itens manuais sem progresso, sem tocar em reservas válidas. */
+async function recoverStalledManualTriage(env: Env) {
+  const now = Date.now();
+  const staleBefore = now - STALE_MANUAL_TRIAGE_MS;
+  const result = await env.DB.prepare(`
+    SELECT i.batch_id, i.job_id, b.user_id
+    FROM triage_batch_items i INNER JOIN triage_batches b ON b.id = i.batch_id
+    WHERE b.trigger = 'manual' AND b.status IN ('queued', 'running')
+      AND ((i.status = 'queued' AND i.updated_at <= ?) OR (i.status = 'processing' AND (i.lease_until IS NULL OR i.lease_until <= ?)))
+    ORDER BY i.updated_at ASC LIMIT 100
+  `).bind(staleBefore, now).all<{ batch_id: string; job_id: string; user_id: string }>();
+  const recovered: TriageQueueMessage[] = [];
+  for (const item of result.results) {
+    const update = await env.DB.prepare(`
+      UPDATE triage_batch_items SET status = 'queued', lease_owner = NULL, lease_until = NULL, error = NULL, updated_at = ?
+      WHERE batch_id = ? AND job_id = ?
+        AND ((status = 'queued' AND updated_at <= ?) OR (status = 'processing' AND (lease_until IS NULL OR lease_until <= ?)))
+    `).bind(now, item.batch_id, item.job_id, staleBefore, now).run();
+    if (update.meta.changes) recovered.push({ userId: item.user_id, batchId: item.batch_id, jobId: item.job_id, run: { trigger: "portal", batchSize: 1, aiMode: "off", createDrafts: false } });
+  }
+  for (let index = 0; index < recovered.length; index += 100) await env.MANUAL_TRIAGE_QUEUE.sendBatch(recovered.slice(index, index + 100));
+  await env.DB.prepare(`INSERT INTO automation_heartbeats (id, status, started_at, completed_at, error, updated_at)
+    VALUES ('triage-recovery', 'completed', ?, ?, NULL, ?)
+    ON CONFLICT(id) DO UPDATE SET status = excluded.status, started_at = excluded.started_at, completed_at = excluded.completed_at, error = NULL, updated_at = excluded.updated_at`
+  ).bind(now, now, now).run();
+  console.log(JSON.stringify({ event: "triage_recovery", recovered: recovered.length }));
+}
+
 // Image security config. SVG sources with .svg extension auto-skip the
 // optimization endpoint on the client side (served directly, no proxy).
 // To route SVGs through the optimizer (with security headers), set
@@ -212,6 +246,17 @@ const worker = {
     }
 
     return response;
+  },
+  async scheduled(_controller: unknown, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(recoverStalledManualTriage(env).catch(async (error) => {
+      const now = Date.now();
+      const detail = error instanceof Error ? error.message.slice(0, 500) : "Falha ao recuperar a fila manual";
+      console.error(JSON.stringify({ event: "triage_recovery_failed", detail }));
+      await env.DB.prepare(`INSERT INTO automation_heartbeats (id, status, started_at, completed_at, error, updated_at)
+        VALUES ('triage-recovery', 'failed', ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET status = excluded.status, started_at = excluded.started_at, completed_at = excluded.completed_at, error = excluded.error, updated_at = excluded.updated_at`
+      ).bind(now, now, detail, now).run();
+    }));
   },
   async queue(batch: { messages: QueueMessage[] }, env: Env, ctx: ExecutionContext): Promise<void> {
     for (const message of batch.messages) {

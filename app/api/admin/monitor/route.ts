@@ -30,6 +30,10 @@ export async function GET() {
   ]);
 
   const now = Date.now();
+  const stalledManualItems = batchItems.filter((item) => {
+    const batch = batches.find((candidate) => candidate.id === item.batchId);
+    return batch?.trigger === "manual" && (item.status === "queued" || item.status === "processing") && item.updatedAt.getTime() < now - 2 * 60_000;
+  });
   const staleSources = sources.filter((source) => source.enabled && source.collectionMode === "pull" && (!source.lastRunAt || source.lastRunAt.getTime() < now - 48 * 36e5));
   const itemCounts = new Map<string, { total: number; completed: number; failed: number }>();
   for (const item of batchItems) {
@@ -52,9 +56,10 @@ export async function GET() {
     ...staleSources.map((source) => ({ level: "warning" as const, message: `${source.name}: coleta atrasada há mais de 48 horas.`, action: "Verificar fonte e agenda." })),
     ...sources.filter((source) => source.enabled && source.lastError).map((source) => ({ level: "error" as const, message: `${source.name}: ${safeError(source.lastError)}`, action: "Reexecutar ou corrigir a fonte." })),
     ...failedOperations.slice(0, 5).map((operation) => ({ level: "error" as const, message: `${operation.label}: execução com falha.`, action: operation.flow === "triagem" ? "Abrir Triagem e retomar itens pendentes." : "Consultar detalhe da importação." })),
+    ...(stalledManualItems.length ? [{ level: "warning" as const, message: `${stalledManualItems.length} vaga(s) manuais sem progresso há mais de 2 minutos.`, action: "A recuperação automática reenfileira os itens; acompanhe o próximo ciclo." }] : []),
   ];
   const status = alerts.some((alert) => alert.level === "error") ? "attention" : alerts.length ? "warning" : "healthy";
 
-  const schedules = [{ id: "collect", label: "Coleta, enriquecimento e ciclo de vida", cron: "Dias úteis, 08:15 (Brasília)" }, { id: "revalidate", label: "Revalidação de fontes", cron: "Segundas, 03:00 (Brasília)" }, { id: "email-import", label: "Importação Gmail", cron: null }].map((schedule) => ({ ...schedule, heartbeat: heartbeats.find((heartbeat) => heartbeat.id === schedule.id) ?? null, reason: schedule.cron ? null : "Executada pelo conector Gmail; não há agenda declarada no Radar." }));
+  const schedules = [{ id: "collect", label: "Coleta, enriquecimento e ciclo de vida", cron: "Dias úteis, 08:15 (Brasília)" }, { id: "revalidate", label: "Revalidação de fontes", cron: "Segundas, 03:00 (Brasília)" }, { id: "triage-recovery", label: "Recuperação da fila manual", cron: "A cada 2 minutos" }, { id: "email-import", label: "Importação Gmail", cron: null }].map((schedule) => ({ ...schedule, heartbeat: heartbeats.find((heartbeat) => heartbeat.id === schedule.id) ?? null, reason: schedule.cron ? null : "Executada pelo conector Gmail; não há agenda declarada no Radar." }));
   return NextResponse.json({ status, responseMs: Date.now() - started, summary: { sources: sources.length, enabled: sources.filter((source) => source.enabled).length, active: jobRows.filter((job) => job.status === "active").length, closed: jobRows.filter((job) => job.status !== "active").length, failures: failedOperations.length, lastSuccess: operations.find((operation) => operation.status === "completed")?.completedAt ?? null }, alerts, schedules, sources: sources.map((source) => ({ ...source, lastError: safeError(source.lastError), stale: staleSources.some((item) => item.id === source.id) })), operations });
 }
