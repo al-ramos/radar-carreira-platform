@@ -64,10 +64,12 @@ test("falha da API não exibe as quatro vagas demonstrativas", async () => {
   assert.match(dashboard, /PROFILE_FETCH_TIMEOUT_MS = 8_000/);
   assert.match(dashboard, /searchParams\.set\("degraded", "1"\)/);
   assert.match(dashboard, /modo simplificado/);
-  assert.match(dashboard, /A lista anterior pode estar desatualizada/);
+  assert.match(dashboard, /A lista anterior permanece disponível/);
   assert.match(dashboard, /Última atualização bem-sucedida/);
   assert.match(dashboard, /Atualizada às/);
-  assert.match(dashboard, /staleRetryCountRef\.current < 3/);
+  assert.match(dashboard, /RADAR_REFRESH_RETRY_DELAYS_MS = \[3_000, 10_000, 30_000, 60_000, 300_000\]/);
+  assert.match(dashboard, /nextRadarRefreshDelay\(jobsRefreshFailureCountRef\.current\)/);
+  assert.match(dashboard, /Mantendo a última lista válida/);
   assert.match(dashboard, /sem score/);
   assert.doesNotMatch(dashboard, /score: j\.score \?\? 70/);
   assert.match(dashboard, /const visibleMinScore = simplifiedList \? 0 : loadedMinScore/);

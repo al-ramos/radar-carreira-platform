@@ -129,6 +129,10 @@ type ImportRunOption = { id: string; source: string; sourceId?: string | null; c
 type JobFilterOptions = { sources: FilterOption[]; areas: FilterOption[]; channels: FilterOption[]; importRuns: ImportRunOption[] };
 const JOBS_FETCH_ATTEMPTS = 2;
 const JOBS_RETRY_BASE_DELAY_MS = 350;
+// Mantém a recuperação ativa sem pressionar a API quando uma dependência está
+// instável. Depois do último intervalo, continua tentando a cada cinco minutos
+// enquanto o Radar estiver aberto.
+const RADAR_REFRESH_RETRY_DELAYS_MS = [3_000, 10_000, 30_000, 60_000, 300_000];
 const PROFILE_FETCH_TIMEOUT_MS = 8_000;
 const JOBS_FETCH_TIMEOUT_MS = 10_000;
 const APINFO_CONTACT_CAPTURE_TIMEOUT_MS = 4_000 * 5;
@@ -163,6 +167,10 @@ function waitForRetry(delayMs: number, signal: AbortSignal): Promise<void> {
       reject(new DOMException("Requisição cancelada", "AbortError"));
     }, { once: true });
   });
+}
+
+function nextRadarRefreshDelay(failures: number) {
+  return RADAR_REFRESH_RETRY_DELAYS_MS[Math.min(Math.max(failures - 1, 0), RADAR_REFRESH_RETRY_DELAYS_MS.length - 1)];
 }
 
 async function fetchJobsWithRetry(url: string, signal: AbortSignal) {
@@ -507,6 +515,7 @@ export default function Dashboard() {
   >([]);
   const [totalJobs, setTotalJobs] = useState<number | null>(null);
   const [lastJobsUpdatedAt, setLastJobsUpdatedAt] = useState<Date | null>(null);
+  const [nextJobsRetryAt, setNextJobsRetryAt] = useState<Date | null>(null);
   const [sourcesCount, setSourcesCount] = useState<number | null>(null);
   const loadedJobsRef = useRef<Job[]>([]);
   const lastJobsUpdatedAtRef = useRef<Date | null>(null);
@@ -657,7 +666,7 @@ export default function Dashboard() {
   // ── Persistência de estado UI no sessionStorage (sobrevive ao F5) ──────────
   const jobListRef = useRef<HTMLDivElement>(null);
   const simplifiedRetryCountRef = useRef(0);
-  const staleRetryCountRef = useRef(0);
+  const jobsRefreshFailureCountRef = useRef(0);
   useEffect(() => { try { sessionStorage.setItem("radar_pipelineFilter", pipelineFilter); } catch {} }, [pipelineFilter]);
   useEffect(() => { try { sessionStorage.setItem("radar_verdictFilter", verdictFilter); } catch {} }, [verdictFilter]);
   useEffect(() => {
@@ -817,7 +826,8 @@ export default function Dashboard() {
         const refreshedAt = new Date();
         lastJobsUpdatedAtRef.current = refreshedAt;
         setLastJobsUpdatedAt(refreshedAt);
-        staleRetryCountRef.current = 0;
+        jobsRefreshFailureCountRef.current = 0;
+        setNextJobsRetryAt(null);
         setMessage((current) => {
           if (data.degraded) {
             return "Exibindo a lista em modo simplificado enquanto a personalização se recupera.";
@@ -830,23 +840,19 @@ export default function Dashboard() {
       })
       .catch((error) => {
         if (controller.signal.aborted || (error instanceof DOMException && error.name === "AbortError")) return;
+        jobsRefreshFailureCountRef.current += 1;
+        const retryAt = new Date(Date.now() + nextRadarRefreshDelay(jobsRefreshFailureCountRef.current));
+        setNextJobsRetryAt(retryAt);
+        staleRetryTimer = setTimeout(() => setJobsRefreshVersion((version) => version + 1), Math.max(0, retryAt.getTime() - Date.now()));
         if (loadedJobsRef.current.length) {
           setMode("database");
           const lastUpdated = lastJobsUpdatedAtRef.current;
-          setMessage(`Não foi possível atualizar agora. A lista anterior pode estar desatualizada${lastUpdated ? `; Última atualização bem-sucedida às ${formatRefreshTime(lastUpdated)}` : ""}. Nova tentativa automática em instantes.`);
-          if (staleRetryCountRef.current < 3) {
-            staleRetryCountRef.current += 1;
-            staleRetryTimer = setTimeout(() => setJobsRefreshVersion((version) => version + 1), 3_000);
-          }
+          setMessage(`Não foi possível atualizar agora. A lista anterior permanece disponível${lastUpdated ? `; Última atualização bem-sucedida às ${formatRefreshTime(lastUpdated)}` : ""}. Nova tentativa automática às ${formatRefreshTime(retryAt)}.`);
           return;
         }
         setMode("unavailable");
-        setLoadError("Não foi possível carregar as vagas dentro do tempo esperado.");
-        setMessage("O Radar está temporariamente indisponível. Tentaremos novamente automaticamente.");
-        if (staleRetryCountRef.current < 3) {
-          staleRetryCountRef.current += 1;
-          staleRetryTimer = setTimeout(() => setJobsRefreshVersion((version) => version + 1), 3_000);
-        }
+        setLoadError(`Não foi possível carregar as vagas dentro do tempo esperado. Nova tentativa automática às ${formatRefreshTime(retryAt)}.`);
+        setMessage("O Radar está temporariamente indisponível. A recuperação automática continua em segundo plano.");
       });
     return () => {
       controller.abort();
@@ -1337,6 +1343,8 @@ export default function Dashboard() {
   function retryRadarLoad() {
     setLoadError(null);
     setMode("loading");
+    jobsRefreshFailureCountRef.current = 0;
+    setNextJobsRetryAt(null);
     setProfileReady(false);
     setProfileLoadFailed(false);
     setProfileRefreshVersion((version) => version + 1);
@@ -2522,6 +2530,10 @@ export default function Dashboard() {
           <div className="notice" role="alert">
             <span>{loadError ?? "Não foi possível carregar o Radar."}</span>{" "}
             <button type="button" onClick={retryRadarLoad}>Tentar novamente</button>
+          </div>
+        ) : nextJobsRetryAt ? (
+          <div className="notice" role="status">
+            Atualização temporariamente indisponível. Mantendo a última lista válida; nova tentativa automática às {formatRefreshTime(nextJobsRetryAt)}.
           </div>
         ) : personalizationUnavailable ? (
           <div className="notice" role="status">
