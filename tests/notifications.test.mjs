@@ -78,7 +78,7 @@ test("o sino abre o relatório detalhado de importação e o log da triagem para
   assert.match(dashboard, /import NotificationBell from "\.\/NotificationBell"/);
   assert.match(dashboard, /import ImportRunReport from "\.\/ImportRunReport"/);
   assert.match(dashboard, /canManageSources && <NotificationBell onOpenImportRun=\{setImportReportRunId\}/);
-  assert.match(dashboard, /onOpenTriageLog=\{\(batchId\) => \{ setTriageLogBatchId\(batchId\); setTriageOpen\(true\); \}\}/);
+  assert.match(dashboard, /onOpenTriageLog=\{\(batchId\) => \{ setTriageLogBatchId\(batchId\); setTriageMounted\(true\); setTriageOpen\(true\); \}\}/);
   assert.match(dashboard, /<ImportRunReport runId=\{importReportRunId\}/);
   assert.match(bell, /fetch\("\/api\/notifications"\)/);
   assert.match(bell, /metadata\.runId/);
