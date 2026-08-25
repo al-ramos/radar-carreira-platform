@@ -7,6 +7,8 @@ test("a exclusão administrativa exige confirmação para todas as vagas",async(
  assert.match(route,/export async function GET/);
  assert.match(route,/export async function DELETE/);
  assert.match(route,/EXCLUIR TODAS AS VAGAS/);
+ assert.match(route,/EXCLUIR VAGAS ANTERIORES A/);
+ assert.match(route,/jobs\.firstSeenAt/);
  assert.match(route,/deleteJobsAndRelated/);
  assert.match(deletion,/alertReads/);
  assert.match(deletion,/userJobStatus/);
@@ -15,4 +17,5 @@ test("a exclusão administrativa exige confirmação para todas as vagas",async(
  assert.match(settings,/EXCLUIR TODAS AS VAGAS/);
  assert.match(settings,/\/api\/admin\/backup/);
  assert.match(settings,/Limpar base de vagas/);
+ assert.match(settings,/Excluir vagas por data de recebimento/);
 });
