@@ -47,7 +47,7 @@ test("envio manual é reconciliado por evidência do Gmail sem autorizar envio a
   assert.doesNotMatch(reconciliation, /GmailApp\.sendEmail|GmailApp\.createDraft/);
   const scheduledReconciliation = script.split("function reconciliarEnviosAgendadosRadar")[1];
   assert.doesNotMatch(scheduledReconciliation, /GmailApp\.sendEmail|GmailApp\.createDraft/);
-  assert.match(screen, />Envio</);
+  assert.match(screen, /"Envio"/);
   assert.match(screen, /envios registrados/);
   assert.match(screen, /Envio informado manualmente/);
   assert.match(screen, /Ainda não enviado/);
