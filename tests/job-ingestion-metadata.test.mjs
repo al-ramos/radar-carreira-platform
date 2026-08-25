@@ -53,8 +53,8 @@ test("histórico da triagem preserva a data de publicação de importações API
   const route = await read("../app/api/triage/history/route.ts");
   assert.match(route, /publishedAt: jobs\.publishedAt/);
   assert.match(route, /sourcePublishedAt: item\.sourcePublishedAt \?\? item\.publishedAt/);
-  assert.match(route, /\.from\(userJobAnalyses\)/);
-  assert.match(route, /eq\(userJobAnalyses\.userId, user\.userId\)/);
+  assert.match(route, /\.from\(jobs\)/);
+  assert.match(route, /leftJoin\(userJobAnalyses, and\(eq\(userJobAnalyses\.userId, user\.userId\)/);
   assert.match(route, /draftStatus: draftOutbox\.status/);
   assert.match(route, /description: jobs\.description/);
   assert.match(route, /stack: jobs\.stack/);
