@@ -19,10 +19,10 @@ const DEFAULT_SCHEDULED_TRIAGE_BATCH_SIZE = 100;
 const MAX_SCHEDULED_TRIAGE_BATCH_SIZE = 1000;
 const MANUAL_QUEUE_MESSAGE_SIZE = 25;
 
-function packManualQueueMessages(items: QueuePayload[]): QueueMessage[] {
+function packManualQueueMessages(items: QueuePayload[], size = MANUAL_QUEUE_MESSAGE_SIZE): QueueMessage[] {
   const messages: QueueMessage[] = [];
-  for (let index = 0; index < items.length; index += MANUAL_QUEUE_MESSAGE_SIZE) {
-    messages.push({ body: { kind: "manual-triage-batch", items: items.slice(index, index + MANUAL_QUEUE_MESSAGE_SIZE) } });
+  for (let index = 0; index < items.length; index += size) {
+    messages.push({ body: { kind: "manual-triage-batch", items: items.slice(index, index + size) } });
   }
   return messages;
 }
@@ -55,8 +55,9 @@ async function resumePendingBatch({ userId, batchId, queue }: { userId: string; 
   // A seleção do lote é persistida: o executor recebe cada jobId e ignora
   // qualquer vaga que tenha sido concluída entre a interrupção e a retomada.
   const run = normalizeTriageRunRequest({ trigger: "portal", batchSize: 1, aiMode: "off", createDrafts: false });
-  const messages = packManualQueueMessages(pending.map(({ jobId }) => ({ userId, batchId, jobId, run })));
-  const quota = await reserveQueueMessages(db, "radar-carreira-triage-manual", messages.length);
+  const settings = await db.select({ queueBudget: platformSettings.queueDailyOperationBudget, manualMessageSize: platformSettings.manualQueueMessageSize }).from(platformSettings).where(eq(platformSettings.id, "global")).limit(1).then(rows => rows[0]);
+  const messages = packManualQueueMessages(pending.map(({ jobId }) => ({ userId, batchId, jobId, run })), Math.max(1, Math.min(100, settings?.manualMessageSize ?? MANUAL_QUEUE_MESSAGE_SIZE)));
+  const quota = await reserveQueueMessages(db, "radar-carreira-triage-manual", messages.length, Math.max(1000, Math.min(10000, settings?.queueBudget ?? 7500)));
   if (!quota.allowed) return { status: 429 as const, error: `A proteção da cota diária das filas bloqueou esta retomada. Tente novamente após ${quota.resetAt}.` };
   await db.update(triageBatchItems).set({ status: "queued", leaseOwner: null, leaseUntil: null, error: null, updatedAt: now })
     .where(and(eq(triageBatchItems.batchId, batchId), recoverableItem));
@@ -93,7 +94,7 @@ export async function POST(request: Request) {
   const db = getDb();
   // A ação manual e a automação usam a mesma capacidade operacional. O
   // cliente não define esse limite para que a tela e a fila não divirjam.
-  const settings = await db.select({ batchSize: platformSettings.scheduledTriageBatchSize })
+  const settings = await db.select({ batchSize: platformSettings.scheduledTriageBatchSize, queueBudget: platformSettings.queueDailyOperationBudget, manualMessageSize: platformSettings.manualQueueMessageSize })
     .from(platformSettings).where(eq(platformSettings.id, "global")).limit(1).then((rows) => rows[0]);
   const batchSize = Math.max(1, Math.min(MAX_SCHEDULED_TRIAGE_BATCH_SIZE, Math.floor(settings?.batchSize ?? DEFAULT_SCHEDULED_TRIAGE_BATCH_SIZE)));
   let run;
@@ -150,8 +151,8 @@ export async function POST(request: Request) {
     await db.update(triageBatches).set({ status: "failed", completedAt: new Date(), error: detail }).where(eq(triageBatches.id, batchId)).catch(() => {});
     return NextResponse.json({ error: detail, batchId }, { status: 503 });
   }
-  const payloads = packManualQueueMessages(candidates.map(({ jobId }) => ({ userId: user.userId, batchId, jobId, run })));
-  const quota = await reserveQueueMessages(db, "radar-carreira-triage-manual", payloads.length);
+  const payloads = packManualQueueMessages(candidates.map(({ jobId }) => ({ userId: user.userId, batchId, jobId, run })), Math.max(1, Math.min(100, settings?.manualMessageSize ?? MANUAL_QUEUE_MESSAGE_SIZE)));
+  const quota = await reserveQueueMessages(db, "radar-carreira-triage-manual", payloads.length, Math.max(1000, Math.min(10000, settings?.queueBudget ?? 7500)));
   if (!quota.allowed) {
     await db.update(triageBatches).set({ status: "failed", completedAt: new Date(), error: `Cota diária das filas protegida até ${quota.resetAt}.` }).where(eq(triageBatches.id, batchId));
     return NextResponse.json({ error: `A proteção da cota diária das filas bloqueou esta triagem. Tente novamente após ${quota.resetAt}.`, resetAt: quota.resetAt }, { status: 429 });

@@ -21,7 +21,7 @@ async function ensureUsageRow(db: Db, dayUtc: string, queue: string, now: Date) 
 }
 
 /** Reserva a estimativa conservadora de write + read + delete antes do envio. */
-export async function reserveQueueMessages(db: Db, queue: string, messageCount: number, now = new Date()) {
+export async function reserveQueueMessages(db: Db, queue: string, messageCount: number, budget = QUEUE_DAILY_OPERATION_BUDGET, now = new Date()) {
   const messages = Math.max(0, Math.floor(messageCount));
   const operations = messages * QUEUE_OPERATIONS_PER_MESSAGE;
   const dayUtc = utcDay(now);
@@ -31,7 +31,7 @@ export async function reserveQueueMessages(db: Db, queue: string, messageCount: 
     reservedOperations: sql`${queueDailyUsage.reservedOperations} + ${operations}`,
     emittedMessages: sql`${queueDailyUsage.emittedMessages} + ${messages}`,
     updatedAt: now,
-  }).where(and(eq(queueDailyUsage.dayUtc, dayUtc), eq(queueDailyUsage.queue, TOTAL_QUEUE), lte(queueDailyUsage.reservedOperations, QUEUE_DAILY_OPERATION_BUDGET - operations)));
+  }).where(and(eq(queueDailyUsage.dayUtc, dayUtc), eq(queueDailyUsage.queue, TOTAL_QUEUE), lte(queueDailyUsage.reservedOperations, budget - operations)));
   if (!total.meta.changes) return { allowed: false, operations, resetAt: queueResetAt(now) };
   await ensureUsageRow(db, dayUtc, queue, now);
   await db.update(queueDailyUsage).set({
@@ -42,8 +42,8 @@ export async function reserveQueueMessages(db: Db, queue: string, messageCount: 
   return { allowed: true, operations, resetAt: queueResetAt(now) };
 }
 
-export async function queueUsageForToday(db: Db, now = new Date()) {
+export async function queueUsageForToday(db: Db, budget = QUEUE_DAILY_OPERATION_BUDGET, now = new Date()) {
   const rows = await db.select().from(queueDailyUsage).where(eq(queueDailyUsage.dayUtc, utcDay(now)));
   const total = rows.find((row) => row.queue === TOTAL_QUEUE);
-  return { budget: QUEUE_DAILY_OPERATION_BUDGET, reservedOperations: total?.reservedOperations ?? 0, retryOperations: total?.retryOperations ?? 0, resetAt: queueResetAt(now), queues: rows.filter((row) => row.queue !== TOTAL_QUEUE) };
+  return { budget, reservedOperations: total?.reservedOperations ?? 0, retryOperations: total?.retryOperations ?? 0, resetAt: queueResetAt(now), queues: rows.filter((row) => row.queue !== TOTAL_QUEUE) };
 }

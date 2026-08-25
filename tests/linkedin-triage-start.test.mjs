@@ -26,7 +26,7 @@ test("acionamento manual respeita os filtros ativos da Home", async () => {
   assert.match(ui, /retornou uma página de erro do servidor/);
   assert.match(asyncRoute, /triageBatchItems/);
   assert.match(asyncRoute, /type QueueMessage = \{ body: \{ kind: "manual-triage-batch"; items: QueuePayload\[\] \} \}/);
-  assert.match(asyncRoute, /packManualQueueMessages\(candidates\.map\(\(\{ jobId \}\) => \(\{ userId: user\.userId, batchId, jobId, run \}\)\)\)/);
+  assert.match(asyncRoute, /packManualQueueMessages\(candidates\.map\(\(\{ jobId \}\) => \(\{ userId: user\.userId, batchId, jobId, run \}\)\),/);
   assert.match(worker, /async queue\(/);
   assert.match(worker, /x-radar-triage-queue-authenticated/);
   assert.match(ui, /Fonte das vagas a analisar/);

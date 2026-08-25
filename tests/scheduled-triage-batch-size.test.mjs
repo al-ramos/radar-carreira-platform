@@ -12,7 +12,8 @@ test("o limite da triagem agendada é persistido, configurável e aplicado pelo 
   assert.match(schema, /scheduledTriageBatchSize/);
   assert.match(settings, /Vagas por triagem agendada/);
   assert.match(settings, /min="1" max="1000"/);
-  assert.match(endpoint, /scheduledTriageBatchSize:Math\.max\(1,Math\.min\(1000/);
+  assert.match(endpoint, /scheduledTriageBatchSize:limit\(b\.scheduledTriageBatchSize,1,1000,100\)/);
+  assert.match(endpoint, /queueDailyOperationBudget:limit\(b\.queueDailyOperationBudget,1000,10000,7500\)/);
   assert.match(run, /platformSettings\.scheduledTriageBatchSize/);
   assert.match(queue, /platformSettings\.scheduledTriageBatchSize/);
   assert.match(queue, /batchSize: run\.batchSize/);
