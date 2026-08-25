@@ -34,11 +34,14 @@ test("acionamento manual respeita os filtros ativos da Home", async () => {
   assert.match(ui, /Projeto ou experiência-âncora/);
   assert.match(ui, /Restrições/);
   assert.match(preview, /eq\(jobs\.sourceId, sourceId\)/);
+  assert.match(preview, /sourceId && sourceId !== "all" \? eq\(jobs\.sourceId, sourceId\) : undefined/);
   assert.match(preview, /gte\(jobs\.firstSeenAt, cutoff\)/);
   assert.match(preview, /count\(userJobAnalyses\.jobId\)/);
   assert.match(queue, /isDraftAllowedForSource\(\{ sourceId: row\.job\.sourceId/);
   assert.match(queue, /gte\(jobs\.firstSeenAt, cutoff\)/);
   assert.match(ui, /homePeriod: actionPeriod/);
+  assert.match(ui, /Todas as fontes/);
+  assert.match(ui, /if \(actionSourceId\) query\.set\("sourceId", actionSourceId\)/);
   assert.match(ui, /Fila preparada para este recorte/);
   assert.match(cron, /isDraftAllowedForSource\(\{ sourceId: row\.sourceId/);
 });
