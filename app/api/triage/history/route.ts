@@ -2,7 +2,7 @@ import { and, desc, eq, gte, lt, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db/index";
-import { draftOutbox, jobs, triageBatchItems, triageBatches, triageHistory, userJobAnalyses } from "../../../../db/schema";
+import { draftOutbox, jobs, triageBatchItems, triageBatches, triageHistory, userJobAnalyses, userJobStatus } from "../../../../db/schema";
 import { isOwnerEmail } from "../../../../lib/access";
 import { hasValidContactEmail } from "../../../../lib/contact-email";
 import { saoPauloDayWindow } from "../../../../lib/triage-orchestrator";
@@ -65,10 +65,15 @@ export async function GET() {
       lastSentCheckAt: draftOutbox.lastSentCheckAt,
       lastSentCheckResult: draftOutbox.lastSentCheckResult,
       sentCheckCount: draftOutbox.sentCheckCount,
+      applicationStatus: userJobStatus.applicationStatus,
+      applicationGeneratedAt: userJobStatus.generatedAt,
+      applicationSentAt: userJobStatus.sentAt,
+      applicationRespondedAt: userJobStatus.respondedAt,
     })
     .from(userJobAnalyses)
     .innerJoin(jobs, eq(userJobAnalyses.jobId, jobs.id))
     .leftJoin(draftOutbox, and(eq(draftOutbox.userId, user.userId), eq(draftOutbox.jobId, jobs.id)))
+    .leftJoin(userJobStatus, and(eq(userJobStatus.userId, user.userId), eq(userJobStatus.jobId, jobs.id)))
     .where(eq(userJobAnalyses.userId, user.userId))
     .orderBy(desc(userJobAnalyses.updatedAt))
     .limit(1000);

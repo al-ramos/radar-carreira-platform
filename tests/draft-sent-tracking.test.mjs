@@ -64,7 +64,7 @@ test("envio manual é reconciliado por evidência do Gmail sem autorizar envio a
   assert.doesNotMatch(reconciliation, /GmailApp\.sendEmail|GmailApp\.createDraft/);
   const scheduledReconciliation = script.split("function reconciliarEnviosAgendadosRadar")[1];
   assert.doesNotMatch(scheduledReconciliation, /GmailApp\.sendEmail|GmailApp\.createDraft/);
-  assert.match(screen, />Envio</);
+  assert.match(screen, />Candidatura \/ envio</);
   assert.match(screen, /envios registrados/);
   assert.match(screen, /Envio informado manualmente/);
   assert.match(screen, /Ainda não enviado/);
@@ -76,7 +76,7 @@ test("envio manual é reconciliado por evidência do Gmail sem autorizar envio a
   assert.match(queueRoute, /action === "confirmSent"/);
   assert.match(queueRoute, /Somente um rascunho pronto pode ser confirmado como enviado/);
   assert.match(screen, /Criação automática em andamento/);
-  assert.match(screen, /Verificado \{date\(item\.lastSentCheckAt\)\}/);
+  assert.match(screen, /item\.sentAt \?\? item\.lastSentCheckAt \?\? item\.draftUpdatedAt/);
   assert.match(history, /lastSentCheckResult: draftOutbox\.lastSentCheckResult/);
   assert.match(screen, /Próxima tentativa automática: em até 5 minutos/);
 });
