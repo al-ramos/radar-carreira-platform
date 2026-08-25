@@ -203,9 +203,9 @@ npm run lint
 npm run db:generate
 ```
 
-`npm test` executa o build e a suíte regular, atualmente com **161 testes**, que combina regras de negócio com verificações estruturais do código. `npm run test:rbac-integration` executa **26 testes** chamando `can()` de `lib/rbac.ts` contra SQLite real em memória (`node:sqlite`), populado com as migrations `0010`/`0011`, usando loaders que simulam `cloudflare:workers` e o binding D1. A esteira executa as duas suítes; o ambiente oficial continua usando Node.js 22 e os loaders também são compatíveis com Node.js 24 no Windows.
+`npm test` executa o build e a suíte regular, atualmente com **166 testes**, que combina regras de negócio com verificações estruturais do código. `npm run test:rbac-integration` executa **26 testes** chamando `can()` de `lib/rbac.ts` contra SQLite real em memória (`node:sqlite`), populado com as migrations `0010`/`0011`, usando loaders que simulam `cloudflare:workers` e o binding D1. A esteira executa as duas suítes; o ambiente oficial continua usando Node.js 22 e os loaders também são compatíveis com Node.js 24 no Windows.
 
-Validação do escopo em 24/08/2026: **159 testes regulares + 26 testes de integração RBAC passando**; lint sem erros, com 7 avisos preexistentes.
+Validação do escopo em 25/08/2026: **166 testes regulares + 26 testes de integração RBAC passando**; lint sem erros, com 7 avisos preexistentes.
 
 ## Banco de dados
 

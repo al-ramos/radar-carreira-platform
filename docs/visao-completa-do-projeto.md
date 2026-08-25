@@ -569,7 +569,7 @@ A base contém testes para:
 
 `npm test` executa build e testes `*.test.mjs`. A integração RBAC usa loaders que simulam bindings Cloudflare e as migrations reais `0010`/`0011`; a esteira executa ambas as suítes antes da publicação.
 
-Validação realizada em 24/08/2026: **161 testes regulares e 26 testes de integração RBAC passaram**. O lint terminou sem erros e com 7 avisos preexistentes em código de interface e versionamento de análise.
+Validação realizada em 25/08/2026: **166 testes regulares e 26 testes de integração RBAC passaram**. O lint terminou sem erros e com 7 avisos preexistentes em código de interface e versionamento de análise.
 
 ## 15. Pontos de atenção confirmados
 
