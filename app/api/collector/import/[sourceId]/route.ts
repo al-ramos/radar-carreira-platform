@@ -1,13 +1,14 @@
-import { eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "../../../../../db/index";
-import { importRuns, jobSources, jobs, profiles } from "../../../../../db/schema";
+import { importRuns, jobEvents, jobSources, jobs, profiles, userJobStatus } from "../../../../../db/schema";
 import { filterImportedJobsByProfile } from "../../../../../lib/collector-profile-filter";
 import { normalizeImportedJobsWithDiagnostics } from "../../../../../lib/import-jobs";
 import { fingerprint, recordedJobDate, sourcePublishedJobDate, type ImportedJob } from "../../../../../lib/jobs";
 import { normalizeCareerRules } from "../../../../../lib/profile-options";
 import { inferJobArea } from "../../../../../lib/job-area";
 import { recordImportRunJobs } from "../../../../../lib/import-tracking";
-import { notifyImportRun } from "../../../../../lib/notifications";
+import { notifyDetectedApplication, notifyImportRun } from "../../../../../lib/notifications";
+import { resolveAutomaticStage } from "../../../../../lib/pipeline-stage";
 
 export const dynamic = "force-dynamic";
 
@@ -71,6 +72,61 @@ type ImportDetails = {
   accepted: number;
   profileRule: string;
 };
+
+type CollectedApplication = { externalId: string; evidence: string; detectedAt: Date };
+
+function applicationsFromPayload(value: unknown): CollectedApplication[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const detectedAt = new Date();
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+    const row = item as Record<string, unknown>;
+    const externalId = String(row.externalId ?? "").trim();
+    if (!/^\d{4,24}$/.test(externalId) || seen.has(externalId)) return [];
+    seen.add(externalId);
+    const timestamp = typeof row.detectedAt === "string" && !Number.isNaN(Date.parse(row.detectedAt)) ? new Date(row.detectedAt) : detectedAt;
+    const evidence = String(row.evidence ?? "Candidatura enviada exibida pelo LinkedIn durante a coleta.").replace(/\s+/g, " ").trim().slice(0, 300);
+    return [{ externalId, evidence: evidence || "Candidatura enviada exibida pelo LinkedIn durante a coleta.", detectedAt: timestamp }];
+  }).slice(0, 2_000);
+}
+
+async function registerCollectedLinkedInApplications(db: ReturnType<typeof getDb>, userId: string, signals: CollectedApplication[]) {
+  if (!signals.length) return { detected: 0, registered: 0, alreadyRegistered: 0, notFound: 0 };
+  const rows = await db.select({ id: jobs.id, title: jobs.title, company: jobs.company, externalId: jobs.externalId })
+    .from(jobs)
+    .where(and(eq(jobs.sourceId, "linkedin-extension"), inArray(jobs.externalId, signals.map((signal) => signal.externalId))));
+  const jobByExternalId = new Map(rows.filter((row) => row.externalId).map((row) => [row.externalId!, row]));
+  let registered = 0;
+  let alreadyRegistered = 0;
+  for (const signal of signals) {
+    const job = jobByExternalId.get(signal.externalId);
+    if (!job) continue;
+    const existing = (await db.select().from(userJobStatus).where(and(eq(userJobStatus.userId, userId), eq(userJobStatus.jobId, job.id))).limit(1))[0];
+    const alreadySent = existing?.applicationStatus === "sent" || existing?.applicationStatus === "responded";
+    const applicationStatus = alreadySent ? existing!.applicationStatus : "sent";
+    const values = {
+      userId,
+      jobId: job.id,
+      stage: resolveAutomaticStage(existing?.stage, "applied"),
+      note: signal.evidence,
+      applicationStatus,
+      generatedAt: existing?.generatedAt ?? signal.detectedAt,
+      sentAt: existing?.sentAt ?? signal.detectedAt,
+      respondedAt: existing?.respondedAt ?? null,
+      updatedAt: signal.detectedAt,
+    };
+    await db.insert(userJobStatus).values(values).onConflictDoUpdate({
+      target: [userJobStatus.userId, userJobStatus.jobId],
+      set: { stage: values.stage, note: values.note, applicationStatus: values.applicationStatus, generatedAt: values.generatedAt, sentAt: values.sentAt, respondedAt: values.respondedAt, updatedAt: values.updatedAt },
+    });
+    if (alreadySent) { alreadyRegistered += 1; continue; }
+    registered += 1;
+    await db.insert(jobEvents).values({ jobId: job.id, type: "linkedin_application_detected", detail: signal.evidence, occurredAt: signal.detectedAt });
+    await notifyDetectedApplication(db, { jobId: job.id, title: job.title, company: job.company, externalId: job.externalId, evidence: signal.evidence, detectedAt: signal.detectedAt }).catch(() => undefined);
+  }
+  return { detected: signals.length, registered, alreadyRegistered, notFound: signals.length - registered - alreadyRegistered };
+}
 
 const serializeDetails = (details: ImportDetails) => JSON.stringify(details);
 
@@ -205,15 +261,19 @@ async function importCollectorJobs(request: Request, { params }: { params: Promi
   if (!source || !source.enabled || !config.hash || config.hash !== (await digest(token)))
     return json({ error: "Chave do coletor inválida" }, { status: 401 });
 
-  const payload = (await request.json().catch(() => null)) as { action?: string; runId?: string; run?: CollectorStatusPayload; jobs?: unknown[] } | null;
+  const payload = (await request.json().catch(() => null)) as { action?: string; runId?: string; run?: CollectorStatusPayload; jobs?: unknown[]; applications?: unknown[] } | null;
   if (payload?.action === "test") return json({ ok: true, connected: true });
   if (payload?.action === "status") {
     return json({ ok: true, ...(await recordCollectorStatus(db, source, sourceId, sourceName, config.userId ?? "collector", payload.run ?? {})) });
   }
+  const applicationSignals = sourceId === "linkedin-extension" && config.userId ? applicationsFromPayload(payload?.applications) : [];
+  const applications = applicationSignals.length
+    ? await registerCollectedLinkedInApplications(db, config.userId!, applicationSignals)
+    : { detected: 0, registered: 0, alreadyRegistered: 0, notFound: 0 };
   const rawItems = Array.isArray(payload?.jobs) ? payload.jobs : [];
   const input = normalizeImportedJobsWithDiagnostics(rawItems);
   const items = input.items;
-  if (!items.length) return json({ error: "Nenhuma vaga válida recebida", received: rawItems.length, invalid: input.rejected, invalidReasons: input.reasons }, { status: 400 });
+  if (!items.length) return json({ error: "Nenhuma vaga válida recebida", received: rawItems.length, invalid: input.rejected, invalidReasons: input.reasons, applications }, { status: 400 });
   if (items.length > 2000) return json({ error: "O limite é de 2.000 vagas por envio" }, { status: 400 });
 
   const profile = sourceId === "linkedin-extension" && config.userId
@@ -266,7 +326,7 @@ async function importCollectorJobs(request: Request, { params }: { params: Promi
       const finishedAt = new Date();
       await db.update(jobSources).set({ lastRunAt: finishedAt, lastSuccessAt: finishedAt, lastError: null, consecutiveFailures: 0 }).where(eq(jobSources.id, sourceId));
       await notifyImportRun(db, { runId, source: sourceName, status: "completed", received: rawItems.length, valid: items.length, invalid: input.rejected, invalidReasons: input.reasons, rejectedProfile: filtered.rejected, inserted: 0, updated: 0, duplicates: 0 }).catch(() => undefined);
-      return json({ ok: true, traceId, runId, accepted: 0, received: rawItems.length, valid: items.length, invalid: input.rejected, invalidReasons: input.reasons, duplicates: 0, rejected: filtered.rejected, inserted: 0, updated: 0, requiredStacks: filtered.requiredStacks, stackMatchMode: filtered.stackMatchMode, message: "Nenhuma vaga atende ao perfil de stacks obrigatórias" });
+      return json({ ok: true, traceId, runId, accepted: 0, received: rawItems.length, valid: items.length, invalid: input.rejected, invalidReasons: input.reasons, duplicates: 0, rejected: filtered.rejected, inserted: 0, updated: 0, applications, requiredStacks: filtered.requiredStacks, stackMatchMode: filtered.stackMatchMode, message: "Nenhuma vaga atende ao perfil de stacks obrigatórias" });
     }
     const existing = new Set<string>();
     for (const batch of chunks(entries.map((entry) => entry.fp), LOOKUP_BATCH_SIZE)) {
@@ -323,7 +383,7 @@ async function importCollectorJobs(request: Request, { params }: { params: Promi
     const finishedAt = new Date();
     await db.update(jobSources).set({ lastRunAt: finishedAt, lastSuccessAt: finishedAt, lastError: null, consecutiveFailures: 0 }).where(eq(jobSources.id, sourceId));
     await notifyImportRun(db, { runId, source: sourceName, status: "completed", received: rawItems.length, valid: items.length, invalid: input.rejected, invalidReasons: input.reasons, rejectedProfile: filtered.rejected, inserted, updated, duplicates: duplicateRows }).catch(() => undefined);
-    return json({ ok: true, traceId, runId, accepted: filtered.accepted.length, received: rawItems.length, valid: items.length, invalid: input.rejected, invalidReasons: input.reasons, duplicates: duplicateRows, rejected: filtered.rejected, inserted, updated, requiredStacks: filtered.requiredStacks, stackMatchMode: filtered.stackMatchMode });
+    return json({ ok: true, traceId, runId, accepted: filtered.accepted.length, received: rawItems.length, valid: items.length, invalid: input.rejected, invalidReasons: input.reasons, duplicates: duplicateRows, rejected: filtered.rejected, inserted, updated, applications, requiredStacks: filtered.requiredStacks, stackMatchMode: filtered.stackMatchMode });
   } catch (error) {
     const detail = error instanceof Error ? error.message : "Falha desconhecida durante a gravação";
     await db
