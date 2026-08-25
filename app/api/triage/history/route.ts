@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, lt, sql } from "drizzle-orm";
+import { and, desc, eq, gte, isNull, lt, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db/index";
@@ -70,7 +70,7 @@ export async function GET() {
     .orderBy(desc(userJobAnalyses.updatedAt))
     .limit(1000);
 
-  const [batchRows, batchItemRows, outboxRows, batchDraftRows, batchHistoryRows, todayReceived] = await Promise.all([
+  const [batchRows, batchItemRows, outboxRows, batchDraftRows, batchHistoryRows, repairableRows, todayReceived] = await Promise.all([
     db.select({
       id: triageBatches.id,
       trigger: triageBatches.trigger,
@@ -96,6 +96,10 @@ export async function GET() {
     db.select({ batchId: triageHistory.batchId, verdict: triageHistory.verdict, contactEmail: jobs.contactEmail }).from(triageHistory)
       .innerJoin(jobs, eq(triageHistory.jobId, jobs.id))
       .where(eq(triageHistory.userId, user.userId)),
+    db.select({ jobId: triageHistory.jobId }).from(triageHistory)
+      .innerJoin(triageBatchItems, and(eq(triageBatchItems.batchId, triageHistory.batchId), eq(triageBatchItems.jobId, triageHistory.jobId), eq(triageBatchItems.status, "completed")))
+      .leftJoin(userJobAnalyses, and(eq(userJobAnalyses.userId, user.userId), eq(userJobAnalyses.jobId, triageHistory.jobId)))
+      .where(and(eq(triageHistory.userId, user.userId), isNull(userJobAnalyses.jobId))),
     db.select({ total: sql<number>`count(*)` }).from(jobs).where(and(eq(jobs.status, "active"), gte(jobs.firstSeenAt, todayWindow.start), lt(jobs.firstSeenAt, todayWindow.end))).then((rows) => Number(rows[0]?.total ?? 0)),
   ]);
 
@@ -157,6 +161,7 @@ export async function GET() {
     // Diário operacional persistido: explica espera, tentativa, erro e a
     // última alteração sem depender de logs efêmeros da Queue.
     batchItems: batchItemRows,
+    recovery: { available: new Set(repairableRows.map((row) => row.jobId)).size },
     operational: {
       pendingDrafts: pendingDrafts.length,
       readyDrafts: readyDrafts.length,

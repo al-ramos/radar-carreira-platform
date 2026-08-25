@@ -5,6 +5,7 @@ type HistoryItem = { id: string; batchId: string; jobId: string; verdict: string
 type Batch = { id: string; trigger: "manual" | "scheduled" | "assistant"; scope: string; status: string; startedAt: string | null; completedAt: string | null; createdAt: string; error: string | null; total: number; completed: number; failed: number; eligible: number; eligibleWithoutContact: number; draftsPending: number; draftsReady: number; draftsFailed: number };
 type BatchItem = { batchId: string; jobId: string; status: "queued" | "processing" | "completed" | "failed" | "skipped"; error: string | null; attemptCount: number; updatedAt: string; leaseUntil: string | null; title: string; company: string; externalId: string | null };
 type Operational = { pendingDrafts: number; readyDrafts: number; sentDrafts: number; failedDrafts: number; oldestPendingAt: string | null; alerts: Array<{ level: "warning" | "error"; message: string }> };
+type HistoryRecovery = { available: number };
 type AiReview = { id: string; response?: string | null; jobs?: Array<{ id: string; title: string; company: string }>; provider?: string | null; model?: string | null; status?: string; total?: number; completed?: number; failed?: number; chunks?: number; queued?: number; error?: string | null };
 type CodexQueueItem = { id: string; status: "pending" | "claimed" | "completed" | "failed"; createdAt: string; claimedAt?: string | null; completedAt?: string | null; error?: string | null; selection: { filters?: { jobIds?: string[] } } };
 type AiCareerRules = { professionalName: string; professionalTitle: string; professionalSummary: string; baseLocation: string; acceptedRegions: string[]; maxHybridDays: number; preferredContracts: string[]; dailyCommunicationLanguages: string[]; blockedSeniorities: string[]; blockedWorkTypes: string[]; coreStack: string[]; coreStackMatchMode: "all" | "any"; stackExceptions: string[]; anchorProject: string };
@@ -57,6 +58,8 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
     [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null),
     [syncingBatch, setSyncingBatch] = useState(false),
     [operational, setOperational] = useState<Operational | null>(null),
+    [historyRecovery, setHistoryRecovery] = useState<HistoryRecovery | null>(null),
+    [recoveringHistory, setRecoveringHistory] = useState(false),
     [situationFilter, setSituationFilter] = useState<"pending" | "analysed" | "all">("pending"),
     [verdictFilter, setVerdictFilter] = useState("all"),
     [sourceFilter, setSourceFilter] = useState("all"),
@@ -93,13 +96,28 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
         setMessage(items.length ? "Exibindo avaliações já registradas no Radar." : "Nenhuma vaga avaliada foi encontrada.");
         return true;
       }
-      const data = await response.json() as { items?: HistoryItem[]; batches?: Batch[]; batchItems?: BatchItem[]; operational?: Operational };
+      const data = await response.json() as { items?: HistoryItem[]; batches?: Batch[]; batchItems?: BatchItem[]; operational?: Operational; recovery?: HistoryRecovery };
       const items = data.items ?? [];
-      setHistory(items); setBatches(data.batches ?? []); setBatchItems(data.batchItems ?? []); setOperational(data.operational ?? null); setLastSyncedAt(new Date());
+      setHistory(items); setBatches(data.batches ?? []); setBatchItems(data.batchItems ?? []); setOperational(data.operational ?? null); setHistoryRecovery(data.recovery ?? null); setLastSyncedAt(new Date());
       if (!items.length) setMessage("Nenhuma vaga foi triada ainda. Use “Analisar vagas do recorte” para iniciar.");
       else setMessage((current) => current === "Carregando avaliações…" ? "" : current);
       return true;
     } catch { setMessage("Não foi possível carregar as avaliações da triagem."); return false; }
+  };
+  const recoverMissingHistory = async () => {
+    setRecoveringHistory(true);
+    setMessage("Restaurando avaliações já concluídas no histórico…");
+    try {
+      const response = await fetch("/api/triage/history/repair", { method: "POST" });
+      const result = await readJsonResponse<{ recovered?: number; error?: string }>(response, "A recuperação do histórico");
+      if (!response.ok) throw new Error(result.error ?? "Não foi possível recuperar o histórico.");
+      await loadHistory();
+      setMessage(result.recovered ? `${result.recovered} avaliação(ões) concluída(s) foram restauradas no histórico.` : "O histórico já estava conciliado.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Não foi possível recuperar o histórico.");
+    } finally {
+      setRecoveringHistory(false);
+    }
   };
   const loadCodexQueue = async () => {
     try {
@@ -740,6 +758,7 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
               </div>
             </div>
             <div className="triage-list">
+              {historyRecovery?.available ? <div className="triage-operational-alert warning" role="status"><span>Há {historyRecovery.available} avaliação(ões) concluída(s) que precisam ser restauradas no histórico.</span><button type="button" className="triage-queue-button" disabled={recoveringHistory} onClick={() => void recoverMissingHistory()}>{recoveringHistory ? "Restaurando…" : `Restaurar ${historyRecovery.available} avaliação(ões)`}</button></div> : null}
               <div className="triage-run-settings triage-table-filters">
                 <label>Situação<select value={situationFilter} onChange={(e) => { setSituationFilter(e.target.value as typeof situationFilter); setHistoryPage(0); }}><option value="pending">Não analisadas</option><option value="analysed">Analisadas</option><option value="all">Todas</option></select></label>
                 <label>Veredito<select value={verdictFilter} onChange={(e) => { setVerdictFilter(e.target.value); setHistoryPage(0); }}><option value="all">Todos</option><option value="✅">Aprovadas</option><option value="🟡">Prováveis</option><option value="❌">Reprovadas</option></select></label>
