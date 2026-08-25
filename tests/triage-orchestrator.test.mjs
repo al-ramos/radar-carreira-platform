@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { normalizeTriageRunRequest, saoPauloDayWindow } from "../lib/triage-orchestrator.ts";
 
@@ -39,4 +40,18 @@ test("recorta o dia agendado no calendário de São Paulo", () => {
   const window = saoPauloDayWindow("2026-08-20");
   assert.equal(window.start.toISOString(), "2026-08-20T03:00:00.000Z");
   assert.equal(window.end.toISOString(), "2026-08-21T03:00:00.000Z");
+});
+
+test("triagem agendada usa o lote configurado no portal", async () => {
+  const [settings, route, ui] = await Promise.all([
+    readFile(new URL("../app/api/admin/settings/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/triage/run/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/AdminSettings.tsx", import.meta.url), "utf8"),
+  ]);
+  assert.match(settings, /scheduledTriageBatchSize:100/);
+  assert.match(settings, /Math\.max\(1,Math\.min\(1000/);
+  assert.match(route, /batchSize: platformSettings\.scheduledTriageBatchSize/);
+  assert.match(route, /run = \{ \.\.\.run, batchSize: settings\?\.batchSize \?\? 100 \}/);
+  assert.match(ui, /Vagas por triagem agendada/);
+  assert.match(ui, /max="1000"/);
 });
