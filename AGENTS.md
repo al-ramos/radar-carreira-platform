@@ -19,6 +19,7 @@
 - Antes de editar, integrar ou publicar, verifique `git status --short`, `git worktree list --porcelain` e a presença de `.git/*.lock`. Considere a cópia principal insegura para publicação quando estiver suja.
 - Nunca faça commit, `push`, merge, rebase, limpeza (`git gc`/`git worktree prune`) ou alteração de arquivos compartilhados a partir de uma cópia com trabalho alheio pendente. Use um clone ou worktree limpo e leve somente os arquivos da entrega validada.
 - Não remova locks nem interrompa processos Git/Node de outras tarefas sem autorização explícita. Se houver concorrência, registre o bloqueio e aguarde ou crie um ambiente isolado.
+- Depois de confirmar commit, push e publicação em produção, remova o clone ou worktree temporário criado exclusivamente para aquela publicação, desde que esteja limpo. Nunca remova a cópia principal, worktrees de trabalho ativo ou qualquer diretório com alterações pendentes.
 
 ## Padrões operacionais permanentes
 
