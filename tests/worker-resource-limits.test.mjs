@@ -11,7 +11,9 @@ test("a listagem pagina no D1 antes de enriquecer o fluxo normal", async () => {
   assert.match(route, /rowsQuery\.limit\(MAX_AFFINITY_CANDIDATES\)/);
   assert.match(route, /profileAffinitySearchTerms/);
   assert.doesNotMatch(route, /while \(batch\.length/);
-  assert.match(route, /description: ""/);
+  // A tabela precisa de um resumo para permitir filtro e leitura sem abrir o
+  // detalhe. O limite mantém o payload da lista contido no Worker.
+  assert.match(route, /description: job\.description\.slice\(0, 500\)/);
   assert.match(route, /or\(isNull\(jobs\.seniority\)/);
   assert.match(route, /LIST_DESCRIPTION_CHARS = 2_000/);
   assert.match(route, /FILTER_DESCRIPTION_CHARS = 1_000/);
