@@ -1,20 +1,34 @@
-import { inArray } from "drizzle-orm";
+import { inArray, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db/index";
 import { draftOutbox, jobs, triageBatchItems, triageDeduplication, triageHistory } from "../../../../db/schema";
 import { can } from "../../../../lib/rbac";
-import { deleteJobsAndRelated } from "../../../../lib/job-deletion";
+import { deleteJobsAndRelated, purgeArchivedJobsBeforeCutoff } from "../../../../lib/job-deletion";
+import { ARCHIVE_BEFORE } from "../../../../lib/job-archive-policy";
 
 export const dynamic="force-dynamic";
 const ALL_CONFIRMATION="EXCLUIR TODAS AS VAGAS";
+const PURGE_ARCHIVED_CONFIRMATION="EXCLUIR VAGAS ARQUIVADAS ANTERIORES A 15/08/2026";
 
 async function admin(){const user=await getChatGPTUser();if(!user)return null;return await can(user,"jobs.view_stats")?user:null}
 
 export async function GET(){
  if(!await admin())return NextResponse.json({error:"Acesso de administrador necessário"},{status:403});
  const rows=await getDb().select({status:jobs.status}).from(jobs);
- return NextResponse.json({total:rows.length,active:rows.filter(job=>job.status==="active").length,closed:rows.filter(job=>job.status!=="active").length});
+ const eligible=await getDb().select({total:sql<number>`count(*)`}).from(jobs).where(
+  sql`${jobs.status} = 'archived' and coalesce(${jobs.sourcePublishedAt}, ${jobs.firstSeenAt}) < ${ARCHIVE_BEFORE.getTime()}`,
+ );
+ return NextResponse.json({total:rows.length,active:rows.filter(job=>job.status==="active").length,closed:rows.filter(job=>job.status!=="active").length,archivedEligibleForPurge:Number(eligible[0]?.total??0)});
+}
+
+export async function POST(request:Request){
+ const user=await getChatGPTUser();if(!user)return NextResponse.json({error:"Autenticação necessária"},{status:401});if(!await can(user,"jobs.delete_all"))return NextResponse.json({error:"Ação reservada ao proprietário da plataforma"},{status:403});
+ let payload:{action?:unknown;confirmation?:unknown};try{payload=await request.json()}catch{return NextResponse.json({error:"Envie um comando de exclusão válido"},{status:400})}
+ if(payload.action!=="purge_archived_before")return NextResponse.json({error:"Ação de manutenção inválida"},{status:400});
+ if(payload.confirmation!==PURGE_ARCHIVED_CONFIRMATION)return NextResponse.json({error:`Para excluir o recorte arquivado, envie confirmation: ${PURGE_ARCHIVED_CONFIRMATION}`},{status:400});
+ const deleted=await purgeArchivedJobsBeforeCutoff();
+ return NextResponse.json({ok:true,deleted,scope:"archived_before_2026_08_15",cutoff:ARCHIVE_BEFORE.toISOString()});
 }
 
 export async function DELETE(request:Request){

@@ -1,6 +1,7 @@
-import { inArray } from "drizzle-orm";
+import { and, eq, inArray, lt, sql } from "drizzle-orm";
 import { getDb } from "../db/index";
-import { aiUsageEvents, alertReads, jobAiFacts, jobEvents, jobImportRuns, jobs, userJobAnalyses, userJobStatus } from "../db/schema";
+import { aiUsageEvents, alertReads, draftOutbox, jobAiFacts, jobAiTriage, jobEvents, jobImportRuns, jobs, triageBatchItems, triageDeduplication, triageHistory, userJobAnalyses, userJobStatus } from "../db/schema";
+import { ARCHIVE_BEFORE } from "./job-archive-policy";
 
 /** Remove uma vaga e todos os registros que dependem dela, na ordem segura. */
 export async function deleteJobsAndRelated(jobIds: string[]) {
@@ -15,4 +16,41 @@ export async function deleteJobsAndRelated(jobIds: string[]) {
   await db.delete(jobImportRuns).where(inArray(jobImportRuns.jobId, jobIds));
   await db.delete(jobs).where(inArray(jobs.id, jobIds));
   return jobIds.length;
+}
+
+/**
+ * Exclusão definitiva do recorte já arquivado. Os comandos são enviados em
+ * um único batch D1: ou todas as dependências e as vagas saem, ou nada sai.
+ */
+export async function purgeArchivedJobsBeforeCutoff() {
+  const db = getDb();
+  const cutoff = ARCHIVE_BEFORE.getTime();
+  const target = () => db.select({ id: jobs.id }).from(jobs).where(and(
+    eq(jobs.status, "archived"),
+    lt(sql`coalesce(${jobs.sourcePublishedAt}, ${jobs.firstSeenAt})`, cutoff),
+  ));
+  const count = await db.select({ total: sql<number>`count(*)` }).from(jobs).where(and(
+    eq(jobs.status, "archived"),
+    lt(sql`coalesce(${jobs.sourcePublishedAt}, ${jobs.firstSeenAt})`, cutoff),
+  ));
+  const deleted = Number(count[0]?.total ?? 0);
+  if (!deleted) return 0;
+
+  const statements = [
+    db.delete(draftOutbox).where(inArray(draftOutbox.jobId, target())),
+    db.delete(triageDeduplication).where(inArray(triageDeduplication.jobId, target())),
+    db.delete(triageBatchItems).where(inArray(triageBatchItems.jobId, target())),
+    db.delete(triageHistory).where(inArray(triageHistory.jobId, target())),
+    db.delete(alertReads).where(inArray(alertReads.jobId, target())),
+    db.delete(userJobStatus).where(inArray(userJobStatus.jobId, target())),
+    db.delete(userJobAnalyses).where(inArray(userJobAnalyses.jobId, target())),
+    db.delete(jobAiFacts).where(inArray(jobAiFacts.jobId, target())),
+    db.delete(jobAiTriage).where(inArray(jobAiTriage.jobId, target())),
+    db.delete(aiUsageEvents).where(inArray(aiUsageEvents.jobId, target())),
+    db.delete(jobEvents).where(inArray(jobEvents.jobId, target())),
+    db.delete(jobImportRuns).where(inArray(jobImportRuns.jobId, target())),
+    db.delete(jobs).where(inArray(jobs.id, target())),
+  ];
+  await db.batch(statements as [typeof statements[number], ...typeof statements[number][]]);
+  return deleted;
 }

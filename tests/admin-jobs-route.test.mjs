@@ -6,15 +6,20 @@ test("a exclusão administrativa exige confirmação para todas as vagas",async(
  const [route,settings,deletion,migration,secondMigration,lifecycle]=await Promise.all([readFile(new URL("../app/api/admin/jobs/route.ts",import.meta.url),"utf8"),readFile(new URL("../app/AdminSettings.tsx",import.meta.url),"utf8"),readFile(new URL("../lib/job-deletion.ts",import.meta.url),"utf8"),readFile(new URL("../drizzle/0037_remove_jobs_before_2026_08.sql",import.meta.url),"utf8"),readFile(new URL("../drizzle/0038_remove_jobs_before_2026_08_15.sql",import.meta.url),"utf8"),readFile(new URL("../lib/lifecycle.ts",import.meta.url),"utf8")]);
  assert.match(route,/export async function GET/);
  assert.match(route,/export async function DELETE/);
+ assert.match(route,/export async function POST/);
  assert.match(route,/EXCLUIR TODAS AS VAGAS/);
  assert.match(route,/deleteJobsAndRelated/);
  assert.match(route,/Exclusão bloqueada/);
  assert.match(route,/triageHistory/);
  assert.match(route,/draftOutbox/);
+ assert.match(route,/purgeArchivedJobsBeforeCutoff/);
+ assert.match(route,/EXCLUIR VAGAS ARQUIVADAS ANTERIORES A 15\/08\/2026/);
  assert.match(deletion,/alertReads/);
  assert.match(deletion,/userJobStatus/);
  assert.match(deletion,/jobEvents/);
  assert.match(deletion,/jobImportRuns/);
+ assert.match(deletion,/db\.batch/);
+ for(const table of ["draftOutbox","triageDeduplication","triageBatchItems","triageHistory","jobAiTriage","aiUsageEvents"])assert.match(deletion,new RegExp(`db\\.delete\\(${table}\\)`));
  assert.match(migration,/DELETE FROM `jobs` WHERE `published_at` < 1785542400000/);
  assert.match(secondMigration,/UPDATE `jobs` SET `status` = 'archived'/);
  assert.match(secondMigration,/WHERE `published_at` < 1786752000000/);
@@ -22,4 +27,5 @@ test("a exclusão administrativa exige confirmação para todas as vagas",async(
  assert.match(settings,/EXCLUIR TODAS AS VAGAS/);
  assert.match(settings,/\/api\/admin\/backup/);
  assert.match(settings,/Limpar base de vagas/);
+ assert.match(settings,/Excluir recorte arquivado/);
 });
