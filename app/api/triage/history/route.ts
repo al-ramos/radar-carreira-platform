@@ -34,8 +34,8 @@ export async function GET() {
   const todayWindow = saoPauloDayWindow(today);
   const items = await db
     .select({
-      id: userJobAnalyses.jobId,
-      jobId: userJobAnalyses.jobId,
+      id: jobs.id,
+      jobId: jobs.id,
       verdict: userJobAnalyses.verdict,
       label: userJobAnalyses.label,
       blocker: userJobAnalyses.blocker,
@@ -63,11 +63,14 @@ export async function GET() {
       gmailSentId: draftOutbox.gmailSentId,
       sentAt: draftOutbox.sentAt,
     })
-    .from(userJobAnalyses)
-    .innerJoin(jobs, eq(userJobAnalyses.jobId, jobs.id))
+    // O Histórico também é a fila de trabalho. Começar por `jobs` preserva
+    // as vagas que ainda não têm análise, permitindo que “Não analisadas” e
+    // “Todas” mostrem o estoque real em vez de uma tabela vazia.
+    .from(jobs)
+    .leftJoin(userJobAnalyses, and(eq(userJobAnalyses.userId, user.userId), eq(userJobAnalyses.jobId, jobs.id)))
     .leftJoin(draftOutbox, and(eq(draftOutbox.userId, user.userId), eq(draftOutbox.jobId, jobs.id)))
-    .where(eq(userJobAnalyses.userId, user.userId))
-    .orderBy(desc(userJobAnalyses.updatedAt))
+    .where(eq(jobs.status, "active"))
+    .orderBy(desc(userJobAnalyses.updatedAt), desc(jobs.firstSeenAt))
     .limit(1000);
 
   const [batchRows, batchItemRows, outboxRows, batchDraftRows, batchHistoryRows, repairableRows, todayReceived] = await Promise.all([
@@ -139,6 +142,10 @@ export async function GET() {
       // data de publicação em `published_at`. Sem esse fallback, a consulta
       // APInfo do dia perde vagas que foram efetivamente publicadas hoje.
       sourcePublishedAt: item.sourcePublishedAt ?? item.publishedAt,
+      label: item.label ?? "Aguardando triagem",
+      source: item.source ?? "pending",
+      confidence: item.confidence ?? 0,
+      rows: item.rows ?? "[]",
       batchId: "profile-analysis",
       draftSubject: item.contactSubject?.trim() || `Candidatura — ${item.title}${item.externalId ? ` (vaga ${item.externalId})` : ""}`,
       trigger: "scheduled",
