@@ -19,10 +19,11 @@ test("remove contatos antes de encaminhar o currículo à IA", () => {
   assert.doesNotMatch(text, /ana@example\.com|99999-1111|123\.456\.789-00/);
 });
 
-test("a resposta da IA exige evidência para cada tecnologia", () => {
-  const facts = validateStructuredResumeFacts({ skills: [{ name: "VBA", confidence: 1, evidence: "Automação com VBA" }, { name: "Java", confidence: 0.9 }], coreStackCandidates: ["VBA"] });
+test("a resposta da IA exige evidência para cada tecnologia e limita o resumo", () => {
+  const facts = validateStructuredResumeFacts({ skills: [{ name: "VBA", confidence: 1, evidence: "Automação com VBA" }, { name: "Java", confidence: 0.9 }], coreStackCandidates: ["VBA"], professionalSummary: "Desenvolvedor com experiência em automação usando VBA." });
   assert.deepEqual(facts.skills, [{ name: "VBA", confidence: 1, evidence: "Automação com VBA" }]);
   assert.deepEqual(facts.coreStackCandidates, ["VBA"]);
+  assert.equal(facts.professionalSummary, "Desenvolvedor com experiência em automação usando VBA.");
 });
 
 test("a rota limita arquivo, preserva revisão humana e não persiste o PDF", async () => {
@@ -35,6 +36,8 @@ test("a rota limita arquivo, preserva revisão humana e não persiste o PDF", as
   assert.match(extractor, /pdf\.worker\.mjs/);
   assert.match(extractor, /pdfjsWorker/);
   assert.match(profile, /Revise as tecnologias antes de incluí-las/);
-  assert.match(profile, /Adicionar ao formulário/);
+  assert.match(profile, /Resumo profissional sugerido/);
+  assert.match(profile, /professionalSummary: resumeSummary/);
+  assert.match(profile, /Aplicar ao formulário/);
   assert.match(profile, /Não selecionamos nenhuma automaticamente/);
 });

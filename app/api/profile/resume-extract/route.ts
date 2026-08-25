@@ -14,7 +14,7 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
 function proposalFromLocal(text: string, pageCount: number): ResumeProposal {
   const skills = extractKnownSkills(text);
-  return { skills, coreStackCandidates: [], source: "local", pageCount, textCharacters: text.length };
+  return { skills, coreStackCandidates: [], professionalSummary: "", source: "local", pageCount, textCharacters: text.length };
 }
 
 export async function POST(request: Request) {
@@ -58,7 +58,7 @@ export async function POST(request: Request) {
       const available = new Set(skills.map(skill => skill.name.toLocaleLowerCase("pt-BR")));
       const coreStackCandidates = completion.value.coreStackCandidates.map(normalizeResumeSkill).filter((name, index, values) => name && available.has(name.toLocaleLowerCase("pt-BR")) && values.indexOf(name) === index).slice(0, 5);
       await db.insert(aiUsageEvents).values({ id: randomUUID(), userId: user.userId, operation: "extract_resume", provider: completion.provider, model: completion.model, inputTokens: completion.inputTokens, outputTokens: completion.outputTokens, status: "completed", createdAt: new Date() });
-      return NextResponse.json({ proposal: { skills, coreStackCandidates, source: "ai", pageCount, textCharacters: text.length } satisfies ResumeProposal });
+      return NextResponse.json({ proposal: { skills, coreStackCandidates, professionalSummary: completion.value.professionalSummary, source: "ai", pageCount, textCharacters: text.length } satisfies ResumeProposal });
     } catch (error) {
       await db.insert(aiUsageEvents).values({ id: randomUUID(), userId: user.userId, operation: "extract_resume", provider: status.provider ?? "unknown", model: status.model ?? "unknown", status: "failed", createdAt: new Date() });
       console.error("resume_extract_failed", error);

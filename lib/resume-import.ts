@@ -9,6 +9,7 @@ export type ResumeSkillSuggestion = {
 export type ResumeProposal = {
   skills: ResumeSkillSuggestion[];
   coreStackCandidates: string[];
+  professionalSummary: string;
   source: "ai" | "local";
   pageCount: number;
   textCharacters: number;

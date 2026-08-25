@@ -76,6 +76,7 @@ export default function ProfilePreferences({ value, onChange, onSave, onClose, m
   const [resumeWarning, setResumeWarning] = useState("");
   const [selectedResumeSkills, setSelectedResumeSkills] = useState<string[]>([]);
   const [selectedCoreSkills, setSelectedCoreSkills] = useState<string[]>([]);
+  const [resumeSummary, setResumeSummary] = useState("");
   const resumeInput = useRef<HTMLInputElement>(null);
   const update = <K extends keyof ProfileChoices>(key: K, next: ProfileChoices[K]) => onChange({ ...value, [key]: next });
   const updateCareerRule = <K extends keyof ProfileChoices["careerRules"]>(key: K, next: ProfileChoices["careerRules"][K]) =>
@@ -96,6 +97,7 @@ export default function ProfilePreferences({ value, onChange, onSave, onClose, m
       setResumeWarning(data.warning ?? "");
       setSelectedResumeSkills(data.proposal.skills.map(skill => skill.name));
       setSelectedCoreSkills([]);
+      setResumeSummary(data.proposal.professionalSummary);
     } catch (error) {
       setResumeWarning(error instanceof Error ? error.message : "Não foi possível ler o currículo.");
     } finally { setResumeImporting(false); }
@@ -106,8 +108,8 @@ export default function ProfilePreferences({ value, onChange, onSave, onClose, m
     for (const skill of selectedResumeSkills) if (!mergedSkills.some(item => lower(item) === lower(skill))) mergedSkills.push(skill);
     const mergedCore = [...value.careerRules.coreStack];
     for (const skill of selectedCoreSkills) if (!mergedCore.some(item => lower(item) === lower(skill))) mergedCore.push(skill);
-    onChange({ ...value, masteredSkills: mergedSkills, careerRules: { ...value.careerRules, coreStack: mergedCore } });
-    setResumeWarning(`${selectedResumeSkills.length} competência(s) adicionada(s) para revisão. Salve as preferências para concluir.`);
+    onChange({ ...value, masteredSkills: mergedSkills, careerRules: { ...value.careerRules, coreStack: mergedCore, professionalSummary: resumeSummary || value.careerRules.professionalSummary } });
+    setResumeWarning(`${selectedResumeSkills.length} competência(s)${resumeSummary ? " e o resumo profissional" : ""} adicionados para revisão. Salve as preferências para concluir.`);
     setResumeProposal(null);
   };
   // Este formulário concentra muitas preferências ainda não salvas. Um clique
@@ -131,9 +133,10 @@ export default function ProfilePreferences({ value, onChange, onSave, onClose, m
         {resumeProposal && <section className="resume-import-review" aria-live="polite">
           <div><span>CURRÍCULO ANALISADO</span><h4>Revise as tecnologias antes de incluí-las</h4><small>{resumeProposal.pageCount} página(s) lida(s) · {resumeProposal.source === "ai" ? "IA com evidências" : "leitura local"} · o PDF não é armazenado pelo Radar.</small></div>
           <p>Marque somente competências que você domina. A stack principal é separada porque ela altera o filtro de vagas na origem.</p>
+          {resumeProposal.professionalSummary && <label className="resume-import-summary"><b>Resumo profissional sugerido</b><small>Você pode editar antes de aplicar ao formulário.</small><textarea value={resumeSummary} onChange={event => setResumeSummary(event.target.value)} /></label>}
           <div className="resume-import-list">{resumeProposal.skills.map(skill => <label key={skill.name}><input type="checkbox" checked={selectedResumeSkills.includes(skill.name)} onChange={() => toggleResumeSkill(skill.name)} /><span><b>{skill.name}</b><small>{skill.evidence}</small></span></label>)}</div>
           {resumeProposal.coreStackCandidates.length > 0 && <fieldset className="resume-core-candidates"><legend>Sugeridas para stack principal obrigatória</legend><small>Não selecionamos nenhuma automaticamente.</small>{resumeProposal.coreStackCandidates.map(skill => <label key={skill}><input type="checkbox" checked={selectedCoreSkills.includes(skill)} onChange={() => toggleCoreSkill(skill)} />{skill}</label>)}</fieldset>}
-          <div className="resume-import-actions"><button type="button" onClick={() => setResumeProposal(null)}>Descartar proposta</button><button type="button" className="primary" onClick={applyResumeProposal}>Adicionar ao formulário</button></div>
+          <div className="resume-import-actions"><button type="button" onClick={() => setResumeProposal(null)}>Descartar proposta</button><button type="button" className="primary" onClick={applyResumeProposal}>Aplicar ao formulário</button></div>
         </section>}
         <div className="career-profile-grid">
           <label>Nome profissional<input value={value.careerRules.professionalName} onChange={event => updateCareerRule("professionalName", event.target.value)} placeholder="Ex.: Alexsandro Ramos" /></label>
