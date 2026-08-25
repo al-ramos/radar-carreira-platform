@@ -36,6 +36,12 @@ test("preserva o período ativo da Home na execução manual", () => {
   });
 });
 
+test("aceita triagem por período sem restringir uma fonte", () => {
+  assert.deepEqual(normalizeTriageRunRequest({ trigger: "portal", homePeriod: "72" }, new Date("2026-08-20T12:00:00.000Z")), {
+    trigger: "portal", homePeriod: "72", referenceDate: "2026-08-20", batchSize: 10, reprocess: false, aiMode: "ambiguous", createDrafts: false, dateScope: "published",
+  });
+});
+
 test("recorta o dia agendado no calendário de São Paulo", () => {
   const window = saoPauloDayWindow("2026-08-20");
   assert.equal(window.start.toISOString(), "2026-08-20T03:00:00.000Z");

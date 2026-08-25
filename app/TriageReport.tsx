@@ -121,9 +121,9 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
   }, [aiReview?.id, aiReview?.status]);
   const actionSelectionKey = `${actionSourceId}|${actionArea}|${actionChannel}|${actionPeriod}|${reprocess}`;
   useEffect(() => {
-    if (!actionSourceId) return;
     const controller = new AbortController();
-    const query = new URLSearchParams({ sourceId: actionSourceId, includeTriaged: String(reprocess), period: actionPeriod });
+    const query = new URLSearchParams({ includeTriaged: String(reprocess), period: actionPeriod });
+    if (actionSourceId) query.set("sourceId", actionSourceId);
     if (actionArea !== "all") query.set("roleArea", actionArea);
     if (actionChannel !== "all") query.set("ingestionChannel", actionChannel);
     void fetch(`/api/triage/preview?${query}`, { signal: controller.signal })
@@ -226,8 +226,8 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
   const actionSources = sourceId && !periodScopedSourceOptions.some((option) => option.id === sourceId)
     ? [{ id: sourceId, label: sourceLabel ?? sourceName(sourceId), count: 0 }, ...periodScopedSourceOptions]
     : periodScopedSourceOptions;
-  const actionCandidateCount = actionCandidate?.key === actionSelectionKey && actionSourceId ? actionCandidate.count : null;
-  const actionCandidateTotal = actionCandidate?.key === actionSelectionKey && actionSourceId ? actionCandidate.total : null;
+  const actionCandidateCount = actionCandidate?.key === actionSelectionKey ? actionCandidate.count : null;
+  const actionCandidateTotal = actionCandidate?.key === actionSelectionKey ? actionCandidate.total : null;
   const canPrepareDrafts = scopedHistory.some((item) => (item.verdict === "✅" || item.verdict === "🟡") && item.hasValidContactEmail && !item.draftStatus);
   const manualSummary = (batch: Batch) => {
     if (batch.total === 0) return "Nenhuma vaga ficou pendente neste recorte. Escolha outro período ou atualize os filtros para iniciar uma nova triagem.";
@@ -272,7 +272,7 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
     return `${batch.eligible} vaga(s) elegível(is); somente as que têm contato válido podem gerar rascunho.`;
   };
   const runToday = async () => {
-    if (!actionSourceId || !actionCandidateCount) return;
+    if (!actionCandidateCount) return;
     setRunningPilot(true);
     setMessage(`Enfileirando ${actionCandidateCount} vaga(s) do recorte ${homePeriodLabel(actionPeriod)}…`);
     try {
@@ -284,7 +284,8 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
       const result = await response.json() as { batchId: string | null; queued?: number; error?: string };
       if (!response.ok) throw new Error(result.error ?? "Não foi possível iniciar a fila de triagem.");
       setPilot(null);
-      setMessage(result.queued ? `Lote iniciado: ${result.queued} vaga(s) de ${sourceName(actionSourceId)} serão processadas em segundo plano. Acompanhe o progresso no histórico.` : "Nenhuma vaga nova precisa ser triada nesse recorte.");
+      const scopeLabel = actionSourceId ? `da fonte ${sourceName(actionSourceId)}` : "de todas as fontes";
+      setMessage(result.queued ? `Lote iniciado: ${result.queued} vaga(s) ${scopeLabel} serão processadas em segundo plano. Acompanhe o progresso no histórico.` : "Nenhuma vaga nova precisa ser triada nesse recorte.");
       void loadHistory();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Não foi possível concluir o piloto.");
@@ -613,7 +614,7 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
                   <label>
                     Fonte
                     <select aria-label="Fonte das vagas a analisar" value={actionSourceId} onChange={(e) => setActionSourceId(e.target.value)} disabled={runningPilot}>
-                      <option value="">Selecione uma fonte</option>
+                      <option value="">Todas as fontes</option>
                       {actionSources.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
                     </select>
                   </label>
@@ -646,7 +647,7 @@ export default function TriageReport({ close, openJobInRadar, sourceId, sourceLa
                   </label>
                 </div>}
                 {!(aiPromptOpen && aiTargetJobIds) && <><div className="triage-run-selection" aria-live="polite">
-                  {actionCandidateCount === null ? "Selecione uma fonte para consultar o recorte da triagem." : actionCandidateCount === 0 && actionCandidateTotal ? `Há ${actionCandidateTotal} vaga${actionCandidateTotal === 1 ? "" : "s"} no recorte ${homePeriodLabel(actionPeriod)}, mas todas já foram triadas.` : actionCandidateCount === 0 ? `Nenhuma vaga corresponde aos filtros da triagem em ${homePeriodLabel(actionPeriod)}.` : `${actionCandidateCount} vaga${actionCandidateCount === 1 ? "" : "s"} aguardando triagem, de ${actionCandidateTotal} no recorte ${homePeriodLabel(actionPeriod)}.`}
+                  {actionCandidateCount === null ? "Consultando o recorte da triagem…" : actionCandidateCount === 0 && actionCandidateTotal ? `Há ${actionCandidateTotal} vaga${actionCandidateTotal === 1 ? "" : "s"} no recorte ${homePeriodLabel(actionPeriod)}, mas todas já foram triadas.` : actionCandidateCount === 0 ? `Nenhuma vaga corresponde aos filtros da triagem em ${homePeriodLabel(actionPeriod)}.` : `${actionCandidateCount} vaga${actionCandidateCount === 1 ? "" : "s"} aguardando triagem, de ${actionCandidateTotal} no recorte ${homePeriodLabel(actionPeriod)}.`}
                   {actionCandidateCount === 0 && Boolean(actionCandidateTotal) && !reprocess && <span>Marque “Incluir vagas já triadas” para reavaliar as vagas desse recorte.</span>}
                   {actionCandidateCount !== null && actionCandidateCount > 100 && <span>O lote por regras será processado em segundo plano, em blocos controlados.</span>}
                   {actionCandidateCount !== null && actionCandidateCount > 20 && <span>A consulta à IA será processada em segundo plano, em lotes controlados.</span>}
