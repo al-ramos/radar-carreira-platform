@@ -13,7 +13,7 @@ type LegacyItem = { jobId: string; veredito: string; motivo: string | null; proc
 type FilterOption = { id: string; label: string; count: number };
 const rowClass: Record<string, string> = { "✅": "approved", "🟡": "partial", "❌": "rejected", "🔴": "rejected" };
 const CODEX_BATCH_SIZE = 50;
-const sourceName = (source: string) => source === "apinfo-extension" ? "APInfo" : source === "linkedin-extension" ? "LinkedIn" : source;
+const sourceName = (source: string) => source === "all" ? "todas as fontes" : source === "apinfo-extension" ? "APInfo" : source === "linkedin-extension" ? "LinkedIn" : source;
 const homePeriodLabel = (period: string) => period === "24" ? "recebidas nas últimas 24h" : period === "72" ? "recebidas nos últimos 3 dias" : period === "168" ? "recebidas nos últimos 7 dias" : "todas as vagas";
 const profileList = (values: string[], fallback: string) => values.length ? values.join(" · ") : fallback;
 const readJsonResponse = async <T,>(response: Response, action: string): Promise<T> => {
@@ -30,7 +30,7 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
     [draftActionStatuses, setDraftActionStatuses] = useState<Record<string, { kind: "done" | "waiting" | "failed"; text: string }>>({}),
     [reconcilingSentJobId, setReconcilingSentJobId] = useState<string | null>(null),
     [pilot, setPilot] = useState<PilotResult | null>(null),
-    [actionSourceId, setActionSourceId] = useState(sourceId ?? ""),
+    [actionSourceId, setActionSourceId] = useState(sourceId ?? "all"),
     [actionArea, setActionArea] = useState(initialArea),
     [actionChannel, setActionChannel] = useState(initialChannel),
     [actionPeriod, setActionPeriod] = useState<"24" | "72" | "168" | "all">(homePeriod),
@@ -563,7 +563,7 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
                   <label>
                     Fonte
                     <select aria-label="Fonte das vagas a analisar" value={actionSourceId} onChange={(e) => setActionSourceId(e.target.value)} disabled={runningPilot}>
-                      <option value="">Selecione uma fonte</option>
+                      <option value="all">Todas as fontes</option>
                       {actionSources.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
                     </select>
                   </label>

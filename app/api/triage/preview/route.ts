@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
   const ingestionChannel = searchParams.get("ingestionChannel")?.trim();
   const includeTriaged = searchParams.get("includeTriaged") === "true";
   const homePeriod = searchParams.get("period") ?? "24";
-  if (!sourceId || sourceId === "all") return NextResponse.json({ count: 0 });
+  if (!sourceId) return NextResponse.json({ count: 0 });
   if (ingestionChannel && !channels.has(ingestionChannel)) return NextResponse.json({ error: "Canal inválido" }, { status: 400 });
   if (!["24", "72", "168", "all"].includes(homePeriod)) return NextResponse.json({ error: "Período inválido" }, { status: 400 });
 
@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
     .leftJoin(userJobAnalyses, and(eq(userJobAnalyses.userId, user.userId), eq(userJobAnalyses.jobId, jobs.id)))
     .where(and(
       eq(jobs.status, "active"),
-      eq(jobs.sourceId, sourceId),
+      sourceId === "all" ? undefined : eq(jobs.sourceId, sourceId),
       cutoff ? gte(jobs.firstSeenAt, cutoff) : undefined,
       roleArea && roleArea !== "all" ? eq(jobs.roleArea, roleArea) : undefined,
       ingestionChannel ? eq(jobs.ingestionChannel, ingestionChannel as "extension" | "email" | "connector" | "file" | "api") : undefined,

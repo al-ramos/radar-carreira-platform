@@ -3,7 +3,7 @@ import test from "node:test";
 import { readFile } from "node:fs/promises";
 
 test("acionamento manual respeita os filtros ativos da Home", async () => {
-  const [route, asyncRoute, ui, preview, queue, cron, worker] = await Promise.all([
+  const [route, asyncRoute, ui, preview, queue, cron, worker, aiReview, codexQueue] = await Promise.all([
     readFile(new URL("../app/api/triage/run/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/triage/queue/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/TriageReport.tsx", import.meta.url), "utf8"),
@@ -11,6 +11,8 @@ test("acionamento manual respeita os filtros ativos da Home", async () => {
     readFile(new URL("../app/api/triage/drafts/queue/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/cron/drafts/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../worker/index.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/triage/ai-review/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/triage/codex-queue/route.ts", import.meta.url), "utf8"),
   ]);
   assert.match(route, /run\.dateScope === "received" \? jobs\.firstSeenAt : jobs\.publishedAt/);
   assert.match(route, /run\.roleArea \? eq\(jobs\.roleArea, run\.roleArea\)/);
@@ -24,6 +26,8 @@ test("acionamento manual respeita os filtros ativos da Home", async () => {
   assert.match(worker, /async queue\(/);
   assert.match(worker, /x-radar-triage-queue-authenticated/);
   assert.match(ui, /Fonte das vagas a analisar/);
+  assert.match(ui, /<option value="all">Todas as fontes<\/option>/);
+  assert.match(ui, /useState\(sourceId \?\? "all"\)/);
   assert.match(ui, /Incluir vagas já triadas/);
   assert.match(ui, /Período das vagas a analisar/);
   assert.match(ui, /Consulta à IA/);
@@ -34,6 +38,9 @@ test("acionamento manual respeita os filtros ativos da Home", async () => {
   assert.match(ui, /Projeto ou experiência-âncora/);
   assert.match(ui, /Restrições/);
   assert.match(preview, /eq\(jobs\.sourceId, sourceId\)/);
+  assert.match(preview, /sourceId === "all" \? undefined/);
+  assert.match(aiReview, /sourceId === "all" \? undefined/);
+  assert.match(codexQueue, /sourceId === "all" \? undefined/);
   assert.match(preview, /gte\(jobs\.firstSeenAt, cutoff\)/);
   assert.match(preview, /count\(userJobAnalyses\.jobId\)/);
   assert.match(queue, /isDraftAllowedForSource\(\{ sourceId: row\.job\.sourceId/);
