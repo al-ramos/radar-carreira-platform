@@ -9,9 +9,10 @@ import { isOwnerEmail } from "../../../../lib/access";
 import { getAiProviderStatus, type AiReviewProfile } from "../../../../lib/ai-provider";
 import { canonicalizeProfile } from "../../../../lib/canonical-profile";
 import { normalizeCareerRules } from "../../../../lib/profile-options";
+import { reserveQueueMessages } from "../../../../lib/queue-quota";
 
 export const dynamic = "force-dynamic";
-const MAX_ASYNC_AI_REVIEW_JOBS = 1000, CHUNK_SIZE = 5, RESERVED_OUTPUT_TOKENS = 1800;
+const MAX_ASYNC_AI_REVIEW_JOBS = 1000, CHUNK_SIZE = 10, RESERVED_OUTPUT_TOKENS = 1800;
 const channels = new Set(["extension", "email", "connector", "file", "api"]);
 type Queue = { sendBatch(messages: Array<{ body: { kind: "ai-review"; reviewId: string; chunkId: string; action: "chunk" } }>): Promise<void> };
 type Job = { id: string; title: string; company: string; location: string | null; url: string; description: string };
@@ -40,7 +41,10 @@ export async function POST(request: Request) {
   const status = getAiProviderStatus(); if (!status.configured) return NextResponse.json({ error: "A IA ainda não está configurada no ambiente de produção." }, { status: 503 });
   const monthStart = new Date(); monthStart.setUTCDate(1); monthStart.setUTCHours(0, 0, 0, 0); const usage = await db.select({ total: sql<number>`coalesce(sum(${aiUsageEvents.inputTokens} + ${aiUsageEvents.outputTokens}), 0)` }).from(aiUsageEvents).where(and(eq(aiUsageEvents.userId, user.userId), gte(aiUsageEvents.createdAt, monthStart))).then(rows => Number(rows[0]?.total ?? 0));
   const groups = chunks(reviewJobs, CHUNK_SIZE), estimated = Math.ceil((JSON.stringify({ reviewProfile, reviewJobs }).length + prompt.length) / 4) + RESERVED_OUTPUT_TOKENS * (groups.length + 1), rules = normalizeCareerRules(profile.careerRules); if (usage + estimated > rules.aiMonthlyTokenLimit) return NextResponse.json({ error: "O recorte excede o limite mensal de IA disponível." }, { status: 429 });
-  const reviewId = randomUUID(), now = new Date(); await db.insert(triageAiReviews).values({ id: reviewId, userId: user.userId, prompt, selection: JSON.stringify({ profile: reviewProfile, jobs: reviewJobs }), status: "queued", destination: "portal", createdAt: now });
+  const reviewId = randomUUID(), now = new Date();
+  const quota = await reserveQueueMessages(db, "radar-carreira-ai-review", groups.length);
+  if (!quota.allowed) return NextResponse.json({ error: `A proteção da cota diária das filas bloqueou a análise. Tente novamente após ${quota.resetAt}.`, resetAt: quota.resetAt }, { status: 429 });
+  await db.insert(triageAiReviews).values({ id: reviewId, userId: user.userId, prompt, selection: JSON.stringify({ profile: reviewProfile, jobs: reviewJobs }), status: "queued", destination: "portal", createdAt: now });
   const parts = groups.map((group, chunkIndex) => ({ id: randomUUID(), reviewId, chunkIndex, selection: JSON.stringify({ jobs: group }), status: "queued" as const, attemptCount: 0, createdAt: now, updatedAt: now })); await db.insert(triageAiReviewChunks).values(parts);
   const queue = (env as { AI_REVIEW_QUEUE?: Queue }).AI_REVIEW_QUEUE; if (!queue) return NextResponse.json({ error: "Fila de análise de IA indisponível." }, { status: 503 });
   try { await queue.sendBatch(parts.map(part => ({ body: { kind: "ai-review" as const, reviewId, chunkId: part.id, action: "chunk" as const } }))); } catch (error) { const detail = error instanceof Error ? error.message : "Falha ao enfileirar análise"; await db.update(triageAiReviews).set({ status: "failed", error: detail }).where(eq(triageAiReviews.id, reviewId)); return NextResponse.json({ error: detail }, { status: 503 }); }

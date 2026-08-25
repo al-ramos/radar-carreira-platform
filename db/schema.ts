@@ -219,6 +219,19 @@ export const automationHeartbeats = sqliteTable("automation_heartbeats", {
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
 });
 
+/**
+ * Contabilização preventiva da cota gratuita de Queues. A linha `__total__`
+ * é o guarda global diário; as demais linhas permitem identificar a origem.
+ */
+export const queueDailyUsage = sqliteTable("queue_daily_usage", {
+  dayUtc: text("day_utc").notNull(),
+  queue: text("queue").notNull(),
+  reservedOperations: integer("reserved_operations").notNull().default(0),
+  emittedMessages: integer("emitted_messages").notNull().default(0),
+  retryOperations: integer("retry_operations").notNull().default(0),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+}, table => [primaryKey({ columns: [table.dayUtc, table.queue] })]);
+
 export const jobImportRuns = sqliteTable("job_import_runs", {
   runId: text("run_id").notNull().references(() => importRuns.id),
   jobId: text("job_id").notNull().references(() => jobs.id),

@@ -10,7 +10,7 @@ test("análise consultiva da IA persiste o prompt e o snapshot sem alterar a tri
     readFile(new URL("../drizzle/0028_triage_ai_reviews.sql", import.meta.url), "utf8"),
   ]);
   assert.match(route, /MAX_ASYNC_AI_REVIEW_JOBS = 1000/);
-  assert.match(route, /CHUNK_SIZE = 5/);
+  assert.match(route, /CHUNK_SIZE = 10/);
   assert.match(route, /AI_REVIEW_QUEUE/);
   assert.match(route, /triageAiReviewChunks/);
   assert.match(route, /triageAiReviews/);

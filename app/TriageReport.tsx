@@ -6,6 +6,7 @@ type Batch = { id: string; trigger: "manual" | "scheduled" | "assistant"; scope:
 type BatchItem = { batchId: string; jobId: string; status: "queued" | "processing" | "completed" | "failed" | "skipped"; error: string | null; attemptCount: number; updatedAt: string; leaseUntil: string | null; title: string; company: string; externalId: string | null };
 type Operational = { pendingDrafts: number; readyDrafts: number; sentDrafts: number; failedDrafts: number; oldestPendingAt: string | null; alerts: Array<{ level: "warning" | "error"; message: string }> };
 type HistoryRecovery = { available: number };
+type QueueUsage = { budget: number; reservedOperations: number; retryOperations: number; resetAt: string };
 type AiReview = { id: string; response?: string | null; jobs?: Array<{ id: string; title: string; company: string }>; provider?: string | null; model?: string | null; status?: string; total?: number; completed?: number; failed?: number; chunks?: number; queued?: number; error?: string | null };
 type CodexQueueItem = { id: string; status: "pending" | "claimed" | "completed" | "failed"; createdAt: string; claimedAt?: string | null; completedAt?: string | null; error?: string | null; selection: { filters?: { jobIds?: string[] } } };
 type AiCareerRules = { professionalName: string; professionalTitle: string; professionalSummary: string; baseLocation: string; acceptedRegions: string[]; maxHybridDays: number; preferredContracts: string[]; dailyCommunicationLanguages: string[]; blockedSeniorities: string[]; blockedWorkTypes: string[]; coreStack: string[]; coreStackMatchMode: "all" | "any"; stackExceptions: string[]; anchorProject: string };
@@ -58,6 +59,7 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
     [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null),
     [syncingBatch, setSyncingBatch] = useState(false),
     [operational, setOperational] = useState<Operational | null>(null),
+    [queueUsage, setQueueUsage] = useState<QueueUsage | null>(null),
     [historyRecovery, setHistoryRecovery] = useState<HistoryRecovery | null>(null),
     [recoveringHistory, setRecoveringHistory] = useState(false),
     [situationFilter, setSituationFilter] = useState<"pending" | "analysed" | "all">("all"),
@@ -127,12 +129,18 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
       setCodexQueueItems(data.items ?? []);
     } catch { /* A triagem continua disponível mesmo se o histórico do Codex não carregar. */ }
   };
+  const loadQueueUsage = async () => {
+    try {
+      const response = await fetch("/api/triage/queue-usage");
+      if (response.ok) setQueueUsage(await readJsonResponse<QueueUsage>(response, "O uso das filas"));
+    } catch { /* A triagem permanece utilizável se a telemetria estiver indisponível. */ }
+  };
   useEffect(() => {
     // O painel pode montar fechado enquanto a Home termina de carregar. Só
     // consulta o histórico quando ele estiver visível e refaz a carga na
     // primeira abertura, sem depender de alterar um filtro.
     if (!open) return;
-    const timer = window.setTimeout(() => { void loadHistory(); void loadCodexQueue(); }, 0);
+    const timer = window.setTimeout(() => { void loadHistory(); void loadCodexQueue(); void loadQueueUsage(); }, 0);
     return () => window.clearTimeout(timer);
   }, [open]);
   useEffect(() => {
@@ -650,6 +658,7 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
                     <button className="triage-queue-button" disabled={queueingDrafts || runningPilot || draftCounts.failed === 0} onClick={retryFailedDrafts} title={draftCounts.failed === 0 ? "Não há falhas para reprocessar" : undefined}>Reprocessar{draftCounts.failed ? ` (${draftCounts.failed})` : ""}</button>
                   </article>
                 </div></>}
+                {queueUsage && <small className="triage-queue-quota" aria-live="polite">Filas hoje: {queueUsage.reservedOperations.toLocaleString("pt-BR")} de {queueUsage.budget.toLocaleString("pt-BR")} operações reservadas{queueUsage.retryOperations ? ` · ${queueUsage.retryOperations} retry(s) observado(s)` : ""}. Reset: {date(queueUsage.resetAt)}.</small>}
                 {aiPromptOpen && <section className="triage-ai-prompt" aria-label="Prompt para análise de vagas pela IA">
                   <div className="triage-ai-prompt-heading"><b>Perfil e stack que a IA vai usar</b><small>Esta é a referência do seu perfil salvo no Radar para analisar {aiTargetJobIds?.length ?? actionCandidateCount ?? 0} vaga(s) {aiTargetJobIds ? "selecionada(s)" : "do recorte"}.</small></div>
                   {aiProfileLoading && <small>Carregando o perfil salvo…</small>}

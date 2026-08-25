@@ -6,16 +6,26 @@ import { getDb } from "../../../../db/index";
 import { jobs, platformSettings, profiles, triageBatches, triageBatchItems, userJobAnalyses } from "../../../../db/schema";
 import { canonicalizeProfile } from "../../../../lib/canonical-profile";
 import { normalizeTriageRunRequest, saoPauloDayWindow, type TriageRunRequest } from "../../../../lib/triage-orchestrator";
+import { reserveQueueMessages } from "../../../../lib/queue-quota";
 
 export const dynamic = "force-dynamic";
 
 type QueuePayload = { userId: string; batchId: string; jobId: string; run: Record<string, unknown> };
-type QueueMessage = { body: QueuePayload };
+type QueueMessage = { body: { kind: "manual-triage-batch"; items: QueuePayload[] } };
 type QueueRequest = Partial<TriageRunRequest> & { action?: "resume"; batchId?: string };
 
 const STALE_QUEUE_ITEM_MS = 5 * 60_000;
 const DEFAULT_SCHEDULED_TRIAGE_BATCH_SIZE = 100;
 const MAX_SCHEDULED_TRIAGE_BATCH_SIZE = 1000;
+const MANUAL_QUEUE_MESSAGE_SIZE = 25;
+
+function packManualQueueMessages(items: QueuePayload[]): QueueMessage[] {
+  const messages: QueueMessage[] = [];
+  for (let index = 0; index < items.length; index += MANUAL_QUEUE_MESSAGE_SIZE) {
+    messages.push({ body: { kind: "manual-triage-batch", items: items.slice(index, index + MANUAL_QUEUE_MESSAGE_SIZE) } });
+  }
+  return messages;
+}
 
 async function resumePendingBatch({ userId, batchId, queue }: { userId: string; batchId: string; queue: { sendBatch(messages: QueueMessage[]): Promise<void> } }) {
   const db = getDb();
@@ -45,11 +55,12 @@ async function resumePendingBatch({ userId, batchId, queue }: { userId: string; 
   // A seleção do lote é persistida: o executor recebe cada jobId e ignora
   // qualquer vaga que tenha sido concluída entre a interrupção e a retomada.
   const run = normalizeTriageRunRequest({ trigger: "portal", batchSize: 1, aiMode: "off", createDrafts: false });
+  const messages = packManualQueueMessages(pending.map(({ jobId }) => ({ userId, batchId, jobId, run })));
+  const quota = await reserveQueueMessages(db, "radar-carreira-triage-manual", messages.length);
+  if (!quota.allowed) return { status: 429 as const, error: `A proteção da cota diária das filas bloqueou esta retomada. Tente novamente após ${quota.resetAt}.` };
   await db.update(triageBatchItems).set({ status: "queued", leaseOwner: null, leaseUntil: null, error: null, updatedAt: now })
     .where(and(eq(triageBatchItems.batchId, batchId), recoverableItem));
   await db.update(triageBatches).set({ status: "queued", error: null, completedAt: null }).where(eq(triageBatches.id, batchId));
-
-  const messages = pending.map(({ jobId }): QueueMessage => ({ body: { userId, batchId, jobId, run } }));
   for (let index = 0; index < messages.length; index += 100) await queue.sendBatch(messages.slice(index, index + 100));
   return { status: 202 as const, resumed: messages.length };
 }
@@ -71,7 +82,7 @@ export async function POST(request: Request) {
     if (!body.batchId) return NextResponse.json({ error: "Informe o lote a retomar." }, { status: 400 });
     try {
       const result = await resumePendingBatch({ userId: user.userId, batchId: body.batchId, queue });
-      return result.status === 404
+      return result.status === 404 || result.status === 429
         ? NextResponse.json({ error: result.error }, { status: result.status })
         : NextResponse.json({ ok: true, resumed: result.resumed }, { status: result.status });
     } catch (error) {
@@ -139,7 +150,12 @@ export async function POST(request: Request) {
     await db.update(triageBatches).set({ status: "failed", completedAt: new Date(), error: detail }).where(eq(triageBatches.id, batchId)).catch(() => {});
     return NextResponse.json({ error: detail, batchId }, { status: 503 });
   }
-  const payloads = candidates.map(({ jobId }): QueueMessage => ({ body: { userId: user.userId, batchId, jobId, run } }));
+  const payloads = packManualQueueMessages(candidates.map(({ jobId }) => ({ userId: user.userId, batchId, jobId, run })));
+  const quota = await reserveQueueMessages(db, "radar-carreira-triage-manual", payloads.length);
+  if (!quota.allowed) {
+    await db.update(triageBatches).set({ status: "failed", completedAt: new Date(), error: `Cota diária das filas protegida até ${quota.resetAt}.` }).where(eq(triageBatches.id, batchId));
+    return NextResponse.json({ error: `A proteção da cota diária das filas bloqueou esta triagem. Tente novamente após ${quota.resetAt}.`, resetAt: quota.resetAt }, { status: 429 });
+  }
   try {
     for (let index = 0; index < payloads.length; index += 100) await queue.sendBatch(payloads.slice(index, index + 100));
   } catch (error) {

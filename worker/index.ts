@@ -126,12 +126,24 @@ type ScheduledTriageQueueMessage = {
   continuation: number;
 };
 type AiReviewQueueMessage = { kind: "ai-review"; reviewId: string; chunkId?: string; action: "chunk" | "consolidate" };
+type ManualTriageBatchMessage = { kind: "manual-triage-batch"; items: TriageQueueMessage[] };
 
 type QueueMessage = {
-  body: TriageQueueMessage;
+  body: TriageQueueMessage | ScheduledTriageQueueMessage | AiReviewQueueMessage | ManualTriageBatchMessage;
   ack(): void;
   retry(options?: { delaySeconds?: number }): void;
 };
+
+const isRetryableQueueResponse = (response: Response) => response.status === 408 || response.status === 429 || response.status >= 500;
+
+async function recordQueueRetry(env: Env, queue: string) {
+  const now = Date.now(), day = new Date(now).toISOString().slice(0, 10);
+  for (const key of ["__total__", queue]) await env.DB.prepare(`
+    INSERT INTO queue_daily_usage (day_utc, queue, reserved_operations, emitted_messages, retry_operations, updated_at)
+    VALUES (?, ?, 0, 0, 1, ?)
+    ON CONFLICT(day_utc, queue) DO UPDATE SET retry_operations = retry_operations + 1, updated_at = excluded.updated_at
+  `).bind(day, key, now).run();
+}
 
 interface ExecutionContext {
   waitUntil(promise: Promise<unknown>): void;
@@ -261,10 +273,23 @@ const worker = {
   async queue(batch: { messages: QueueMessage[] }, env: Env, ctx: ExecutionContext): Promise<void> {
     for (const message of batch.messages) {
       try {
-        const payload = message.body as TriageQueueMessage | ScheduledTriageQueueMessage | AiReviewQueueMessage;
+        const payload = message.body;
+        if ("kind" in payload && payload.kind === "manual-triage-batch") {
+          let retry = false;
+          for (const item of payload.items) {
+            const response = await handler.fetch(new Request("https://queue.internal/api/triage/run", {
+              method: "POST", headers: { "content-type": "application/json", "x-radar-triage-queue-authenticated": "1", "x-radar-triage-user-id": item.userId },
+              body: JSON.stringify({ ...item.run, batchId: item.batchId, jobId: item.jobId }),
+            }), env, ctx);
+            retry ||= isRetryableQueueResponse(response);
+          }
+          if (retry) { await recordQueueRetry(env, "radar-carreira-triage-manual"); message.retry({ delaySeconds: 15 }); }
+          else message.ack();
+          continue;
+        }
         if ("kind" in payload && payload.kind === "ai-review") {
           const response = await handler.fetch(new Request("https://queue.internal/api/triage/ai-review/run", { method: "POST", headers: { "content-type": "application/json", "x-radar-ai-review-authenticated": "1" }, body: JSON.stringify(payload) }), env, ctx);
-          if (response.ok) message.ack(); else message.retry({ delaySeconds: 15 });
+          if (response.ok || !isRetryableQueueResponse(response)) message.ack(); else { await recordQueueRetry(env, "radar-carreira-ai-review"); message.retry({ delaySeconds: 15 }); }
           continue;
         }
         if ("kind" in payload && payload.kind === "scheduled-triage") {
@@ -275,7 +300,8 @@ const worker = {
           }), env, ctx);
           const result = await response.clone().json().catch(() => null) as { hasMore?: unknown } | null;
           if (!response.ok) {
-            message.retry({ delaySeconds: 15 });
+            if (isRetryableQueueResponse(response)) { await recordQueueRetry(env, "radar-carreira-triage"); message.retry({ delaySeconds: 15 }); }
+            else message.ack();
             continue;
           }
           // A primeira rodada usa IA somente para as ambiguidades. O próprio
@@ -299,10 +325,11 @@ const worker = {
           },
           body: JSON.stringify({ ...payload.run, batchId: payload.batchId, jobId: payload.jobId }),
         }), env, ctx);
-        if (response.ok) message.ack();
-        else message.retry({ delaySeconds: 15 });
+        if (response.ok || !isRetryableQueueResponse(response)) message.ack();
+        else { await recordQueueRetry(env, "radar-carreira-triage-manual"); message.retry({ delaySeconds: 15 }); }
       } catch {
         // Uma exceção isolada não pode interromper a entrega do lote inteiro.
+        await recordQueueRetry(env, "unknown");
         message.retry({ delaySeconds: 15 });
       }
     }
