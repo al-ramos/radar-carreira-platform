@@ -25,7 +25,13 @@ export function needsAiRefinement(value: DeterministicTriage) {
 }
 
 export function evaluateDeterministicTriage(job: JobForTriage, profile: CanonicalCandidateProfile): DeterministicTriage {
-  const stack = inferTechnologyStack(`${job.title} ${job.description}`, Array.isArray(job.stack) ? job.stack.filter((item): item is string => typeof item === "string") : []);
+  /*
+   * A aprovação precisa ter evidência no texto da própria vaga. Título e
+   * tags importadas podem estar desatualizados, ser genéricos ou, em lotes
+   * copiados, pertencer visualmente à vaga anterior. Por isso eles não podem
+   * provar a stack para a triagem determinística.
+   */
+  const stack = inferTechnologyStack(job.description);
   const result = computeVerdict({ ...job, stack }, profile.masteredSkills, profile.careerRules);
   const fit = analyzeStackFit(stack, profile.masteredSkills);
   const score = scoreJob({ ...job, stack }, profile).score;

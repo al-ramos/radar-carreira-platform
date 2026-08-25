@@ -182,12 +182,28 @@ function locationMatchesRegion(location: string, region: string): boolean {
     && GRANDE_SP_ALIASES.some(alias => normalizedLocation.includes(alias));
 }
 
+/**
+ * Algumas vagas impõem presença somente a residentes de uma região. Isso não
+ * transforma a vaga em presencial para candidatos cujo local cadastrado está
+ * fora dessa condição; a modalidade ainda precisa ser confirmada na fonte.
+ */
+function conditionalPresenceRegion(text: string): string | null {
+  const normalized = normalizeText(text);
+  const match = normalized.match(/(?:se\s+voce\s+(?:reside|mora)|para\s+quem\s+(?:reside|mora)|somente\s+para\s+(?:quem|candidatos?\s+que)\s+(?:reside|moram?))\s+(?:na?|em)\s+([^.;,\n]+)/i);
+  if (!match) return null;
+  return match[1].replace(/\s+(?:deve|devera|precisa|sera|tera|e\s+necessario)\b.*$/i, "").trim() || null;
+}
+
 function detectWorkMode(text: string, location: string, rules?: CareerRules): { status: string; ok: boolean | null } {
   const remote = REMOTE_RE.test(text);
   const hybrid = HYBRID_RE.test(text);
   const onsite = ONSITE_RE.test(text);
   if (remote) return { status: "Remoto ✅", ok: true };
   const acceptedLocations = [...(rules?.acceptedRegions ?? []), rules?.baseLocation ?? ""].filter(Boolean);
+  const conditionalRegion = conditionalPresenceRegion(text);
+  if ((hybrid || onsite) && conditionalRegion && acceptedLocations.length && !acceptedLocations.some(region => locationMatchesRegion(region, conditionalRegion))) {
+    return { status: `Presença local condicionada a residir em ${conditionalRegion} — não se aplica ao local cadastrado; confirmar modalidade`, ok: null };
+  }
   const locationAccepted = !acceptedLocations.length ? true : location.trim() ? acceptedLocations.some(region => locationMatchesRegion(location, region)) : null;
   const hybridDays = requiredHybridDays(text);
   if (hybrid) {

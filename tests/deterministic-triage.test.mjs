@@ -13,6 +13,27 @@ test("bloqueador é registrado separadamente do veredito", () => {
   assert.equal(value.verdict, "NAO_BATE"); assert.equal(value.blocker, "Stack incompatível com o perfil"); assert.ok(value.missingSkills.includes("Java"));
 });
 
+test("não aprova stack principal citada apenas no título ou em tags importadas", () => {
+  const value = evaluateDeterministicTriage({
+    title: "AI Engineer (Dev .NET)",
+    description: "Atuação com GCP, SAP e Angular. Trabalho remoto.",
+    stack: ["C#", ".NET"],
+  }, profile);
+  assert.equal(value.verdict, "NAO_BATE");
+  assert.equal(value.blocker, "Stack incompatível com o perfil");
+  assert.deepEqual(value.matchingSkills, []);
+});
+
+test("aceita stack principal explicitamente comprovada no corpo da vaga", () => {
+  const value = evaluateDeterministicTriage({
+    title: "AI Engineer (Dev .NET)",
+    description: "Experiência sólida em desenvolvimento de software utilizando .NET é mandatória.",
+    stack: [],
+  }, profile);
+  assert.equal(value.verdict, "PROVAVEL");
+  assert.ok(value.matchingSkills.includes(".NET"));
+});
+
 test("só encaminha à IA vagas sem bloqueador e com evidências incompletas", () => {
   const clear = evaluateDeterministicTriage({ title: "Desenvolvedor .NET Sênior", description: "C# .NET e SQL Server. Remoto, regime CLT.", stack: ["C#", ".NET", "SQL Server"], seniority: "Sênior", workMode: "Remoto" }, profile);
   const blocked = evaluateDeterministicTriage({ title: "Desenvolvedor Java", description: "Java e Spring", stack: ["Java", "Spring"] }, profile);

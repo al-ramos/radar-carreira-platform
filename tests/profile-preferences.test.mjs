@@ -201,6 +201,17 @@ test("entende Mogi como Grande São Paulo e aplica o limite do híbrido", () => 
   assert.match(outside.blocker ?? "", /fora das regiões aceitas/);
 });
 
+test("não reprova por Campinas quando a presença é condicionada a residir lá", () => {
+  const preset = alexsandroProfilePreset();
+  const verdict = computeVerdict(
+    { title: "AI Engineer .NET", description: "Presença obrigatória no escritório de Campinas somente para quem reside na Região Metropolitana de Campinas.", stack: ["C#", ".NET"], workMode: "Híbrido", location: "Campinas, SP" },
+    preset.masteredSkills,
+    preset.careerRules,
+  );
+  assert.notEqual(verdict.emoji, "❌");
+  assert.match(verdict.rows.find(row => row.criterion === "Fase 1 · Geografia")?.status ?? "", /condicionada.*não se aplica/i);
+});
+
 test("não confunde Pleno com Sênior na fase de preferências", () => {
   const preset = alexsandroProfilePreset();
   const verdict = computeVerdict(
