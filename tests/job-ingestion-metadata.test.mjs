@@ -60,6 +60,13 @@ test("histórico da triagem preserva a data de publicação de importações API
   assert.match(route, /stack: jobs\.stack/);
 });
 
+test("histórico torna a publicação original da fonte a data principal da tabela", async () => {
+  const triage = await read("../app/TriageReport.tsx");
+  assert.match(triage, /Publicação original \/ recebimento/);
+  assert.match(triage, /Publicada na fonte:/);
+  assert.match(triage, /Recebida pelo Radar:/);
+});
+
 test("migração classifica importações antigas e cria índices do filtro", async () => {
   const migration = await read("../drizzle/0020_job_ingestion_metadata.sql");
   assert.match(migration, /ADD `source_published_at` integer/);
