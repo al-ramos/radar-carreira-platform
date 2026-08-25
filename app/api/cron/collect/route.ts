@@ -37,6 +37,7 @@ export async function POST(request: Request) {
   let inserted = 0;
   let updated = 0;
   let errors = 0;
+  const outcomes: Array<{ id: string; inserted: number; updated: number }> = [];
 
   for (const source of batch) {
     const runId = crypto.randomUUID();
@@ -90,6 +91,7 @@ export async function POST(request: Request) {
 
       inserted += sourceInserted;
       updated += sourceUpdated;
+      outcomes.push({ id: source.id, inserted: sourceInserted, updated: sourceUpdated });
       const finishedAt = new Date();
       await getDb().update(importRuns).set({ status: "completed", received: found.length, inserted: sourceInserted, updated: sourceUpdated, finishedAt }).where(eq(importRuns.id, runId));
       await getDb().update(jobSources).set({ lastRunAt: finishedAt, lastSuccessAt: finishedAt, lastError: null, consecutiveFailures: 0 }).where(eq(jobSources.id, source.id));
@@ -114,6 +116,7 @@ export async function POST(request: Request) {
     inserted,
     updated,
     errors,
+    outcomes,
     nextOffset: offset + batch.length < sources.length ? offset + batch.length : null,
   });
 }

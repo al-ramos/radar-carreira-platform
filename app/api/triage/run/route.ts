@@ -88,6 +88,9 @@ export async function POST(request: Request) {
     : null;
   let scheduledUserId: string | null = null;
   try { const config = scheduledSource ? JSON.parse(scheduledSource.externalRef) as { userId?: string } : null; if (config?.userId) scheduledUserId = config.userId; } catch { /* a sessão normal permanece disponível */ }
+  // Fontes pull não armazenam usuário em externalRef. O consumidor interno
+  // da Queue injeta o dono do Radar depois de autenticar a mensagem.
+  if (schedulerAuthenticated) scheduledUserId ??= request.headers.get("x-radar-triage-user-id")?.trim() || null;
   const userId = queueAuthenticated ? queuedUserId : user?.userId ?? scheduledUserId;
   if (!userId) return NextResponse.json({ error: "Autenticação necessária" }, { status: 401 });
 

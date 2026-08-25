@@ -118,7 +118,7 @@ type TriageQueueMessage = {
 };
 type ScheduledTriageQueueMessage = {
   kind: "scheduled-triage";
-  run: { sourceId: string; dateScope: "received"; aiMode: "ambiguous" | "off"; batchSize: number };
+  run: { sourceId: string; dateScope: "received"; homePeriod: "all"; aiMode: "ambiguous" | "off"; batchSize: number };
   continuation: number;
 };
 type AiReviewQueueMessage = { kind: "ai-review"; reviewId: string; chunkId?: string; action: "chunk" | "consolidate" };
@@ -185,28 +185,29 @@ const worker = {
 
     const response = await handler.fetch(request, env, ctx);
 
-    // As extensões APInfo e LinkedIn são fontes push: assim que um lote de
-    // vagas é persistido com sucesso, inicia a triagem no próprio Worker.
-    // Isso evita depender de um cron separado e mantém o processamento após
-    // a coleta. Ambas postam em /api/collector/import/<sourceId> (rota
-    // dinâmica com allowlist em KNOWN_SOURCES); nenhuma usa mais o endpoint
-    // fixo legado /api/collector/import.
-    const knownPushSourceIds = new Set(["apinfo-extension", "linkedin-extension"]);
+    // Toda fonte que concluir uma importação inicia a triagem no próprio
+    // Worker. O recorte "all" é intencional: cada fonte também escoa seu
+    // estoque de vagas ativas ainda não triadas, em lotes continuáveis.
+    // Assim, fontes pull, extensões e Gmail seguem o mesmo fluxo.
     const importMatch = /^\/api\/collector\/import\/([^/]+)$/.exec(url.pathname);
-    const pushImportSourceId = importMatch && knownPushSourceIds.has(importMatch[1]) ? importMatch[1] : null;
-    if (pushImportSourceId && request.method === "POST" && response.ok) {
-      const result = await response.clone().json().catch(() => null) as { accepted?: unknown } | null;
-      if (typeof result?.accepted === "number") {
-        ctx.waitUntil(
-          // Uma importação pode conter centenas de vagas. O servidor lê o
-          // limite salvo pelo administrador e a Queue continua até esgotar
-          // as vagas novas, sem prender a requisição de coleta.
-          env.TRIAGE_QUEUE.send({
-            kind: "scheduled-triage",
-            run: { sourceId: pushImportSourceId, dateScope: "received", aiMode: "ambiguous", batchSize: 100 },
-            continuation: 0,
-          }).catch(() => undefined),
-        );
+    const importEndpoints = Boolean(importMatch) || url.pathname === "/api/cron/email-import" || url.pathname === "/api/cron/collect" || url.pathname === "/api/admin/collect";
+    if (importEndpoints && request.method === "POST" && response.ok) {
+      const result = await response.clone().json().catch(() => null) as {
+        accepted?: unknown; jobs?: unknown; outcomes?: Array<{ id?: unknown; inserted?: unknown; updated?: unknown }>;
+      } | null;
+      const sourceIds = new Set<string>();
+      if (importMatch && typeof result?.accepted === "number" && result.accepted > 0) sourceIds.add(importMatch[1]);
+      if (url.pathname === "/api/cron/email-import" && typeof result?.jobs === "number" && result.jobs > 0) sourceIds.add("gmail-radarvagas");
+      for (const outcome of result?.outcomes ?? []) {
+        if (typeof outcome.id === "string" && (Number(outcome.inserted) > 0 || Number(outcome.updated) > 0)) sourceIds.add(outcome.id);
+      }
+      if (sourceIds.size) {
+        ctx.waitUntil(Promise.all([...sourceIds].map((sourceId) => env.TRIAGE_QUEUE.send({
+          kind: "scheduled-triage",
+          // A rota lê o limite configurado pelo administrador antes de executar.
+          run: { sourceId, dateScope: "received", homePeriod: "all", aiMode: "ambiguous", batchSize: 100 },
+          continuation: 0,
+        } satisfies ScheduledTriageQueueMessage))).catch(() => undefined));
       }
     }
 
@@ -224,7 +225,7 @@ const worker = {
         if ("kind" in payload && payload.kind === "scheduled-triage") {
           const response = await handler.fetch(new Request("https://queue.internal/api/triage/run", {
             method: "POST",
-            headers: { "content-type": "application/json", "x-radar-collector-authenticated": "1" },
+            headers: { "content-type": "application/json", "x-radar-collector-authenticated": "1", "x-radar-triage-user-id": (await ownerUserId(env.DB)) ?? "" },
             body: JSON.stringify({ trigger: "schedule", ...payload.run }),
           }), env, ctx);
           const result = await response.clone().json().catch(() => null) as { hasMore?: unknown } | null;
