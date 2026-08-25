@@ -20,7 +20,7 @@ const readJsonResponse = async <T,>(response: Response, action: string): Promise
   const body = await response.text();
   if (!body.trim()) throw new Error(`${action} não recebeu resposta do serviço. Tente novamente.`);
   try { return JSON.parse(body) as T; }
-  catch { throw new Error(`${action} recebeu uma resposta inválida do serviço. Tente novamente.`); }
+  catch { throw new Error(`${action} retornou uma página de erro do servidor. Tente novamente em instantes.`); }
 };
 export default function TriageReport({ open = true, close, openJobInRadar, sourceId, sourceLabel, sourceOptions = [], areaOptions = [], channelOptions = [], initialArea = "all", initialChannel = "all", homePeriod = "24", highlightBatchId }: { open?: boolean; close: () => void; openJobInRadar: (job: Pick<HistoryItem, "jobId" | "externalId" | "jobSource">) => void; sourceId?: string; sourceLabel?: string; sourceOptions?: FilterOption[]; areaOptions?: FilterOption[]; channelOptions?: FilterOption[]; initialArea?: string; initialChannel?: string; homePeriod?: "24" | "72" | "168" | "all"; highlightBatchId?: string }) {
   const [message, setMessage] = useState("Carregando avaliações…"),
@@ -277,12 +277,12 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
       const response = await fetch("/api/triage/queue", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ sourceId: actionSourceId, dateScope: "received", homePeriod: actionPeriod, roleArea: actionArea, ingestionChannel: actionChannel, batchSize: actionCandidateCount, reprocess, aiMode: "off" }),
+        body: JSON.stringify({ sourceId: actionSourceId, dateScope: "received", homePeriod: actionPeriod, roleArea: actionArea, ingestionChannel: actionChannel, batchSize: Math.min(actionCandidateCount, 100), reprocess, aiMode: "off" }),
       });
-      const result = await response.json() as { batchId: string | null; queued?: number; error?: string };
+      const result = await readJsonResponse<{ batchId: string | null; queued?: number; hasMore?: boolean; error?: string }>(response, "A fila de triagem");
       if (!response.ok) throw new Error(result.error ?? "Não foi possível iniciar a fila de triagem.");
       setPilot(null);
-      setMessage(result.queued ? `Lote iniciado: ${result.queued} vaga(s) de ${sourceName(actionSourceId)} serão processadas em segundo plano. Acompanhe o progresso no histórico.` : "Nenhuma vaga nova precisa ser triada nesse recorte.");
+      setMessage(result.queued ? `Lote iniciado: ${result.queued} vaga(s) de ${sourceName(actionSourceId)} serão processadas em segundo plano.${result.hasMore ? " Quando este lote concluir, inicie o próximo lote de 100 vagas." : ""} Acompanhe o progresso no histórico.` : "Nenhuma vaga nova precisa ser triada nesse recorte.");
       void loadHistory();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Não foi possível concluir o piloto.");

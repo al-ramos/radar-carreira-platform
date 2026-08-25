@@ -14,6 +14,10 @@ type QueueMessage = { body: QueuePayload };
 type QueueRequest = Partial<TriageRunRequest> & { action?: "resume"; batchId?: string };
 
 const STALE_QUEUE_ITEM_MS = 5 * 60_000;
+// Registrar centenas de itens e mensagens em uma única requisição excede o
+// orçamento do Worker. A Queue processa cada vaga depois, com concorrência
+// limitada; este teto protege apenas a criação do lote manual.
+const MANUAL_TRIAGE_BATCH_SIZE = 100;
 
 async function resumePendingBatch({ userId, batchId, queue }: { userId: string; batchId: string; queue: { sendBatch(messages: QueueMessage[]): Promise<void> } }) {
   const db = getDb();
@@ -81,7 +85,7 @@ export async function POST(request: Request) {
     run = normalizeTriageRunRequest({
       trigger: "portal", referenceDate: body.referenceDate, sourceId: body.sourceId,
       dateScope: body.dateScope, roleArea: body.roleArea, ingestionChannel: body.ingestionChannel,
-      homePeriod: body.homePeriod, batchSize: body.batchSize, reprocess: body.reprocess,
+      homePeriod: body.homePeriod, batchSize: Math.min(Number(body.batchSize) || MANUAL_TRIAGE_BATCH_SIZE, MANUAL_TRIAGE_BATCH_SIZE), reprocess: body.reprocess,
       aiMode: body.aiMode ?? "off", createDrafts: false,
     });
   } catch (error) {
@@ -139,5 +143,5 @@ export async function POST(request: Request) {
     await db.update(triageBatches).set({ status: "failed", completedAt: new Date(), error: detail }).where(eq(triageBatches.id, batchId));
     return NextResponse.json({ error: detail, batchId }, { status: 503 });
   }
-  return NextResponse.json({ ok: true, batchId, queued: candidates.length, asynchronous: true }, { status: 202 });
+  return NextResponse.json({ ok: true, batchId, queued: candidates.length, hasMore: candidates.length === MANUAL_TRIAGE_BATCH_SIZE, asynchronous: true }, { status: 202 });
 }
