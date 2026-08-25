@@ -47,6 +47,7 @@ function instalarColetaDiaria() {
 
 const RADAR_DRAFT_CONNECTOR_VERSION = 'radar-drafts-v2';
 const RADAR_SENT_RECONCILIATION_HANDLER = 'reconciliarEnviosAgendadosRadar';
+const RADAR_DRAFT_HANDLER = 'executarRascunhosPendentesRadar';
 
 // Executa manualmente ou por gatilho. Nunca envia mensagens: apenas cria ou
 // reaproveita rascunhos que já foram aprovados e enfileirados pelo Radar.
@@ -54,18 +55,30 @@ function criarRascunhosRadar(options) {
   const secret = PropertiesService.getScriptProperties().getProperty('RADAR_SECRET');
   if (!secret) throw new Error('Configure RADAR_SECRET nas propriedades do script.');
   const outboxIds = options && Array.isArray(options.outboxIds) ? options.outboxIds.filter(id => typeof id === 'string' && id) : null;
-  let processed = 0, scanned = 0;
+  const automated = Boolean(options && options.automated);
+  let processed = 0, blockedAsSent = 0, scanned = 0;
   // 10 lotes de 10 cobrem com margem a rotina diária e preservam o limite
   // por chamada. Itens que deixaram de ser seguros são cancelados pelo Radar.
   for (let batch = 0; batch < 10; batch += 1) {
     const response = UrlFetchApp.fetch(`${radarUrl()}/api/cron/drafts`, {
       method:'post', contentType:'application/json', headers:{Authorization:`Bearer ${secret}`},
-      payload:JSON.stringify({action:'prepare',limit:outboxIds ? Math.min(20, outboxIds.length) : 10,retryFailed:true,connectorVersion:RADAR_DRAFT_CONNECTOR_VERSION,outboxIds:outboxIds || undefined}), muteHttpExceptions:true
+      payload:JSON.stringify({action:'prepare',limit:outboxIds ? Math.min(20, outboxIds.length) : 10,retryFailed:true,connectorVersion:RADAR_DRAFT_CONNECTOR_VERSION,outboxIds:outboxIds || undefined,automated:automated}), muteHttpExceptions:true
     });
     if (response.getResponseCode() >= 300) throw new Error(response.getContentText());
     const payload = JSON.parse(response.getContentText());
     (payload.drafts || []).forEach(item => {
       try {
+        // A checagem acontece antes de criar ou reutilizar um rascunho. Ela
+        // procura a mesma vaga por destinatário e assunto exatos em Enviados.
+        const sent = encontrarMensagemEnviadaRadar(item);
+        if (sent) {
+          const confirmation = registrarEnvioConciliadoRadar(secret, item.outboxId, item, sent);
+          if (confirmation.getResponseCode() >= 300) throw new Error(confirmation.getContentText());
+          blockedAsSent += 1;
+          return;
+        }
+        const check = registrarVerificacaoEnvioRadar(secret, item.outboxId);
+        if (check.getResponseCode() >= 300) throw new Error(check.getContentText());
         const existing = GmailApp.getDrafts().find(draft => {
           const message = draft.getMessage();
           return message.getTo().toLowerCase() === item.to.toLowerCase() && message.getSubject() === item.subject;
@@ -82,8 +95,8 @@ function criarRascunhosRadar(options) {
     scanned += payload.scanned || 0;
     if (!payload.hasMore) break;
   }
-  console.log(`Rascunhos processados: ${processed}; itens verificados: ${scanned}. Nenhum e-mail foi enviado.`);
-  return { processed: processed, scanned: scanned };
+  console.log(`Rascunhos processados: ${processed}; bloqueados por envio já registrado: ${blockedAsSent}; itens verificados: ${scanned}. Nenhum e-mail foi enviado.`);
+  return { processed: processed, blockedAsSent: blockedAsSent, scanned: scanned };
 }
 
 // Web App autenticado pelo mesmo segredo do conector. O Radar chama somente
@@ -124,16 +137,25 @@ function verificarConectorRascunhosRadar() {
   console.log('Conector de rascunhos verificado. Nenhum e-mail foi criado ou enviado.');
 }
 
-// Remove acionadores legados caso algum tenha sido criado em versões anteriores.
-// A criação de rascunhos agora é exclusivamente manual.
+// Instala uma rotina independente para materializar a fila aprovada no Gmail.
+// Ela só cria rascunhos que o Radar já validou; nunca envia e-mails.
+function instalarRascunhosAutomaticosRadar() {
+  ScriptApp.getProjectTriggers()
+    .filter(trigger => trigger.getHandlerFunction() === RADAR_DRAFT_HANDLER)
+    .forEach(trigger => ScriptApp.deleteTrigger(trigger));
+  ScriptApp.newTrigger(RADAR_DRAFT_HANDLER).timeBased().everyMinutes(30).create();
+  console.log('Criação automática de rascunhos instalada: a cada 30 minutos. Nenhum e-mail será enviado.');
+}
+
+// Remove acionadores atuais e legados de criação de rascunhos.
 function removerAgendamentoRascunhosRadar() {
   ScriptApp.getProjectTriggers()
-    .filter(trigger => ['executarTriagemDiariaERascunhos', 'executarRascunhosPendentesRadar'].includes(trigger.getHandlerFunction()))
+    .filter(trigger => ['executarTriagemDiariaERascunhos', RADAR_DRAFT_HANDLER].includes(trigger.getHandlerFunction()))
     .forEach(trigger => ScriptApp.deleteTrigger(trigger));
 }
 
 function executarRascunhosPendentesRadar() {
-  criarRascunhosRadar();
+  criarRascunhosRadar({ automated:true });
   reconciliarEnviosManuaisRadar();
 }
 
@@ -175,6 +197,24 @@ function registrarFalhaRascunhoRadar(secret, outboxId, error) {
   });
 }
 
+function registrarVerificacaoEnvioRadar(secret, outboxId) {
+  return UrlFetchApp.fetch(`${radarUrl()}/api/cron/drafts`, {
+    method:'post',contentType:'application/json',headers:{Authorization:`Bearer ${secret}`},
+    payload:JSON.stringify({action:'recordSentCheck',outboxId:outboxId,sentCheckResult:'not_sent',connectorVersion:RADAR_DRAFT_CONNECTOR_VERSION}),muteHttpExceptions:true
+  });
+}
+
+function registrarEnvioConciliadoRadar(secret, outboxId, candidate, message) {
+  return UrlFetchApp.fetch(`${radarUrl()}/api/cron/drafts`, {
+    method:'post',contentType:'application/json',headers:{Authorization:`Bearer ${secret}`},
+    payload:JSON.stringify({
+      action:'reconcileSent',outboxId:outboxId,gmailSentId:message.getId(),to:candidate.to,
+      subject:message.getSubject(),gmailThreadId:candidate.gmailThreadId || null,sentAt:message.getDate().toISOString(),
+      connectorVersion:RADAR_DRAFT_CONNECTOR_VERSION
+    }),muteHttpExceptions:true
+  });
+}
+
 // Verifica somente mensagens que já estão em "Enviados". Não cria, altera ou
 // envia e-mails. O Radar fornece os candidatos exatos; a confirmação exige
 // destinatário, assunto e data posteriores ao rascunho para evitar falsos
@@ -191,15 +231,12 @@ function reconciliarEnviosManuaisRadar(options) {
   let confirmed = 0;
   (payload.candidates || []).forEach(candidate => {
     const message = encontrarMensagemEnviadaRadar(candidate);
-    if (!message) return;
-    const confirmation = UrlFetchApp.fetch(`${radarUrl()}/api/cron/drafts`, {
-      method:'post',contentType:'application/json',headers:{Authorization:`Bearer ${secret}`},
-      payload:JSON.stringify({
-        action:'reconcileSent',outboxId:candidate.outboxId,gmailSentId:message.getId(),
-        to:candidate.to,subject:message.getSubject(),gmailThreadId:candidate.gmailThreadId,sentAt:message.getDate().toISOString(),
-        connectorVersion:RADAR_DRAFT_CONNECTOR_VERSION
-      }),muteHttpExceptions:true
-    });
+    if (!message) {
+      const check = registrarVerificacaoEnvioRadar(secret, candidate.outboxId);
+      if (check.getResponseCode() >= 300) console.warn(`Não foi possível registrar verificação de ${candidate.outboxId}: ${check.getContentText()}`);
+      return;
+    }
+    const confirmation = registrarEnvioConciliadoRadar(secret, candidate.outboxId, candidate, message);
     if (confirmation.getResponseCode() >= 300) {
       console.warn(`Não foi possível confirmar envio de ${candidate.outboxId}: ${confirmation.getContentText()}`);
       return;
@@ -212,7 +249,6 @@ function reconciliarEnviosManuaisRadar(options) {
 
 function encontrarMensagemEnviadaRadar(candidate) {
   const escapedSubject = String(candidate.subject || '').replace(/["\\]/g, ' ');
-  const since = new Date(candidate.draftedAt).getTime() - 60 * 1000;
   let messages = [];
   if (candidate.gmailThreadId) {
     try { messages = GmailApp.getThreadById(candidate.gmailThreadId).getMessages(); }
@@ -223,7 +259,6 @@ function encontrarMensagemEnviadaRadar(candidate) {
     messages = GmailApp.search(query, 0, 20).flatMap(thread => thread.getMessages());
   }
   return messages
-    .filter(message => message.getDate().getTime() >= since)
     .filter(message => candidate.gmailThreadId || message.getSubject() === candidate.subject)
     .filter(message => extrairDestinatarioUnicoRadar(message.getTo()) === candidate.to.toLowerCase())
     .sort((left, right) => right.getDate().getTime() - left.getDate().getTime())[0] || null;

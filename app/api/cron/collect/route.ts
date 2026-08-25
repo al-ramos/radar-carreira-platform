@@ -7,6 +7,8 @@ import { fingerprint, recordedJobDate, sourcePublishedJobDate } from "../../../.
 import { inferJobArea } from "../../../../lib/job-area";
 import { recordImportRunJobs } from "../../../../lib/import-tracking";
 import { notifyImportRun } from "../../../../lib/notifications";
+import { heartbeat } from "../../../../lib/automation-heartbeat";
+import { recordDatabaseFailure } from "../../../../lib/database-failure";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +25,7 @@ export async function POST(request: Request) {
   if (request.headers.get("x-radar-collector-authenticated") !== "1") {
     return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   }
+  await heartbeat("collect", "running");
 
   const config = (await getDb().select().from(platformSettings).where(eq(platformSettings.id, "global")).limit(1))[0];
   if (config && !config.collectionEnabled) {
@@ -95,6 +98,7 @@ export async function POST(request: Request) {
       await getDb().update(jobSources).set({ lastRunAt: finishedAt, lastSuccessAt: finishedAt, lastError: null, consecutiveFailures: 0 }).where(eq(jobSources.id, source.id));
     } catch (error) {
       errors++;
+      await recordDatabaseFailure("cron.collect", error, "A coleta de vagas não conseguiu concluir uma fonte.", runId);
       const message = error instanceof Error ? error.message.slice(0, 300) : "Falha desconhecida na coleta";
       await getDb().update(importRuns).set({ status: "failed", errors: 1, finishedAt: new Date() }).where(eq(importRuns.id, runId));
       await getDb().update(jobSources).set({ lastError: message, consecutiveFailures: source.consecutiveFailures + 1 }).where(eq(jobSources.id, source.id));
@@ -106,6 +110,7 @@ export async function POST(request: Request) {
     }
   }
 
+  await heartbeat("collect", errors ? "failed" : "completed", errors ? "Uma ou mais fontes falharam." : undefined);
   return NextResponse.json({
     ok: errors === 0,
     sources: batch.length,

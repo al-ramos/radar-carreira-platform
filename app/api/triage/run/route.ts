@@ -93,12 +93,13 @@ export async function POST(request: Request) {
   // A agenda de triagem continua sendo uma opção independente. Já a criação
   // de rascunhos vale para qualquer origem de aprovação (portal, fila, IA ou
   // agenda), sempre sob as regras de segurança abaixo.
-  const settings = await db.select({ enabled: platformSettings.scheduledTriageEnabled, draftQueueEnabled: platformSettings.scheduledTriageDraftQueueEnabled, autoCreateEnabled: platformSettings.scheduledTriageAutoCreateEnabled }).from(platformSettings).where(eq(platformSettings.id, "global")).limit(1).then(rows => rows[0]);
+  const settings = await db.select({ enabled: platformSettings.scheduledTriageEnabled, batchSize: platformSettings.scheduledTriageBatchSize, draftQueueEnabled: platformSettings.scheduledTriageDraftQueueEnabled, autoCreateEnabled: platformSettings.scheduledTriageAutoCreateEnabled }).from(platformSettings).where(eq(platformSettings.id, "global")).limit(1).then(rows => rows[0]);
   const draftQueueEnabled = settings?.draftQueueEnabled ?? true;
   const autoCreateEnabled = draftQueueEnabled && (settings?.autoCreateEnabled ?? true);
   if (run.trigger === "schedule") {
     // Sem linha de parâmetros, a agenda continua desligada por segurança.
     if (!settings?.enabled) return NextResponse.json({ ok: true, skipped: true, message: "Triagem agendada desligada em Configurações" });
+    run = { ...run, batchSize: settings?.batchSize ?? 100 };
   }
   const profile = await db.select().from(profiles).where(eq(profiles.userId, userId)).limit(1).then(rows => rows[0]);
   if (!profile) return NextResponse.json({ error: "Complete seu perfil antes de iniciar a triagem." }, { status: 412 });

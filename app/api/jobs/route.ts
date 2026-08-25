@@ -352,15 +352,20 @@ const totalCount = requiresPostFiltering
 ? filtered.length
 : Number(eligibleTotals[0]?.total ?? 0);
 const pageRows = requiresPostFiltering ? filtered.slice(offset, offset + limit) : filtered;
-const applicationStatusByJobId = new Map(pipeline.map((item) => [item.jobId, item.applicationStatus]));
+const applicationByJobId = new Map(pipeline.map((item) => [item.jobId, item]));
 const result = pageRows.map(({ job, stack, score, reasons, scored }) => ({
 ...job,
-description: "",
+// A tabela principal mostra um resumo; não precisamos transferir a descrição
+// completa de cada vaga (o detalhe continua sendo carregado sob demanda).
+description: job.description.slice(0, 500),
 stack,
 score,
 reasons,
 scored,
-applicationStatus: applicationStatusByJobId.get(job.id) ?? null,
+applicationStatus: applicationByJobId.get(job.id)?.applicationStatus ?? null,
+generatedAt: applicationByJobId.get(job.id)?.generatedAt ?? null,
+sentAt: applicationByJobId.get(job.id)?.sentAt ?? null,
+respondedAt: applicationByJobId.get(job.id)?.respondedAt ?? null,
 }));
 
 const totalLinkedIn = Number(sourceTotals[0]?.linkedIn ?? 0);

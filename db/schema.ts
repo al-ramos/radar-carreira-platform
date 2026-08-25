@@ -144,7 +144,8 @@ export const triageDeduplication = sqliteTable("triage_deduplication", {
 export const draftOutbox = sqliteTable("draft_outbox", {
   id: text("id").primaryKey(), userId: text("user_id").notNull(), jobId: text("job_id").notNull().references(() => jobs.id), historyId: text("history_id").notNull().references(() => triageHistory.id),
   status: text("status", { enum: ["pending", "drafted", "sent", "failed", "cancelled"] }).notNull().default("pending"),
-  gmailDraftId: text("gmail_draft_id"), gmailThreadId: text("gmail_thread_id"), draftSubject: text("draft_subject"), gmailSentId: text("gmail_sent_id"), sentAt: integer("sent_at", { mode: "timestamp_ms" }), error: text("error"),
+  gmailDraftId: text("gmail_draft_id"), gmailThreadId: text("gmail_thread_id"), draftSubject: text("draft_subject"), gmailSentId: text("gmail_sent_id"), sentAt: integer("sent_at", { mode: "timestamp_ms" }),
+  lastSentCheckAt: integer("last_sent_check_at", { mode: "timestamp_ms" }), lastSentCheckResult: text("last_sent_check_result", { enum: ["sent", "not_sent"] }), sentCheckCount: integer("sent_check_count").notNull().default(0), error: text("error"),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(), updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
 }, t => [uniqueIndex("draft_outbox_user_job_unique").on(t.userId, t.jobId), uniqueIndex("draft_outbox_gmail_draft_unique").on(t.gmailDraftId), uniqueIndex("draft_outbox_gmail_sent_unique").on(t.gmailSentId), index("draft_outbox_status_idx").on(t.userId, t.status)]);
 
@@ -219,6 +220,16 @@ export const automationHeartbeats = sqliteTable("automation_heartbeats", {
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
 });
 
+/** Histórico aditivo de falhas conhecidas do D1, sem dados pessoais ou payloads. */
+export const databaseFailures = sqliteTable("database_failures", {
+  id: text("id").primaryKey(),
+  operation: text("operation").notNull(),
+  impact: text("impact").notNull(),
+  error: text("error").notNull(),
+  correlationId: text("correlation_id"),
+  occurredAt: integer("occurred_at", { mode: "timestamp_ms" }).notNull(),
+}, table => [index("database_failures_occurred_at_idx").on(table.occurredAt)]);
+
 export const jobImportRuns = sqliteTable("job_import_runs", {
   runId: text("run_id").notNull().references(() => importRuns.id),
   jobId: text("job_id").notNull().references(() => jobs.id),
@@ -234,6 +245,7 @@ export const platformSettings = sqliteTable("platform_settings", {
   // Etapa 1 da automação ponta a ponta: liga a triagem agendada (avaliação
   // por regras + IA ambígua). Desligado por padrão até a rotina ser validada.
   scheduledTriageEnabled: integer("scheduled_triage_enabled", { mode: "boolean" }).notNull().default(false),
+  scheduledTriageBatchSize: integer("scheduled_triage_batch_size").notNull().default(100),
   // Etapa 2/3: só quando ligado a triagem agendada pode inserir vagas seguras
   // na fila de rascunho. Fica desligado enquanto ✅ e 🟡 não forem separados.
   scheduledTriageDraftQueueEnabled: integer("scheduled_triage_draft_queue_enabled", { mode: "boolean" }).notNull().default(false),

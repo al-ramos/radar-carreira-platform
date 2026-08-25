@@ -27,6 +27,8 @@ test("fila de análise pelo Codex persiste o recorte e oferece consumo protegido
   assert.match(screen, /stackValidation/);
   assert.match(screen, /Dados capturados no Radar/);
   assert.match(screen, /Analise todas as triagens pendentes preparadas para o Codex/);
+  assert.match(screen, /csvImportSucceeded/, "desativa o reenvio depois de uma importação bem-sucedida");
+  assert.match(screen, /Este CSV já foi importado/, "explica quando o servidor bloqueia a duplicidade");
   assert.match(schema, /codexStatus/);
   assert.match(migration, /triage_ai_reviews_codex_queue_idx/);
 });

@@ -10,17 +10,20 @@ test("rascunhos e candidaturas enviadas ficam ocultos por padrão na fila de an�
     read("../app/api/jobs/route.ts"),
   ]);
 
-  assert.match(dashboard, /useState<ReviewVisibility>\("pending"\)/);
+  assert.match(dashboard, /useState<ReviewVisibility>\(\(\) => initialNavigation\.reviewVisibility\)/);
   assert.match(dashboard, /params\.set\("reviewVisibility", reviewVisibility\)/);
   assert.match(jobsRoute, /reviewVisibility.*=== "all" \? "all" : "pending"/);
   assert.match(jobsRoute, /item\.applicationStatus === "generated" \|\| item\.applicationStatus === "sent" \|\| item\.applicationStatus === "responded"/);
   assert.match(jobsRoute, /notInArray\(jobs\.id, applicationIds\)/);
 });
 
-test("tabela informa a situação da candidatura", async () => {
+test("tabela informa candidatura ou envio com a data correspondente", async () => {
   const dashboard = await read("../app/Dashboard.tsx");
-  assert.match(dashboard, /label: "Situação"/);
+  assert.match(dashboard, /label: "Candidatura \/ envio"/);
+  assert.match(dashboard, /E-mail APInfo/);
+  assert.match(dashboard, /Candidatura LinkedIn/);
+  assert.match(dashboard, /formatJobDateTime\(j\.respondedAt \?\? j\.sentAt \?\? j\.generatedAt\)/);
   assert.match(dashboard, /Rascunho/);
-  assert.match(dashboard, /E-mail enviado/);
+  assert.match(dashboard, /Enviado/);
   assert.match(dashboard, /Resposta recebida/);
 });

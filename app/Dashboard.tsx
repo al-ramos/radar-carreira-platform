@@ -30,6 +30,70 @@ import { normalizeContactEmail } from "../lib/jobs";
 import { AUTOMATIC_ACTION_STAGE, resolveAutomaticStage } from "../lib/pipeline-stage";
 type ApplicationStatus = "generated" | "sent" | "responded";
 type ReviewVisibility = "pending" | "all";
+type DashboardNavigationState = {
+  query: string;
+  period: string;
+  sortOrder: "score" | "recent";
+  viewMode: "cards" | "table";
+  requestedMinScore: number;
+  sourceFilter: string;
+  areaFilter: string;
+  channelFilter: string;
+  importRunFilter: string;
+  ingestionMode: "all" | "automatic" | "manual";
+  receivedFrom: string;
+  receivedTo: string;
+  hasEmailFilter: "all" | "yes";
+  reviewVisibility: ReviewVisibility;
+  pipelineFilter: "all" | "unseen" | "viewed" | "saved" | "applied" | "interview" | "rejected";
+  verdictFilter: "all" | "✅" | "🟡" | "🔴" | "❌";
+};
+
+const dashboardNavigationKeys = [
+  "radarQuery", "radarPeriod", "radarSort", "radarView", "radarMinScore",
+  "radarSource", "radarArea", "radarChannel", "radarImportRun", "radarIngestion",
+  "radarReceivedFrom", "radarReceivedTo", "radarHasEmail", "radarReview",
+  "radarPipeline", "radarVerdict",
+] as const;
+
+function readDashboardNavigationState(): DashboardNavigationState {
+  const defaults: DashboardNavigationState = {
+    query: "", period: "24", sortOrder: "score", viewMode: "cards", requestedMinScore: 0,
+    sourceFilter: "all", areaFilter: "all", channelFilter: "all", importRunFilter: "all",
+    ingestionMode: "all", receivedFrom: "", receivedTo: "", hasEmailFilter: "all",
+    reviewVisibility: "pending", pipelineFilter: "all", verdictFilter: "all",
+  };
+  if (typeof window === "undefined") return defaults;
+
+  const stored = window.history.state?.radarNavigation;
+  const state = stored && typeof stored === "object" ? stored : {};
+  const params = new URLSearchParams(window.location.search);
+  const value = (key: string, fallback: string) => params.get(key) ?? (typeof state[key] === "string" ? state[key] : fallback);
+  const oneOf = <T extends string>(key: string, options: readonly T[], fallback: T) => {
+    const candidate = value(key, fallback);
+    return options.includes(candidate as T) ? candidate as T : fallback;
+  };
+  const minScore = Number(value("radarMinScore", String(defaults.requestedMinScore)));
+
+  return {
+    query: value("radarQuery", defaults.query),
+    period: value("radarPeriod", defaults.period),
+    sortOrder: oneOf("radarSort", ["score", "recent"], defaults.sortOrder),
+    viewMode: oneOf("radarView", ["cards", "table"], defaults.viewMode),
+    requestedMinScore: Number.isFinite(minScore) && minScore >= 0 ? minScore : defaults.requestedMinScore,
+    sourceFilter: value("radarSource", defaults.sourceFilter),
+    areaFilter: value("radarArea", defaults.areaFilter),
+    channelFilter: value("radarChannel", defaults.channelFilter),
+    importRunFilter: value("radarImportRun", defaults.importRunFilter),
+    ingestionMode: oneOf("radarIngestion", ["all", "automatic", "manual"], defaults.ingestionMode),
+    receivedFrom: value("radarReceivedFrom", defaults.receivedFrom),
+    receivedTo: value("radarReceivedTo", defaults.receivedTo),
+    hasEmailFilter: oneOf("radarHasEmail", ["all", "yes"], defaults.hasEmailFilter),
+    reviewVisibility: oneOf("radarReview", ["pending", "all"], defaults.reviewVisibility),
+    pipelineFilter: oneOf("radarPipeline", ["all", "unseen", "viewed", "saved", "applied", "interview", "rejected"], defaults.pipelineFilter),
+    verdictFilter: oneOf("radarVerdict", ["all", "✅", "🟡", "🔴", "❌"], defaults.verdictFilter),
+  };
+}
 type Job = {
   id: string;
   score: number;
@@ -58,6 +122,9 @@ type Job = {
   reasons: string[];
   stage: string;
   applicationStatus?: ApplicationStatus;
+  generatedAt?: string;
+  sentAt?: string;
+  respondedAt?: string;
 };
 type ApiJob = {
   id: string;
@@ -84,6 +151,9 @@ type ApiJob = {
   stack?: string[];
   reasons?: string[];
   applicationStatus?: ApplicationStatus | null;
+  generatedAt?: string | null;
+  sentAt?: string | null;
+  respondedAt?: string | null;
 };
 type JobIntelligence = {
   facts: {
@@ -432,6 +502,9 @@ const adapt = (j: ApiJob): Job => ({
   sourceName: j.sourceName,
   description: j.description,
   applicationStatus: j.applicationStatus ?? undefined,
+  generatedAt: j.generatedAt ?? undefined,
+  sentAt: j.sentAt ?? undefined,
+  respondedAt: j.respondedAt ?? undefined,
 });
 
 const formatJobDate = (value?: string) =>
@@ -464,22 +537,27 @@ function compactPagination(current: number, total: number): Array<number | "star
   return pages;
 }
 export default function Dashboard() {
+  const initialNavigation = useMemo(() => readDashboardNavigationState(), []);
+  const hasInitialNavigation = useMemo(() => {
+    if (typeof window === "undefined") return false;
+    return Boolean(window.history.state?.radarNavigation) || new URLSearchParams(window.location.search).has("radarPipeline");
+  }, []);
   const [active, setActive] = useState("Radar"),
-    [query, setQuery] = useState(""),
+    [query, setQuery] = useState(() => initialNavigation.query),
     [items, setItems] = useState<Job[]>([]),
     [selected, setSelected] = useState<Job>(demo[0]),
     [fitFilter, setFitFilter] = useState<"profile" | number>(0),
-    [requestedMinScore, setRequestedMinScore] = useState(0),
+    [requestedMinScore, setRequestedMinScore] = useState(() => initialNavigation.requestedMinScore),
     [loadedMinScore, setLoadedMinScore] = useState(0),
-    [sortOrder, setSortOrder] = useState<"score" | "recent">("score"),
-    [viewMode, setViewMode] = useState<"cards" | "table">("cards"),
+    [sortOrder, setSortOrder] = useState<"score" | "recent">(() => initialNavigation.sortOrder),
+    [viewMode, setViewMode] = useState<"cards" | "table">(() => initialNavigation.viewMode),
     // Controla só a visibilidade do painel de detalhe quando ele vira drawer
     // (viewMode === "table"). Não mexe em `selected`/`selectedJob` — outras
     // partes da tela (avanço automático, ações do pipeline) continuam
     // dependendo da última vaga vista normalmente.
     [tableDrawerOpen, setTableDrawerOpen] = useState(false),
     [simplifiedList, setSimplifiedList] = useState(false),
-    [period, setPeriod] = useState<string>("24"),
+    [period, setPeriod] = useState<string>(() => initialNavigation.period),
     [mode, setMode] = useState("loading"),
     [importing, setImporting] = useState(false),
     [sourcesOpen, setSourcesOpen] = useState(false),
@@ -513,21 +591,21 @@ export default function Dashboard() {
   const pendingAutoAdvanceRef = useRef(false);
   const [profileReady, setProfileReady] = useState(false);
   const [profileMasteredSkills, setProfileMasteredSkills] = useState<string[]>([]);
-  const [sourceFilter, setSourceFilter] = useState("all");
-  const [areaFilter, setAreaFilter] = useState("all");
-  const [channelFilter, setChannelFilter] = useState("all");
-  const [importRunFilter, setImportRunFilter] = useState("all");
+  const [sourceFilter, setSourceFilter] = useState(() => initialNavigation.sourceFilter);
+  const [areaFilter, setAreaFilter] = useState(() => initialNavigation.areaFilter);
+  const [channelFilter, setChannelFilter] = useState(() => initialNavigation.channelFilter);
+  const [importRunFilter, setImportRunFilter] = useState(() => initialNavigation.importRunFilter);
   const [jobFilterOptions, setJobFilterOptions] = useState<JobFilterOptions>({ sources: [], areas: [], channels: [], importRuns: [] });
-  const [ingestionMode, setIngestionMode] = useState<"all" | "automatic" | "manual">("all");
-  const [receivedFrom, setReceivedFrom] = useState("");
-  const [receivedTo, setReceivedTo] = useState("");
+  const [ingestionMode, setIngestionMode] = useState<"all" | "automatic" | "manual">(() => initialNavigation.ingestionMode);
+  const [receivedFrom, setReceivedFrom] = useState(() => initialNavigation.receivedFrom);
+  const [receivedTo, setReceivedTo] = useState(() => initialNavigation.receivedTo);
   /** "all": sem filtro (mostra todas); "yes": só vagas com contactEmail
    *  preenchido. Quando "all", emailMissingCount (vindo da API, respeitando
    *  os demais filtros ativos) mostra quantas ficariam de fora. */
-  const [hasEmailFilter, setHasEmailFilter] = useState<"all" | "yes">("all");
+  const [hasEmailFilter, setHasEmailFilter] = useState<"all" | "yes">(() => initialNavigation.hasEmailFilter);
   // Por padrão, o Radar é uma fila de nova análise: rascunhos e candidaturas
   // já enviadas ficam fora dela, mas continuam acessíveis pelo filtro.
-  const [reviewVisibility, setReviewVisibility] = useState<ReviewVisibility>("pending");
+  const [reviewVisibility, setReviewVisibility] = useState<ReviewVisibility>(() => initialNavigation.reviewVisibility);
   const [emailMissingCount, setEmailMissingCount] = useState(0);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [profileMinScore, setProfileMinScore] = useState(60);
@@ -615,9 +693,11 @@ export default function Dashboard() {
   const [profileChoices, setProfileChoices] =
     useState<ProfileChoices>(emptyProfileChoices);
   const [pipelineFilter, setPipelineFilter] = useState<"all"|"unseen"|"viewed"|"saved"|"applied"|"interview"|"rejected">(() => {
+    if (hasInitialNavigation) return initialNavigation.pipelineFilter;
     try { return (sessionStorage.getItem("radar_pipelineFilter") as "all"|"unseen"|"viewed"|"saved"|"applied"|"interview"|"rejected") ?? "all"; } catch { return "all"; }
   });
   const [verdictFilter, setVerdictFilter] = useState<"all"|"✅"|"🟡"|"🔴"|"❌">(() => {
+    if (hasInitialNavigation) return initialNavigation.verdictFilter;
     try { return (sessionStorage.getItem("radar_verdictFilter") as "all"|"✅"|"🟡"|"🔴"|"❌") ?? "all"; } catch { return "all"; }
   });
   /** Score mínimo efetivo — usado tanto para colorir o slider quanto para
@@ -650,8 +730,68 @@ export default function Dashboard() {
   const jobListRef = useRef<HTMLDivElement>(null);
   const simplifiedRetryCountRef = useRef(0);
   const staleRetryCountRef = useRef(0);
+  const navigationSnapshotRef = useRef<string | null>(null);
+  const restoringNavigationRef = useRef(false);
   useEffect(() => { try { sessionStorage.setItem("radar_pipelineFilter", pipelineFilter); } catch {} }, [pipelineFilter]);
   useEffect(() => { try { sessionStorage.setItem("radar_verdictFilter", verdictFilter); } catch {} }, [verdictFilter]);
+  // Cada recorte do Radar vira uma entrada real do histórico. Ao usar Voltar
+  // ou Avançar, restauramos esse recorte antes de refazer a consulta à API.
+  useEffect(() => {
+    const snapshot: DashboardNavigationState = {
+      query, period, sortOrder, viewMode, requestedMinScore, sourceFilter, areaFilter,
+      channelFilter, importRunFilter, ingestionMode, receivedFrom, receivedTo,
+      hasEmailFilter, reviewVisibility, pipelineFilter, verdictFilter,
+    };
+    const serialized = JSON.stringify(snapshot);
+    if (restoringNavigationRef.current) {
+      navigationSnapshotRef.current = serialized;
+      restoringNavigationRef.current = false;
+      return;
+    }
+    const url = new URL(window.location.href);
+    dashboardNavigationKeys.forEach((key) => url.searchParams.delete(key));
+    const entries: Array<[typeof dashboardNavigationKeys[number], string]> = [
+      ["radarQuery", query], ["radarPeriod", period], ["radarSort", sortOrder],
+      ["radarView", viewMode], ["radarMinScore", String(requestedMinScore)],
+      ["radarSource", sourceFilter], ["radarArea", areaFilter], ["radarChannel", channelFilter],
+      ["radarImportRun", importRunFilter], ["radarIngestion", ingestionMode],
+      ["radarReceivedFrom", receivedFrom], ["radarReceivedTo", receivedTo],
+      ["radarHasEmail", hasEmailFilter], ["radarReview", reviewVisibility],
+      ["radarPipeline", pipelineFilter], ["radarVerdict", verdictFilter],
+    ];
+    entries.forEach(([key, value]) => url.searchParams.set(key, value));
+    const historyState = { ...(window.history.state ?? {}), radarNavigation: snapshot };
+    if (navigationSnapshotRef.current === null) {
+      window.history.replaceState(historyState, "", url);
+    } else if (navigationSnapshotRef.current !== serialized) {
+      window.history.pushState(historyState, "", url);
+    }
+    navigationSnapshotRef.current = serialized;
+  }, [query, period, sortOrder, viewMode, requestedMinScore, sourceFilter, areaFilter, channelFilter, importRunFilter, ingestionMode, receivedFrom, receivedTo, hasEmailFilter, reviewVisibility, pipelineFilter, verdictFilter]);
+  useEffect(() => {
+    const restoreNavigation = () => {
+      const snapshot = readDashboardNavigationState();
+      restoringNavigationRef.current = true;
+      setQuery(snapshot.query);
+      setPeriod(snapshot.period);
+      setSortOrder(snapshot.sortOrder);
+      setViewMode(snapshot.viewMode);
+      setRequestedMinScore(snapshot.requestedMinScore);
+      setSourceFilter(snapshot.sourceFilter);
+      setAreaFilter(snapshot.areaFilter);
+      setChannelFilter(snapshot.channelFilter);
+      setImportRunFilter(snapshot.importRunFilter);
+      setIngestionMode(snapshot.ingestionMode);
+      setReceivedFrom(snapshot.receivedFrom);
+      setReceivedTo(snapshot.receivedTo);
+      setHasEmailFilter(snapshot.hasEmailFilter);
+      setReviewVisibility(snapshot.reviewVisibility);
+      setPipelineFilter(snapshot.pipelineFilter);
+      setVerdictFilter(snapshot.verdictFilter);
+    };
+    window.addEventListener("popstate", restoreNavigation);
+    return () => window.removeEventListener("popstate", restoreNavigation);
+  }, []);
   useEffect(() => {
     if (selected?.id && !selected.id.startsWith("demo")) {
       try { sessionStorage.setItem("radar_selectedJobId", selected.id); } catch {}
@@ -1036,22 +1176,22 @@ export default function Dashboard() {
    * clicar num cabeçalho de coluna ordena só a tabela. Opera sobre a mesma
    * `orderedJobs` (já filtrada pelos controles da tela), então herda busca,
    * aderência mínima, período etc. automaticamente. */
-  const [tableSort, setTableSort] = useState<{ column: "externalId" | "company" | "title" | "score" | "stack" | "location" | "source" | "contactEmail" | "applicationStatus" | "publishedAt"; direction: "asc" | "desc" }>(
+  const [tableSort, setTableSort] = useState<{ column: "externalId" | "company" | "title" | "description" | "score" | "stack" | "location" | "source" | "contactEmail" | "applicationActivityAt" | "publishedAt"; direction: "asc" | "desc" }>(
     { column: "score", direction: "desc" },
   );
   const toggleTableSort = useCallback((column: typeof tableSort.column) => {
     setTableSort((current) =>
       current.column === column
         ? { column, direction: current.direction === "asc" ? "desc" : "asc" }
-        : { column, direction: column === "score" || column === "publishedAt" ? "desc" : "asc" },
+        : { column, direction: column === "score" || column === "applicationActivityAt" || column === "publishedAt" ? "desc" : "asc" },
     );
   }, []);
   /** Filtro por coluna da tabela — texto livre em Empresa/Vaga/Stack, exato
    * em Modalidade/Veredito/Fonte. Roda em cima da página já carregada
    * (client-side), não chama a API de novo. */
   const [tableColumnFilters, setTableColumnFilters] = useState<{
-    company: string; title: string; mode: string; verdict: string; stack: string; source: string; contactEmail: string; applicationStatus: string; missingContact: boolean;
-  }>({ company: "", title: "", mode: "", verdict: "", stack: "", source: "", contactEmail: "", applicationStatus: "", missingContact: false });
+    company: string; title: string; description: string; mode: string; verdict: string; stack: string; source: string; contactEmail: string; applicationStatus: string; missingContact: boolean;
+  }>({ company: "", title: "", description: "", mode: "", verdict: "", stack: "", source: "", contactEmail: "", applicationStatus: "", missingContact: false });
   /** Seleção temporária para exportação. Ela não altera o card aberto, o
    * pipeline nem o status da vaga: serve exclusivamente ao relatório. */
   const [exportSelectionIds, setExportSelectionIds] = useState<Set<string>>(() => new Set());
@@ -1059,17 +1199,18 @@ export default function Dashboard() {
     setTableColumnFilters((current) => ({ ...current, [column]: value }));
   }, []);
   const clearTableColumnFilters = useCallback(() => {
-    setTableColumnFilters({ company: "", title: "", mode: "", verdict: "", stack: "", source: "", contactEmail: "", applicationStatus: "", missingContact: false });
+    setTableColumnFilters({ company: "", title: "", description: "", mode: "", verdict: "", stack: "", source: "", contactEmail: "", applicationStatus: "", missingContact: false });
   }, []);
   const activeTableColumnFilterCount = Object.values(tableColumnFilters).filter(Boolean).length;
   const tableJobs = useMemo(() => {
     const { column, direction } = tableSort;
     const factor = direction === "asc" ? 1 : -1;
     const filters = tableColumnFilters;
-    const filtered = filters.company || filters.title || filters.mode || filters.verdict || filters.stack || filters.source || filters.contactEmail || filters.applicationStatus || filters.missingContact
+    const filtered = filters.company || filters.title || filters.description || filters.mode || filters.verdict || filters.stack || filters.source || filters.contactEmail || filters.applicationStatus || filters.missingContact
       ? orderedJobs.filter((j) => {
           if (filters.company && !j.company.toLowerCase().includes(filters.company.toLowerCase())) return false;
           if (filters.title && !j.title.toLowerCase().includes(filters.title.toLowerCase())) return false;
+          if (filters.description && !(j.description ?? "").toLowerCase().includes(filters.description.toLowerCase())) return false;
           if (filters.mode && j.mode !== filters.mode) return false;
           if (filters.verdict) {
             const v = verdictMap.get(j.id);
@@ -1098,8 +1239,11 @@ export default function Dashboard() {
           return (left.sourceName ?? "").localeCompare(right.sourceName ?? "", "pt-BR") * factor;
         case "contactEmail":
           return (left.contactEmail ?? "").localeCompare(right.contactEmail ?? "", "pt-BR") * factor;
-        case "applicationStatus":
-          return (left.applicationStatus ?? "").localeCompare(right.applicationStatus ?? "", "pt-BR") * factor;
+        case "applicationActivityAt": {
+          const leftDate = new Date(left.respondedAt ?? left.sentAt ?? left.generatedAt ?? 0).getTime();
+          const rightDate = new Date(right.respondedAt ?? right.sentAt ?? right.generatedAt ?? 0).getTime();
+          return (leftDate - rightDate) * factor;
+        }
         case "publishedAt":
           return (new Date(left.sourcePublishedAt ?? 0).getTime() - new Date(right.sourcePublishedAt ?? 0).getTime()) * factor;
         default:
@@ -2323,7 +2467,7 @@ export default function Dashboard() {
           {visiblePrimaryNav.map((n) => (
             <button
               key={n}
-              className={`${active === n ? "active " : ""}${n === "Prioridades" ? "priority-nav-item" : ""}`}
+              className={`${active === n ? "active " : ""}${n === "Prioridades" ? "priority-nav-item" : ""}${n === "Monitoramento" ? "monitor-nav-item" : ""}`}
               onClick={() => {
                 setActive(n);
                 if (n === "Prioridades") setTriageOpen(true);
@@ -2968,12 +3112,13 @@ export default function Dashboard() {
                     { column: "externalId" as const, label: "Código" },
                     { column: "company" as const, label: "Empresa" },
                     { column: "title" as const, label: "Vaga" },
+                    { column: "description" as const, label: "Descrição" },
                     { column: "location" as const, label: "Local / Modalidade" },
                     { column: "score" as const, label: "Score / Veredito" },
                     { column: "stack" as const, label: "Stack" },
                     { column: "source" as const, label: "Fonte" },
                     { column: "contactEmail" as const, label: "E-mail" },
-                    { column: "applicationStatus" as const, label: "Situação" },
+                    { column: "applicationActivityAt" as const, label: "Candidatura / envio" },
                     { column: "publishedAt" as const, label: "Publicada" },
                   ]).map(({ column, label }) => (
                     <button
@@ -2991,7 +3136,7 @@ export default function Dashboard() {
                     </button>
                   ))}
                 </div>
-                <div className="job-table-filter-row" role="row" hidden={!filtersOpen && activeTableColumnFilterCount === 0}>
+                <div className="job-table-filter-row" role="row">
                   <span role="cell" className="job-table-selection-header" aria-label="Seleção para exportação" />
                   <span role="cell" className="job-table-filter-cell job-table-filter-cell-disabled" aria-hidden="true" />
                   <span role="cell" className="job-table-filter-cell">
@@ -2999,6 +3144,9 @@ export default function Dashboard() {
                   </span>
                   <span role="cell" className="job-table-filter-cell">
                     <input type="text" placeholder="Filtrar vaga…" value={tableColumnFilters.title} onChange={(e) => setTableColumnFilter("title", e.target.value)} aria-label="Filtrar por título da vaga" />
+                  </span>
+                  <span role="cell" className="job-table-filter-cell">
+                    <input type="text" placeholder="Filtrar descrição…" value={tableColumnFilters.description} onChange={(e) => setTableColumnFilter("description", e.target.value)} aria-label="Filtrar por descrição da vaga" />
                   </span>
                   <span role="cell" className="job-table-filter-cell">
                     <select value={tableColumnFilters.mode} onChange={(e) => setTableColumnFilter("mode", e.target.value)} aria-label="Filtrar por modalidade">
@@ -3082,6 +3230,9 @@ export default function Dashboard() {
                       <span role="cell" className="job-table-cell job-table-cell-title">
                         {j.title}
                       </span>
+                      <span role="cell" className="job-table-cell job-table-cell-description" title={j.description || undefined}>
+                        {j.description ? j.description.replace(/\s+/g, " ").trim().slice(0, 140) : "—"}
+                      </span>
                       <span role="cell" className="job-table-cell job-table-cell-location">
                         <span className="job-table-location-line">⌖ {j.location}</span>
                         <span className="job-table-mode-tag">{j.mode}</span>
@@ -3124,8 +3275,13 @@ export default function Dashboard() {
                           </a>
                         ) : "—"}
                       </span>
-                      <span role="cell" className="job-table-cell">
-                        {j.applicationStatus === "generated" ? "Rascunho" : j.applicationStatus === "sent" ? "E-mail enviado" : j.applicationStatus === "responded" ? "Resposta recebida" : "Pendente"}
+                      <span role="cell" className="job-table-cell job-table-cell-application">
+                        {j.applicationStatus ? (
+                          <>
+                            <strong>{isApinfoJob(j) ? "E-mail APInfo" : "Candidatura LinkedIn"}</strong>
+                            <small>{j.applicationStatus === "generated" ? "Rascunho preparado" : j.applicationStatus === "sent" ? "Enviado" : "Resposta recebida"}{j.respondedAt ?? j.sentAt ?? j.generatedAt ? ` · ${formatJobDateTime(j.respondedAt ?? j.sentAt ?? j.generatedAt)}` : ""}</small>
+                          </>
+                        ) : "Pendente"}
                       </span>
                       <span role="cell" className="job-table-cell job-table-cell-date">
                         {j.sourcePublishedAt ? formatJobDateTime(j.sourcePublishedAt) : j.age}
@@ -3867,7 +4023,7 @@ export default function Dashboard() {
         highlightBatchId={triageLogBatchId}
       />}
       {importReportRunId && <ImportRunReport runId={importReportRunId} close={() => setImportReportRunId(null)} />}
-      {monitorOpen && <Monitoring close={() => setMonitorOpen(false)} />}
+      {monitorOpen && <Monitoring close={() => setMonitorOpen(false)} openTriageLog={(batchId) => { setMonitorOpen(false); setTriageLogBatchId(batchId); setTriageOpen(true); }} />}
       {analyticsOpen && <Analytics close={() => setAnalyticsOpen(false)} />}
       {alertsOpen && <AlertCenter close={() => setAlertsOpen(false)} />}
       {importing && (

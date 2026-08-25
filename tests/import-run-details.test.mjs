@@ -12,9 +12,13 @@ test("a importação por extensão preserva no run as causas de cada resultado",
   assert.match(schema, /details: text\("details"\)/);
   assert.match(migration, /ADD `details` text/);
   assert.match(route, /const importDetails: ImportDetails/);
+  assert.match(route, /traceId,/);
+  assert.match(route, /collector_import_unavailable/);
+  assert.match(route, /x-radar-trace-id/);
   assert.match(route, /invalidReasons: input\.reasons/);
   assert.match(route, /details: serializeDetails\(importDetails\)/);
   assert.match(report, /causas registradas/);
   assert.match(report, /Novas \/ atualizadas/);
   assert.match(report, /Rejeitadas pelo perfil/);
+  assert.match(report, /Referência operacional/);
 });

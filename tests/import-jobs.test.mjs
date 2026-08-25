@@ -52,8 +52,8 @@ test("coletores registram início, conclusão e falha no monitoramento", async()
  assert.match(route,/consecutiveFailures: source\.consecutiveFailures \+ 1/);
  assert.match(route,/collectorRunId\(payload\?\.runId\)/);
  assert.match(monitor,/sources\.filter\(\(source\) => source\.enabled && source\.lastError\)/);
- assert.match(ui,/última execução/);
- assert.match(ui,/operation\.completed.*operation\.total.*operation\.failed/);
+ assert.match(ui,/última:/);
+ assert.match(ui,/x\.completed\}\/\{x\.total\}/);
 });
 
 test("monitoramento consolida importações e lotes de triagem sem expor o detalhe bruto", async()=>{
@@ -66,8 +66,23 @@ test("monitoramento consolida importações e lotes de triagem sem expor o detal
  assert.match(monitor,/safeError/);
  assert.match(monitor,/operations/);
  assert.match(ui,/CENTRO OPERACIONAL/);
- assert.ok(ui.includes('<option value="all">Todos</option>'));
+ assert.ok(ui.includes('<option value="all">Todos os fluxos</option>'));
  assert.match(ui,/Precisa de atenção/);
+});
+
+test("monitoramento mantém histórico sanitizado de falhas do D1", async()=>{
+ const [schema,monitor,ui,logger]=await Promise.all([
+  readFile(new URL("../db/schema.ts",import.meta.url),"utf8"),
+  readFile(new URL("../app/api/admin/monitor/route.ts",import.meta.url),"utf8"),
+  readFile(new URL("../app/Monitoring.tsx",import.meta.url),"utf8"),
+  readFile(new URL("../lib/database-failure.ts",import.meta.url),"utf8"),
+ ]);
+ assert.match(schema,/databaseFailures/);
+ assert.match(monitor,/databaseFailures/);
+ assert.match(monitor,/trackDatabaseOperation/);
+ assert.match(ui,/D1 · \{x\.error\}/);
+ assert.match(logger,/e-mail redigido/);
+ assert.match(logger,/Falha D1 não persistida/);
 });
 
 test("rotas convertem Date para epoch antes de interpolar sourcePublishedAt no SQL do D1", async()=>{

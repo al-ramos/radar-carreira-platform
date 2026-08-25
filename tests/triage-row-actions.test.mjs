@@ -18,6 +18,8 @@ test("triagem permite ações avulsas por vaga sem contornar os guardrails", asy
   assert.match(screen, /Selecionar todas as vagas visíveis/);
   assert.match(screen, /Consultar IA/);
   assert.match(screen, /Preparar rascunhos/);
+  assert.match(screen, /canPrepareDrafts/);
+  assert.match(screen, /Conclua a triagem e tenha uma vaga aprovada ou provável com e-mail válido/);
   assert.match(screen, /draftActionBlocker/);
   assert.match(screen, /LinkedIn não permite rascunho/);
   assert.match(screen, /E-mail válido exigido/);
