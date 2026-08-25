@@ -20,8 +20,9 @@ test("acionamento manual respeita os filtros ativos da Home", async () => {
   assert.match(ui, /fetch\("\/api\/triage\/queue"/);
   assert.match(ui, /sourceId: actionSourceId, dateScope: "received", homePeriod: actionPeriod, roleArea: actionArea, ingestionChannel: actionChannel/);
   assert.match(asyncRoute, /TRIAGE_QUEUE/);
-  assert.match(asyncRoute, /MANUAL_TRIAGE_BATCH_SIZE = 100/);
-  assert.match(ui, /Math\.min\(actionCandidateCount, 100\)/);
+  assert.match(asyncRoute, /platformSettings\.scheduledTriageBatchSize/);
+  assert.match(asyncRoute, /batchSize: run\.batchSize/);
+  assert.doesNotMatch(ui, /Math\.min\(actionCandidateCount, 100\)/);
   assert.match(ui, /retornou uma página de erro do servidor/);
   assert.match(asyncRoute, /triageBatchItems/);
   assert.match(asyncRoute, /type QueueMessage = \{ body: QueuePayload \}/);
