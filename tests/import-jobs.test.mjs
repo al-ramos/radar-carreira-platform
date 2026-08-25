@@ -38,6 +38,15 @@ test("importação da extensão processa vagas em lotes e registra o progresso",
  assert.match(source,/rejected: filtered\.rejected/);
 });
 
+test("coleta das fontes do sistema filtra pelo perfil antes de gravar vagas", async()=>{
+ const source=await readFile(new URL("../app/api/cron/collect/route.ts",import.meta.url),"utf8");
+ assert.match(source,/filterImportedJobsByProfile\(found/);
+ assert.match(source,/requiredStacks: careerRules\.coreStack/);
+ assert.match(source,/filtered\.accepted\.map/);
+ assert.match(source,/rejectedProfile: filtered\.rejected/);
+ assert.match(source,/APInfo, RadarVagas e LinkedIn já chegam/);
+});
+
 test("coletores registram início, conclusão e falha no monitoramento", async()=>{
  const [route,monitor,ui]=await Promise.all([
   readFile(new URL("../app/api/collector/import/[sourceId]/route.ts",import.meta.url),"utf8"),
