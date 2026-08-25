@@ -1253,6 +1253,19 @@ export default function Dashboard() {
   }
   const selectedJob =
     filtered.find((job) => job.id === selected.id) ?? orderedJobs[0] ?? null;
+  // A navegação acompanha exatamente a lista que a pessoa está vendo: os
+  // filtros gerais no modo cards e também os filtros/ordenação de coluna no
+  // modo tabela.
+  const navigationJobs = viewMode === "table" ? tableJobs : orderedJobs;
+  const selectedJobIndex = selectedJob
+    ? navigationJobs.findIndex((job) => job.id === selectedJob.id)
+    : -1;
+  const canSelectPreviousJob = selectedJobIndex > 0;
+  const canSelectNextJob = selectedJobIndex >= 0 && selectedJobIndex < navigationJobs.length - 1;
+  function selectAdjacentJob(direction: -1 | 1) {
+    const adjacentJob = navigationJobs[selectedJobIndex + direction];
+    if (adjacentJob) selectJob(adjacentJob);
+  }
   const selectedJobVerdict = selectedJob && selectedJob.scored && profileMasteredSkills.length
     ? computeVerdict({
         title: selectedJob.title,
@@ -3381,6 +3394,27 @@ export default function Dashboard() {
                   <span key={reason}>{reason}</span>
                 ))}
               </div>
+              <nav className="job-detail-navigation" aria-label="Navegação entre vagas filtradas">
+                <button
+                  type="button"
+                  onClick={() => selectAdjacentJob(-1)}
+                  disabled={!canSelectPreviousJob}
+                  title="Abrir a vaga anterior da lista filtrada"
+                >
+                  ← Anterior
+                </button>
+                <span aria-live="polite">
+                  {selectedJobIndex >= 0 ? `${selectedJobIndex + 1} de ${navigationJobs.length}` : "Fora da lista filtrada"}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => selectAdjacentJob(1)}
+                  disabled={!canSelectNextJob}
+                  title="Abrir a próxima vaga da lista filtrada"
+                >
+                  Próxima →
+                </button>
+              </nav>
               <div className="detail-actions radar-job-actions">
                 {/* Seletor de estágio do pipeline */}
                 {(() => {

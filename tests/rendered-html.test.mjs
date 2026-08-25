@@ -46,6 +46,10 @@ test("dashboard oferece radar, perfil e pipeline persistente", async () => {
   assert.match(dashboard, /Usar meu perfil/);
   assert.match(dashboard, /score-controls-result/);
   assert.match(dashboard, /selectedJob\s*=\s*filtered\.find/);
+  assert.match(dashboard, /const navigationJobs = viewMode === "table" \? tableJobs : orderedJobs/);
+  assert.match(dashboard, /aria-label="Navegação entre vagas filtradas"/);
+  assert.match(dashboard, /selectAdjacentJob\(-1\)/);
+  assert.match(dashboard, /selectAdjacentJob\(1\)/);
   assert.match(dashboard, /Abrir descrição em tela ampliada/);
   assert.match(dashboard, /Candidatar via LinkedIn/);
   assert.match(dashboard, /role="dialog"/);

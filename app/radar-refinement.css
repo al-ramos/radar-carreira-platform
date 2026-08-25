@@ -37,6 +37,36 @@
 }
 .radar-job-actions .linkedin-action { margin-left: 0; }
 .selected-description { border-top: 0; padding-top: 22px; }
+.job-detail-navigation {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 14px 0 0;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.job-detail-navigation button {
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 1px solid #b8c6bc;
+  border-radius: 7px;
+  background: #fff;
+  color: var(--green);
+  font-size: 10px;
+  font-weight: 700;
+}
+.job-detail-navigation button:disabled {
+  cursor: not-allowed;
+  opacity: .42;
+}
+.job-detail-navigation span {
+  color: #66756b;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
 .selected-description > div > span {
   color: #7b877f;
   font-size: 8px;
