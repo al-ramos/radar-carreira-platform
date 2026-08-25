@@ -127,6 +127,12 @@ type CollectionOutcome = {
 type FilterOption = { id: string; label: string; count: number };
 type ImportRunOption = { id: string; source: string; sourceId?: string | null; channel: string; startedAt: string; received: number; inserted: number; updated: number; jobs: number };
 type JobFilterOptions = { sources: FilterOption[]; areas: FilterOption[]; channels: FilterOption[]; importRuns: ImportRunOption[] };
+type JobsFailureKind = "offline" | "authentication" | "forbidden" | "rate_limited" | "transient";
+class JobsFetchError extends Error {
+  constructor(public kind: JobsFailureKind, message: string, public retryAfterMs?: number) {
+    super(message);
+  }
+}
 const JOBS_FETCH_ATTEMPTS = 2;
 const JOBS_RETRY_BASE_DELAY_MS = 350;
 // Mantém a recuperação ativa sem pressionar a API quando uma dependência está
@@ -173,16 +179,45 @@ function nextRadarRefreshDelay(failures: number) {
   return RADAR_REFRESH_RETRY_DELAYS_MS[Math.min(Math.max(failures - 1, 0), RADAR_REFRESH_RETRY_DELAYS_MS.length - 1)];
 }
 
+function retryAfterMilliseconds(value: string | null) {
+  if (!value) return undefined;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1_000;
+  const date = new Date(value).getTime();
+  return Number.isFinite(date) ? Math.max(0, date - Date.now()) : undefined;
+}
+
+function jobsErrorFromResponse(response: Response) {
+  if (response.status === 401) return new JobsFetchError("authentication", "Sua sessão expirou. Entre novamente para atualizar o Radar.");
+  if (response.status === 403) return new JobsFetchError("forbidden", "Sua conta não tem permissão para atualizar esta lista.");
+  if (response.status === 429) return new JobsFetchError("rate_limited", "O Radar recebeu muitas solicitações em pouco tempo.", retryAfterMilliseconds(response.headers.get("Retry-After")));
+  return new JobsFetchError("transient", `Falha ao carregar vagas (HTTP ${response.status})`);
+}
+
+function normalizeJobsFetchError(error: unknown) {
+  if (error instanceof JobsFetchError) return error;
+  if (typeof navigator !== "undefined" && !navigator.onLine) return new JobsFetchError("offline", "Você está sem conexão com a internet.");
+  return new JobsFetchError("transient", error instanceof Error ? error.message : "Não foi possível atualizar as vagas.");
+}
+
+function canRetryJobsError(error: JobsFetchError) {
+  return error.kind === "transient" || error.kind === "rate_limited";
+}
+
 async function fetchJobsWithRetry(url: string, signal: AbortSignal) {
-  let lastError: unknown;
+  let lastError: JobsFetchError | undefined;
   for (let attempt = 0; attempt < JOBS_FETCH_ATTEMPTS; attempt += 1) {
     try {
+      if (typeof navigator !== "undefined" && !navigator.onLine) throw new JobsFetchError("offline", "Você está sem conexão com a internet.");
       const response = await fetchWithTimeout(url, { cache: "no-store", signal });
       if (response.ok) return response.json();
-      throw new Error(`Falha ao carregar vagas (HTTP ${response.status})`);
+      throw jobsErrorFromResponse(response);
     } catch (error) {
       if (signal.aborted) throw error;
-      lastError = error;
+      const jobsError = normalizeJobsFetchError(error);
+      if (!canRetryJobsError(jobsError)) throw jobsError;
+      lastError = jobsError;
+      if (jobsError.kind === "rate_limited") break;
       if (attempt + 1 < JOBS_FETCH_ATTEMPTS) {
         await waitForRetry(JOBS_RETRY_BASE_DELAY_MS * 2 ** attempt, signal);
       }
@@ -191,13 +226,16 @@ async function fetchJobsWithRetry(url: string, signal: AbortSignal) {
   const fallbackUrl = new URL(url, window.location.origin);
   fallbackUrl.searchParams.set("degraded", "1");
   try {
-    const fallbackResponse = await fetchWithTimeout(fallbackUrl, { cache: "no-store", signal });
+    const fallbackResponse = await fetchWithTimeout(fallbackUrl, { cache: "force-cache", signal });
     if (fallbackResponse.ok) return fallbackResponse.json();
+    throw jobsErrorFromResponse(fallbackResponse);
   } catch (error) {
     if (signal.aborted) throw error;
-    lastError = error;
+    const jobsError = normalizeJobsFetchError(error);
+    if (!canRetryJobsError(jobsError)) throw jobsError;
+    lastError = jobsError;
   }
-  throw lastError;
+  throw lastError ?? new JobsFetchError("transient", "Não foi possível atualizar as vagas.");
 }
 const descriptionHeadings = new Set([
   "sobre a vaga",
@@ -516,6 +554,7 @@ export default function Dashboard() {
   const [totalJobs, setTotalJobs] = useState<number | null>(null);
   const [lastJobsUpdatedAt, setLastJobsUpdatedAt] = useState<Date | null>(null);
   const [nextJobsRetryAt, setNextJobsRetryAt] = useState<Date | null>(null);
+  const [jobsRecoveryKind, setJobsRecoveryKind] = useState<JobsFailureKind | null>(null);
   const [sourcesCount, setSourcesCount] = useState<number | null>(null);
   const loadedJobsRef = useRef<Job[]>([]);
   const lastJobsUpdatedAtRef = useRef<Date | null>(null);
@@ -791,6 +830,7 @@ export default function Dashboard() {
     if (!profileReady || profileLoadFailed) return;
     const controller = new AbortController();
     let staleRetryTimer: ReturnType<typeof setTimeout> | null = null;
+    let onlineRetryHandler: (() => void) | null = null;
     fetchJobsWithRetry(`/api/jobs?${buildJobsParams(1)}`, controller.signal)
       .then((data) => {
         const next = (data.jobs ?? [])
@@ -828,6 +868,7 @@ export default function Dashboard() {
         setLastJobsUpdatedAt(refreshedAt);
         jobsRefreshFailureCountRef.current = 0;
         setNextJobsRetryAt(null);
+        setJobsRecoveryKind(null);
         setMessage((current) => {
           if (data.degraded) {
             return "Exibindo a lista em modo simplificado enquanto a personalização se recupera.";
@@ -840,23 +881,49 @@ export default function Dashboard() {
       })
       .catch((error) => {
         if (controller.signal.aborted || (error instanceof DOMException && error.name === "AbortError")) return;
-        jobsRefreshFailureCountRef.current += 1;
-        const retryAt = new Date(Date.now() + nextRadarRefreshDelay(jobsRefreshFailureCountRef.current));
-        setNextJobsRetryAt(retryAt);
-        staleRetryTimer = setTimeout(() => setJobsRefreshVersion((version) => version + 1), Math.max(0, retryAt.getTime() - Date.now()));
+        const jobsError = normalizeJobsFetchError(error);
+        let retryAt: Date | null = null;
+        setJobsRecoveryKind(jobsError.kind);
+        if (jobsError.kind === "offline") {
+          setNextJobsRetryAt(null);
+          onlineRetryHandler = () => {
+            jobsRefreshFailureCountRef.current = 0;
+            setJobsRecoveryKind(null);
+            setJobsRefreshVersion((version) => version + 1);
+          };
+          window.addEventListener("online", onlineRetryHandler, { once: true });
+        } else if (canRetryJobsError(jobsError)) {
+          jobsRefreshFailureCountRef.current += 1;
+          const delayMs = jobsError.retryAfterMs ?? nextRadarRefreshDelay(jobsRefreshFailureCountRef.current);
+          retryAt = new Date(Date.now() + delayMs);
+          setNextJobsRetryAt(retryAt);
+          staleRetryTimer = setTimeout(() => setJobsRefreshVersion((version) => version + 1), Math.max(0, retryAt.getTime() - Date.now()));
+        } else {
+          setNextJobsRetryAt(null);
+        }
         if (loadedJobsRef.current.length) {
           setMode("database");
           const lastUpdated = lastJobsUpdatedAtRef.current;
-          setMessage(`Não foi possível atualizar agora. A lista anterior permanece disponível${lastUpdated ? `; Última atualização bem-sucedida às ${formatRefreshTime(lastUpdated)}` : ""}. Nova tentativa automática às ${formatRefreshTime(retryAt)}.`);
+          const recovery = jobsError.kind === "offline"
+            ? "Aguardando a conexão voltar para atualizar automaticamente."
+            : jobsError.kind === "authentication" || jobsError.kind === "forbidden"
+              ? jobsError.message
+              : `Nova tentativa automática às ${formatRefreshTime(retryAt ?? new Date())}.`;
+          setMessage(`Não foi possível atualizar agora. A lista anterior permanece disponível${lastUpdated ? `; Última atualização bem-sucedida às ${formatRefreshTime(lastUpdated)}` : ""}. ${recovery}`);
           return;
         }
         setMode("unavailable");
-        setLoadError(`Não foi possível carregar as vagas dentro do tempo esperado. Nova tentativa automática às ${formatRefreshTime(retryAt)}.`);
+        setLoadError(jobsError.kind === "authentication" || jobsError.kind === "forbidden"
+          ? jobsError.message
+          : jobsError.kind === "offline"
+            ? "Você está sem conexão. Atualizaremos o Radar assim que a internet voltar."
+            : `Não foi possível carregar as vagas dentro do tempo esperado. A recuperação automática continua em segundo plano.`);
         setMessage("O Radar está temporariamente indisponível. A recuperação automática continua em segundo plano.");
       });
     return () => {
       controller.abort();
       if (staleRetryTimer) clearTimeout(staleRetryTimer);
+      if (onlineRetryHandler) window.removeEventListener("online", onlineRetryHandler);
     };
   }, [effectivePeriod, sourceFilter, debouncedQuery, requestedMinScore, pipelineFilter, verdictFilter, sortOrder, buildJobsParams, jobsRefreshVersion, profileReady, profileLoadFailed]);
   useEffect(() => {
@@ -1345,9 +1412,17 @@ export default function Dashboard() {
     setMode("loading");
     jobsRefreshFailureCountRef.current = 0;
     setNextJobsRetryAt(null);
+    setJobsRecoveryKind(null);
     setProfileReady(false);
     setProfileLoadFailed(false);
     setProfileRefreshVersion((version) => version + 1);
+  }
+  function refreshJobsNow() {
+    jobsRefreshFailureCountRef.current = 0;
+    setNextJobsRetryAt(null);
+    setJobsRecoveryKind(null);
+    setLoadError(null);
+    setJobsRefreshVersion((version) => version + 1);
   }
   async function goToJobsPage(page: number) {
     if (page === currentPage || page < 1) return;
@@ -2529,12 +2604,16 @@ export default function Dashboard() {
         ) : mode === "unavailable" ? (
           <div className="notice" role="alert">
             <span>{loadError ?? "Não foi possível carregar o Radar."}</span>{" "}
-            <button type="button" onClick={retryRadarLoad}>Tentar novamente</button>
+            <button type="button" onClick={retryRadarLoad}>Atualizar agora</button>
           </div>
         ) : nextJobsRetryAt ? (
           <div className="notice" role="status">
-            Atualização temporariamente indisponível. Mantendo a última lista válida; nova tentativa automática às {formatRefreshTime(nextJobsRetryAt)}.
+            {jobsRecoveryKind === "rate_limited" ? "Limite temporário de solicitações. " : "Atualização temporariamente indisponível. "}Mantendo a última lista válida; nova tentativa automática às {formatRefreshTime(nextJobsRetryAt)}. <button type="button" onClick={refreshJobsNow}>Atualizar agora</button>
           </div>
+        ) : jobsRecoveryKind === "offline" ? (
+          <div className="notice" role="status">Você está sem conexão. Mantendo a última lista válida e atualizando automaticamente quando a internet voltar.</div>
+        ) : jobsRecoveryKind === "authentication" || jobsRecoveryKind === "forbidden" ? (
+          <div className="notice" role="alert">{jobsRecoveryKind === "authentication" ? "Sua sessão expirou. Entre novamente para atualizar o Radar." : "Sua conta não tem permissão para atualizar esta lista."}</div>
         ) : personalizationUnavailable ? (
           <div className="notice" role="status">
             Seu perfil está salvo. A lista está temporariamente sem aderência enquanto a consulta é recuperada.

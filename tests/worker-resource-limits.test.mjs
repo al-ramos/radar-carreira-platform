@@ -70,6 +70,11 @@ test("falha da API não exibe as quatro vagas demonstrativas", async () => {
   assert.match(dashboard, /RADAR_REFRESH_RETRY_DELAYS_MS = \[3_000, 10_000, 30_000, 60_000, 300_000\]/);
   assert.match(dashboard, /nextRadarRefreshDelay\(jobsRefreshFailureCountRef\.current\)/);
   assert.match(dashboard, /Mantendo a última lista válida/);
+  assert.match(dashboard, /Retry-After/);
+  assert.match(dashboard, /jobsError\.kind === "offline"/);
+  assert.match(dashboard, /window\.addEventListener\("online"/);
+  assert.match(dashboard, /Atualizar agora/);
+  assert.match(dashboard, /Sua sessão expirou/);
   assert.match(dashboard, /sem score/);
   assert.doesNotMatch(dashboard, /score: j\.score \?\? 70/);
   assert.match(dashboard, /const visibleMinScore = simplifiedList \? 0 : loadedMinScore/);

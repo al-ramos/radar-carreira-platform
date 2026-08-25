@@ -398,7 +398,7 @@ mode: "database",
 personalized: profileHasScoringSignals,
 degraded: degradedMode,
 period: period === "all" ? "all" : hours,
-});
+}, degradedMode ? { headers: { "Cache-Control": "private, max-age=30, stale-while-revalidate=120" } } : undefined);
 } catch (error) {
 return NextResponse.json(
 { jobs: [], mode: "unavailable", error: error instanceof Error ? error.message : "Banco indisponível" },
