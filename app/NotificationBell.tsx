@@ -33,7 +33,7 @@ function timeAgo(iso: string) {
  * por que não há segmentação por usuário: só a proprietária opera fontes
  * e importações, e a API já restringe a leitura a ela.
  */
-export default function NotificationBell({ onOpenImportRun, onOpenTriageLog }: { onOpenImportRun?: (runId: string) => void; onOpenTriageLog?: (batchId: string) => void }) {
+export default function NotificationBell({ onOpenImportRun, onOpenTriageLog, onOpenJobDetail }: { onOpenImportRun?: (runId: string) => void; onOpenTriageLog?: (batchId: string) => void; onOpenJobDetail?: (jobId: string) => void }) {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<Notification[]>([]);
   const [unread, setUnread] = useState(0);
@@ -85,6 +85,8 @@ export default function NotificationBell({ onOpenImportRun, onOpenTriageLog }: {
     if (typeof runId === "string" && onOpenImportRun) onOpenImportRun(runId);
     const batchId = notification.type === "triage" ? notification.metadata.batchId : undefined;
     if (typeof batchId === "string" && onOpenTriageLog) onOpenTriageLog(batchId);
+    const jobId = notification.type === "application" ? notification.metadata.jobId : undefined;
+    if (typeof jobId === "string" && onOpenJobDetail) onOpenJobDetail(jobId);
   }
 
   if (!loaded && !open) return null;
@@ -116,18 +118,20 @@ export default function NotificationBell({ onOpenImportRun, onOpenTriageLog }: {
             {items.length === 0 && <p className="notification-bell-empty">Nenhuma notificação ainda.</p>}
             {items.map((n) => {
               const canOpenReport = (n.type === "import" && typeof n.metadata.runId === "string") || (n.type === "triage" && typeof n.metadata.batchId === "string");
+              const canOpenJobDetail = n.type === "application" && typeof n.metadata.jobId === "string";
+              const canOpen = canOpenReport || canOpenJobDetail;
               return <article
                 key={n.id}
-                className={`${n.read ? "read " : ""}${canOpenReport ? "clickable" : ""}`}
-                onClick={canOpenReport ? () => openNotification(n) : undefined}
-                onKeyDown={canOpenReport ? (event) => {
+                className={`${n.read ? "read " : ""}${canOpen ? "clickable" : ""}`}
+                onClick={canOpen ? () => openNotification(n) : undefined}
+                onKeyDown={canOpen ? (event) => {
                   if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault();
                     openNotification(n);
                   }
                 } : undefined}
-                role={canOpenReport ? "button" : undefined}
-                tabIndex={canOpenReport ? 0 : undefined}
+                role={canOpen ? "button" : undefined}
+                tabIndex={canOpen ? 0 : undefined}
               >
                 <span className={`notification-bell-icon severity-${n.severity}`} aria-hidden="true">
                   {ICON[n.severity]}
@@ -144,6 +148,16 @@ export default function NotificationBell({ onOpenImportRun, onOpenTriageLog }: {
                     }}
                   >
                     Abrir log completo
+                  </button>}
+                  {canOpenJobDetail && <button
+                    type="button"
+                    className="notification-bell-report-link"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openNotification(n);
+                    }}
+                  >
+                    Abrir detalhes da vaga
                   </button>}
                   <small>{timeAgo(n.createdAt)}</small>
                 </div>

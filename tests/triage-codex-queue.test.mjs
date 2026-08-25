@@ -21,11 +21,11 @@ test("fila de análise pelo Codex persiste o recorte e oferece consumo protegido
   assert.match(screen, /const CODEX_BATCH_SIZE = 50/);
   assert.match(screen, /Enviando lote \$\{index \+ 1\} de \$\{batches\.length\}/);
   assert.match(screen, /response\.status === 429/);
-  assert.match(screen, /Baixar CSV/);
-  assert.match(screen, /codigo;titulo;status;descricao/);
+  assert.match(screen, /Baixar CSV detalhado/);
+  assert.match(screen, /código;título;empresa;local exato;modalidade;contrato;stack \.NET validada;evidências;ressalvas;confirmação/);
   assert.match(screen, /\.map\(csvCell\)\.join\(";"\)/);
-  assert.match(screen, /item\.label \|\| "Não analisada"/);
-  assert.match(screen, /Stack: \$\{stack\.join\(", "\)\}/);
+  assert.match(screen, /stackValidation/);
+  assert.match(screen, /Dados capturados no Radar/);
   assert.match(screen, /Analise todas as triagens pendentes preparadas para o Codex/);
   assert.match(schema, /codexStatus/);
   assert.match(migration, /triage_ai_reviews_codex_queue_idx/);
