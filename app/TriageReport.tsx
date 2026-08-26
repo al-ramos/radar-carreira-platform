@@ -86,7 +86,7 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
     [csvImportOpen, setCsvImportOpen] = useState(false),
     [csvImportText, setCsvImportText] = useState(""),
     [csvImportLoading, setCsvImportLoading] = useState(false),
-    [csvImportResult, setCsvImportResult] = useState<{ applied: number; draftsQueued: number; notFound: string[]; ambiguous: string[]; rejected: Array<{ line: number; reason: string }> } | null>(null),
+    [csvImportResult, setCsvImportResult] = useState<{ applied: number; draftsQueued: number; draftsCreated: number; gmailReason: string | null; notFound: string[]; ambiguous: string[]; rejected: Array<{ line: number; reason: string }> } | null>(null),
     [reconcilingAllSent, setReconcilingAllSent] = useState(false);
   const aiPromptRef = useRef<HTMLTextAreaElement>(null);
   const loadHistory = async () => {
@@ -531,10 +531,10 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
     setMessage("Reimportando análise externa…");
     try {
       const response = await fetch("/api/admin/triage-import", { method: "POST", headers: { "content-type": "text/csv" }, body: csvImportText });
-      const result = await readJsonResponse<{ applied?: number; draftsQueued?: number; notFound?: string[]; ambiguous?: string[]; rejected?: Array<{ line: number; reason: string }>; error?: string }>(response, "A reimportação da análise");
+      const result = await readJsonResponse<{ applied?: number; draftsQueued?: number; draftsCreated?: number; immediateDraft?: { requested?: boolean; reason?: string }; notFound?: string[]; ambiguous?: string[]; rejected?: Array<{ line: number; reason: string }>; error?: string }>(response, "A reimportação da análise");
       if (!response.ok) throw new Error(result.error ?? "Não foi possível reimportar a análise.");
-      setCsvImportResult({ applied: result.applied ?? 0, draftsQueued: result.draftsQueued ?? 0, notFound: result.notFound ?? [], ambiguous: result.ambiguous ?? [], rejected: result.rejected ?? [] });
-      setMessage(`${result.applied ?? 0} veredito(s) substituído(s)${result.draftsQueued ? `, ${result.draftsQueued} rascunho(s) enfileirado(s)` : ""}.`);
+      setCsvImportResult({ applied: result.applied ?? 0, draftsQueued: result.draftsQueued ?? 0, draftsCreated: result.draftsCreated ?? 0, gmailReason: result.immediateDraft?.requested === false ? result.immediateDraft.reason ?? "Gmail não confirmou a criação" : null, notFound: result.notFound ?? [], ambiguous: result.ambiguous ?? [], rejected: result.rejected ?? [] });
+      setMessage(`${result.applied ?? 0} veredito(s) substituído(s)${result.draftsQueued ? `, ${result.draftsQueued} rascunho(s) enfileirado(s)` : ""}${result.draftsCreated ? `, ${result.draftsCreated} criado(s) no Gmail` : ""}.`);
       await loadHistory();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Não foi possível reimportar a análise.");
@@ -701,7 +701,8 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
                   <textarea aria-label="Conteúdo CSV da análise" value={csvImportText} onChange={(event) => setCsvImportText(event.target.value)} placeholder={"codigo,status,descricao\n85981,🟡,Provável com ressalvas"} disabled={csvImportLoading} />
                   <div><button type="button" className="triage-queue-button" onClick={() => { setCsvImportOpen(false); setCsvImportText(""); setCsvImportResult(null); }} disabled={csvImportLoading}>Cancelar</button><button type="button" className="primary" onClick={() => void submitCsvImport()} disabled={csvImportLoading || !csvImportText.trim()}>{csvImportLoading ? "Importando…" : "Substituir vereditos"}</button></div>
                   {csvImportResult && <div className="triage-csv-import-result" aria-live="polite">
-                    <span><b>{csvImportResult.applied}</b> veredito(s) substituído(s){csvImportResult.draftsQueued ? `, ${csvImportResult.draftsQueued} rascunho(s) enfileirado(s)` : ""}.</span>
+                    <span><b>{csvImportResult.applied}</b> veredito(s) substituído(s){csvImportResult.draftsQueued ? `, ${csvImportResult.draftsQueued} rascunho(s) enfileirado(s)` : ""}{csvImportResult.draftsCreated ? `, ${csvImportResult.draftsCreated} criado(s) no Gmail` : ""}.</span>
+                    {csvImportResult.gmailReason && <small>Gmail: {csvImportResult.gmailReason}</small>}
                     {csvImportResult.notFound.length > 0 && <small>Código(s) não encontrado(s): {csvImportResult.notFound.join(", ")}</small>}
                     {csvImportResult.ambiguous.length > 0 && <small>Código(s) ambíguo(s) (mais de uma vaga, não aplicados): {csvImportResult.ambiguous.join(", ")}</small>}
                     {csvImportResult.rejected.length > 0 && <small>Linha(s) rejeitada(s): {csvImportResult.rejected.map((r) => `${r.line} (${r.reason})`).join(", ")}</small>}

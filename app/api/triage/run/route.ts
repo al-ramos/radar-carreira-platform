@@ -301,6 +301,29 @@ export async function POST(request: Request) {
       }
       processed.push({ jobId: job.id, title: job.title, company: job.company, reference: job.externalId, contactEligible: Boolean(job.contactEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(job.contactEmail.trim())), aiEligible: aiRefinement.eligible, aiStatus, verdict: finalVerdict.verdict, label: finalVerdict.result.label, blocker: finalVerdict.blocker });
     }
+    // Recupera aprovações ✅ já persistidas por CSV, IA ou uma execução
+    // anterior que não chegou a criar a outbox. Assim todos os caminhos de
+    // aprovação convergem para a mesma automação, sem exigir reimportação ou
+    // clique manual. A revalidação mantém os mesmos critérios de segurança.
+    if (run.trigger === "schedule" && draftQueueEnabled) {
+      const approvedWithoutOutbox = await db.select({ job: jobs, analysis: userJobAnalyses })
+        .from(jobs)
+        .innerJoin(userJobAnalyses, and(eq(userJobAnalyses.userId, userId), eq(userJobAnalyses.jobId, jobs.id), eq(userJobAnalyses.verdict, "✅")))
+        .leftJoin(draftOutbox, and(eq(draftOutbox.userId, userId), eq(draftOutbox.jobId, jobs.id)))
+        .where(and(eq(jobs.status, "active"), isNull(draftOutbox.id)))
+        .orderBy(desc(userJobAnalyses.updatedAt))
+        .limit(20);
+      for (const { job, analysis } of approvedWithoutOutbox) {
+        const deterministic = evaluateDeterministicTriage({ ...job, stack: parseStack(job.stack) }, canonicalProfile);
+        if (!isSafeForDraft({ verdict: analysis.verdict, blocker: analysis.blocker, contactEmail: job.contactEmail, sourceId: job.sourceId, deterministicVerdict: deterministic.verdict, deterministicBlocker: deterministic.blocker })) continue;
+        const history = await db.select({ id: triageHistory.id }).from(triageHistory)
+          .where(and(eq(triageHistory.userId, userId), eq(triageHistory.jobId, job.id), eq(triageHistory.verdict, "✅")))
+          .orderBy(desc(triageHistory.createdAt)).limit(1).then((rows) => rows[0]);
+        if (!history) continue;
+        const inserted = await db.insert(draftOutbox).values({ id: crypto.randomUUID(), userId, jobId: job.id, historyId: history.id, status: "pending", createdAt: now, updatedAt: now }).onConflictDoNothing().returning({ id: draftOutbox.id });
+        if (inserted.length) scheduledDraftsQueued += 1;
+      }
+    }
     if (queuedBatchId) await finishQueuedBatch(batchId);
     else await db.update(triageBatches).set({ status: "completed", completedAt: new Date(), error: null }).where(eq(triageBatches.id, batchId));
   } catch (error) {
