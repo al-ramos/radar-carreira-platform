@@ -120,6 +120,22 @@ function matchesBuiltInStackException(fullText: string): string | null {
   return qaDotNetSenior ? "QA .NET Sênior" : null;
 }
 
+/**
+ * Regra de posicionamento do perfil: VBA e Visual Basic 6 são experiências
+ * centrais para quem as mantém cadastradas. A vaga não deve cair para
+ * "provável" apenas por declarar Pleno, contrato ou empresa de forma parcial.
+ * Bloqueadores explícitos de idioma, senioridade vetada, atuação e geografia
+ * continuam prevalecendo antes desta preferência.
+ */
+function matchesAlwaysApprovedLegacyStack(fullText: string, userSkills: string[]): string | null {
+  const text = normalizeText(fullText);
+  const mentionsVba = /\bvba\b/.test(text);
+  const mentionsVb6 = /\b(?:visual\s+basic\s*6|vb\s*6)\b/.test(text);
+  if (mentionsVba && userSkills.some(skill => skillsAreEquivalent(skill, "VBA"))) return "VBA";
+  if (mentionsVb6 && userSkills.some(skill => skillsAreEquivalent(skill, "Visual Basic 6"))) return "Visual Basic 6";
+  return null;
+}
+
 function requiredHybridDays(text: string): number | null {
   const match = normalizeText(text).match(/(?:hibrid\w*[^.\n]{0,60})?(\d)\s*(?:x|vez(?:es)?|dias?)\s*(?:por|na)?\s*semana/);
   return match ? Number(match[1]) : null;
@@ -285,11 +301,14 @@ export function computeVerdict(job: {
   const lc = fullText.toLowerCase();
   const stackText = `${fullText} ${job.stack.join(" ")}`;
   const stackFit = analyzeStackFit(job.stack, userSkills);
+  const alwaysApprovedLegacyStack = matchesAlwaysApprovedLegacyStack(stackText, userSkills);
   const configuredException = matchesStackException(stackText, rules?.stackExceptions ?? []);
   const stackException = matchesBuiltInStackException(stackText) ?? configuredException;
   const coreStack = rules?.coreStack ?? [];
   const coreMatch = coreStack.length ? hasEquivalentSkill(stackFit.requiredSkills, coreStack) : stackFit.matchingSkills.length > 0;
-  const stackGate = stackException
+  const stackGate = alwaysApprovedLegacyStack
+    ? { status: stackException ? `Exceção automática: ${stackException} ✅ · Preferência do perfil: ${alwaysApprovedLegacyStack}` : `Preferência do perfil: ${alwaysApprovedLegacyStack} ✅`, ok: true as const }
+    : stackException
     ? { status: `Exceção automática: ${stackException} ✅`, ok: true as const }
     : !stackFit.requiredSkills.length
       ? { status: "Stack não identificada — continuar com ressalva", ok: null }
@@ -337,6 +356,11 @@ export function computeVerdict(job: {
     { criterion: "Fase 3 · Fit técnico", ...technicalFitRow },
     { criterion: "Fase 4 · Empresa", ...companyRow },
   ];
+
+  if (alwaysApprovedLegacyStack) {
+    rows.push({ criterion: "Preferência do perfil", status: `${alwaysApprovedLegacyStack} — aderência prioritária 100% ✅`, ok: true });
+    return { emoji: "✅", label: "Bate", rows };
+  }
 
   const decisionRows = [workRow, contractRow, seniorRow, technicalFitRow, companyRow];
   const falseCount = decisionRows.filter(row => row.ok === false).length;

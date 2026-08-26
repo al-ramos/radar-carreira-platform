@@ -161,6 +161,18 @@ test("reconhece automaticamente as exceções VBA/Access e QA .NET Sênior", () 
   assert.match(qa.rows[0].status, /Exceção automática: QA \.NET Sênior/);
 });
 
+test("VBA e Visual Basic 6 do perfil são aprovados mesmo quando a vaga é Pleno", () => {
+  const preset = alexsandroProfilePreset();
+  for (const [title, description, stack, expected] of [
+    ["Desenvolvedor VBA Pleno", "Manutenção de sistemas legados em VBA, Access e SQL Server. Modalidade PJ. Home office.", ["VBA", "Access", "SQL Server"], "VBA"],
+    ["Desenvolvedor VB6 Pleno", "Manutenção de sistema legado em Visual Basic 6. Home office.", ["Visual Basic 6"], "Visual Basic 6"],
+  ]) {
+    const verdict = computeVerdict({ title, description, stack, seniority: "Pleno", workMode: "Remoto" }, preset.masteredSkills, preset.careerRules);
+    assert.equal(verdict.emoji, "✅");
+    assert.match(verdict.rows.find(row => row.criterion === "Preferência do perfil")?.status ?? "", new RegExp(`${expected}.*100%`));
+  }
+});
+
 test("dá o mesmo poder de veto ao inglês e ao espanhol avançados", () => {
   const preset = alexsandroProfilePreset();
   for (const [requirement, expected] of [["Inglês fluente obrigatório para reuniões diárias", "Inglês avançado exigido"], ["Espanhol fluente obrigatório para reuniões diárias", "Espanhol avançado exigido"]]) {
