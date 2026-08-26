@@ -74,6 +74,21 @@ test("triagem permite reutilizar o e-mail já cadastrado para a mesma empresa", 
   assert.match(schema, /company_contacts/);
 });
 
+test("reutilização de contato registra e permite consultar as vagas efetivamente atualizadas", async () => {
+  const [dashboard, route, audit] = await Promise.all([
+    readFile(new URL("../app/Dashboard.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/jobs/[id]/contact/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/AuditTrail.tsx", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(route, /type: "company_contact_reused"/);
+  assert.match(route, /updated: Boolean\(updated\[0\]\)/);
+  assert.match(dashboard, /companyContactReuseLog/);
+  assert.match(dashboard, /Ver vagas atualizadas/);
+  assert.match(dashboard, /Consultar auditoria completa/);
+  assert.match(audit, /E-mail da empresa reutilizado/);
+});
+
 test("revalidação APInfo só completa domínio de e-mail salvo incompleto", async () => {
   const [dashboard, route] = await Promise.all([
     readFile(new URL("../app/Dashboard.tsx", import.meta.url), "utf8"),

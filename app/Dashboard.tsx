@@ -628,6 +628,7 @@ export default function Dashboard() {
   const [companyContactsReusing, setCompanyContactsReusing] = useState(false);
   const [contactPasteReady, setContactPasteReady] = useState(false);
   const [contactCaptureMsg, setContactCaptureMsg] = useState<{ text: string; error: boolean } | null>(null);
+  const [companyContactReuseLog, setCompanyContactReuseLog] = useState<Array<{ id: string; title: string; company: string; contactEmail: string }>>([]);
   const contactRequestRef = useRef<{ requestId: string; jobId: string; correctTruncated?: boolean; autoRetry?: boolean; job?: Job; attempt?: number } | null>(null);
   const linkedInStatusRequestRef = useRef(new Map<string, Job>());
   const contactRequestTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -2015,6 +2016,7 @@ export default function Dashboard() {
     const pendingJobs = tableJobs.filter((job) => !job.contactEmail);
     if (!pendingJobs.length || companyContactsReusing) return;
     setCompanyContactsReusing(true);
+    setCompanyContactReuseLog([]);
     try {
       const results = await Promise.allSettled(pendingJobs.map(async (job) => {
         const response = await fetch(`/api/jobs/${job.id}/contact`, {
@@ -2022,9 +2024,9 @@ export default function Dashboard() {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ useCompanyContact: true }),
         });
-        const data = await response.json().catch(() => null) as { contactEmail?: string; contactSubject?: string } | null;
+        const data = await response.json().catch(() => null) as { contactEmail?: string; contactSubject?: string; updated?: boolean } | null;
         const contactEmail = response.ok ? normalizeContactEmail(data?.contactEmail) : undefined;
-        return contactEmail ? { id: job.id, contactEmail, contactSubject: data?.contactSubject } : null;
+        return contactEmail && data?.updated ? { id: job.id, title: job.title, company: job.company, contactEmail, contactSubject: data?.contactSubject } : null;
       }));
       const reused = results.flatMap((result) => result.status === "fulfilled" && result.value ? [result.value] : []);
       if (reused.length) {
@@ -2033,6 +2035,7 @@ export default function Dashboard() {
           byId.has(item.id) ? { ...item, contactEmail: byId.get(item.id)!.contactEmail, contactSubject: byId.get(item.id)!.contactSubject } : item,
         ));
       }
+      setCompanyContactReuseLog(reused);
       const unavailable = pendingJobs.length - reused.length;
       setContactCaptureMsg({
         text: `${reused.length} de ${pendingJobs.length} vaga${pendingJobs.length === 1 ? "" : "s"} atualizada${pendingJobs.length === 1 ? "" : "s"}${unavailable ? `; ${unavailable} sem e-mail cadastrado para a empresa.` : "."}`,
@@ -2420,6 +2423,24 @@ export default function Dashboard() {
     setDetailJob(job);
     void loadJobDetail(job);
   }
+  async function openNotificationJobDetail(jobId: string) {
+    const listedJob = items.find((job) => job.id === jobId);
+    if (listedJob) {
+      openJobDetail(listedJob);
+      return;
+    }
+    try {
+      // Candidaturas enviadas normalmente ficam fora da fila principal.
+      // A busca pontual mantém a notificação útil sem alterar os filtros ativos.
+      const response = await fetch(`/api/jobs?period=all&reviewVisibility=all&q=${encodeURIComponent(jobId)}&limit=1&sort=recent`);
+      const data = await response.json() as { jobs?: ApiJob[]; error?: string };
+      const job = data.jobs?.[0];
+      if (!response.ok || !job) throw new Error(data.error ?? "Vaga não encontrada");
+      openJobDetail(adapt(job));
+    } catch {
+      setMessage("Não foi possível abrir os detalhes desta vaga.");
+    }
+  }
   async function copyDescription() {
     const description = jobDetail?.description || detailJob?.description || selected?.description;
     if (!description) return;
@@ -2625,7 +2646,7 @@ export default function Dashboard() {
                 Entrar
               </a>
             )}
-            {canManageSources && <NotificationBell onOpenImportRun={setImportReportRunId} onOpenTriageLog={(batchId) => { setTriageLogBatchId(batchId); setTriageMounted(true); setTriageOpen(true); }} />}
+            {canManageSources && <NotificationBell onOpenImportRun={setImportReportRunId} onOpenTriageLog={(batchId) => { setTriageLogBatchId(batchId); setTriageMounted(true); setTriageOpen(true); }} onOpenJobDetail={openNotificationJobDetail} />}
             {currentUser && (
               <div className="report-menu-wrap">
                 <button
@@ -2811,13 +2832,10 @@ export default function Dashboard() {
           </div>
         </div>
         {!contactBatchState && contactCaptureMsg && (
-          <p
-            className="list-head-dim"
-            role="status"
-            style={{ color: contactCaptureMsg.error ? "#b04a1a" : "#2e6b3e", margin: "-6px 0 4px" }}
-          >
-            {contactCaptureMsg.text}
-          </p>
+          <div className="list-head-dim" role="status" style={{ color: contactCaptureMsg.error ? "#b04a1a" : "#2e6b3e", margin: "-6px 0 4px" }}>
+            <p>{contactCaptureMsg.text}</p>
+            {companyContactReuseLog.length > 0 && <details><summary>Ver vagas atualizadas ({companyContactReuseLog.length})</summary><ul>{companyContactReuseLog.map(job => <li key={job.id}><strong>{job.title}</strong> · {job.company} · {job.contactEmail}</li>)}</ul><button type="button" className="link-button" onClick={() => setAuditOpen(true)}>Consultar auditoria completa</button></details>}
+          </div>
         )}
         {activeFilterChips.length > 0 && (
           <div className="active-filter-row" aria-label="Filtros ativos">

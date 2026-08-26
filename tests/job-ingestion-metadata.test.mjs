@@ -59,6 +59,8 @@ test("histórico da triagem preserva a data de publicação de importações API
   assert.match(route, /\.from\(jobs\)/);
   assert.match(route, /leftJoin\(userJobAnalyses, and\(eq\(userJobAnalyses\.userId, user\.userId\)/);
   assert.match(route, /draftStatus: draftOutbox\.status/);
+  assert.match(route, /applicationStatus: userJobStatus\.applicationStatus/);
+  assert.match(route, /leftJoin\(userJobStatus/);
   assert.match(route, /description: jobs\.description/);
   assert.match(route, /stack: jobs\.stack/);
 });
