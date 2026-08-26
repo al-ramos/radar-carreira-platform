@@ -31,7 +31,8 @@ export async function POST(request: Request) {
     ? await db.select().from(companyContacts).where(inArray(companyContacts.companyKey, keys))
     : [];
   const contactByCompany = new Map(catalog.map((contact) => [contact.companyKey, contact]));
-  let reused = 0, alreadyWithContact = selected.length - missing.length, unavailable = 0;
+  let reused = 0, unavailable = 0;
+  const alreadyWithContact = selected.length - missing.length;
   const updated: Array<{ jobId: string; contactEmail: string }> = [];
 
   for (const job of missing) {
