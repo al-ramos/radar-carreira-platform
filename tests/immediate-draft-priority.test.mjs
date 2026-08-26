@@ -17,8 +17,7 @@ test("rascunhos avulsos ou em fila pedem criação manual imediata sem enviar e-
   assert.match(queue, /existing\.status === "failed"/);
   assert.match(queue, /markImmediateDraftFailure\(priorityOutboxIds/);
   assert.match(queue, /const immediateDraft = priorityOutboxIds\.length/);
-  assert.match(queue, /triagem desta vaga está desatualizada/);
-  assert.match(queue, /regras atuais de segurança não permitem/);
+  assert.doesNotMatch(queue, /triagem desta vaga está desatualizada/);
   assert.match(queue, /requestedJobIds\?\.length === 1/);
   assert.match(cron, /outboxIds\?: string\[\]/);
   assert.match(cron, /inArray\(draftOutbox\.id, requestedOutboxIds\)/);

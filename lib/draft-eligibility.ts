@@ -9,28 +9,24 @@ export function isDraftAllowedForSource(input: { sourceId: string | null | undef
   return input.verdict === "✅" && hasValidContactEmail(input.contactEmail);
 }
 
-/** A fila de rascunhos aceita somente vereditos aproveitáveis e um contato
- * explícito e válido já cadastrado na vaga. */
+/** Toda aprovação final com contato explícito e válido entra na fila. */
 export function isEligibleForDraftQueue(input: { verdict: string; contactEmail: string | null | undefined; blocker?: string | null }): boolean {
-  return (input.verdict === "✅" || input.verdict === "🟡")
-    && !input.blocker
-    && hasValidContactEmail(input.contactEmail);
+  return input.verdict === "✅" && hasValidContactEmail(input.contactEmail);
 }
 
 /**
- * O ✅ final é o gatilho de criação. A conferência determinística ainda barra
- * exigências objetivas, mas não substitui uma aprovação já confirmada por IA,
- * Codex ou CSV apenas por diferença de pontuação/evidência local.
+ * O ✅ final com e-mail válido é o único portão para a criação do rascunho.
+ * Uma aprovação não volta a ser bloqueada por uma versão posterior do perfil,
+ * por regras determinísticas ou por um bloqueador histórico.
  */
 export function isSafeForDraft(input: {
   verdict: string;
   contactEmail: string | null | undefined;
   sourceId?: string | null;
   blocker?: string | null;
-  deterministicVerdict: "BATE" | "PROVAVEL" | "NAO_BATE";
+  deterministicVerdict?: "BATE" | "PROVAVEL" | "NAO_BATE";
   deterministicBlocker?: string | null;
 }): boolean {
   return isDraftAllowedForSource({ sourceId: input.sourceId, verdict: input.verdict, contactEmail: input.contactEmail })
-    && isEligibleForDraftQueue(input)
-    && !input.deterministicBlocker;
+    && isEligibleForDraftQueue(input);
 }

@@ -2,20 +2,21 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { isDraftAllowedForSource, isEligibleForDraftQueue, isSafeForDraft } from "../lib/draft-eligibility.ts";
 
-test("fila de rascunho exige veredito aproveitável e contato válido", () => {
+test("fila de rascunho exige aprovação e contato válido", () => {
   assert.equal(isEligibleForDraftQueue({ verdict: "✅", contactEmail: "rh@empresa.com" }), true);
-  assert.equal(isEligibleForDraftQueue({ verdict: "🟡", contactEmail: "rh@empresa.com" }), true);
+  assert.equal(isEligibleForDraftQueue({ verdict: "🟡", contactEmail: "rh@empresa.com" }), false);
   assert.equal(isEligibleForDraftQueue({ verdict: "❌", contactEmail: "rh@empresa.com" }), false);
   assert.equal(isEligibleForDraftQueue({ verdict: "✅", contactEmail: null }), false);
   assert.equal(isEligibleForDraftQueue({ verdict: "✅", contactEmail: "rh@empresa" }), false);
-  assert.equal(isEligibleForDraftQueue({ verdict: "✅", contactEmail: "rh@empresa.com", blocker: "Inglês avançado" }), false);
+  assert.equal(isEligibleForDraftQueue({ verdict: "✅", contactEmail: "rh@empresa.com", blocker: "Inglês avançado" }), true);
 });
 
-test("aprovação final cria rascunho mesmo com pontuação determinística menor, sem ignorar bloqueador objetivo", () => {
-  const base = { verdict: "✅", contactEmail: "rh@empresa.com", blocker: null };
+test("aprovação final cria rascunho mesmo que o perfil ou regras tenham mudado", () => {
+  const base = { verdict: "✅", contactEmail: "rh@empresa.com", blocker: "Análise anterior" };
   assert.equal(isSafeForDraft({ ...base, deterministicVerdict: "BATE", deterministicBlocker: null }), true);
   assert.equal(isSafeForDraft({ ...base, deterministicVerdict: "NAO_BATE", deterministicBlocker: null }), true);
-  assert.equal(isSafeForDraft({ ...base, deterministicVerdict: "NAO_BATE", deterministicBlocker: "Stack incompatível" }), false);
+  assert.equal(isSafeForDraft({ ...base, deterministicVerdict: "NAO_BATE", deterministicBlocker: "Stack incompatível" }), true);
+  assert.equal(isSafeForDraft({ verdict: "✅", contactEmail: "sem-arroba" }), false);
 });
 
 test("LinkedIn só entra na fila de rascunhos quando aprovada e com e-mail válido", () => {

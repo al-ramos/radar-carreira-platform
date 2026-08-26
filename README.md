@@ -303,7 +303,7 @@ O conector atual:
 
 ### Rascunhos de candidatura
 
-O Radar cria imediatamente o rascunho de uma vaga aprovada (✅), sem bloqueador e com e-mail de contato válido, independentemente de a aprovação ter vindo da triagem agendada, IA, Codex ou CSV. Isso nunca envia e-mails. A outbox é apenas o registro idempotente e de rastreabilidade da operação, nunca uma espera. Se o conector imediato estiver indisponível, a vaga fica marcada como falha com o motivo visível e o botão **Tentar novamente** aciona o Gmail de novo após a correção.
+O Radar cria imediatamente o rascunho de toda vaga aprovada (✅) com e-mail de contato válido, independentemente de a aprovação ter vindo da triagem agendada, IA, Codex ou CSV. A aprovação continua elegível mesmo se o perfil ou as regras forem alterados depois da análise. Isso nunca envia e-mails. A outbox é apenas o registro idempotente e de rastreabilidade da operação, nunca uma espera. Se o conector imediato estiver indisponível, a vaga fica marcada como falha com o motivo visível e o botão **Tentar novamente** aciona o Gmail de novo após a correção.
 
 Para atualizar automaticamente os envios manuais, execute `instalarVerificacaoEnviosRadar` **uma única vez** no Apps Script depois de salvar a versão atual do arquivo. Ela instala um gatilho a cada 15 minutos que consulta somente a pasta **Enviados** e marca no Radar os rascunhos comprovadamente enviados. A rotina não cria rascunhos e não envia e-mails. Para desligá-la, execute `removerVerificacaoEnviosRadar`.
 

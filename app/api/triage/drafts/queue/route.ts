@@ -2,21 +2,9 @@ import { and, desc, eq, gte, inArray } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../../chatgpt-auth";
 import { getDb } from "../../../../../db/index";
-import { draftOutbox, jobs, profiles, triageBatches, triageHistory, userJobAnalyses } from "../../../../../db/schema";
-import { getAnalysisVersions } from "../../../../../lib/analysis-versions";
-import { canonicalizeProfile, profileIsReadyForTriage } from "../../../../../lib/canonical-profile";
-import { evaluateDeterministicTriage } from "../../../../../lib/deterministic-triage";
-import { isDraftAllowedForSource, isSafeForDraft } from "../../../../../lib/draft-eligibility";
+import { draftOutbox, jobs, triageBatches, triageHistory, userJobAnalyses } from "../../../../../db/schema";
+import { isSafeForDraft } from "../../../../../lib/draft-eligibility";
 import { markImmediateDraftFailure, requestImmediateDraftCreation, requestImmediateSentReconciliation } from "../../../../../lib/gmail-draft-priority";
-
-function parseStack(value: string): string[] {
-  try {
-    const parsed: unknown = JSON.parse(value);
-    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
-  } catch {
-    return [];
-  }
-}
 
 export const dynamic = "force-dynamic";
 
@@ -32,9 +20,8 @@ type DraftQueueRequest = {
 };
 
 /**
- * Reserva a fila persistente para o futuro criador de rascunhos. Não conversa
- * com Gmail e nunca envia e-mail. O perfil canônico é relido nesta requisição,
- * e somente análises da mesma versão entram na fila.
+ * Reserva a fila persistente e aciona a criação imediata de rascunhos. Nunca
+ * envia e-mail.
  */
 export async function POST(request: Request) {
   const user = await getChatGPTUser();
@@ -91,11 +78,6 @@ export async function POST(request: Request) {
     await db.update(draftOutbox).set({ status: "sent", sentAt: now, error: null, updatedAt: now }).where(and(eq(draftOutbox.id, outbox.id), eq(draftOutbox.userId, user.userId), eq(draftOutbox.status, "drafted")));
     return NextResponse.json({ ok: true, confirmed: 1, manuallyConfirmed: true, sentAt: now });
   }
-  const profile = await db.select().from(profiles).where(eq(profiles.userId, user.userId)).limit(1).then((rows) => rows[0]);
-  if (!profile) return NextResponse.json({ error: "Complete seu perfil antes de preparar rascunhos." }, { status: 412 });
-
-  const canonicalProfile = canonicalizeProfile(profile);
-  if (!profileIsReadyForTriage(canonicalProfile)) return NextResponse.json({ error: "O perfil técnico ainda não está pronto para triagem." }, { status: 412 });
   const sourceId = body.sourceId?.trim();
   const roleArea = body.roleArea?.trim();
   const ingestionChannel = body.ingestionChannel?.trim();
@@ -105,7 +87,6 @@ export async function POST(request: Request) {
   if (!periods.has(homePeriod)) return NextResponse.json({ error: "Período inválido." }, { status: 400 });
   if (ingestionChannel && ingestionChannel !== "all" && !channels.has(ingestionChannel)) return NextResponse.json({ error: "Canal inválido." }, { status: 400 });
   const cutoff = homePeriod === "all" ? null : new Date(Date.now() - Number(homePeriod) * 36e5);
-  const versions = getAnalysisVersions(canonicalProfile);
   const [historyRows, existingOutbox] = await Promise.all([
     db.select({
       historyId: triageHistory.id,
@@ -144,7 +125,6 @@ export async function POST(request: Request) {
   const priorityOutboxIds: string[] = [];
   let noValidContact = 0;
   let notEligible = 0;
-  let outdated = 0;
   let alreadyPresent = 0;
   for (const row of latestByJob.values()) {
     const existing = existingOutboxByJob.get(row.jobId);
@@ -156,29 +136,7 @@ export async function POST(request: Request) {
       if (existing.status === "pending" || existing.status === "failed") priorityOutboxIds.push(existing.id);
       continue;
     }
-    if (!isDraftAllowedForSource({ sourceId: row.job.sourceId, verdict: row.analysis.verdict, contactEmail: row.job.contactEmail })) { notEligible += 1; continue; }
-    const analysisIsCurrent = row.analysis
-      && row.analysis.profileRevision === versions.profileRevision
-      && row.analysis.rulesRevision === versions.rulesRevision
-      && row.analysis.instructionsRevision === versions.instructionsRevision;
-    if (!analysisIsCurrent) { outdated += 1; continue; }
-    const current = evaluateDeterministicTriage({
-      title: row.job.title,
-      description: row.job.description,
-      stack: parseStack(row.job.stack),
-      seniority: row.job.seniority,
-      workMode: row.job.workMode,
-      location: row.job.location,
-      publishedAt: row.job.publishedAt,
-    }, canonicalProfile);
-    if (!isSafeForDraft({
-      verdict: row.analysis.verdict,
-      blocker: row.analysis.blocker,
-      contactEmail: row.job.contactEmail,
-      sourceId: row.job.sourceId,
-      deterministicVerdict: current.verdict,
-      deterministicBlocker: current.blocker,
-    })) {
+    if (!isSafeForDraft({ verdict: row.analysis.verdict, contactEmail: row.job.contactEmail, sourceId: row.job.sourceId })) {
       if (!row.job.contactEmail?.trim()) noValidContact += 1;
       else notEligible += 1;
       continue;
@@ -200,9 +158,7 @@ export async function POST(request: Request) {
 
   const individualUnavailableReason = latestByJob.size === 0
     ? "A vaga não possui uma avaliação de triagem utilizável para gerar rascunho."
-    : outdated
-      ? "A triagem desta vaga está desatualizada; analise-a novamente antes de criar o rascunho."
-      : noValidContact
+    : noValidContact
         ? "A vaga não tem e-mail de contato válido."
         : notEligible
           ? "As regras atuais de segurança não permitem criar rascunho para esta vaga."

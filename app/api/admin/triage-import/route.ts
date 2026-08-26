@@ -6,7 +6,6 @@ import { draftOutbox, jobs, profiles, triageBatches, triageHistory, userJobAnaly
 import { isOwnerEmail } from "../../../../lib/access";
 import { canonicalizeProfile } from "../../../../lib/canonical-profile";
 import { getAnalysisVersions } from "../../../../lib/analysis-versions";
-import { evaluateDeterministicTriage } from "../../../../lib/deterministic-triage";
 import { isSafeForDraft } from "../../../../lib/draft-eligibility";
 import { parseCsvTriageImport } from "../../../../lib/csv-triage-import";
 import { markImmediateDraftFailure, requestImmediateDraftCreation } from "../../../../lib/gmail-draft-priority";
@@ -16,10 +15,6 @@ export const dynamic = "force-dynamic";
 const LABELS: Record<string, string> = { "✅": "Aprovada", "🟡": "Provável com ressalvas", "🔴": "Não bate", "❌": "Bloqueador estrutural" };
 const MAX_ROWS = 2000;
 const MAX_BYTES = 2_000_000;
-
-function parseStack(value: string): string[] {
-  try { const parsed = JSON.parse(value); return Array.isArray(parsed) ? parsed : []; } catch { return []; }
-}
 
 /**
  * Reimporta uma análise externa (código, status, descrição) de volta para o
@@ -89,8 +84,7 @@ export async function POST(request: Request) {
       applied += 1;
 
       if (row.verdict === "✅") {
-        const deterministic = evaluateDeterministicTriage({ ...job, stack: parseStack(job.stack) }, canonicalProfile);
-        if (isSafeForDraft({ verdict: row.verdict, contactEmail: job.contactEmail, sourceId: job.sourceId, blocker, deterministicVerdict: deterministic.verdict, deterministicBlocker: deterministic.blocker })) {
+        if (isSafeForDraft({ verdict: row.verdict, contactEmail: job.contactEmail, sourceId: job.sourceId })) {
           const outboxId = crypto.randomUUID();
           const inserted = await db.insert(draftOutbox).values({ id: outboxId, userId: user.userId, jobId: job.id, historyId, status: "pending", createdAt: now, updatedAt: now }).onConflictDoNothing().returning({ id: draftOutbox.id });
           if (inserted.length) { draftsQueued += 1; pendingOutboxIds.push(outboxId); }

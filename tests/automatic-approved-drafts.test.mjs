@@ -4,7 +4,7 @@ import test from "node:test";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
-test("toda aprovação segura cria rascunho imediato, sem enviar e-mail", async () => {
+test("toda aprovação com e-mail válido cria rascunho imediato, sem enviar e-mail", async () => {
   const [run, aiVerdicts, csvImport, settings, migration, docs] = await Promise.all([
     read("../app/api/triage/run/route.ts"),
     read("../lib/apply-ai-verdict.ts"),
@@ -13,7 +13,8 @@ test("toda aprovação segura cria rascunho imediato, sem enviar e-mail", async 
     read("../drizzle/0033_enable_automatic_approved_drafts.sql"),
     read("../README.md"),
   ]);
-  assert.match(run, /if \(safelyRefined && finalVerdict\.result\.emoji === "✅"/);
+  assert.match(run, /if \(finalVerdict\.result\.emoji === "✅" && isSafeForDraft\(/);
+  assert.doesNotMatch(run, /safelyRefined/);
   assert.match(run, /const pendingScheduledOutboxIds = await db\.select/);
   assert.match(run, /eq\(draftOutbox\.status, "pending"\)/);
   assert.match(run, /\.limit\(20\)/);

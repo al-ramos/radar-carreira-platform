@@ -279,16 +279,12 @@ export async function POST(request: Request) {
       });
       await db.update(triageBatchItems).set({ status: "completed", historyId, leaseOwner: null, leaseUntil: null, updatedAt: now }).where(and(eq(triageBatchItems.batchId, batchId), eq(triageBatchItems.jobId, job.id)));
       await db.update(triageDeduplication).set({ status: "completed", historyId, leaseOwner: null, leaseUntil: null, updatedAt: now }).where(eq(triageDeduplication.idempotencyKey, key));
-      const safelyRefined = !aiRefinement.eligible || finalSource === "ai";
       // A automação só trata ✅ como aprovação. 🟡 fica no histórico para
       // revisão humana, mesmo que a fila manual ainda aceite esse veredito.
-      if (safelyRefined && finalVerdict.result.emoji === "✅" && isSafeForDraft({
+      if (finalVerdict.result.emoji === "✅" && isSafeForDraft({
         verdict: finalVerdict.result.emoji,
-        blocker: finalVerdict.blocker,
         contactEmail: job.contactEmail,
         sourceId: job.sourceId,
-        deterministicVerdict: verdict.verdict,
-        deterministicBlocker: verdict.blocker,
       })) {
         const outboxId = crypto.randomUUID();
         const inserted = await db.insert(draftOutbox).values({ id: outboxId, userId, jobId: job.id, historyId, status: "pending", createdAt: now, updatedAt: now }).onConflictDoNothing().returning({ id: draftOutbox.id });
@@ -302,7 +298,7 @@ export async function POST(request: Request) {
     // Recupera aprovações ✅ já persistidas por CSV, IA ou uma execução
     // anterior que não chegou a criar a outbox. Assim todos os caminhos de
     // aprovação convergem para a mesma automação, sem exigir reimportação ou
-    // clique manual. A revalidação mantém os mesmos critérios de segurança.
+    // clique manual.
     if (run.trigger === "schedule") {
       const approvedWithoutOutbox = await db.select({ job: jobs, analysis: userJobAnalyses })
         .from(jobs)
@@ -312,8 +308,7 @@ export async function POST(request: Request) {
         .orderBy(desc(userJobAnalyses.updatedAt))
         .limit(20);
       for (const { job, analysis } of approvedWithoutOutbox) {
-        const deterministic = evaluateDeterministicTriage({ ...job, stack: parseStack(job.stack) }, canonicalProfile);
-        if (!isSafeForDraft({ verdict: analysis.verdict, blocker: analysis.blocker, contactEmail: job.contactEmail, sourceId: job.sourceId, deterministicVerdict: deterministic.verdict, deterministicBlocker: deterministic.blocker })) continue;
+        if (!isSafeForDraft({ verdict: analysis.verdict, contactEmail: job.contactEmail, sourceId: job.sourceId })) continue;
         const history = await db.select({ id: triageHistory.id }).from(triageHistory)
           .where(and(eq(triageHistory.userId, userId), eq(triageHistory.jobId, job.id), eq(triageHistory.verdict, "✅")))
           .orderBy(desc(triageHistory.createdAt)).limit(1).then((rows) => rows[0]);

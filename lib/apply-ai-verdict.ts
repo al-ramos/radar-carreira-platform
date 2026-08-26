@@ -4,17 +4,12 @@ import { getDb } from "../db/index";
 import { draftOutbox, jobs, profiles, triageBatches, triageHistory, userJobAnalyses } from "../db/schema";
 import { canonicalizeProfile } from "./canonical-profile";
 import { getAnalysisVersions } from "./analysis-versions";
-import { evaluateDeterministicTriage } from "./deterministic-triage";
 import { isSafeForDraft } from "./draft-eligibility";
 import { markImmediateDraftFailure, requestImmediateDraftCreation } from "./gmail-draft-priority";
 
 const LABELS: Record<string, string> = { "✅": "Aprovada", "🟡": "Provável com ressalvas", "🔴": "Não bate", "❌": "Bloqueador estrutural" };
 
 export type AiVerdictEntry = { jobId: string; verdict: "✅" | "🟡" | "🔴" | "❌"; note?: string };
-
-function parseStackSafe(value: string): string[] {
-  try { const parsed = JSON.parse(value); return Array.isArray(parsed) ? parsed : []; } catch { return []; }
-}
 
 /**
  * Aplica vereditos vindos de uma leitura de IA (nuvem ou Codex) como veredito
@@ -52,8 +47,7 @@ export async function applyAiVerdicts(userId: string, batchScope: string, entrie
     applied += 1;
 
     if (entry.verdict === "✅") {
-      const deterministic = evaluateDeterministicTriage({ ...job, stack: parseStackSafe(job.stack) }, canonicalProfile);
-      if (isSafeForDraft({ verdict: entry.verdict, contactEmail: job.contactEmail, sourceId: job.sourceId, blocker, deterministicVerdict: deterministic.verdict, deterministicBlocker: deterministic.blocker })) {
+      if (isSafeForDraft({ verdict: entry.verdict, contactEmail: job.contactEmail, sourceId: job.sourceId })) {
         const outboxId = randomUUID();
         const inserted = await db.insert(draftOutbox).values({ id: outboxId, userId, jobId: job.id, historyId, status: "pending", createdAt: now, updatedAt: now }).onConflictDoNothing().returning({ id: draftOutbox.id });
         if (inserted.length) { draftsQueued += 1; pendingOutboxIds.push(outboxId); }
