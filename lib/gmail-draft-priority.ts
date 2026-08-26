@@ -1,3 +1,7 @@
+import { and, eq, inArray } from "drizzle-orm";
+import { getDb } from "../db/index";
+import { draftOutbox } from "../db/schema";
+
 type ImmediateDraftResult = { requested: boolean; created?: number; reason?: string };
 type ImmediateSentReconciliationResult = { requested: boolean; confirmed?: number; reason?: string };
 
@@ -26,6 +30,19 @@ export async function requestImmediateDraftCreation(outboxIds: string[]): Promis
   } catch (error) {
     return { requested: false, reason: `Não foi possível acionar o conector Gmail agora. Tente novamente pela ação manual. (${String(error)})` };
   }
+}
+
+/**
+ * A outbox continua sendo o registro idempotente da criação, mas uma falha
+ * para acionar o Gmail não pode parecer uma espera normal. Registra o motivo
+ * na própria vaga para que a tela permita uma correção e nova tentativa.
+ */
+export async function markImmediateDraftFailure(outboxIds: string[], reason: string | undefined) {
+  if (!outboxIds.length) return;
+  const detail = (reason?.trim() || "O conector Gmail não confirmou a criação imediata do rascunho.").slice(0, 1000);
+  await getDb().update(draftOutbox)
+    .set({ status: "failed", error: detail, updatedAt: new Date() })
+    .where(and(inArray(draftOutbox.id, outboxIds), eq(draftOutbox.status, "pending")));
 }
 
 function parseJson(raw: string): unknown {

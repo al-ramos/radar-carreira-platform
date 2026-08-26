@@ -7,7 +7,7 @@ import { getAnalysisVersions } from "../../../../../lib/analysis-versions";
 import { canonicalizeProfile, profileIsReadyForTriage } from "../../../../../lib/canonical-profile";
 import { evaluateDeterministicTriage } from "../../../../../lib/deterministic-triage";
 import { isDraftAllowedForSource, isSafeForDraft } from "../../../../../lib/draft-eligibility";
-import { requestImmediateDraftCreation, requestImmediateSentReconciliation } from "../../../../../lib/gmail-draft-priority";
+import { markImmediateDraftFailure, requestImmediateDraftCreation, requestImmediateSentReconciliation } from "../../../../../lib/gmail-draft-priority";
 
 function parseStack(value: string): string[] {
   try {
@@ -45,7 +45,9 @@ export async function POST(request: Request) {
     const now = new Date();
     const failed = await db.select({ id: draftOutbox.id }).from(draftOutbox).where(and(eq(draftOutbox.userId, user.userId), eq(draftOutbox.status, "failed")));
     for (const item of failed) await db.update(draftOutbox).set({ status: "pending", error: null, updatedAt: now }).where(eq(draftOutbox.id, item.id));
-    return NextResponse.json({ ok: true, retried: failed.length, sent: false });
+    const immediateDraft = failed.length ? await requestImmediateDraftCreation(failed.map((item) => item.id)) : { requested: false };
+    if (!immediateDraft.requested) await markImmediateDraftFailure(failed.map((item) => item.id), immediateDraft.reason);
+    return NextResponse.json({ ok: true, retried: failed.length, sent: false, immediateDraft });
   }
   if (body.action === "reconcileSent") {
     const requestedJobIds = Array.isArray(body.jobIds) ? [...new Set(body.jobIds.filter((id): id is string => typeof id === "string" && id.length > 0))].slice(0, 200) : [];
@@ -148,9 +150,10 @@ export async function POST(request: Request) {
     const existing = existingOutboxByJob.get(row.jobId);
     if (existing) {
       alreadyPresent += 1;
-      // Toda preparação é uma ação explícita do portal. Ao usar a fila,
-      // também tentamos criar os itens pendentes que já faziam parte dela.
-      if (existing.status === "pending") priorityOutboxIds.push(existing.id);
+      // A outbox é somente o registro idempotente. Uma falha pode ser tentada
+      // novamente na hora pelo Gmail, sem precisar esperar outra agenda.
+      if (existing.status === "failed") await db.update(draftOutbox).set({ status: "pending", error: null, updatedAt: new Date() }).where(eq(draftOutbox.id, existing.id));
+      if (existing.status === "pending" || existing.status === "failed") priorityOutboxIds.push(existing.id);
       continue;
     }
     if (!isDraftAllowedForSource({ sourceId: row.job.sourceId, verdict: row.analysis.verdict, contactEmail: row.job.contactEmail })) { notEligible += 1; continue; }
@@ -209,5 +212,6 @@ export async function POST(request: Request) {
   const immediateDraft = priorityOutboxIds.length
     ? await requestImmediateDraftCreation(priorityOutboxIds)
     : { requested: false, reason: requestedJobIds?.length === 1 ? individualUnavailableReason : "Nenhum rascunho pendente está disponível neste recorte." };
+  if (priorityOutboxIds.length && !immediateDraft.requested) await markImmediateDraftFailure(priorityOutboxIds, immediateDraft.reason);
   return NextResponse.json({ ok: true, considered: latestByJob.size, queued: queued.length, queuedJobIds: queued, noValidContact, notEligible, outdated, alreadyPresent, gmailDraftsCreated: immediateDraft.created ?? 0, immediateDraft });
 }

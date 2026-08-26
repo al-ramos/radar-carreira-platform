@@ -2,14 +2,14 @@ import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db/index";
-import { draftOutbox, jobs, platformSettings, profiles, triageBatches, triageHistory, userJobAnalyses } from "../../../../db/schema";
+import { draftOutbox, jobs, profiles, triageBatches, triageHistory, userJobAnalyses } from "../../../../db/schema";
 import { isOwnerEmail } from "../../../../lib/access";
 import { canonicalizeProfile } from "../../../../lib/canonical-profile";
 import { getAnalysisVersions } from "../../../../lib/analysis-versions";
 import { evaluateDeterministicTriage } from "../../../../lib/deterministic-triage";
 import { isSafeForDraft } from "../../../../lib/draft-eligibility";
 import { parseCsvTriageImport } from "../../../../lib/csv-triage-import";
-import { requestImmediateDraftCreation } from "../../../../lib/gmail-draft-priority";
+import { markImmediateDraftFailure, requestImmediateDraftCreation } from "../../../../lib/gmail-draft-priority";
 
 export const dynamic = "force-dynamic";
 
@@ -54,11 +54,6 @@ export async function POST(request: Request) {
   if (!profile) return NextResponse.json({ error: "Complete seu perfil antes de importar uma análise." }, { status: 412 });
   const canonicalProfile = canonicalizeProfile(profile);
   const versions = getAnalysisVersions(canonicalProfile);
-  const settings = await db.select({ draftQueueEnabled: platformSettings.scheduledTriageDraftQueueEnabled, autoCreateEnabled: platformSettings.scheduledTriageAutoCreateEnabled })
-    .from(platformSettings).where(eq(platformSettings.id, "global")).limit(1).then((rows) => rows[0]);
-  const draftQueueEnabled = settings?.draftQueueEnabled ?? true;
-  const autoCreateEnabled = draftQueueEnabled && (settings?.autoCreateEnabled ?? true);
-
   const batchId = crypto.randomUUID();
   const now = new Date();
   await db.insert(triageBatches).values({ id: batchId, userId: user.userId, trigger: "manual", scope: "csv-import", status: "running", startedAt: now, createdAt: now });
@@ -93,7 +88,7 @@ export async function POST(request: Request) {
       });
       applied += 1;
 
-      if (draftQueueEnabled && row.verdict === "✅") {
+      if (row.verdict === "✅") {
         const deterministic = evaluateDeterministicTriage({ ...job, stack: parseStack(job.stack) }, canonicalProfile);
         if (isSafeForDraft({ verdict: row.verdict, contactEmail: job.contactEmail, sourceId: job.sourceId, blocker, deterministicVerdict: deterministic.verdict, deterministicBlocker: deterministic.blocker })) {
           const outboxId = crypto.randomUUID();
@@ -108,9 +103,10 @@ export async function POST(request: Request) {
 
   await db.update(triageBatches).set({ status: "completed", completedAt: new Date() }).where(eq(triageBatches.id, batchId));
   let immediateDraft: { requested: boolean; created?: number; reason?: string } | null = null;
-  if (autoCreateEnabled && pendingOutboxIds.length) {
+  if (pendingOutboxIds.length) {
     try { immediateDraft = await requestImmediateDraftCreation(pendingOutboxIds); }
     catch (error) { immediateDraft = { requested: false, reason: error instanceof Error ? error.message : "Falha ao acionar o conector Gmail" }; }
   }
+  if (immediateDraft && !immediateDraft.requested) await markImmediateDraftFailure(pendingOutboxIds, immediateDraft.reason);
   return NextResponse.json({ ok: true, batchId, received: rows.length, applied, draftsQueued, draftsCreated: immediateDraft?.created ?? 0, immediateDraft, notFound, ambiguous, rejected, errors });
 }

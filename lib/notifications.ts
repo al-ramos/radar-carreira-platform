@@ -142,8 +142,8 @@ export type ScheduledTriageOutcome = {
  * Notificação padrão ao fim de uma rodada da triagem agendada (Etapa 4 da
  * automação ponta a ponta). Resume o que a rodada fez para observabilidade
  * sem precisar abrir Auditoria/Histórico: quantas vagas foram avaliadas, o
- * desfecho de cada veredito (✅ entra na fila de rascunho quando o
- * interruptor de fila está ligado; 🟡 fica esperando revisão manual), e se
+ * desfecho de cada veredito (✅ aciona a criação imediata do rascunho; 🟡
+ * fica esperando revisão manual), e se
  * o rascunho chegou a ser criado de verdade no Gmail (quando o interruptor
  * de criação automática também está ligado). Execuções vazias continuam
  * silenciosas, exceto quando retomam uma pendência de rascunho ou quando o
@@ -172,8 +172,8 @@ export async function notifyScheduledTriage(db: ReturnType<typeof getDb>, outcom
     ] : []),
     ...(outcome.rejected ? [`${numberFormat.format(outcome.rejected)} não aderente${outcome.rejected === 1 ? "" : "s"}`] : []),
     ...(draftsCreated ? [`${numberFormat.format(draftsCreated)} rascunho${draftsCreated === 1 ? "" : "s"} criado${draftsCreated === 1 ? "" : "s"} no Gmail`] : []),
-    ...(draftsRetried && !draftsCreated ? [`${numberFormat.format(draftsRetried)} rascunho${draftsRetried === 1 ? "" : "s"} retomado${draftsRetried === 1 ? "" : "s"} na fila do Gmail`] : []),
-    ...(outcome.draftsQueued && !draftsCreated ? [`${numberFormat.format(outcome.draftsQueued)} na fila de rascunho`] : []),
+    ...(draftsRetried && !draftsCreated ? [`${numberFormat.format(draftsRetried)} tentativa${draftsRetried === 1 ? "" : "s"} imediata${draftsRetried === 1 ? "" : "s"} de criar rascunho`] : []),
+    ...(outcome.draftsQueued && !draftsCreated && !draftsRetried ? [`${numberFormat.format(outcome.draftsQueued)} criação${outcome.draftsQueued === 1 ? "" : "ões"} de rascunho acionada${outcome.draftsQueued === 1 ? "" : "s"}`] : []),
     ...(outcome.gmailReason ? [`Gmail: ${outcome.gmailReason}`] : []),
   ];
   await createNotification(db, {

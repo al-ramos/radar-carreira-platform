@@ -138,7 +138,7 @@ Portal multiusuário para reunir oportunidades, decidir quais vagas merecem aten
 - gestão de usuários, roles e permissões granulares;
 - backup administrativo;
 - relatório compatível com Excel;
-- interruptores independentes para triagem agendada, entrada automática na fila de rascunhos e criação do rascunho no Gmail;
+- criação imediata de rascunho no Gmail para toda aprovação segura com e-mail válido;
 - notificações operacionais com acesso ao relatório completo de importações e lotes de triagem.
 
 ### Importar currículo em PDF
@@ -303,7 +303,7 @@ O conector atual:
 
 ### Rascunhos de candidatura
 
-Quando a opção **Criar rascunho de verdade no Gmail** estiver ativa, o Radar cria imediatamente o rascunho de uma vaga aprovada (✅), sem bloqueador e com e-mail de contato válido, independentemente de a aprovação ter vindo da triagem agendada, IA, Codex ou CSV. Isso nunca envia e-mails. Se o conector imediato estiver indisponível, a próxima rodada da triagem agendada retoma automaticamente até 20 itens ainda na fila e recupera aprovações seguras sem outbox, com revalidação final de segurança no Radar; o botão **Tentar rascunho** continua disponível como alternativa manual.
+O Radar cria imediatamente o rascunho de uma vaga aprovada (✅), sem bloqueador e com e-mail de contato válido, independentemente de a aprovação ter vindo da triagem agendada, IA, Codex ou CSV. Isso nunca envia e-mails. A outbox é apenas o registro idempotente e de rastreabilidade da operação, nunca uma espera. Se o conector imediato estiver indisponível, a vaga fica marcada como falha com o motivo visível e o botão **Tentar novamente** aciona o Gmail de novo após a correção.
 
 Para atualizar automaticamente os envios manuais, execute `instalarVerificacaoEnviosRadar` **uma única vez** no Apps Script depois de salvar a versão atual do arquivo. Ela instala um gatilho a cada 15 minutos que consulta somente a pasta **Enviados** e marca no Radar os rascunhos comprovadamente enviados. A rotina não cria rascunhos e não envia e-mails. Para desligá-la, execute `removerVerificacaoEnviosRadar`.
 

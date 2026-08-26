@@ -14,7 +14,7 @@ import { extractStructuredJobFacts, getAiProviderStatus, validateStructuredJobFa
 import { normalizeCareerRules } from "../../../../lib/profile-options";
 import { applyAiRefinement } from "../../../../lib/triage-ai-refinement";
 import { notifyScheduledTriage } from "../../../../lib/notifications";
-import { requestImmediateDraftCreation } from "../../../../lib/gmail-draft-priority";
+import { markImmediateDraftFailure, requestImmediateDraftCreation } from "../../../../lib/gmail-draft-priority";
 
 export const dynamic = "force-dynamic";
 const AI_FACTS_VERSION = "job-facts-v1";
@@ -98,9 +98,7 @@ export async function POST(request: Request) {
   // A agenda de triagem continua sendo uma opção independente. Já a criação
   // de rascunhos vale para qualquer origem de aprovação (portal, fila, IA ou
   // agenda), sempre sob as regras de segurança abaixo.
-  const settings = await db.select({ enabled: platformSettings.scheduledTriageEnabled, batchSize: platformSettings.scheduledTriageBatchSize, draftQueueEnabled: platformSettings.scheduledTriageDraftQueueEnabled, autoCreateEnabled: platformSettings.scheduledTriageAutoCreateEnabled }).from(platformSettings).where(eq(platformSettings.id, "global")).limit(1).then(rows => rows[0]);
-  const draftQueueEnabled = settings?.draftQueueEnabled ?? true;
-  const autoCreateEnabled = draftQueueEnabled && (settings?.autoCreateEnabled ?? true);
+  const settings = await db.select({ enabled: platformSettings.scheduledTriageEnabled, batchSize: platformSettings.scheduledTriageBatchSize }).from(platformSettings).where(eq(platformSettings.id, "global")).limit(1).then(rows => rows[0]);
   if (run.trigger === "schedule") {
     // Sem linha de parâmetros, a agenda continua desligada por segurança.
     if (!settings?.enabled) return NextResponse.json({ ok: true, skipped: true, message: "Triagem agendada desligada em Configurações" });
@@ -284,7 +282,7 @@ export async function POST(request: Request) {
       const safelyRefined = !aiRefinement.eligible || finalSource === "ai";
       // A automação só trata ✅ como aprovação. 🟡 fica no histórico para
       // revisão humana, mesmo que a fila manual ainda aceite esse veredito.
-      if (draftQueueEnabled && safelyRefined && finalVerdict.result.emoji === "✅" && isSafeForDraft({
+      if (safelyRefined && finalVerdict.result.emoji === "✅" && isSafeForDraft({
         verdict: finalVerdict.result.emoji,
         blocker: finalVerdict.blocker,
         contactEmail: job.contactEmail,
@@ -305,7 +303,7 @@ export async function POST(request: Request) {
     // anterior que não chegou a criar a outbox. Assim todos os caminhos de
     // aprovação convergem para a mesma automação, sem exigir reimportação ou
     // clique manual. A revalidação mantém os mesmos critérios de segurança.
-    if (run.trigger === "schedule" && draftQueueEnabled) {
+    if (run.trigger === "schedule") {
       const approvedWithoutOutbox = await db.select({ job: jobs, analysis: userJobAnalyses })
         .from(jobs)
         .innerJoin(userJobAnalyses, and(eq(userJobAnalyses.userId, userId), eq(userJobAnalyses.jobId, jobs.id), eq(userJobAnalyses.verdict, "✅")))
@@ -347,14 +345,12 @@ export async function POST(request: Request) {
   // O limite de 20 preserva o contrato do conector e espalha uma retomada grande
   // pelas próximas rodadas agendadas.
   let immediateDraft: { requested: boolean; created?: number; reason?: string } | null = null;
-  const pendingScheduledOutboxIds = autoCreateEnabled
-    ? await db.select({ id: draftOutbox.id })
+  const pendingScheduledOutboxIds = await db.select({ id: draftOutbox.id })
       .from(draftOutbox)
       .where(and(eq(draftOutbox.userId, userId), eq(draftOutbox.status, "pending")))
       .orderBy(asc(draftOutbox.createdAt))
       .limit(20)
-      .then((rows) => rows.map((row) => row.id))
-    : [];
+      .then((rows) => rows.map((row) => row.id));
   if (pendingScheduledOutboxIds.length) {
     try {
       immediateDraft = await requestImmediateDraftCreation(pendingScheduledOutboxIds);
@@ -362,6 +358,7 @@ export async function POST(request: Request) {
       immediateDraft = { requested: false, reason: error instanceof Error ? error.message : "Falha ao acionar o conector Gmail" };
     }
   }
+  if (immediateDraft && !immediateDraft.requested) await markImmediateDraftFailure(pendingScheduledOutboxIds, immediateDraft.reason);
 
   // Etapa 4: observabilidade da rodada agendada pelo sino já existente, sem
   // painel novo. Silenciosa quando não há nada para relatar (nenhuma vaga
@@ -376,7 +373,7 @@ export async function POST(request: Request) {
       draftsQueued: scheduledDraftsQueued,
       draftsCreated: immediateDraft?.created ?? 0,
       draftsRetried: pendingScheduledOutboxIds.length,
-      gmailReason: autoCreateEnabled && pendingScheduledOutboxIds.length && !immediateDraft?.requested ? immediateDraft?.reason ?? "conector não confirmou a criação" : null,
+      gmailReason: pendingScheduledOutboxIds.length && !immediateDraft?.requested ? immediateDraft?.reason ?? "conector não confirmou a criação" : null,
     }).catch(() => undefined);
   }
 

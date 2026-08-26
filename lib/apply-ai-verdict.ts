@@ -1,12 +1,12 @@
 import { eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { getDb } from "../db/index";
-import { draftOutbox, jobs, platformSettings, profiles, triageBatches, triageHistory, userJobAnalyses } from "../db/schema";
+import { draftOutbox, jobs, profiles, triageBatches, triageHistory, userJobAnalyses } from "../db/schema";
 import { canonicalizeProfile } from "./canonical-profile";
 import { getAnalysisVersions } from "./analysis-versions";
 import { evaluateDeterministicTriage } from "./deterministic-triage";
 import { isSafeForDraft } from "./draft-eligibility";
-import { requestImmediateDraftCreation } from "./gmail-draft-priority";
+import { markImmediateDraftFailure, requestImmediateDraftCreation } from "./gmail-draft-priority";
 
 const LABELS: Record<string, string> = { "✅": "Aprovada", "🟡": "Provável com ressalvas", "🔴": "Não bate", "❌": "Bloqueador estrutural" };
 
@@ -34,10 +34,6 @@ export async function applyAiVerdicts(userId: string, batchScope: string, entrie
   const batchId = randomUUID();
   await db.insert(triageBatches).values({ id: batchId, userId, trigger: "manual", scope: batchScope, status: "running", startedAt: now, createdAt: now });
 
-  const settings = await db.select({ draftQueueEnabled: platformSettings.scheduledTriageDraftQueueEnabled, autoCreateEnabled: platformSettings.scheduledTriageAutoCreateEnabled })
-    .from(platformSettings).where(eq(platformSettings.id, "global")).limit(1).then((rows) => rows[0]);
-  const draftQueueEnabled = settings?.draftQueueEnabled ?? true;
-  const autoCreateEnabled = draftQueueEnabled && (settings?.autoCreateEnabled ?? true);
   const pendingOutboxIds: string[] = [];
   let applied = 0, draftsQueued = 0;
   for (const entry of entries) {
@@ -55,7 +51,7 @@ export async function applyAiVerdicts(userId: string, batchScope: string, entrie
       });
     applied += 1;
 
-    if (draftQueueEnabled && entry.verdict === "✅") {
+    if (entry.verdict === "✅") {
       const deterministic = evaluateDeterministicTriage({ ...job, stack: parseStackSafe(job.stack) }, canonicalProfile);
       if (isSafeForDraft({ verdict: entry.verdict, contactEmail: job.contactEmail, sourceId: job.sourceId, blocker, deterministicVerdict: deterministic.verdict, deterministicBlocker: deterministic.blocker })) {
         const outboxId = randomUUID();
@@ -65,9 +61,7 @@ export async function applyAiVerdicts(userId: string, batchScope: string, entrie
     }
   }
   await db.update(triageBatches).set({ status: "completed", completedAt: new Date() }).where(eq(triageBatches.id, batchId));
-  let immediateDraft: { created?: number } | null = null;
-  if (autoCreateEnabled && pendingOutboxIds.length) {
-    try { immediateDraft = await requestImmediateDraftCreation(pendingOutboxIds); } catch { /* a fila pending permite nova tentativa manual */ }
-  }
+  const immediateDraft = pendingOutboxIds.length ? await requestImmediateDraftCreation(pendingOutboxIds) : null;
+  if (immediateDraft && !immediateDraft.requested) await markImmediateDraftFailure(pendingOutboxIds, immediateDraft.reason);
   return { applied, draftsQueued, draftsCreated: immediateDraft?.created ?? 0 };
 }

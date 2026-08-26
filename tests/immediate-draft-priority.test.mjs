@@ -14,6 +14,8 @@ test("rascunhos avulsos ou em fila pedem criação manual imediata sem enviar e-
     read("../app/TriageReport.tsx"),
   ]);
   assert.match(queue, /requestImmediateDraftCreation\(priorityOutboxIds\)/);
+  assert.match(queue, /existing\.status === "failed"/);
+  assert.match(queue, /markImmediateDraftFailure\(priorityOutboxIds/);
   assert.match(queue, /const immediateDraft = priorityOutboxIds\.length/);
   assert.match(queue, /triagem desta vaga está desatualizada/);
   assert.match(queue, /regras atuais de segurança não permitem/);
@@ -32,5 +34,7 @@ test("rascunhos avulsos ou em fila pedem criação manual imediata sem enviar e-
   assert.match(screen, /draftActionStatuses/);
   assert.match(screen, /Gmail acionado; atualize em instantes para confirmar o rascunho/);
   assert.match(screen, /item\.draftStatus === "pending" \? null/);
-  assert.match(screen, /Tentar rascunho/);
+  assert.match(screen, /Tentar novamente/);
+  assert.match(screen, /item\.draftError/);
+  assert.match(priority, /markImmediateDraftFailure/);
 });

@@ -13,14 +13,13 @@ test("toda aprovação segura cria rascunho imediato, sem enviar e-mail", async 
     read("../drizzle/0033_enable_automatic_approved_drafts.sql"),
     read("../README.md"),
   ]);
-  assert.match(run, /const draftQueueEnabled = settings\?\.draftQueueEnabled \?\? true/);
-  assert.match(run, /if \(draftQueueEnabled && safelyRefined && finalVerdict\.result\.emoji === "✅"/);
-  assert.match(run, /const pendingScheduledOutboxIds = autoCreateEnabled/);
+  assert.match(run, /if \(safelyRefined && finalVerdict\.result\.emoji === "✅"/);
+  assert.match(run, /const pendingScheduledOutboxIds = await db\.select/);
   assert.match(run, /eq\(draftOutbox\.status, "pending"\)/);
   assert.match(run, /\.limit\(20\)/);
   assert.match(run, /requestImmediateDraftCreation\(pendingScheduledOutboxIds\)/);
   assert.match(run, /const approvedWithoutOutbox = await db\.select/, "a agenda recupera aprovações CSV\/IA que ainda não chegaram à outbox");
-  assert.match(aiVerdicts, /draftQueueEnabled && entry\.verdict === "✅"/);
+  assert.match(aiVerdicts, /if \(entry\.verdict === "✅"\)/);
   assert.match(aiVerdicts, /requestImmediateDraftCreation\(pendingOutboxIds\)/);
   assert.match(csvImport, /requestImmediateDraftCreation\(pendingOutboxIds\)/);
   assert.match(settings, /scheduledTriageDraftQueueEnabled:true/);
