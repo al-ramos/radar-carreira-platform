@@ -13,6 +13,7 @@ test("histórico filtra envio APInfo e candidatura das demais fontes no mesmo re
   assert.match(screen, /Envio \/ candidatura/);
   assert.match(screen, /Enviadas \/ candidatas/);
   assert.match(screen, /filteredHistory\.filter\(hasCompletedOutreach\)/);
+  assert.ok(screen.indexOf("Envio / candidatura") < screen.indexOf("<details className=\"triage-advanced-filters\""));
   assert.match(route, /applicationStatus: userJobStatus\.applicationStatus/);
   assert.match(route, /leftJoin\(userJobStatus/);
 });
