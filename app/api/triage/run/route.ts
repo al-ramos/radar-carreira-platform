@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, isNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNull, lt, or, sql } from "drizzle-orm";
 import { createHash, randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
@@ -163,7 +163,6 @@ export async function POST(request: Request) {
   let skipped = 0;
   let aiAttempts = 0;
   let scheduledDraftsQueued = 0;
-  const scheduledOutboxIds: string[] = [];
   try {
     for (const { job, analysis } of candidates) {
       const key = triageIdempotencyKey(userId, job.id, versions);
@@ -298,7 +297,7 @@ export async function POST(request: Request) {
         // onConflictDoNothing + returning só devolve linha quando realmente
         // inseriu (vaga já enfileirada por outra rodada não conta de novo
         // nem entra na chamada ao conector Gmail desta execução).
-        if (inserted.length) { scheduledDraftsQueued += 1; scheduledOutboxIds.push(outboxId); }
+        if (inserted.length) scheduledDraftsQueued += 1;
       }
       processed.push({ jobId: job.id, title: job.title, company: job.company, reference: job.externalId, contactEligible: Boolean(job.contactEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(job.contactEmail.trim())), aiEligible: aiRefinement.eligible, aiStatus, verdict: finalVerdict.verdict, label: finalVerdict.result.label, blocker: finalVerdict.blocker });
     }
@@ -317,14 +316,25 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Falha no lote; nenhum rascunho foi criado.", batchId, processed, detail }, { status: 500 });
   }
 
-  // Aciona o mesmo conector Gmail que o botão manual usa, para as vagas que
-  // esta própria execução acabou de enfileirar. Falha aqui não derruba a
-  // triagem — a vaga já está salva como "pending" e continua disponível
-  // para a ação manual de sempre.
+  // Aciona o mesmo conector Gmail que o botão manual usa. Além dos itens
+  // incluídos nesta rodada, retoma os que já estavam em "pending": uma
+  // indisponibilidade transitória do Apps Script não deixa uma vaga aprovada
+  // parada para sempre. O Apps Script relê cada item no endpoint de rascunhos,
+  // que revalida perfil, versões e elegibilidade antes de criar qualquer coisa.
+  // O limite de 20 preserva o contrato do conector e espalha uma retomada grande
+  // pelas próximas rodadas agendadas.
   let immediateDraft: { requested: boolean; created?: number; reason?: string } | null = null;
-  if (autoCreateEnabled && scheduledOutboxIds.length) {
+  const pendingScheduledOutboxIds = autoCreateEnabled && run.trigger === "schedule"
+    ? await db.select({ id: draftOutbox.id })
+      .from(draftOutbox)
+      .where(and(eq(draftOutbox.userId, userId), eq(draftOutbox.status, "pending")))
+      .orderBy(asc(draftOutbox.createdAt))
+      .limit(20)
+      .then((rows) => rows.map((row) => row.id))
+    : [];
+  if (pendingScheduledOutboxIds.length) {
     try {
-      immediateDraft = await requestImmediateDraftCreation(scheduledOutboxIds);
+      immediateDraft = await requestImmediateDraftCreation(pendingScheduledOutboxIds);
     } catch (error) {
       immediateDraft = { requested: false, reason: error instanceof Error ? error.message : "Falha ao acionar o conector Gmail" };
     }
@@ -342,7 +352,8 @@ export async function POST(request: Request) {
       rejected: processed.filter(item => item.verdict === "NAO_BATE").length,
       draftsQueued: scheduledDraftsQueued,
       draftsCreated: immediateDraft?.created ?? 0,
-      gmailReason: autoCreateEnabled && scheduledOutboxIds.length && !immediateDraft?.requested ? immediateDraft?.reason ?? "conector não confirmou a criação" : null,
+      draftsRetried: pendingScheduledOutboxIds.length,
+      gmailReason: autoCreateEnabled && pendingScheduledOutboxIds.length && !immediateDraft?.requested ? immediateDraft?.reason ?? "conector não confirmou a criação" : null,
     }).catch(() => undefined);
   }
 

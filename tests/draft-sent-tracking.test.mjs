@@ -58,6 +58,6 @@ test("envio manual é reconciliado por evidência do Gmail sem autorizar envio a
   const queueRoute = await read("../app/api/triage/drafts/queue/route.ts");
   assert.match(queueRoute, /action === "confirmSent"/);
   assert.match(queueRoute, /Somente um rascunho pronto pode ser confirmado como enviado/);
-  assert.match(screen, /Aguardando você acionar a criação pela fila/);
+  assert.match(screen, /Tentar rascunho/);
   assert.match(screen, /não há agendamento/);
 });

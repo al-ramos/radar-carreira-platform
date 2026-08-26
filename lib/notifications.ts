@@ -133,6 +133,7 @@ export type ScheduledTriageOutcome = {
   rejected: number;
   draftsQueued: number;
   draftsCreated?: number;
+  draftsRetried?: number;
   gmailReason?: string | null;
   error?: string;
 };
@@ -144,9 +145,9 @@ export type ScheduledTriageOutcome = {
  * desfecho de cada veredito (✅ entra na fila de rascunho quando o
  * interruptor de fila está ligado; 🟡 fica esperando revisão manual), e se
  * o rascunho chegou a ser criado de verdade no Gmail (quando o interruptor
- * de criação automática também está ligado). Não dispara quando a rodada
- * não teve nenhuma vaga nova (evita ruído no sino em execuções vazias, que
- * são a maioria em horário comercial).
+ * de criação automática também está ligado). Execuções vazias continuam
+ * silenciosas, exceto quando retomam uma pendência de rascunho ou quando o
+ * conector informa uma falha acionável.
  */
 export async function notifyScheduledTriage(db: ReturnType<typeof getDb>, outcome: ScheduledTriageOutcome) {
   if (outcome.error) {
@@ -160,24 +161,28 @@ export async function notifyScheduledTriage(db: ReturnType<typeof getDb>, outcom
     });
     return;
   }
-  if (!outcome.processed) return;
   const draftsCreated = outcome.draftsCreated ?? 0;
+  const draftsRetried = outcome.draftsRetried ?? 0;
+  if (!outcome.processed && !draftsCreated && !draftsRetried && !outcome.gmailReason) return;
   const parts = [
-    `${numberFormat.format(outcome.processed)} vaga${outcome.processed === 1 ? "" : "s"} avaliada${outcome.processed === 1 ? "" : "s"}`,
-    `${numberFormat.format(outcome.approved)} aprovada${outcome.approved === 1 ? "" : "s"}`,
-    `${numberFormat.format(outcome.probable)} ${outcome.probable === 1 ? "provável" : "prováveis"} aguardando você`,
+    ...(outcome.processed ? [
+      `${numberFormat.format(outcome.processed)} vaga${outcome.processed === 1 ? "" : "s"} avaliada${outcome.processed === 1 ? "" : "s"}`,
+      `${numberFormat.format(outcome.approved)} aprovada${outcome.approved === 1 ? "" : "s"}`,
+      `${numberFormat.format(outcome.probable)} ${outcome.probable === 1 ? "provável" : "prováveis"} aguardando você`,
+    ] : []),
     ...(outcome.rejected ? [`${numberFormat.format(outcome.rejected)} não aderente${outcome.rejected === 1 ? "" : "s"}`] : []),
     ...(draftsCreated ? [`${numberFormat.format(draftsCreated)} rascunho${draftsCreated === 1 ? "" : "s"} criado${draftsCreated === 1 ? "" : "s"} no Gmail`] : []),
+    ...(draftsRetried && !draftsCreated ? [`${numberFormat.format(draftsRetried)} rascunho${draftsRetried === 1 ? "" : "s"} retomado${draftsRetried === 1 ? "" : "s"} na fila do Gmail`] : []),
     ...(outcome.draftsQueued && !draftsCreated ? [`${numberFormat.format(outcome.draftsQueued)} na fila de rascunho`] : []),
     ...(outcome.gmailReason ? [`Gmail: ${outcome.gmailReason}`] : []),
   ];
   await createNotification(db, {
     type: "triage",
     severity: outcome.gmailReason ? "error" : "success",
-    title: "Triagem agendada concluída",
+    title: outcome.processed ? "Triagem agendada concluída" : "Triagem agendada retomou rascunhos",
     body: parts.join(" · "),
     link: "/?open=triagem",
-    metadata: { batchId: outcome.batchId, processed: outcome.processed, approved: outcome.approved, probable: outcome.probable, rejected: outcome.rejected, draftsQueued: outcome.draftsQueued, draftsCreated, gmailReason: outcome.gmailReason ?? null },
+    metadata: { batchId: outcome.batchId, processed: outcome.processed, approved: outcome.approved, probable: outcome.probable, rejected: outcome.rejected, draftsQueued: outcome.draftsQueued, draftsCreated, draftsRetried, gmailReason: outcome.gmailReason ?? null },
   });
 }
 

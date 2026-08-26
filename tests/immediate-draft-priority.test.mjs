@@ -31,4 +31,6 @@ test("rascunhos avulsos ou em fila pedem criação manual imediata sem enviar e-
   assert.match(screen, /Criação manual indisponível/);
   assert.match(screen, /draftActionStatuses/);
   assert.match(screen, /Gmail acionado; atualize em instantes para confirmar o rascunho/);
+  assert.match(screen, /item\.draftStatus === "pending" \? null/);
+  assert.match(screen, /Tentar rascunho/);
 });
