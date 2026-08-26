@@ -229,7 +229,7 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
   const normalizedTableSearch = tableSearch.trim().toLocaleLowerCase("pt-BR");
   const hasCompletedOutreach = (item: HistoryItem) => item.jobSource === "apinfo-extension"
     ? item.draftStatus === "sent" || Boolean(item.sentAt)
-    : item.applicationStatus === "sent" || item.applicationStatus === "responded" || ["applied", "interview", "offer", "rejected"].includes(item.pipelineStage ?? "");
+    : item.applicationStatus === "opened" || item.applicationStatus === "sent" || item.applicationStatus === "responded" || ["applied", "interview", "offer", "rejected"].includes(item.pipelineStage ?? "");
   const scopedHistory = currentAssessments.filter((item) => (situationFilter === "all" || (situationFilter === "pending" ? isPending(item) : !isPending(item))) && (verdictFilter === "all" || item.verdict === verdictFilter) && (sourceFilter === "all" || item.source === sourceFilter) && (jobSourceFilter === "all" || item.jobSource === jobSourceFilter) && (externalAiFilter === "all" || (externalAiFilter === "yes") === isExternalAiReassessment(item)) && (!codeFilter.trim() || (item.externalId ?? "").toLowerCase().includes(codeFilter.trim().toLowerCase())) && (!normalizedTableSearch || [item.title, item.company, item.externalId, item.jobSource, item.workMode, item.location, item.contactEmail, item.label, item.blocker].filter(Boolean).join(" ").toLocaleLowerCase("pt-BR").includes(normalizedTableSearch)) && (!publishedDateFilter || dayKey(item.sourcePublishedAt) === publishedDateFilter) && (!receivedDateFilter || dayKey(item.receivedAt) === receivedDateFilter) && (!analysedDateFilter || dayKey(item.processedAt) === analysedDateFilter));
   // Os contadores e a tabela devem falar sobre o mesmo recorte. O filtro de
   // rascunho é aplicado somente depois de contabilizar cada status.
@@ -853,7 +853,7 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
                   <article className="approved"><small>Aprovadas</small><strong>{filteredHistory.filter((item) => item.verdict === "✅").length}</strong></article>
                   <article className="partial"><small>Prováveis</small><strong>{filteredHistory.filter((item) => item.verdict === "🟡").length}</strong></article>
                   <article className="rejected"><small>Não aderentes</small><strong>{filteredHistory.filter((item) => item.verdict === "❌" || item.verdict === "🔴").length}</strong></article>
-                  <article><small>Enviadas / candidatas</small><strong>{filteredHistory.filter(hasCompletedOutreach).length}</strong></article>
+                  <article><small>Enviadas / candidaturas iniciadas</small><strong>{filteredHistory.filter(hasCompletedOutreach).length}</strong></article>
                   <article><small>Analisadas</small><strong>{filteredHistory.length}</strong></article>
                 </>}
               </div>
@@ -863,7 +863,7 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
               <div className="triage-run-settings triage-table-filters">
                 <label>Situação<select value={situationFilter} onChange={(e) => { setSituationFilter(e.target.value as typeof situationFilter); setHistoryPage(0); }}><option value="pending">Não analisadas</option><option value="analysed">Analisadas</option><option value="all">Todas</option></select></label>
                 <label>Veredito<select value={verdictFilter} onChange={(e) => { setVerdictFilter(e.target.value); setHistoryPage(0); }}><option value="all">Todos</option><option value="✅">Aprovadas</option><option value="🟡">Prováveis</option><option value="❌">Reprovadas</option></select></label>
-                <label>Envio / candidatura<select value={outreachFilter} onChange={(e) => { setOutreachFilter(e.target.value as typeof outreachFilter); setHistoryPage(0); }}><option value="all">Todas</option><option value="completed">Já enviados / candidatados</option><option value="pending">Ainda não enviados / candidatados</option></select></label>
+                <label>Envio / candidatura<select value={outreachFilter} onChange={(e) => { setOutreachFilter(e.target.value as typeof outreachFilter); setHistoryPage(0); }}><option value="all">Todas</option><option value="completed">Já enviados / candidatura iniciada</option><option value="pending">Ainda não enviados / sem candidatura</option></select></label>
                 <label>Origem<select value={sourceFilter} onChange={(e) => { setSourceFilter(e.target.value); setHistoryPage(0); }}><option value="all">Regras, IA e histórico</option><option value="rules">Regras</option><option value="ai">IA</option><option value="legacy">Histórico do Radar</option></select></label>
                 <label>Fonte<select value={jobSourceFilter} onChange={(e) => { setJobSourceFilter(e.target.value); setHistoryPage(0); }}><option value="all">Todas</option>{jobSources.map((source) => <option key={source} value={source}>{sourceName(source)}</option>)}</select></label>
                 <label>Código<input type="text" inputMode="numeric" placeholder="Ex.: 85885" value={codeFilter} onChange={(e) => { setCodeFilter(e.target.value); setHistoryPage(0); }} /></label>
