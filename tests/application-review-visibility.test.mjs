@@ -13,13 +13,14 @@ test("rascunhos e candidaturas enviadas ficam ocultos por padrão na fila de an�
   assert.match(dashboard, /useState<ReviewVisibility>\("pending"\)/);
   assert.match(dashboard, /params\.set\("reviewVisibility", reviewVisibility\)/);
   assert.match(jobsRoute, /reviewVisibility.*=== "all" \? "all" : "pending"/);
-  assert.match(jobsRoute, /item\.applicationStatus === "generated" \|\| item\.applicationStatus === "sent" \|\| item\.applicationStatus === "responded"/);
+  assert.match(jobsRoute, /item\.applicationStatus === "opened" \|\| item\.applicationStatus === "generated" \|\| item\.applicationStatus === "sent" \|\| item\.applicationStatus === "responded"/);
   assert.match(jobsRoute, /notInArray\(jobs\.id, applicationIds\)/);
 });
 
 test("tabela informa a situação da candidatura", async () => {
   const dashboard = await read("../app/Dashboard.tsx");
   assert.match(dashboard, /label: "Situação"/);
+  assert.match(dashboard, /Candidatura iniciada/);
   assert.match(dashboard, /Rascunho/);
   assert.match(dashboard, /E-mail enviado/);
   assert.match(dashboard, /Resposta recebida/);

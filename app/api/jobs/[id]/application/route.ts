@@ -6,7 +6,7 @@ import { jobs, userJobStatus } from "../../../../../db/schema";
 import { resolveAutomaticStage } from "../../../../../lib/pipeline-stage";
 
 export const dynamic = "force-dynamic";
-const STATUSES = ["generated", "sent", "responded"] as const;
+const STATUSES = ["opened", "generated", "sent", "responded"] as const;
 type ApplicationStatus = typeof STATUSES[number];
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -26,7 +26,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const currentRank = existing?.applicationStatus ? STATUSES.indexOf(existing.applicationStatus) : -1;
   const status = (requestedRank >= currentRank ? body.status : existing?.applicationStatus) as ApplicationStatus;
   const now = new Date();
-  const requestedStage = body.stage ?? (status === "generated" ? "saved" : "applied");
+  const requestedStage = body.stage ?? (status === "opened" || status === "generated" ? "saved" : "applied");
   const stage = resolveAutomaticStage(existing?.stage, requestedStage);
   const values = {
     userId: user.userId,

@@ -63,7 +63,7 @@ export const userJobStatus = sqliteTable("user_job_status", {
   userId: text("user_id").notNull(), jobId: text("job_id").notNull().references(() => jobs.id),
   stage: text("stage", { enum: ["viewed", "saved", "applied", "interview", "offer", "rejected", "archived"] }).notNull().default("viewed"),
   note: text("note"),
-  applicationStatus: text("application_status", { enum: ["generated", "sent", "responded"] }),
+  applicationStatus: text("application_status", { enum: ["opened", "generated", "sent", "responded"] }),
   generatedAt: integer("generated_at", { mode: "timestamp_ms" }),
   sentAt: integer("sent_at", { mode: "timestamp_ms" }),
   respondedAt: integer("responded_at", { mode: "timestamp_ms" }),

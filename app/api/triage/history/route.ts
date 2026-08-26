@@ -56,6 +56,7 @@ export async function GET() {
       publishedAt: jobs.publishedAt,
       receivedAt: jobs.firstSeenAt,
       url: jobs.url,
+      applyUrl: jobs.applyUrl,
       contactEmail: jobs.contactEmail,
       contactSubject: jobs.contactSubject,
       draftStatus: draftOutbox.status,

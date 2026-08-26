@@ -174,7 +174,7 @@ like(jobs.stack, searchPattern),
 : undefined;
 const pipelineIds = pipeline.map((item) => item.jobId);
 const applicationIds = pipeline
-  .filter((item) => item.applicationStatus === "generated" || item.applicationStatus === "sent" || item.applicationStatus === "responded")
+  .filter((item) => item.applicationStatus === "opened" || item.applicationStatus === "generated" || item.applicationStatus === "sent" || item.applicationStatus === "responded")
   .map((item) => item.jobId);
 const applicationVisibilityCondition = reviewVisibility === "pending" && applicationIds.length
   ? notInArray(jobs.id, applicationIds)

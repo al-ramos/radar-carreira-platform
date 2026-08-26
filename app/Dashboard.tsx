@@ -28,7 +28,7 @@ import { buildApinfoApplicationEmail } from "../lib/application-email";
 import { jobAreaLabel } from "../lib/job-area";
 import { normalizeContactEmail } from "../lib/jobs";
 import { AUTOMATIC_ACTION_STAGE, resolveAutomaticStage } from "../lib/pipeline-stage";
-type ApplicationStatus = "generated" | "sent" | "responded";
+type ApplicationStatus = "opened" | "generated" | "sent" | "responded";
 type ReviewVisibility = "pending" | "all";
 type Job = {
   id: string;
@@ -1748,7 +1748,7 @@ export default function Dashboard() {
 
     const previous = pipelineItems.find((item) => item.id === job.id);
     const optimisticStage = resolveAutomaticStage(previous?.stage, stage);
-    const statusRank: Record<ApplicationStatus, number> = { generated: 0, sent: 1, responded: 2 };
+    const statusRank: Record<ApplicationStatus, number> = { opened: 0, generated: 1, sent: 2, responded: 3 };
     const optimisticStatus = previous?.applicationStatus && statusRank[previous.applicationStatus] > statusRank[status]
       ? previous.applicationStatus
       : status;
@@ -1777,7 +1777,7 @@ export default function Dashboard() {
         if (!response.ok) throw new Error(data?.error ?? "Não foi possível atualizar o status da candidatura.");
         const application = data.application as PipelineJob;
         setPipelineItems(current => current.map(item => item.id === job.id ? { ...item, ...application } : item));
-        const labels: Record<ApplicationStatus, string> = { generated: "Mensagem registrada como gerada.", sent: "Candidatura marcada como enviada.", responded: "Resposta recebida registrada." };
+        const labels: Record<ApplicationStatus, string> = { opened: "Candidatura iniciada registrada.", generated: "Mensagem registrada como gerada.", sent: "Candidatura marcada como enviada.", responded: "Resposta recebida registrada." };
         setMessage(toast ?? labels[status]);
         return true;
       } catch (error) {
@@ -3226,7 +3226,7 @@ export default function Dashboard() {
                         ) : "—"}
                       </span>
                       <span role="cell" className="job-table-cell">
-                        {j.applicationStatus === "generated" ? "Rascunho" : j.applicationStatus === "sent" ? "E-mail enviado" : j.applicationStatus === "responded" ? "Resposta recebida" : "Pendente"}
+                        {j.applicationStatus === "opened" ? "Candidatura iniciada" : j.applicationStatus === "generated" ? "Rascunho" : j.applicationStatus === "sent" ? "E-mail enviado" : j.applicationStatus === "responded" ? "Resposta recebida" : "Pendente"}
                       </span>
                       <span role="cell" className="job-table-cell job-table-cell-date">
                         {j.sourcePublishedAt ? formatJobDateTime(j.sourcePublishedAt) : j.age}
@@ -3647,12 +3647,13 @@ export default function Dashboard() {
                 {selectedApplication?.applicationStatus && (
                   <div className="application-tracking" aria-label="Acompanhamento da candidatura">
                     <span>
-                      {selectedApplication.applicationStatus === "generated" ? "Mensagem gerada" : selectedApplication.applicationStatus === "sent" ? "Candidatura enviada" : "Resposta recebida"}
+                      {selectedApplication.applicationStatus === "opened" ? "Candidatura iniciada" : selectedApplication.applicationStatus === "generated" ? "Mensagem gerada" : selectedApplication.applicationStatus === "sent" ? "Candidatura enviada" : "Resposta recebida"}
                       {selectedApplication.generatedAt && <small>Gerada em {formatJobDate(selectedApplication.generatedAt)}</small>}
                       {selectedApplication.sentAt && <small>Enviada em {formatJobDate(selectedApplication.sentAt)}</small>}
                       {selectedApplication.respondedAt && <small>Resposta em {formatJobDate(selectedApplication.respondedAt)}</small>}
                     </span>
                     {selectedApplication.applicationStatus === "generated" && <button type="button" onClick={() => updateApplicationStatus(selectedJob, "sent", AUTOMATIC_ACTION_STAGE.mark_sent)}>Marcar como enviada</button>}
+                    {selectedApplication.applicationStatus === "opened" && <button type="button" onClick={() => updateApplicationStatus(selectedJob, "sent", AUTOMATIC_ACTION_STAGE.mark_sent)}>Confirmar candidatura enviada</button>}
                     {selectedApplication.applicationStatus === "sent" && <button type="button" onClick={() => updateApplicationStatus(selectedJob, "responded", AUTOMATIC_ACTION_STAGE.mark_sent)}>Registrar resposta</button>}
                   </div>
                 )}

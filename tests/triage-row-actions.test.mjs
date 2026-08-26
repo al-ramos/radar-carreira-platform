@@ -18,6 +18,10 @@ test("triagem permite ações avulsas por vaga sem contornar os guardrails", asy
   assert.match(screen, /Selecionar todas as vagas filtradas/);
   assert.match(screen, /Consultar contatos já cadastrados/);
   assert.match(screen, /Consultar IA/);
+  assert.match(screen, /Abrir candidaturas/);
+  assert.match(screen, /Candidatar/);
+  assert.match(screen, /openSelectedApplications/);
+  assert.match(screen, /\/api\/triage\/applications\/open/);
   assert.match(screen, /Preparar rascunhos/);
   assert.match(screen, /draftActionBlocker/);
   assert.match(screen, /LinkedIn não permite rascunho/);
