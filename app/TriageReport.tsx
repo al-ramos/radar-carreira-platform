@@ -337,18 +337,34 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
     setQueueingDrafts(true);
     setMessage(jobIds?.length ? `Verificando ${jobIds.length} vaga(s) selecionada(s) para a fila de rascunhos…` : "Verificando vagas elegíveis para a fila de rascunhos…");
     try {
-      const response = await fetch("/api/triage/drafts/queue", {
+      const requestDraftQueue = () => fetch("/api/triage/drafts/queue", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ sourceId: actionSourceId, roleArea: actionArea, ingestionChannel: actionChannel, homePeriod: actionPeriod, jobIds }),
       });
-      const result = await response.json() as { error?: string; considered: number; queued: number; noValidContact: number; outdated: number; alreadyPresent: number; immediateDraft?: { requested: boolean; created?: number; reason?: string } };
+      let response = await requestDraftQueue();
+      let result = await readJsonResponse<{ error?: string; considered: number; queued: number; noValidContact: number; outdated: number; alreadyPresent: number; immediateDraft?: { requested: boolean; created?: number; reason?: string } }>(response, "A preparação do rascunho");
       if (!response.ok) throw new Error(result.error ?? "Não foi possível preparar a fila de rascunhos.");
+      let revalidated = false;
+      // Uma atualização de perfil ou a chegada posterior do e-mail não deve
+      // obrigar a pessoa a executar outra ação para uma única vaga. Reavalia
+      // pelas regras atuais e só repete a fila se a vaga continuar elegível.
+      if (jobIds?.length === 1 && result.outdated > 0) {
+        revalidated = true;
+        setDraftActionStatuses((current) => ({ ...current, [jobIds[0]]: { kind: "waiting", text: "Reavaliando com o perfil atual…" } }));
+        setMessage("A triagem estava desatualizada; reavaliando esta vaga antes de criar o rascunho…");
+        const analysisResponse = await fetch(`/api/jobs/${encodeURIComponent(jobIds[0])}/analysis`, { method: "POST" });
+        const analysis = await readJsonResponse<{ error?: string }>(analysisResponse, "A reavaliação da vaga");
+        if (!analysisResponse.ok) throw new Error(analysis.error ?? "A vaga não continua elegível após a reavaliação.");
+        response = await requestDraftQueue();
+        result = await readJsonResponse<{ error?: string; considered: number; queued: number; noValidContact: number; outdated: number; alreadyPresent: number; immediateDraft?: { requested: boolean; created?: number; reason?: string } }>(response, "A preparação do rascunho");
+        if (!response.ok) throw new Error(result.error ?? "Não foi possível preparar a fila de rascunhos após reavaliar a vaga.");
+      }
       const queueMessagePrefix = jobIds?.length ? "Fila preparada para a seleção" : "Fila preparada para este recorte";
       const immediateMessage = result.immediateDraft?.requested
         ? result.immediateDraft.created ? ` ${result.immediateDraft.created} rascunho(s) foi(ram) criado(s) agora no Gmail; nenhum e-mail foi enviado.` : " A criação foi acionada agora no Gmail; atualize a tela em instantes para confirmar os rascunhos."
         : ` Criação manual indisponível: ${result.immediateDraft?.reason ?? "tente novamente pela fila."}`;
-      setMessage(`${queueMessagePrefix} (${result.considered} vaga(s)): ${result.queued} elegível(is); ${result.noValidContact} sem e-mail válido; ${result.outdated} precisa(m) de nova avaliação; ${result.alreadyPresent} já estava(m) na fila.${immediateMessage}`);
+      setMessage(`${revalidated ? "Vaga reavaliada. " : ""}${queueMessagePrefix} (${result.considered} vaga(s)): ${result.queued} elegível(is); ${result.noValidContact} sem e-mail válido; ${result.outdated} precisa(m) de nova avaliação; ${result.alreadyPresent} já estava(m) na fila.${immediateMessage}`);
       if (jobIds?.length === 1) {
         const status = result.immediateDraft?.requested
           ? result.immediateDraft.created

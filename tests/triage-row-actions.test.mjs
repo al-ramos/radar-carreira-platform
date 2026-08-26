@@ -27,6 +27,9 @@ test("triagem permite ações avulsas por vaga sem contornar os guardrails", asy
   assert.match(screen, /LinkedIn não permite rascunho/);
   assert.match(screen, /E-mail válido exigido/);
   assert.match(screen, /queueDrafts\(\[item\.jobId\]\)/);
+  assert.match(screen, /A triagem estava desatualizada; reavaliando esta vaga/);
+  assert.match(screen, /api\/jobs\/\$\{encodeURIComponent\(jobIds\[0\]\)\}\/analysis/);
+  assert.match(screen, /result\.outdated > 0/);
   assert.match(screen, /requestAiReview\(\[item\.jobId\]\)/);
   assert.match(screen, /prepareCodexReview\(\[item\.jobId\]\)/);
   assert.match(screen, /\/api\/triage\/codex-queue\?state=all/);
