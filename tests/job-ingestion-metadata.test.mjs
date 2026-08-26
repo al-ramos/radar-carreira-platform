@@ -21,7 +21,10 @@ test("API filtra importações pelo modo e pelo horário exato de recebimento", 
   assert.match(route, /gte\(jobs\.firstSeenAt, receivedFrom\)/);
   assert.match(route, /lte\(jobs\.firstSeenAt, receivedTo\)/);
   assert.match(route, /sourcePublishedAt: jobs\.sourcePublishedAt/);
-  assert.match(route, /sourceName: jobSources\.name/);
+  assert.match(route, /const sourceLabel = sql<string \| null>`coalesce/);
+  assert.match(route, /inner join \$\{importRuns\} on \$\{jobImportRuns\.runId\} = \$\{importRuns\.id\}/);
+  assert.match(route, /when \$\{jobs\.url\} like \$\{"%linkedin\.com%"\} then \$\{"LinkedIn"\}/);
+  assert.match(route, /sourceName: sourceLabel/);
   assert.match(route, /gte\(jobs\.firstSeenAt, cutoff\)/);
 });
 

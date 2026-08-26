@@ -218,6 +218,21 @@ const affinityCandidateCondition = minScore > BASE_TECH_SCORE
 )
 : undefined;
 const condition = and(exactSourceCondition, roleAreaCondition, channelCondition, importRunCondition, seniorityCondition, searchCondition, pipelineCondition, applicationVisibilityCondition, affinityCandidateCondition);
+// Importações antigas podem referenciar um UUID que não sobreviveu na tabela
+// de fontes. Nunca exponha esse identificador interno no Radar: recupera o
+// nome registrado na importação e, para os conectores conhecidos, usa a URL.
+const sourceLabel = sql<string | null>`coalesce(
+  ${jobSources.name},
+  (select ${importRuns.source} from ${jobImportRuns}
+    inner join ${importRuns} on ${jobImportRuns.runId} = ${importRuns.id}
+    where ${jobImportRuns.jobId} = ${jobs.id}
+    order by ${jobImportRuns.receivedAt} desc limit 1),
+  case
+    when ${jobs.url} like ${"%linkedin.com%"} then ${"LinkedIn"}
+    when ${jobs.url} like ${"%apinfo.com%"} then ${"APInfo"}
+    else ${"Fonte importada"}
+  end
+)`;
 // Contagem "sem e-mail" mostrada junto ao checkbox — sempre calculada com os
 // mesmos filtros ativos (fonte, área, canal, importação, busca, pipeline),
 // mas ignorando o próprio filtro de e-mail, para o número não desaparecer
@@ -262,7 +277,7 @@ firstSeenAt: jobs.firstSeenAt,
 ingestionMode: jobs.ingestionMode,
 ingestionChannel: jobs.ingestionChannel,
 roleArea: jobs.roleArea,
-sourceName: jobSources.name,
+sourceName: sourceLabel,
 url: jobs.url,
 applyUrl: jobs.applyUrl,
 contactEmail: jobs.contactEmail,
@@ -288,9 +303,9 @@ linkedIn: sql<number>`sum(case when ${jobs.url} like ${"%linkedin.com%"} then 1 
 apinfo: sql<number>`sum(case when ${jobs.sourceId} = ${"apinfo-extension"} or ${jobs.url} like ${"%apinfo.com%"} then 1 else 0 end)`,
 sources: sql<number>`count(distinct ${jobs.sourceId})`,
 }).from(jobs).where(and(baseCondition, applicationVisibilityCondition)),
-getDb().select({ id: jobs.sourceId, label: jobSources.name, count: sql<number>`count(*)` })
+getDb().select({ id: jobs.sourceId, label: sourceLabel, count: sql<number>`count(*)` })
   .from(jobs).leftJoin(jobSources, eq(jobs.sourceId, jobSources.id)).where(and(baseCondition, applicationVisibilityCondition))
-  .groupBy(jobs.sourceId, jobSources.name).orderBy(asc(jobSources.name)),
+  .groupBy(jobs.sourceId, sourceLabel).orderBy(asc(sourceLabel)),
 getDb().select({ id: jobs.roleArea, count: sql<number>`count(*)` }).from(jobs).where(and(baseCondition, applicationVisibilityCondition)).groupBy(jobs.roleArea),
 getDb().select({ id: jobs.ingestionChannel, count: sql<number>`count(*)` }).from(jobs).where(and(baseCondition, applicationVisibilityCondition)).groupBy(jobs.ingestionChannel),
 getDb().select({ id: importRuns.id, source: importRuns.source, sourceId: importRuns.sourceId, channel: importRuns.channel, startedAt: importRuns.startedAt, received: importRuns.received, inserted: importRuns.inserted, updated: importRuns.updated, jobs: sql<number>`count(distinct ${jobImportRuns.jobId})` })

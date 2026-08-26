@@ -21,7 +21,8 @@ test("API de vagas filtra dimensões e devolve opções com contagem", async () 
   assert.match(route, /filterOptions:/);
   assert.match(route, /sources: sourceOptionsRows/);
   assert.match(route, /importRuns: recentRuns/);
-  assert.match(route, /groupBy\(jobs\.sourceId, jobSources\.name\)\.orderBy\(asc\(jobSources\.name\)\)/);
+  assert.match(route, /label: sourceLabel/);
+  assert.match(route, /groupBy\(jobs\.sourceId, sourceLabel\)\.orderBy\(asc\(sourceLabel\)\)/);
 });
 
 test("Radar apresenta filtros de fonte, área, canal e importação específica", async () => {
