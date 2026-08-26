@@ -55,7 +55,8 @@ function inspectImportedJob(value:unknown):{job:ImportedJob|null;reasons:string[
   applyUrl:string("applyUrl")||undefined,
   contactEmail:string("contactEmail")||undefined,
   contactSubject:string("contactSubject")||undefined,
-  sourceId:string("sourceId")||undefined,applicationClosed
+  sourceId:string("sourceId")||undefined,
+  ...(applicationClosed?{applicationClosed:true}:{})
  },reasons:[]};
 }
 
