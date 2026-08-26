@@ -35,3 +35,8 @@ test("limita a 2000 linhas processadas e ignora arquivo vazio sem erro", () => {
   const { rows } = parseCsvTriageImport(header + body);
   assert.equal(rows.length, 2000);
 });
+
+test("prioriza a coluna de veredito final e lê o detalhe da decisão", () => {
+  const { rows } = parseCsvTriageImport("código;status;veredito final;detalhe do veredito\n123;❌;🟡;\"Experiência aderente; confirmar idioma\"");
+  assert.deepEqual(rows, [{ line: 2, externalId: "123", verdict: "🟡", description: "Experiência aderente; confirmar idioma" }]);
+});

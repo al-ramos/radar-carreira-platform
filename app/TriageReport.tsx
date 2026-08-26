@@ -394,7 +394,7 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
       return [item.description.trim(), stack.length ? `Stack: ${stack.join(", ")}` : ""].filter(Boolean).join(" · ") || "Detalhes não informados";
     };
     const csv = [
-      "codigo;titulo;status;descricao",
+      "codigo;titulo;status;detalhe do veredito",
       ...selectedHistory.map((item) => [item.externalId ?? item.jobId, item.title, item.label || "Não analisada", jobDescription(item)].map(csvCell).join(";")),
     ].join("\r\n");
     const link = document.createElement("a");
@@ -713,9 +713,9 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
                 </section>}
                 {aiReview && <section className="triage-ai-review" aria-label="Resultado da análise da IA"><div><h3>Análise da IA</h3><small>{aiReview.status === "completed" ? "Concluída" : `${aiReview.completed ?? 0}/${aiReview.total ?? aiReview.chunks ?? 0} lotes concluídos`} · {aiReview.provider ?? "processando"}{aiReview.model ? ` · ${aiReview.model}` : ""}</small></div>{aiReview.response ? <p>{aiReview.response}</p> : <p>{aiReview.error ?? "A análise está sendo processada em segundo plano."}</p>}</section>}
                 {csvImportOpen && <section className="triage-csv-import triage-ai-prompt" aria-label="Reimportar análise externa em CSV">
-                  <div className="triage-ai-prompt-heading"><b>Reimportar análise externa (CSV)</b><small>Colunas: código, status (✅/🟡/🔴/❌ ou texto), descrição. O status do CSV substitui o veredito atual da vaga e é registrado com origem &quot;IA&quot;; até 2.000 linhas / 2 MB por vez.</small></div>
+                  <div className="triage-ai-prompt-heading"><b>Reimportar análise externa (CSV)</b><small>Colunas: código, status ou veredito final (✅/🟡/🔴/❌ ou texto) e detalhe do veredito. A justificativa aparece na tabela; se houver mais de uma linha para o mesmo código, a última é a conclusão aplicada. Até 2.000 linhas / 2 MB por vez.</small></div>
                   <input type="file" accept=".csv,text/csv" aria-label="Selecionar arquivo CSV de análise" disabled={csvImportLoading} onChange={(event) => { const file = event.target.files?.[0]; if (file) void loadCsvImportFile(file); event.target.value = ""; }} />
-                  <textarea aria-label="Conteúdo CSV da análise" value={csvImportText} onChange={(event) => setCsvImportText(event.target.value)} placeholder={"codigo,status,descricao\n85981,🟡,Provável com ressalvas"} disabled={csvImportLoading} />
+                  <textarea aria-label="Conteúdo CSV da análise" value={csvImportText} onChange={(event) => setCsvImportText(event.target.value)} placeholder={"codigo,veredito final,detalhe do veredito\n85981,🟡,Provável: experiência aderente; confirmar inglês"} disabled={csvImportLoading} />
                   <div><button type="button" className="triage-queue-button" onClick={() => { setCsvImportOpen(false); setCsvImportText(""); setCsvImportResult(null); }} disabled={csvImportLoading}>Cancelar</button><button type="button" className="primary" onClick={() => void submitCsvImport()} disabled={csvImportLoading || !csvImportText.trim()}>{csvImportLoading ? "Importando…" : "Substituir vereditos"}</button></div>
                   {csvImportResult && <div className="triage-csv-import-result" aria-live="polite">
                     <span><b>{csvImportResult.applied}</b> veredito(s) substituído(s){csvImportResult.draftsQueued ? `, ${csvImportResult.draftsQueued} rascunho(s) enfileirado(s)` : ""}{csvImportResult.draftsCreated ? `, ${csvImportResult.draftsCreated} criado(s) no Gmail` : ""}.</span>

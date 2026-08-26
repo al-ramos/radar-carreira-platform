@@ -42,6 +42,7 @@ export async function GET() {
       source: userJobAnalyses.source,
       confidence: userJobAnalyses.confidence,
       rows: userJobAnalyses.rows,
+      explanation: userJobAnalyses.explanation,
       processedAt: userJobAnalyses.updatedAt,
       title: jobs.title,
       company: jobs.company,
@@ -143,6 +144,8 @@ export async function GET() {
   return NextResponse.json({
     items: items.map((item) => ({
       ...item,
+      // O detalhe persistido explica o veredito na mesma linha da tabela.
+      label: item.explanation?.trim() ? `${item.label} · ${item.explanation.trim()}` : item.label,
       // Importações anteriores à coluna `source_published_at` ainda possuem a
       // data de publicação em `published_at`. Sem esse fallback, a consulta
       // APInfo do dia perde vagas que foram efetivamente publicadas hoje.

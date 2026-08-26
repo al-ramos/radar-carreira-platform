@@ -13,4 +13,5 @@ test("reimportação de análise externa substitui veredito, gera rascunho quand
   assert.match(route, /scheduledTriageAutoCreateEnabled/, "usa o mesmo interruptor de criação automática dos demais fluxos");
   assert.match(route, /db\.insert\(triageHistory\)/, "preserva o histórico aditivo");
   assert.match(route, /trigger: "manual", scope: "csv-import"/, "fica auditável como um lote");
+  assert.match(route, /finalRowsByExternalId/, "quando o CSV repetir um código, aplica a conclusão da última linha");
 });

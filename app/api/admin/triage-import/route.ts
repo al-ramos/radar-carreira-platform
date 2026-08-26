@@ -41,8 +41,13 @@ export async function POST(request: Request) {
   if (text.length > MAX_BYTES) return NextResponse.json({ error: "Arquivo CSV excede 2 MB." }, { status: 400 });
 
   const { rows, rejected } = parseCsvTriageImport(text);
-  if (!rows.length) return NextResponse.json({ error: "Nenhuma linha válida encontrada. Colunas esperadas: código, status, descrição.", rejected }, { status: 400 });
+  if (!rows.length) return NextResponse.json({ error: "Nenhuma linha válida encontrada. Colunas esperadas: código, status ou veredito final, detalhe do veredito.", rejected }, { status: 400 });
   if (rows.length > MAX_ROWS) return NextResponse.json({ error: `O limite é de ${MAX_ROWS} linhas por importação.` }, { status: 400 });
+
+  // A última linha da mesma vaga é a conclusão atualizada da reanálise.
+  const finalRowsByExternalId = new Map<string, typeof rows[number]>();
+  for (const row of rows) finalRowsByExternalId.set(row.externalId, row);
+  const finalRows = [...finalRowsByExternalId.values()];
 
   const db = getDb();
   const profile = await db.select().from(profiles).where(eq(profiles.userId, user.userId)).limit(1).then((r) => r[0]);
@@ -64,7 +69,7 @@ export async function POST(request: Request) {
   const ambiguous: string[] = [];
   const errors: Array<{ code: string; error: string }> = [];
 
-  for (const row of rows) {
+  for (const row of finalRows) {
     const matches = await db.select().from(jobs).where(eq(jobs.externalId, row.externalId));
     if (matches.length === 0) { notFound.push(row.externalId); continue; }
     if (matches.length > 1) { ambiguous.push(row.externalId); continue; }

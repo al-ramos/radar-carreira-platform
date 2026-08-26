@@ -8,10 +8,11 @@ const STATUS_ALIASES: Record<string, TriageImportRow["verdict"]> = {
   "❌": "❌", "bloqueador": "❌", "bloqueador estrutural": "❌", "bloqueada": "❌", "bloqueado": "❌",
 };
 
-const HEADER_ALIASES: Record<string, "externalId" | "verdict" | "description"> = {
+const HEADER_ALIASES: Record<string, "externalId" | "verdict" | "finalVerdict" | "description"> = {
   codigo: "externalId", "código": "externalId", externalid: "externalId", "código externo": "externalId", "codigo externo": "externalId",
   status: "verdict", veredito: "verdict",
-  descricao: "description", "descrição": "description", motivo: "description", label: "description",
+  "veredito final": "finalVerdict", "status final": "finalVerdict", "decisão final": "finalVerdict", "decisao final": "finalVerdict", "conclusão final": "finalVerdict", "conclusao final": "finalVerdict",
+  descricao: "description", "descrição": "description", motivo: "description", label: "description", justificativa: "description", racional: "description", "detalhe do veredito": "description", "motivo do veredito": "description",
 };
 
 function normalizeHeader(value: string): string {
@@ -63,12 +64,13 @@ export function parseCsvTriageImport(input: string): TriageImportResult {
 
   table.slice(1, 2001).forEach((columns, index) => {
     const line = index + 2; // +1 pelo header, +1 porque a linha 1 é humana
-    const record: Partial<Record<"externalId" | "verdict" | "description", string>> = {};
+    const record: Partial<Record<"externalId" | "verdict" | "finalVerdict" | "description", string>> = {};
     headerMap.forEach((key, colIndex) => { if (key) record[key] = columns[colIndex]?.trim() ?? ""; });
     const externalId = record.externalId?.trim();
     if (!externalId) { rejected.push({ line, reason: "código ausente" }); return; }
-    const verdict = record.verdict ? normalizeStatus(record.verdict) : null;
-    if (!verdict) { rejected.push({ line, reason: `status "${record.verdict ?? ""}" não reconhecido` }); return; }
+    const verdictValue = record.finalVerdict?.trim() || record.verdict;
+    const verdict = verdictValue ? normalizeStatus(verdictValue) : null;
+    if (!verdict) { rejected.push({ line, reason: `status "${verdictValue ?? ""}" não reconhecido` }); return; }
     rows.push({ line, externalId, verdict, description: record.description?.trim() ?? "" });
   });
 
