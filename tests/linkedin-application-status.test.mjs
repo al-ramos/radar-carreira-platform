@@ -19,3 +19,10 @@ test("confirmação avança a candidatura sem baixar uma resposta já registrada
   assert.match(source, /resolveAutomaticStage\(existing\?\.stage, "applied"\)/);
   assert.match(source, /previous !== "sent" && previous !== "responded"/);
 });
+
+test("confirmações e encerramentos do LinkedIn aparecem no sino", async () => {
+  const source = await read("../app/api/jobs/[id]/linkedin-status/route.ts");
+  assert.match(source, /notifyDetectedApplication/);
+  assert.match(source, /Vaga encerrada no LinkedIn/);
+  assert.match(source, /createNotification/);
+});

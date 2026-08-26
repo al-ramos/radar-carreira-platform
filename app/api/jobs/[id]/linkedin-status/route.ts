@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../../chatgpt-auth";
 import { getDb } from "../../../../../db/index";
 import { jobEvents, jobs, userJobStatus } from "../../../../../db/schema";
+import { createNotification, notifyDetectedApplication } from "../../../../../lib/notifications";
 import { resolveAutomaticStage } from "../../../../../lib/pipeline-stage";
 
 export const dynamic = "force-dynamic";
@@ -29,6 +30,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (changed) {
       await db.update(jobs).set({ status: "closed", updatedAt: now }).where(eq(jobs.id, id));
       await db.insert(jobEvents).values({ jobId: id, type: "linkedin_application_closed", detail: evidence, occurredAt: now });
+      await createNotification(db, {
+        type: "application",
+        severity: "info",
+        title: `Vaga encerrada no LinkedIn — ${job.company}`,
+        body: `${job.title}${job.externalId ? ` (vaga ${job.externalId})` : ""} · LinkedIn informou: ${evidence}`,
+        link: `/?job=${encodeURIComponent(id)}`,
+        metadata: { jobId: id, externalId: job.externalId, evidence, detectedAt: now.toISOString(), source: "linkedin-page" },
+      });
     }
     return NextResponse.json({ ok: true, changed, state: "closed" });
   }
@@ -38,6 +47,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (changed) {
     await db.insert(userJobStatus).values(values).onConflictDoUpdate({ target: [userJobStatus.userId, userJobStatus.jobId], set: { stage: values.stage, note: values.note, applicationStatus: values.applicationStatus, generatedAt: values.generatedAt, sentAt: values.sentAt, respondedAt: values.respondedAt, updatedAt: now } });
     await db.insert(jobEvents).values({ jobId: id, type: "linkedin_application_sent", detail: evidence, occurredAt: now });
+    await notifyDetectedApplication(db, { jobId: id, title: job.title, company: job.company, externalId: job.externalId, evidence, detectedAt: now });
   }
   return NextResponse.json({ ok: true, changed, state: "sent", application: values });
 }
