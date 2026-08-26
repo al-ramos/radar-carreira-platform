@@ -15,7 +15,7 @@ test("toda aprovação segura cria rascunho imediato, sem enviar e-mail", async 
   ]);
   assert.match(run, /const draftQueueEnabled = settings\?\.draftQueueEnabled \?\? true/);
   assert.match(run, /if \(draftQueueEnabled && safelyRefined && finalVerdict\.result\.emoji === "✅"/);
-  assert.match(run, /const pendingScheduledOutboxIds = autoCreateEnabled && run\.trigger === "schedule"/);
+  assert.match(run, /const pendingScheduledOutboxIds = autoCreateEnabled/);
   assert.match(run, /eq\(draftOutbox\.status, "pending"\)/);
   assert.match(run, /\.limit\(20\)/);
   assert.match(run, /requestImmediateDraftCreation\(pendingScheduledOutboxIds\)/);

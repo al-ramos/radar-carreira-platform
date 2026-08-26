@@ -347,7 +347,7 @@ export async function POST(request: Request) {
   // O limite de 20 preserva o contrato do conector e espalha uma retomada grande
   // pelas próximas rodadas agendadas.
   let immediateDraft: { requested: boolean; created?: number; reason?: string } | null = null;
-  const pendingScheduledOutboxIds = autoCreateEnabled && run.trigger === "schedule"
+  const pendingScheduledOutboxIds = autoCreateEnabled
     ? await db.select({ id: draftOutbox.id })
       .from(draftOutbox)
       .where(and(eq(draftOutbox.userId, userId), eq(draftOutbox.status, "pending")))
