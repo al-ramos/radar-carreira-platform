@@ -51,7 +51,7 @@ function valuesFor(job: ImportedJob, now: Date) {
     description: job.description ?? "",
     firstSeenAt: now,
     lastSeenAt: now,
-    status: shouldArchiveImportedJob(sourcePublishedAt, now) ? "archived" as const : "active" as const,
+    status: job.applicationClosed ? "closed" as const : shouldArchiveImportedJob(sourcePublishedAt, now) ? "archived" as const : "active" as const,
     createdAt: now,
     updatedAt: now,
   };
@@ -131,7 +131,7 @@ export async function POST(request: Request) {
             contactSubject: sql`coalesce(${values.contactSubject}, ${jobs.contactSubject})`,
             description: values.description,
             lastSeenAt: now,
-            status: values.status === "archived" ? "archived" : sql`case when ${jobs.status} = 'archived' then 'archived' else 'active' end`,
+            status: values.status === "closed" ? "closed" : values.status === "archived" ? "archived" : sql`case when ${jobs.status} in ('archived', 'closed') then ${jobs.status} else 'active' end`,
             updatedAt: now,
           },
         });
