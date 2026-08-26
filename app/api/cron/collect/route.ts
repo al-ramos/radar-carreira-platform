@@ -114,6 +114,7 @@ export async function POST(request: Request) {
         details: JSON.stringify({
           accepted: filtered.accepted.length,
           rejectedProfile: filtered.rejected,
+          rejectedJobs: filtered.rejectedJobs,
           profileRule: careerRules.coreStack.length
             ? `Exige ${careerRules.coreStackMatchMode === "all" ? "todas" : "alguma"} das stacks obrigatórias: ${careerRules.coreStack.join(", ")}.`
             : "Perfil sem stacks obrigatórias; nenhuma vaga foi bloqueada na origem.",

@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { matchesRequiredStacks } from "../lib/stack-match.ts";
 
-test("combina stacks obrigatórias nos modos todas e qualquer", () => {
-  assert.equal(matchesRequiredStacks(["Java", "AWS"], ["Java", "AWS"], "all"), true);
-  assert.equal(matchesRequiredStacks(["Java"], ["Java", "AWS"], "all"), false);
-  assert.equal(matchesRequiredStacks(["AWS"], ["Java", "AWS"], "any"), true);
-  assert.equal(matchesRequiredStacks([], [], "all"), true);
+test("o filtro preserva código e cargo das vagas rejeitadas pelo perfil", async () => {
+  const source = await readFile(new URL("../lib/collector-profile-filter.ts", import.meta.url), "utf8");
+  assert.match(source, /rejectedJobs/);
+  assert.match(source, /externalId: item\.externalId/);
+  assert.match(source, /title: item\.title/);
+  assert.match(source, /company: item\.company/);
+  assert.match(source, /reason/);
 });

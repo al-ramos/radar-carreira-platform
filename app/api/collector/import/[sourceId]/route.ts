@@ -68,6 +68,7 @@ type ImportDetails = {
   invalid: number;
   invalidReasons: Record<string, number>;
   rejectedProfile: number;
+  rejectedJobs: Array<{ externalId?: string; title: string; company: string; reason: string }>;
   accepted: number;
   skippedExisting: number;
   profileRule: string;
@@ -242,6 +243,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ sou
     invalid: input.rejected,
     invalidReasons: input.reasons,
     rejectedProfile: filtered.rejected,
+    rejectedJobs: filtered.rejectedJobs,
     accepted: entries.length,
     skippedExisting: 0,
     profileRule: filtered.requiredStacks.length
