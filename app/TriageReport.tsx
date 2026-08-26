@@ -394,7 +394,7 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
       return [item.description.trim(), stack.length ? `Stack: ${stack.join(", ")}` : ""].filter(Boolean).join(" · ") || "Detalhes não informados";
     };
     const csv = [
-      "codigo;titulo;status;detalhe do veredito",
+      "codigo;titulo;status;descricao",
       ...selectedHistory.map((item) => [item.externalId ?? item.jobId, item.title, item.label || "Não analisada", jobDescription(item)].map(csvCell).join(";")),
     ].join("\r\n");
     const link = document.createElement("a");
