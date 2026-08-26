@@ -110,8 +110,10 @@ export async function POST(request: Request) {
     const expectedTo = normalizeContactEmail(item.contactEmail);
     const expectedSubject = subjectFor(item);
     const sentAt = parseSentAt(body.sentAt);
-    const matchesStoredThread = Boolean(item.gmailThreadId && body.gmailThreadId === item.gmailThreadId);
-    if (!expectedTo || normalizeContactEmail(body.to) !== expectedTo || (!matchesStoredThread && body.subject?.trim() !== expectedSubject) || !sentAt) {
+    // Uma conversa pode conter simultaneamente um rascunho e mensagens já
+    // enviadas. O id da conversa, sozinho, não é evidência de envio: exige
+    // sempre o destinatário, assunto e data da mensagem efetivamente enviada.
+    if (!expectedTo || normalizeContactEmail(body.to) !== expectedTo || body.subject?.trim() !== expectedSubject || !sentAt) {
       return NextResponse.json({ error: "A mensagem enviada não corresponde ao destinatário, assunto e data esperados" }, { status: 409 });
     }
     await db.update(draftOutbox).set({ status: "sent", gmailSentId: body.gmailSentId.slice(0, 500), sentAt, error: null, updatedAt: new Date() }).where(eq(draftOutbox.id, item.id));

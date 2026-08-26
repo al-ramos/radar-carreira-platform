@@ -213,18 +213,15 @@ function reconciliarEnviosManuaisRadar(options) {
 function encontrarMensagemEnviadaRadar(candidate) {
   const escapedSubject = String(candidate.subject || '').replace(/["\\]/g, ' ');
   const since = new Date(candidate.draftedAt).getTime() - 60 * 1000;
-  let messages = [];
-  if (candidate.gmailThreadId) {
-    try { messages = GmailApp.getThreadById(candidate.gmailThreadId).getMessages(); }
-    catch (error) { console.warn(`Conversa Gmail não encontrada para ${candidate.outboxId}: ${String(error)}`); }
-  }
-  if (!messages.length) {
-    const query = `in:sent to:${candidate.to} subject:"${escapedSubject}"`;
-    messages = GmailApp.search(query, 0, 20).flatMap(thread => thread.getMessages());
-  }
+  // Não use a conversa como prova de envio: um rascunho pertence à mesma
+  // conversa e seria confundido com mensagem enviada. A busca começa em
+  // Enviados e elimina explicitamente qualquer mensagem ainda em rascunho.
+  const query = `in:sent to:${candidate.to} subject:"${escapedSubject}"`;
+  const messages = GmailApp.search(query, 0, 20).flatMap(thread => thread.getMessages());
   return messages
+    .filter(message => !message.isDraft())
     .filter(message => message.getDate().getTime() >= since)
-    .filter(message => candidate.gmailThreadId || message.getSubject() === candidate.subject)
+    .filter(message => message.getSubject() === candidate.subject)
     .filter(message => extrairDestinatarioUnicoRadar(message.getTo()) === candidate.to.toLowerCase())
     .sort((left, right) => right.getDate().getTime() - left.getDate().getTime())[0] || null;
 }
