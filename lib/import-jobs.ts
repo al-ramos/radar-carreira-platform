@@ -8,7 +8,7 @@ const aliases:Record<string,keyof ImportedJob>={
  externalid:"externalId",idexterno:"externalId",sourceid:"sourceId",
  applyurl:"applyUrl",linkcandidatura:"applyUrl",linkdecandidatura:"applyUrl",
  contactemail:"contactEmail",emailcontato:"contactEmail",email:"contactEmail",
- contactsubject:"contactSubject",assuntoemail:"contactSubject",assunto:"contactSubject"
+ contactsubject:"contactSubject",assuntoemail:"contactSubject",assunto:"contactSubject",applicationclosed:"applicationClosed",encerrada:"applicationClosed"
 };
 
 export const normalizeHeader=(value:string)=>value.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]/g,"");
@@ -42,7 +42,7 @@ function inspectImportedJob(value:unknown):{job:ImportedJob|null;reasons:string[
  const company=string("company"),title=string("title"),url=string("url");
  const reasons=[!company?"empresa ausente":"",!title?"título ausente":"",!url?"link da vaga ausente":""].filter(Boolean);
  if(reasons.length)return{job:null,reasons};
- const rawLocation=string("location"),description=string("description"),linkedinId=url.match(/linkedin\.com\/jobs\/view\/(\d+)/i)?.[1];
+ const rawLocation=string("location"),description=string("description"),linkedinId=url.match(/linkedin\.com\/jobs\/view\/(\d+)/i)?.[1],applicationClosed=mapped.applicationClosed===true||/n[aã]o aceita mais candidaturas|no longer accepting applications/i.test(`${description} ${String(source.applicationClosed??"")}`);
  const stack=Array.isArray(mapped.stack)?mapped.stack.map(String).map(item=>item.trim()).filter(Boolean):typeof mapped.stack==="string"?mapped.stack.split(/[|,]/).map(item=>item.trim()).filter(Boolean):undefined;
  return {job:{
   company,title,url,description,
@@ -55,7 +55,7 @@ function inspectImportedJob(value:unknown):{job:ImportedJob|null;reasons:string[
   applyUrl:string("applyUrl")||undefined,
   contactEmail:string("contactEmail")||undefined,
   contactSubject:string("contactSubject")||undefined,
-  sourceId:string("sourceId")||undefined
+  sourceId:string("sourceId")||undefined,applicationClosed
  },reasons:[]};
 }
 

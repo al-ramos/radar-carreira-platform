@@ -7,7 +7,7 @@
 // uma captura posterior do usuário. Ficam fora do fingerprint para reenviar a
 // mesma vaga com o contato preenchido depois apenas atualizar a linha
 // existente, sem duplicar.
-export type ImportedJob={externalId?:string;company:string;title:string;seniority?:string;workMode?:string;location?:string;stack?:string[];publishedAt?:string;url:string;applyUrl?:string;contactEmail?:string;contactSubject?:string;description?:string;sourceId?:string};
+export type ImportedJob={externalId?:string;company:string;title:string;seniority?:string;workMode?:string;location?:string;stack?:string[];publishedAt?:string;url:string;applyUrl?:string;contactEmail?:string;contactSubject?:string;description?:string;sourceId?:string;applicationClosed?:boolean};
 
 /** Normaliza o e-mail para a interface sem inferir nada sobre sua origem. */
 export function normalizeContactEmail(value: unknown): string | undefined {
