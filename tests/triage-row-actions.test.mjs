@@ -15,7 +15,8 @@ test("triagem permite ações avulsas por vaga sem contornar os guardrails", asy
   ]);
 
   assert.match(screen, /selectedHistoryJobIds/);
-  assert.match(screen, /Selecionar todas as vagas visíveis/);
+  assert.match(screen, /Selecionar todas as vagas filtradas/);
+  assert.match(screen, /Consultar contatos já cadastrados/);
   assert.match(screen, /Consultar IA/);
   assert.match(screen, /Preparar rascunhos/);
   assert.match(screen, /draftActionBlocker/);
