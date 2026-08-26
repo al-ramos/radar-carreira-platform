@@ -12,7 +12,7 @@ test("a política de arquivamento prioriza a publicação na fonte e não permit
   ]);
   assert.match(policy, /sourcePublishedAt \?\? receivedAt/);
   assert.match(policy, /2026-08-15/);
-  assert.match(push, /case when \$\{jobs\.status\} = 'archived' then 'archived'/);
+  assert.match(push, /case when \$\{jobs\.status\} in \('archived', 'closed'\) then \$\{jobs\.status\}/);
   assert.match(collect, /case when \$\{jobs\.status\} = 'archived' then 'archived'/);
   assert.match(migration, /coalesce\(`source_published_at`, `first_seen_at`\)/);
   assert.doesNotMatch(migration, /DELETE FROM/);
