@@ -18,9 +18,9 @@ export function isEligibleForDraftQueue(input: { verdict: string; contactEmail: 
 }
 
 /**
- * Defesa final contra histórico desatualizado: mesmo que uma análise anterior
- * tenha aprovado a vaga, o rascunho só pode existir se a avaliação
- * determinística atual ainda a classificar como aderente ou provável.
+ * O ✅ final é o gatilho de criação. A conferência determinística ainda barra
+ * exigências objetivas, mas não substitui uma aprovação já confirmada por IA,
+ * Codex ou CSV apenas por diferença de pontuação/evidência local.
  */
 export function isSafeForDraft(input: {
   verdict: string;
@@ -32,6 +32,5 @@ export function isSafeForDraft(input: {
 }): boolean {
   return isDraftAllowedForSource({ sourceId: input.sourceId, verdict: input.verdict, contactEmail: input.contactEmail })
     && isEligibleForDraftQueue(input)
-    && !input.deterministicBlocker
-    && (input.deterministicVerdict === "BATE" || input.deterministicVerdict === "PROVAVEL");
+    && !input.deterministicBlocker;
 }

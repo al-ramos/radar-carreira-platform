@@ -11,9 +11,10 @@ test("fila de rascunho exige veredito aproveitável e contato válido", () => {
   assert.equal(isEligibleForDraftQueue({ verdict: "✅", contactEmail: "rh@empresa.com", blocker: "Inglês avançado" }), false);
 });
 
-test("aprovação histórica não supera a revalidação determinística atual", () => {
+test("aprovação final cria rascunho mesmo com pontuação determinística menor, sem ignorar bloqueador objetivo", () => {
   const base = { verdict: "✅", contactEmail: "rh@empresa.com", blocker: null };
   assert.equal(isSafeForDraft({ ...base, deterministicVerdict: "BATE", deterministicBlocker: null }), true);
+  assert.equal(isSafeForDraft({ ...base, deterministicVerdict: "NAO_BATE", deterministicBlocker: null }), true);
   assert.equal(isSafeForDraft({ ...base, deterministicVerdict: "NAO_BATE", deterministicBlocker: "Stack incompatível" }), false);
 });
 
