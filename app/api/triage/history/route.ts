@@ -2,7 +2,7 @@ import { and, desc, eq, gte, isNull, lt, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db/index";
-import { draftOutbox, jobs, triageBatchItems, triageBatches, triageHistory, userJobAnalyses } from "../../../../db/schema";
+import { draftOutbox, jobs, triageBatchItems, triageBatches, triageHistory, userJobAnalyses, userJobStatus } from "../../../../db/schema";
 import { isOwnerEmail } from "../../../../lib/access";
 import { hasValidContactEmail } from "../../../../lib/contact-email";
 import { saoPauloDayWindow } from "../../../../lib/triage-orchestrator";
@@ -62,6 +62,8 @@ export async function GET() {
       draftUpdatedAt: draftOutbox.updatedAt,
       gmailSentId: draftOutbox.gmailSentId,
       sentAt: draftOutbox.sentAt,
+      applicationStatus: userJobStatus.applicationStatus,
+      pipelineStage: userJobStatus.stage,
     })
     // O Histórico também é a fila de trabalho. Começar por `jobs` preserva
     // as vagas que ainda não têm análise, permitindo que “Não analisadas” e
@@ -69,6 +71,7 @@ export async function GET() {
     .from(jobs)
     .leftJoin(userJobAnalyses, and(eq(userJobAnalyses.userId, user.userId), eq(userJobAnalyses.jobId, jobs.id)))
     .leftJoin(draftOutbox, and(eq(draftOutbox.userId, user.userId), eq(draftOutbox.jobId, jobs.id)))
+    .leftJoin(userJobStatus, and(eq(userJobStatus.userId, user.userId), eq(userJobStatus.jobId, jobs.id)))
     .where(eq(jobs.status, "active"))
     .orderBy(desc(userJobAnalyses.updatedAt), desc(jobs.firstSeenAt))
     .limit(1000);

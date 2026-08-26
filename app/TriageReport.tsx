@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 type PilotResult = { batchId: string; processed: Array<{ jobId: string; title: string; company: string; reference: string | null; contactEligible: boolean; aiEligible: boolean; aiStatus: string; verdict: string; label: string; blocker: string | null }>; skipped: number; aiCompleted?: number };
-type HistoryItem = { id: string; batchId: string; jobId: string; verdict: string | null; label: string; blocker: string | null; source: string; confidence: number; rows: string; processedAt: string | null; title: string; company: string; externalId: string | null; description: string; stack: string; jobSource: string | null; workMode: string | null; location: string | null; sourcePublishedAt: string | null; receivedAt: string; url: string; contactEmail: string | null; hasValidContactEmail: boolean; draftStatus: "pending" | "drafted" | "sent" | "failed" | "cancelled" | null; draftSubject: string; draftError: string | null; draftUpdatedAt: string | null; gmailSentId: string | null; sentAt: string | null; trigger: string };
+type HistoryItem = { id: string; batchId: string; jobId: string; verdict: string | null; label: string; blocker: string | null; source: string; confidence: number; rows: string; processedAt: string | null; title: string; company: string; externalId: string | null; description: string; stack: string; jobSource: string | null; workMode: string | null; location: string | null; sourcePublishedAt: string | null; receivedAt: string; url: string; contactEmail: string | null; hasValidContactEmail: boolean; draftStatus: "pending" | "drafted" | "sent" | "failed" | "cancelled" | null; draftSubject: string; draftError: string | null; draftUpdatedAt: string | null; gmailSentId: string | null; sentAt: string | null; applicationStatus: "generated" | "sent" | "responded" | null; pipelineStage: "viewed" | "saved" | "applied" | "interview" | "offer" | "rejected" | "archived" | null; trigger: string };
 type Batch = { id: string; trigger: "manual" | "scheduled" | "assistant"; scope: string; status: string; startedAt: string | null; completedAt: string | null; createdAt: string; error: string | null; total: number; completed: number; failed: number; eligible: number; eligibleWithoutContact: number; draftsPending: number; draftsReady: number; draftsFailed: number };
 type BatchItem = { batchId: string; jobId: string; status: "queued" | "processing" | "completed" | "failed" | "skipped"; error: string | null; attemptCount: number; updatedAt: string; leaseUntil: string | null; title: string; company: string; externalId: string | null };
 type Operational = { pendingDrafts: number; readyDrafts: number; sentDrafts: number; failedDrafts: number; oldestPendingAt: string | null; alerts: Array<{ level: "warning" | "error"; message: string }> };
@@ -71,6 +71,7 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
     [verdictFilter, setVerdictFilter] = useState("all"),
     [sourceFilter, setSourceFilter] = useState("all"),
     [draftFilter, setDraftFilter] = useState("all"),
+    [outreachFilter, setOutreachFilter] = useState<"all" | "completed" | "pending">("all"),
     [jobSourceFilter, setJobSourceFilter] = useState("all"),
     [codeFilter, setCodeFilter] = useState(""),
     [tableSearch, setTableSearch] = useState(""),
@@ -95,7 +96,7 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
         const legacyResponse = await fetch("/api/admin/triage");
         const legacy = await legacyResponse.json() as { items?: LegacyItem[] };
         if (!legacyResponse.ok) throw new Error("Falha ao consultar as avaliações existentes.");
-        const items = (legacy.items ?? []).map((item): HistoryItem => ({ id: `legacy-${item.jobId}`, batchId: "legacy", jobId: item.jobId, verdict: item.veredito, label: item.motivo ?? "Avaliação registrada", blocker: null, source: "legacy", confidence: 0, rows: "", processedAt: item.processedAt, title: item.title, company: item.company, externalId: item.externalId, description: "", stack: "[]", jobSource: item.sourceId, workMode: item.workMode, location: item.location, sourcePublishedAt: item.sourcePublishedAt, receivedAt: item.receivedAt, url: item.url, contactEmail: item.contactEmail, hasValidContactEmail: Boolean(item.contactEmail?.includes("@")), draftStatus: null, draftSubject: "", draftError: null, draftUpdatedAt: null, gmailSentId: null, sentAt: null, trigger: "legacy" }));
+        const items = (legacy.items ?? []).map((item): HistoryItem => ({ id: `legacy-${item.jobId}`, batchId: "legacy", jobId: item.jobId, verdict: item.veredito, label: item.motivo ?? "Avaliação registrada", blocker: null, source: "legacy", confidence: 0, rows: "", processedAt: item.processedAt, title: item.title, company: item.company, externalId: item.externalId, description: "", stack: "[]", jobSource: item.sourceId, workMode: item.workMode, location: item.location, sourcePublishedAt: item.sourcePublishedAt, receivedAt: item.receivedAt, url: item.url, contactEmail: item.contactEmail, hasValidContactEmail: Boolean(item.contactEmail?.includes("@")), draftStatus: null, draftSubject: "", draftError: null, draftUpdatedAt: null, gmailSentId: null, sentAt: null, applicationStatus: null, pipelineStage: null, trigger: "legacy" }));
         // Uma falha transitória em /api/triage/history não pode apagar o lote
         // manual em andamento: mantém batches/batchItems/operational como
         // estavam e só complementa o histórico com o acervo legado. Sem isso,
@@ -225,6 +226,9 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
   // avaliação real ainda. Ver RC-TI-024.
   const isPending = (item: HistoryItem) => !item.verdict || item.verdict === "⚪";
   const normalizedTableSearch = tableSearch.trim().toLocaleLowerCase("pt-BR");
+  const hasCompletedOutreach = (item: HistoryItem) => item.jobSource === "apinfo-extension"
+    ? item.draftStatus === "sent" || Boolean(item.sentAt)
+    : item.applicationStatus === "sent" || item.applicationStatus === "responded" || ["applied", "interview", "offer", "rejected"].includes(item.pipelineStage ?? "");
   const scopedHistory = currentAssessments.filter((item) => (situationFilter === "all" || (situationFilter === "pending" ? isPending(item) : !isPending(item))) && (verdictFilter === "all" || item.verdict === verdictFilter) && (sourceFilter === "all" || item.source === sourceFilter) && (jobSourceFilter === "all" || item.jobSource === jobSourceFilter) && (externalAiFilter === "all" || (externalAiFilter === "yes") === isExternalAiReassessment(item)) && (!codeFilter.trim() || (item.externalId ?? "").toLowerCase().includes(codeFilter.trim().toLowerCase())) && (!normalizedTableSearch || [item.title, item.company, item.externalId, item.jobSource, item.workMode, item.location, item.contactEmail, item.label, item.blocker].filter(Boolean).join(" ").toLocaleLowerCase("pt-BR").includes(normalizedTableSearch)) && (!publishedDateFilter || dayKey(item.sourcePublishedAt) === publishedDateFilter) && (!receivedDateFilter || dayKey(item.receivedAt) === receivedDateFilter) && (!analysedDateFilter || dayKey(item.processedAt) === analysedDateFilter));
   // Os contadores e a tabela devem falar sobre o mesmo recorte. O filtro de
   // rascunho é aplicado somente depois de contabilizar cada status.
@@ -234,7 +238,7 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
     sent: scopedHistory.filter((item) => item.draftStatus === "sent").length,
     failed: scopedHistory.filter((item) => item.draftStatus === "failed").length,
   };
-  const filteredHistory = scopedHistory.filter((item) => draftFilter === "all" || item.draftStatus === draftFilter);
+  const filteredHistory = scopedHistory.filter((item) => (draftFilter === "all" || item.draftStatus === draftFilter) && (outreachFilter === "all" || (outreachFilter === "completed") === hasCompletedOutreach(item)));
   const sortHistory = (key: typeof sortKey) => {
     if (key === sortKey) setSortDirection((value) => value === "asc" ? "desc" : "asc");
     else { setSortKey(key); setSortDirection("asc"); }
@@ -259,7 +263,7 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
     return null;
   };
   const historyPageCount = Math.ceil(filteredHistory.length / historyPageSize);
-  const hasActiveAdvancedFilters = draftFilter !== "all" || externalAiFilter !== "all" || Boolean(publishedDateFilter) || Boolean(receivedDateFilter) || Boolean(analysedDateFilter);
+  const hasActiveAdvancedFilters = draftFilter !== "all" || outreachFilter !== "all" || externalAiFilter !== "all" || Boolean(publishedDateFilter) || Boolean(receivedDateFilter) || Boolean(analysedDateFilter);
   const periodScopedSourceOptions = actionSourceOptions ?? sourceOptions;
   const actionSources = sourceId && !periodScopedSourceOptions.some((option) => option.id === sourceId)
     ? [{ id: sourceId, label: sourceLabel ?? sourceName(sourceId), count: 0 }, ...periodScopedSourceOptions]
@@ -775,6 +779,7 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
                   <article className="approved"><small>Aprovadas</small><strong>{filteredHistory.filter((item) => item.verdict === "✅").length}</strong></article>
                   <article className="partial"><small>Prováveis</small><strong>{filteredHistory.filter((item) => item.verdict === "🟡").length}</strong></article>
                   <article className="rejected"><small>Não aderentes</small><strong>{filteredHistory.filter((item) => item.verdict === "❌" || item.verdict === "🔴").length}</strong></article>
+                  <article><small>Enviadas / candidatas</small><strong>{filteredHistory.filter(hasCompletedOutreach).length}</strong></article>
                   <article><small>Analisadas</small><strong>{filteredHistory.length}</strong></article>
                 </>}
               </div>
@@ -794,11 +799,13 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
                     <label>Publicada em<input type="date" value={publishedDateFilter} onChange={(e) => { setPublishedDateFilter(e.target.value); setHistoryPage(0); }} /></label>
                     <label>Rascunho<select value={draftFilter} onChange={(e) => { setDraftFilter(e.target.value); setHistoryPage(0); }}><option value="all">Todos</option><option value="pending">Na fila</option><option value="drafted">Pronto</option><option value="sent">Enviado</option><option value="failed">Com falha</option></select></label>
                     <label>IA à parte<select value={externalAiFilter} onChange={(e) => { setExternalAiFilter(e.target.value as typeof externalAiFilter); setHistoryPage(0); }}><option value="all">Todas</option><option value="yes">Reavaliadas por CSV</option><option value="no">Sem reavaliação externa</option></select></label>
+                    <label>Envio / candidatura<select value={outreachFilter} onChange={(e) => { setOutreachFilter(e.target.value as typeof outreachFilter); setHistoryPage(0); }}><option value="all">Todas</option><option value="completed">Já enviados / candidatados</option><option value="pending">Ainda não enviados / candidatados</option></select></label>
+                    <label>IA à parte<select value={externalAiFilter} onChange={(e) => { setExternalAiFilter(e.target.value as typeof externalAiFilter); setHistoryPage(0); }}><option value="all">Todas</option><option value="yes">Reavaliadas por CSV</option><option value="no">Sem reavaliação externa</option></select></label>
                     <label>Recebida em<input type="date" value={receivedDateFilter} onChange={(e) => { setReceivedDateFilter(e.target.value); setHistoryPage(0); }} /></label>
                     <label>Analisada em<input type="date" value={analysedDateFilter} onChange={(e) => { setAnalysedDateFilter(e.target.value); setHistoryPage(0); }} /></label>
                   </div>
                 </details>
-                <button type="button" className="triage-clear-filters" onClick={() => { setSituationFilter("pending"); setVerdictFilter("all"); setSourceFilter("all"); setJobSourceFilter("apinfo-extension"); setCodeFilter(""); setTableSearch(""); setExternalAiFilter("all"); setDraftFilter("all"); setPublishedDateFilter(""); setReceivedDateFilter(""); setAnalysedDateFilter(""); setAdvancedFiltersOpen(false); setHistoryPage(0); }}>Fila pendente da APInfo</button>
+                <button type="button" className="triage-clear-filters" onClick={() => { setSituationFilter("pending"); setVerdictFilter("all"); setSourceFilter("all"); setJobSourceFilter("apinfo-extension"); setCodeFilter(""); setTableSearch(""); setExternalAiFilter("all"); setDraftFilter("all"); setOutreachFilter("all"); setPublishedDateFilter(""); setReceivedDateFilter(""); setAnalysedDateFilter(""); setAdvancedFiltersOpen(false); setHistoryPage(0); }}>Fila pendente da APInfo</button>
               </div>
               {filteredHistory.length > historyPageSize && <nav className="triage-pagination" aria-label="Paginação do histórico">
                 <button type="button" disabled={historyPage === 0} onClick={() => setHistoryPage(page => page - 1)}>← Anterior</button>
