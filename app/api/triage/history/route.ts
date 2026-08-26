@@ -73,8 +73,10 @@ export async function GET() {
     .leftJoin(draftOutbox, and(eq(draftOutbox.userId, user.userId), eq(draftOutbox.jobId, jobs.id)))
     .leftJoin(userJobStatus, and(eq(userJobStatus.userId, user.userId), eq(userJobStatus.jobId, jobs.id)))
     .where(eq(jobs.status, "active"))
-    .orderBy(desc(userJobAnalyses.updatedAt), desc(jobs.firstSeenAt))
-    .limit(1000);
+    // O resumo e os filtros do Histórico precisam cobrir todo o acervo
+    // ativo. Um limite aqui fazia o painel estacionar artificialmente em
+    // 1.000, mesmo quando havia mais vagas analisadas.
+    .orderBy(desc(userJobAnalyses.updatedAt), desc(jobs.firstSeenAt));
 
   const [batchRows, batchItemRows, outboxRows, batchDraftRows, batchHistoryRows, repairableRows, todayReceived] = await Promise.all([
     db.select({
