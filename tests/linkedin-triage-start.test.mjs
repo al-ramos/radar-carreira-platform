@@ -47,11 +47,11 @@ test("acionamento manual respeita os filtros ativos da Home", async () => {
   assert.match(codexQueue, /sourceId === "all" \? undefined/);
   assert.match(preview, /gte\(jobs\.firstSeenAt, cutoff\)/);
   assert.match(preview, /count\(userJobAnalyses\.jobId\)/);
-  assert.match(queue, /isDraftAllowedForSource\(\{ sourceId: row\.job\.sourceId/);
+  assert.match(queue, /isSafeForDraft\(\{ verdict: row\.analysis\.verdict, contactEmail: row\.job\.contactEmail, sourceId: row\.job\.sourceId/);
   assert.match(queue, /gte\(jobs\.firstSeenAt, cutoff\)/);
   assert.match(ui, /homePeriod: actionPeriod/);
   assert.match(ui, /Fila preparada para este recorte/);
-  assert.match(cron, /isDraftAllowedForSource\(\{ sourceId: row\.sourceId/);
+  assert.match(cron, /isSafeForDraft\(\{ verdict: row\.analysisVerdict, contactEmail: row\.contactEmail, sourceId: row\.sourceId/);
 });
 
 test("painel inicia a fila para recortes grandes sem bloquear a ação manual", async () => {
