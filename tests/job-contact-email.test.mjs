@@ -24,12 +24,12 @@ test("a tela de detalhes permite criar rascunho para qualquer vaga com e-mail ca
   assert.match(dashboard, /Cria uma mensagem pronta para \$\{selectedJob\.contactEmail\}; revise antes de enviar/);
 });
 
-test("candidatar abre a vaga antes de capturar o contato sem bloquear o fluxo", async () => {
+test("candidatar abre a vaga e inicia a captura automática do contato sem bloquear o fluxo", async () => {
   const dashboard = await readFile(new URL("../app/Dashboard.tsx", import.meta.url), "utf8");
   const flow = dashboard.match(/function openJobApplication\(job: Job\) \{([\s\S]*?)\n  \}/)?.[1] ?? "";
 
-  assert.match(flow, /window\.setTimeout\(\(\) => captureApinfoContact\(job\), 1_500\)/);
-  assert.ok(flow.indexOf("open(job.applyUrl") < flow.indexOf("captureApinfoContact(job)"));
+  assert.match(flow, /scheduleAutoApinfoContactCapture\(job\)/);
+  assert.ok(flow.indexOf("open(job.applyUrl") < flow.indexOf("scheduleAutoApinfoContactCapture(job)"));
   assert.doesNotMatch(flow, /await captureApinfoContact/);
   assert.match(flow, /AUTOMATIC_ACTION_STAGE\.apply/);
   assert.match(dashboard, /openJobApplication\(selectedJob\);[\s\S]*?advanceToNextJob\(\);/);

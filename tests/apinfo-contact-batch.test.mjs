@@ -44,3 +44,15 @@ test("a captura em lote explica a preparação antes do primeiro resultado", asy
   assert.match(dashboard, /Preparando a vaga 1 de \$\{contactBatchState\.total\}…/);
   assert.match(dashboard, /contact-batch-cancel/);
 });
+
+test("candidatura APInfo tenta capturar o e-mail até ele aparecer na página", async () => {
+  const dashboard = await readFile(new URL("../app/Dashboard.tsx", import.meta.url), "utf8");
+
+  assert.match(dashboard, /APINFO_CONTACT_AUTO_CAPTURE_RETRY_MS = 3_000/);
+  assert.match(dashboard, /APINFO_CONTACT_AUTO_CAPTURE_MAX_ATTEMPTS = 20/);
+  assert.match(dashboard, /function scheduleAutoApinfoContactCapture/);
+  assert.match(dashboard, /captureApinfoContact\(job, false, \{ autoRetry: true/);
+  assert.match(dashboard, /scheduleAutoApinfoContactCapture\(job\);/);
+  assert.match(dashboard, /saveApinfoContact\(pending\.jobId, data\.email/);
+  assert.match(dashboard, /O e-mail ainda não apareceu na página APInfo/);
+});

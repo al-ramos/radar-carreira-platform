@@ -142,6 +142,8 @@ const RADAR_REFRESH_RETRY_DELAYS_MS = [3_000, 10_000, 30_000, 60_000, 300_000];
 const PROFILE_FETCH_TIMEOUT_MS = 8_000;
 const JOBS_FETCH_TIMEOUT_MS = 10_000;
 const APINFO_CONTACT_CAPTURE_TIMEOUT_MS = 4_000 * 5;
+const APINFO_CONTACT_AUTO_CAPTURE_RETRY_MS = 3_000;
+const APINFO_CONTACT_AUTO_CAPTURE_MAX_ATTEMPTS = 20;
 
 async function fetchWithTimeout(
   input: RequestInfo | URL,
@@ -626,8 +628,9 @@ export default function Dashboard() {
   const [companyContactsReusing, setCompanyContactsReusing] = useState(false);
   const [contactPasteReady, setContactPasteReady] = useState(false);
   const [contactCaptureMsg, setContactCaptureMsg] = useState<{ text: string; error: boolean } | null>(null);
-  const contactRequestRef = useRef<{ requestId: string; jobId: string; correctTruncated?: boolean } | null>(null);
+  const contactRequestRef = useRef<{ requestId: string; jobId: string; correctTruncated?: boolean; autoRetry?: boolean; job?: Job; attempt?: number } | null>(null);
   const contactRequestTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoContactCaptureTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   // Captura de contato do APinfo EM LOTE — ver captureApinfoContactsBatch e
   // o useEffect que escuta RADAR_CAPTURE_CONTACTS_BATCH_PROGRESS/_RESULT.
   // Pressupõe que a pessoa já está autenticada no APinfo no navegador (login
@@ -2070,8 +2073,29 @@ export default function Dashboard() {
    * abrir, depois de a pessoa logar manualmente lá. O Radar não tem acesso
    * a outras abas do navegador sozinho; só a extensão consegue.
    */
-  function captureApinfoContact(job: Job, correctTruncated = false) {
+  function stopAutoApinfoContactCapture(jobId: string) {
+    const timer = autoContactCaptureTimersRef.current.get(jobId);
+    if (timer) window.clearTimeout(timer);
+    autoContactCaptureTimersRef.current.delete(jobId);
+  }
+  function scheduleAutoApinfoContactCapture(job: Job, attempt = 0) {
+    if (job.contactEmail || !job.externalId || attempt >= APINFO_CONTACT_AUTO_CAPTURE_MAX_ATTEMPTS) {
+      if (attempt >= APINFO_CONTACT_AUTO_CAPTURE_MAX_ATTEMPTS) {
+        setContactPasteReady(true);
+        setContactCaptureMsg({ text: "O e-mail ainda não apareceu na página APInfo. Quando ele estiver visível, use “Tentar captura novamente” ou cole o endereço.", error: false });
+      }
+      return;
+    }
+    stopAutoApinfoContactCapture(job.id);
+    const timer = window.setTimeout(() => {
+      autoContactCaptureTimersRef.current.delete(job.id);
+      captureApinfoContact(job, false, { autoRetry: true, attempt: attempt + 1 });
+    }, attempt === 0 ? 1_500 : APINFO_CONTACT_AUTO_CAPTURE_RETRY_MS);
+    autoContactCaptureTimersRef.current.set(job.id, timer);
+  }
+  function captureApinfoContact(job: Job, correctTruncated = false, automatic?: { autoRetry: boolean; attempt: number }) {
     if (job.contactEmail) {
+      stopAutoApinfoContactCapture(job.id);
       if (!correctTruncated) {
         setContactCaptureMsg({ text: `Contato já cadastrado: ${job.contactEmail}`, error: false });
         return;
@@ -2082,7 +2106,7 @@ export default function Dashboard() {
       return;
     }
     const requestId = crypto.randomUUID();
-    contactRequestRef.current = { requestId, jobId: job.id, correctTruncated };
+    contactRequestRef.current = { requestId, jobId: job.id, correctTruncated, autoRetry: automatic?.autoRetry, job, attempt: automatic?.attempt };
     setContactCapturing(true);
     setContactPasteReady(false);
     setContactCaptureMsg({ text: "Lendo a aba do APinfo…", error: false });
@@ -2092,6 +2116,10 @@ export default function Dashboard() {
       contactRequestRef.current = null;
       contactRequestTimerRef.current = null;
       setContactCapturing(false);
+      if (automatic?.autoRetry) {
+        scheduleAutoApinfoContactCapture(job, automatic.attempt);
+        return;
+      }
       setContactPasteReady(true);
       setContactCaptureMsg({
         text: "A extensão não respondeu. Copie o e-mail exibido no APinfo e clique em “Colar e-mail”.",
@@ -2114,6 +2142,7 @@ export default function Dashboard() {
   // aba do APinfo, e o resultado precisa continuar valendo para a vaga
   // certa (a que foi pedida), não para a que estiver em foco quando chegar.
   useEffect(() => {
+    const autoCaptureTimers = autoContactCaptureTimersRef.current;
     function handleExtensionMessage(event: MessageEvent) {
       if (event.source !== window) return;
       if (event.origin !== window.location.origin) return;
@@ -2130,13 +2159,23 @@ export default function Dashboard() {
       setContactCapturing(false);
 
       if (!data.ok) {
+        if (pending.autoRetry && pending.job) {
+          scheduleAutoApinfoContactCapture(pending.job, pending.attempt);
+          return;
+        }
         setContactPasteReady(true);
         setContactCaptureMsg({ text: data.error || "Não foi possível capturar o contato.", error: true });
         return;
       }
 
       if (data.email) {
-        void saveApinfoContact(pending.jobId, data.email, data.assunto, pending.correctTruncated);
+        void saveApinfoContact(pending.jobId, data.email, data.assunto, pending.correctTruncated).then((saved) => {
+          if (saved) stopAutoApinfoContactCapture(pending.jobId);
+        });
+        return;
+      }
+      if (pending.autoRetry && pending.job) {
+        scheduleAutoApinfoContactCapture(pending.job, pending.attempt);
         return;
       }
       setContactPasteReady(true);
@@ -2149,7 +2188,11 @@ export default function Dashboard() {
     return () => {
       window.removeEventListener("message", handleExtensionMessage);
       if (contactRequestTimerRef.current) clearTimeout(contactRequestTimerRef.current);
+      for (const timer of autoCaptureTimers.values()) window.clearTimeout(timer);
+      autoCaptureTimers.clear();
     };
+    // O listener é registrado uma vez; os pedidos em andamento vivem nos refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   /**
    * Pede à extensão do APinfo (via radar-bridge.js) para capturar o contato
@@ -2320,9 +2363,10 @@ export default function Dashboard() {
       open(job.url, "_blank");
     }
     if (isApinfoJob(job) && !job.contactEmail) {
-      // Dá tempo para o APinfo concluir a troca de página antes de a
-      // extensão procurar a aba mais recente e injetar o coletor.
-      window.setTimeout(() => captureApinfoContact(job), 1_500);
+      // Após o login manual, o e-mail pode aparecer alguns segundos depois.
+      // A extensão continua lendo apenas o conteúdo já visível, e o Radar
+      // repete a consulta por tempo limitado até conseguir gravar o contato.
+      scheduleAutoApinfoContactCapture(job);
     }
     void updateStage(
       job.id,
