@@ -31,6 +31,7 @@ test("envio manual é reconciliado por evidência do Gmail sem autorizar envio a
   assert.match(route, /item\.status !== "drafted"/);
   assert.match(route, /normalizeContactEmail\(body\.to\) !== expectedTo/);
   assert.match(route, /body\.subject\?\.trim\(\) !== expectedSubject/);
+  assert.match(route, /body\.isDraft !== false/);
   assert.doesNotMatch(route, /matchesStoredThread/);
   assert.match(route, /vinculação duplicada foi bloqueada/);
   assert.match(route, /gmailThreadId/);
@@ -43,6 +44,7 @@ test("envio manual é reconciliado por evidência do Gmail sem autorizar envio a
   assert.match(script, /in:sent/);
   assert.match(script, /message\.isDraft\(\)/);
   assert.match(script, /action:'reconcileSent'/);
+  assert.match(script, /isDraft:message\.isDraft\(\)/);
   assert.match(script, /payload\.action === 'reconcileSent'/);
   const reconciliation = script.split("function reconciliarEnviosManuaisRadar")[1];
   assert.doesNotMatch(reconciliation, /GmailApp\.sendEmail|GmailApp\.createDraft/);

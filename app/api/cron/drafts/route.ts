@@ -43,7 +43,7 @@ export async function POST(request: Request) {
   if (!owner) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   const body = await request.json().catch(() => ({})) as {
     action?: "prepare" | "confirm" | "fail" | "health" | "sentCandidates" | "reconcileSent";
-    outboxId?: string; gmailDraftId?: string; gmailThreadId?: string; gmailSentId?: string; subject?: string; to?: string; sentAt?: string;
+    outboxId?: string; gmailDraftId?: string; gmailThreadId?: string; gmailSentId?: string; subject?: string; to?: string; sentAt?: string; isDraft?: boolean;
     error?: string; limit?: number; retryFailed?: boolean; connectorVersion?: string; outboxIds?: string[];
   };
   const db = getDb();
@@ -113,7 +113,7 @@ export async function POST(request: Request) {
     // Uma conversa pode conter simultaneamente um rascunho e mensagens já
     // enviadas. O id da conversa, sozinho, não é evidência de envio: exige
     // sempre o destinatário, assunto e data da mensagem efetivamente enviada.
-    if (!expectedTo || normalizeContactEmail(body.to) !== expectedTo || body.subject?.trim() !== expectedSubject || !sentAt) {
+    if (body.isDraft !== false || !expectedTo || normalizeContactEmail(body.to) !== expectedTo || body.subject?.trim() !== expectedSubject || !sentAt) {
       return NextResponse.json({ error: "A mensagem enviada não corresponde ao destinatário, assunto e data esperados" }, { status: 409 });
     }
     await db.update(draftOutbox).set({ status: "sent", gmailSentId: body.gmailSentId.slice(0, 500), sentAt, error: null, updatedAt: new Date() }).where(eq(draftOutbox.id, item.id));

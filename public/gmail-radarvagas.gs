@@ -196,7 +196,7 @@ function reconciliarEnviosManuaisRadar(options) {
       method:'post',contentType:'application/json',headers:{Authorization:`Bearer ${secret}`},
       payload:JSON.stringify({
         action:'reconcileSent',outboxId:candidate.outboxId,gmailSentId:message.getId(),
-        to:candidate.to,subject:message.getSubject(),gmailThreadId:candidate.gmailThreadId,sentAt:message.getDate().toISOString(),
+        to:candidate.to,subject:message.getSubject(),gmailThreadId:candidate.gmailThreadId,sentAt:message.getDate().toISOString(),isDraft:message.isDraft(),
         connectorVersion:RADAR_DRAFT_CONNECTOR_VERSION
       }),muteHttpExceptions:true
     });
