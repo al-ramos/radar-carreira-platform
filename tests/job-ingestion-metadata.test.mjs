@@ -79,7 +79,9 @@ test("histórico da triagem mostra o nome legível da fonte", async () => {
   ]);
   assert.match(route, /jobSourceName: jobSources\.name/);
   assert.match(route, /leftJoin\(jobSources, eq\(jobs\.sourceId, jobSources\.id\)\)/);
-  assert.match(report, /item\.jobSourceName\?\.trim\(\) \|\| sourceName\(item\.jobSource\)/);
+  assert.match(report, /fetch\("\/api\/admin\/sources"/);
+  assert.match(report, /sourceNames\[id\]\?\.trim\(\) \|\| sourceName\(id\)/);
+  assert.match(report, /sourceLabelFor\(item\.jobSource, item\.jobSourceName\)/);
   assert.match(report, /jobSources\.map\(\(\[id, label\]\)/);
 });
 
