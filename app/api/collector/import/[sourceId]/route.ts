@@ -156,7 +156,7 @@ function valuesFor(sourceId: string, job: ImportedJob, now: Date) {
     description: job.description ?? "",
     firstSeenAt: now,
     lastSeenAt: now,
-    status: shouldArchiveImportedJob(sourcePublishedAt, now) ? "archived" as const : "active" as const,
+    status: job.applicationClosed ? "closed" as const : shouldArchiveImportedJob(sourcePublishedAt, now) ? "archived" as const : "active" as const,
     createdAt: now,
     updatedAt: now,
   };
@@ -226,15 +226,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ sou
     ? (await db.select({ careerRules: profiles.careerRules }).from(profiles).where(eq(profiles.userId, config.userId)).limit(1))[0]
     : undefined;
   const careerRules = normalizeCareerRules(profile?.careerRules);
-  const filtered = filterImportedJobsByProfile(items, {
+  const closedItems = items.filter((job) => job.applicationClosed);
+  const filtered = filterImportedJobsByProfile(items.filter((job) => !job.applicationClosed), {
     requiredStacks: sourceId === "linkedin-extension" ? careerRules.coreStack : [],
     stackMatchMode: careerRules.coreStackMatchMode,
   });
-  const entries = [...new Map(filtered.accepted.map((job) => [fingerprint(job), job])).entries()].map(([fp, job]) => ({
+  const acceptedItems = [...filtered.accepted, ...closedItems];
+  const entries = [...new Map(acceptedItems.map((job) => [fingerprint(job), job])).entries()].map(([fp, job]) => ({
     fp,
     job,
   }));
-  const duplicateRows = filtered.accepted.length - entries.length;
+  const duplicateRows = acceptedItems.length - entries.length;
   const importDetails: ImportDetails = {
     valid: items.length,
     invalid: input.rejected,
@@ -318,7 +320,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ sou
             contactSubject: sql`coalesce(${values.contactSubject}, ${jobs.contactSubject})`,
             description: values.description,
             lastSeenAt: now,
-            status: values.status === "archived" ? "archived" : sql`case when ${jobs.status} = 'archived' then 'archived' else 'active' end`,
+            status: values.status === "closed" ? "closed" : values.status === "archived" ? "archived" : sql`case when ${jobs.status} in ('archived', 'closed') then ${jobs.status} else 'active' end`,
             updatedAt: now,
           },
         });
@@ -336,7 +338,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ sou
     const finishedAt = new Date();
     await db.update(jobSources).set({ lastRunAt: finishedAt, lastSuccessAt: finishedAt, lastError: null, consecutiveFailures: 0 }).where(eq(jobSources.id, sourceId));
     await notifyImportRun(db, { runId, source: sourceName, status: "completed", received: rawItems.length, valid: items.length, invalid: input.rejected, invalidReasons: input.reasons, rejectedProfile: filtered.rejected, skippedExisting, inserted, updated, duplicates: duplicateRows }).catch(() => undefined);
-    return json({ ok: true, runId, accepted: filtered.accepted.length, received: rawItems.length, valid: items.length, invalid: input.rejected, invalidReasons: input.reasons, duplicates: duplicateRows, rejected: filtered.rejected, skippedExisting, inserted, updated, requiredStacks: filtered.requiredStacks, stackMatchMode: filtered.stackMatchMode });
+    return json({ ok: true, runId, accepted: acceptedItems.length, received: rawItems.length, valid: items.length, invalid: input.rejected, invalidReasons: input.reasons, duplicates: duplicateRows, rejected: filtered.rejected, skippedExisting, inserted, updated, requiredStacks: filtered.requiredStacks, stackMatchMode: filtered.stackMatchMode });
   } catch (error) {
     const detail = error instanceof Error ? error.message : "Falha desconhecida durante a gravação";
     await db
