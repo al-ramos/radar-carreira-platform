@@ -629,6 +629,7 @@ export default function Dashboard() {
   const [contactPasteReady, setContactPasteReady] = useState(false);
   const [contactCaptureMsg, setContactCaptureMsg] = useState<{ text: string; error: boolean } | null>(null);
   const contactRequestRef = useRef<{ requestId: string; jobId: string; correctTruncated?: boolean; autoRetry?: boolean; job?: Job; attempt?: number } | null>(null);
+  const linkedInStatusRequestRef = useRef(new Map<string, Job>());
   const contactRequestTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autoContactCaptureTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   // Captura de contato do APinfo EM LOTE — ver captureApinfoContactsBatch e
@@ -2368,6 +2369,13 @@ export default function Dashboard() {
       // repete a consulta por tempo limitado até conseguir gravar o contato.
       scheduleAutoApinfoContactCapture(job);
     }
+    if (/linkedin\.com/i.test(job.url) && job.externalId) {
+      const requestId = crypto.randomUUID();
+      linkedInStatusRequestRef.current.set(requestId, job);
+      // A extensão lê apenas o texto já exibido na página nova; ela nunca
+      // clica nem envia formulários de candidatura.
+      window.setTimeout(() => window.postMessage({ source: "radar-dashboard", type: "RADAR_CHECK_LINKEDIN_APPLICATION", requestId, externalId: job.externalId }, window.location.origin), 1_500);
+    }
     void updateStage(
       job.id,
       AUTOMATIC_ACTION_STAGE.apply,
@@ -2375,6 +2383,30 @@ export default function Dashboard() {
       "advance",
     );
   }
+  useEffect(() => {
+    function handleLinkedInApplicationStatus(event: MessageEvent) {
+      if (event.source !== window || event.origin !== window.location.origin) return;
+      const data = event.data as { source?: string; type?: string; requestId?: string; ok?: boolean; state?: "closed" | "sent"; evidence?: string } | null;
+      if (!data || data.source !== "radar-extension" || data.type !== "RADAR_CHECK_LINKEDIN_APPLICATION_RESULT") return;
+      const job = data.requestId ? linkedInStatusRequestRef.current.get(data.requestId) : undefined;
+      if (!job || !data.requestId) return;
+      linkedInStatusRequestRef.current.delete(data.requestId);
+      if (!data.ok || !data.state || !data.evidence) return;
+      void fetch(`/api/jobs/${encodeURIComponent(job.id)}/linkedin-status`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ state: data.state, evidence: data.evidence }) }).then(async (response) => {
+        const saved = await response.json().catch(() => null) as { application?: PipelineJob } | null;
+        if (!response.ok) return;
+        if (data.state === "closed") {
+          setItems((current) => current.filter((item) => item.id !== job.id));
+          setMessage("LinkedIn informa que esta vaga não aceita mais candidaturas; ela foi marcada como encerrada.");
+        } else {
+          if (saved?.application) setPipelineItems((current) => current.some((item) => item.id === job.id) ? current.map((item) => item.id === job.id ? { ...item, ...saved.application } : item) : [...current, { ...job, ...saved.application } as PipelineJob]);
+          setMessage("LinkedIn confirmou que você já se candidatou; o acompanhamento foi atualizado.");
+        }
+      }).catch(() => undefined);
+    }
+    window.addEventListener("message", handleLinkedInApplicationStatus);
+    return () => window.removeEventListener("message", handleLinkedInApplicationStatus);
+  }, []);
   useEffect(() => {
     if (!shareMenuJobId) return;
     function handleOutsideClick(e: MouseEvent) {

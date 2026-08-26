@@ -19,4 +19,10 @@ test("abertura de candidatura registra início, sem submeter formulário", async
   assert.match(screen, /O Radar não envia formulários automaticamente/);
   assert.match(screen, /Candidatura iniciada/);
   assert.match(dashboard, /Confirmar candidatura enviada/);
+  assert.match(dashboard, /RADAR_CHECK_LINKEDIN_APPLICATION/);
+  assert.match(dashboard, /RADAR_CHECK_LINKEDIN_APPLICATION_RESULT/);
+  assert.match(dashboard, /linkedin-status/);
+  const linkedInStatus = await read("../app/api/jobs/[id]/linkedin-status/route.ts");
+  assert.match(linkedInStatus, /linkedin_application_closed/);
+  assert.match(linkedInStatus, /linkedin_application_sent/);
 });
