@@ -72,6 +72,17 @@ test("histórico torna a publicação original da fonte a data principal da tabe
   assert.match(triage, /Recebida pelo Radar:/);
 });
 
+test("histórico da triagem mostra o nome legível da fonte", async () => {
+  const [route, report] = await Promise.all([
+    read("../app/api/triage/history/route.ts"),
+    read("../app/TriageReport.tsx"),
+  ]);
+  assert.match(route, /jobSourceName: jobSources\.name/);
+  assert.match(route, /leftJoin\(jobSources, eq\(jobs\.sourceId, jobSources\.id\)\)/);
+  assert.match(report, /item\.jobSourceName\?\.trim\(\) \|\| sourceName\(item\.jobSource\)/);
+  assert.match(report, /jobSources\.map\(\(\[id, label\]\)/);
+});
+
 test("migração classifica importações antigas e cria índices do filtro", async () => {
   const migration = await read("../drizzle/0020_job_ingestion_metadata.sql");
   assert.match(migration, /ADD `source_published_at` integer/);

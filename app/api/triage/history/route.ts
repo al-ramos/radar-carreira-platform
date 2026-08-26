@@ -2,7 +2,7 @@ import { and, desc, eq, gte, isNull, lt, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db/index";
-import { draftOutbox, jobs, triageBatchItems, triageBatches, triageHistory, userJobAnalyses, userJobStatus } from "../../../../db/schema";
+import { draftOutbox, jobs, jobSources, triageBatchItems, triageBatches, triageHistory, userJobAnalyses, userJobStatus } from "../../../../db/schema";
 import { isOwnerEmail } from "../../../../lib/access";
 import { hasValidContactEmail } from "../../../../lib/contact-email";
 import { saoPauloDayWindow } from "../../../../lib/triage-orchestrator";
@@ -50,6 +50,7 @@ export async function GET() {
       description: jobs.description,
       stack: jobs.stack,
       jobSource: jobs.sourceId,
+      jobSourceName: jobSources.name,
       workMode: jobs.workMode,
       location: jobs.location,
       sourcePublishedAt: jobs.sourcePublishedAt,
@@ -72,6 +73,7 @@ export async function GET() {
     // “Todas” mostrem o estoque real em vez de uma tabela vazia.
     .from(jobs)
     .leftJoin(userJobAnalyses, and(eq(userJobAnalyses.userId, user.userId), eq(userJobAnalyses.jobId, jobs.id)))
+    .leftJoin(jobSources, eq(jobs.sourceId, jobSources.id))
     .leftJoin(draftOutbox, and(eq(draftOutbox.userId, user.userId), eq(draftOutbox.jobId, jobs.id)))
     .leftJoin(userJobStatus, and(eq(userJobStatus.userId, user.userId), eq(userJobStatus.jobId, jobs.id)))
     .where(eq(jobs.status, "active"))
