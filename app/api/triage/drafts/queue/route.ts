@@ -129,11 +129,16 @@ export async function POST(request: Request) {
   for (const row of latestByJob.values()) {
     const existing = existingOutboxByJob.get(row.jobId);
     if (existing) {
+      // Itens cancelados pela política anterior (por exemplo, análise marcada
+      // como desatualizada) voltam à fila assim que a vaga continua ✅ e tem
+      // e-mail válido. A outbox permanece idempotente: só o status é retomado.
+      if (existing.status === "failed" || existing.status === "cancelled") {
+        await db.update(draftOutbox).set({ status: "pending", error: null, updatedAt: new Date() }).where(eq(draftOutbox.id, existing.id));
+        priorityOutboxIds.push(existing.id);
+        continue;
+      }
       alreadyPresent += 1;
-      // A outbox é somente o registro idempotente. Uma falha pode ser tentada
-      // novamente na hora pelo Gmail, sem precisar esperar outra agenda.
-      if (existing.status === "failed") await db.update(draftOutbox).set({ status: "pending", error: null, updatedAt: new Date() }).where(eq(draftOutbox.id, existing.id));
-      if (existing.status === "pending" || existing.status === "failed") priorityOutboxIds.push(existing.id);
+      if (existing.status === "pending") priorityOutboxIds.push(existing.id);
       continue;
     }
     if (!isSafeForDraft({ verdict: row.analysis.verdict, contactEmail: row.job.contactEmail, sourceId: row.job.sourceId })) {
