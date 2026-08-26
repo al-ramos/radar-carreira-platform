@@ -251,10 +251,9 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
   const historyPageSize = 10;
   const visibleHistory = orderedHistory.slice(historyPage * historyPageSize, (historyPage + 1) * historyPageSize);
   const selectedHistory = currentAssessments.filter((item) => selectedHistoryJobIds.includes(item.jobId));
-  const allVisibleSelected = visibleHistory.length > 0 && visibleHistory.every((item) => selectedHistoryJobIds.includes(item.jobId));
   const allFilteredSelected = filteredHistory.length > 0 && filteredHistory.every((item) => selectedHistoryJobIds.includes(item.jobId));
   const toggleHistoryJob = (jobId: string) => setSelectedHistoryJobIds((current) => current.includes(jobId) ? current.filter((id) => id !== jobId) : [...current, jobId]);
-  const toggleVisibleHistory = () => setSelectedHistoryJobIds((current) => allVisibleSelected ? current.filter((id) => !visibleHistory.some((item) => item.jobId === id)) : [...new Set([...current, ...visibleHistory.map((item) => item.jobId)])]);
+  const toggleFilteredHistory = () => setSelectedHistoryJobIds((current) => allFilteredSelected ? current.filter((id) => !filteredHistory.some((item) => item.jobId === id)) : [...new Set([...current, ...filteredHistory.map((item) => item.jobId)])]);
   const draftActionBlocker = (item: HistoryItem) => {
     if (item.draftStatus) return item.draftStatus === "sent" ? (item.gmailSentId ? "Enviado confirmado pelo Gmail" : "Envio informado manualmente") : item.draftStatus === "drafted" ? "Rascunho pronto" : item.draftStatus === "pending" ? null : "Reveja a falha antes";
     if (item.jobSource === "linkedin-extension") return "LinkedIn não permite rascunho";
@@ -361,6 +360,24 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Não foi possível preparar a fila de rascunhos.");
       if (jobIds?.length === 1) setDraftActionStatuses((current) => ({ ...current, [jobIds[0]]: { kind: "failed", text: error instanceof Error ? error.message : "Não foi possível preparar o rascunho." } }));
+    } finally {
+      setQueueingDrafts(false);
+    }
+  };
+  const reuseSelectedCompanyContacts = async () => {
+    if (!selectedHistory.length) return;
+    setQueueingDrafts(true);
+    setMessage(`Consultando a base de empresas para ${selectedHistory.length} vaga(s) selecionada(s)…`);
+    try {
+      const response = await fetch("/api/triage/contacts/reuse", {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jobIds: selectedHistory.map((item) => item.jobId) }),
+      });
+      const result = await readJsonResponse<{ error?: string; considered: number; reused: number; alreadyWithContact: number; unavailable: number }>(response, "A consulta de contatos");
+      if (!response.ok) throw new Error(result.error ?? "Não foi possível consultar os contatos cadastrados.");
+      setMessage(`Base consultada para ${result.considered} vaga(s): ${result.reused} contato(s) de empresa reaproveitado(s), ${result.alreadyWithContact} já cadastrado(s) e ${result.unavailable} empresa(s) sem e-mail conhecido.`);
+      await loadHistory();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Não foi possível consultar os contatos cadastrados.");
     } finally {
       setQueueingDrafts(false);
     }
@@ -819,10 +836,11 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
                 <button type="button" className="triage-queue-button" disabled={aiReviewLoading} onClick={() => void openAiPrompt(selectedHistory.map((item) => item.jobId))}>Consultar IA</button>
                 <button type="button" className="triage-queue-button" onClick={downloadSelectedHistoryCsv} title="Baixa código, título, status atual e descrição do status das vagas selecionadas.">Baixar CSV</button>
                 {selectedHistory.length === 1 && selectedHistory[0].draftStatus === "drafted" && <><button type="button" className="triage-queue-button" disabled={reconcilingSentJobId === selectedHistory[0].jobId} onClick={() => void reconcileSentDraft(selectedHistory[0].jobId)}>{reconcilingSentJobId === selectedHistory[0].jobId ? "Consultando Gmail…" : "Atualizar envio"}</button><button type="button" className="triage-queue-button" disabled={reconcilingSentJobId === selectedHistory[0].jobId} onClick={() => void confirmSentDraft(selectedHistory[0].jobId)}>Confirmar envio</button></>}
-                <button type="button" className="triage-queue-button" disabled={queueingDrafts || selectedHistory.length > 100} onClick={() => void queueDrafts(selectedHistory.map((item) => item.jobId))} title={selectedHistory.length > 100 ? "Prepare até 100 vagas por vez." : undefined}>Preparar rascunhos</button>
+                <button type="button" className="triage-queue-button" disabled={queueingDrafts || selectedHistory.length > 100} onClick={() => void reuseSelectedCompanyContacts()} title={selectedHistory.length > 100 ? "Consulte até 100 vagas por vez." : "Procura somente e-mails de empresas já cadastrados no Radar e preenche vagas sem contato."}>Consultar contatos já cadastrados</button>
+                <button type="button" className="triage-queue-button" disabled={queueingDrafts || selectedHistory.length > 100} onClick={() => void queueDrafts(selectedHistory.map((item) => item.jobId))} title={selectedHistory.length > 100 ? "Prepare até 100 vagas por vez." : "Cria rascunhos somente para vagas selecionadas que estejam elegíveis; nunca envia e-mail."}>Preparar rascunhos selecionados</button>
                 <button type="button" className="triage-selection-clear" onClick={() => setSelectedHistoryJobIds([])}>Limpar seleção</button>
               </div>}
-<div className="triage-table-wrap"><table className="triage-table"><thead><tr><th className="triage-select-column"><input aria-label="Selecionar todas as vagas visíveis" type="checkbox" checked={allVisibleSelected} onChange={toggleVisibleHistory} /></th>{([ ["verdict", "Veredito"], ["title", "Vaga"], ["company", "Empresa"], ["sourceCode", "Fonte / código"], ["locationMode", "Local e modalidade"], ["publishedReceived", "Publicação original / recebimento"], ["contact", "Contato"], ["externalAi", "IA à parte"], ["draft", "Rascunho"], ["sent", "Envio"], ["processedAt", "Analisada"] ] as const).map(([key, label]) => <th key={key}><button onClick={() => sortHistory(key)} aria-label={`Ordenar por ${label}`}>{label}{sortKey === key ? <small aria-hidden="true"> {sortDirection === "asc" ? "↑" : "↓"}</small> : null}</button></th>)}<th>Ações</th></tr></thead><tbody>{visibleHistory.length ? visibleHistory.map((item) => {
+<div className="triage-table-wrap"><table className="triage-table"><thead><tr><th className="triage-select-column"><input aria-label="Selecionar todas as vagas filtradas" type="checkbox" checked={allFilteredSelected} onChange={toggleFilteredHistory} /></th>{([ ["verdict", "Veredito"], ["title", "Vaga"], ["company", "Empresa"], ["sourceCode", "Fonte / código"], ["locationMode", "Local e modalidade"], ["publishedReceived", "Publicação original / recebimento"], ["contact", "Contato"], ["externalAi", "IA à parte"], ["draft", "Rascunho"], ["sent", "Envio"], ["processedAt", "Analisada"] ] as const).map(([key, label]) => <th key={key}><button onClick={() => sortHistory(key)} aria-label={`Ordenar por ${label}`}>{label}{sortKey === key ? <small aria-hidden="true"> {sortDirection === "asc" ? "↑" : "↓"}</small> : null}</button></th>)}<th>Ações</th></tr></thead><tbody>{visibleHistory.length ? visibleHistory.map((item) => {
                 const draftBlocker = draftActionBlocker(item), draftActionStatus = draftActionStatuses[item.jobId], isActiveAi = activeAiJobId === item.jobId, isActiveCodex = activeCodexJobId === item.jobId;
                 const codexQueueItem = codexQueueItems.find((review) => review.selection.filters?.jobIds?.includes(item.jobId));
                 const aiLabel = isActiveAi ? aiReview?.status === "completed" ? "IA concluída" : aiReview?.status === "failed" || aiReview?.status === "partial_failed" ? "IA com falha" : `IA: ${aiReview?.completed ?? 0}/${aiReview?.total ?? 1}` : "Consultar IA";
