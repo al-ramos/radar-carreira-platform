@@ -13,7 +13,8 @@ test("a exclusão administrativa exige confirmação para todas as vagas",async(
  assert.match(route,/triageHistory/);
  assert.match(route,/draftOutbox/);
  assert.match(route,/purgeArchivedJobsBeforeCutoff/);
- assert.match(route,/EXCLUIR VAGAS ARQUIVADAS ANTERIORES A 15\/08\/2026/);
+ assert.match(route,/archivedBefore/);
+ assert.match(route,/confirmationForArchivedPurge/);
  assert.match(deletion,/alertReads/);
  assert.match(deletion,/userJobStatus/);
  assert.match(deletion,/jobEvents/);
@@ -28,4 +29,5 @@ test("a exclusão administrativa exige confirmação para todas as vagas",async(
  assert.match(settings,/\/api\/admin\/backup/);
  assert.match(settings,/Limpar base de vagas/);
  assert.match(settings,/Excluir recorte arquivado/);
+ assert.match(settings,/type="date"/);
 });

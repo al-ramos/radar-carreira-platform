@@ -1,7 +1,6 @@
 import { and, eq, inArray, lt, sql } from "drizzle-orm";
 import { getDb } from "../db/index";
 import { aiUsageEvents, alertReads, draftOutbox, jobAiFacts, jobAiTriage, jobEvents, jobImportRuns, jobs, triageBatchItems, triageDeduplication, triageHistory, userJobAnalyses, userJobStatus } from "../db/schema";
-import { ARCHIVE_BEFORE } from "./job-archive-policy";
 
 /** Remove uma vaga e todos os registros que dependem dela, na ordem segura. */
 export async function deleteJobsAndRelated(jobIds: string[]) {
@@ -22,16 +21,16 @@ export async function deleteJobsAndRelated(jobIds: string[]) {
  * Exclusão definitiva do recorte já arquivado. Os comandos são enviados em
  * um único batch D1: ou todas as dependências e as vagas saem, ou nada sai.
  */
-export async function purgeArchivedJobsBeforeCutoff() {
+export async function purgeArchivedJobsBeforeCutoff(cutoff: Date) {
   const db = getDb();
-  const cutoff = ARCHIVE_BEFORE.getTime();
+  const cutoffTime = cutoff.getTime();
   const target = () => db.select({ id: jobs.id }).from(jobs).where(and(
     eq(jobs.status, "archived"),
-    lt(sql`coalesce(${jobs.sourcePublishedAt}, ${jobs.firstSeenAt})`, cutoff),
+    lt(sql`coalesce(${jobs.sourcePublishedAt}, ${jobs.firstSeenAt})`, cutoffTime),
   ));
   const count = await db.select({ total: sql<number>`count(*)` }).from(jobs).where(and(
     eq(jobs.status, "archived"),
-    lt(sql`coalesce(${jobs.sourcePublishedAt}, ${jobs.firstSeenAt})`, cutoff),
+    lt(sql`coalesce(${jobs.sourcePublishedAt}, ${jobs.firstSeenAt})`, cutoffTime),
   ));
   const deleted = Number(count[0]?.total ?? 0);
   if (!deleted) return 0;
