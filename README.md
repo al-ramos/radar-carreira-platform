@@ -157,6 +157,8 @@ O produto usa mecanismos complementares, cada um com uma finalidade:
 
 Vagas fora do escopo de TI continuam visíveis, mas não recebem aderência. O perfil salvo no D1 é a única fonte de verdade da triagem; sem competências dominadas não há veredito. Análises do portal, do Codex ou importadas por CSV podem substituir explicitamente o veredito, mas um rascunho só é liberado se a vaga continuar segura na revalidação determinística, tiver contato válido e estiver em **Bate** ou **Provável com ressalvas**. O estado da candidatura não regride: **mensagem gerada → enviada → respondida**.
 
+Em **Configurações → Meu perfil**, a pessoa pode ampliar o recorte sem declarar experiência inexistente: aceitar presencial nas regiões escolhidas, qualquer frequência híbrida, contrato não informado e tecnologias explicitamente marcadas na vaga como diferenciais. Requisitos obrigatórios continuam exigindo evidência no perfil. Idiomas avançados só deixam de bloquear quando estiverem marcados como aceitos para comunicação diária.
+
 ## Fluxo dos dados
 
 ```text

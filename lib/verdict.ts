@@ -141,7 +141,7 @@ function requiredHybridDays(text: string): number | null {
   return match ? Number(match[1]) : null;
 }
 
-function languageAllowed(rules: CareerRules | undefined, language: string): boolean {
+export function languageAllowed(rules: CareerRules | undefined, language: string): boolean {
   if (!rules) return false;
   return rules.dailyCommunicationLanguages.some(item => normalizeText(item) === normalizeText(language));
 }
@@ -177,10 +177,12 @@ function detectContratacao(text: string, rules?: CareerRules): { status: string;
   const hasPj = PJ_RE.test(text);
   const hasClt = CLT_RE.test(text);
   const preferred = rules?.preferredContracts ?? [];
-  const primary = preferred[0];
-  if (hasPj && !hasClt) return { status: preferred.length && !preferred.includes("PJ") ? "PJ (fora da preferência)" : primary === "PJ" ? "PJ ✅" : "PJ aceita", ok: preferred.length ? preferred.includes("PJ") : true };
-  if (hasClt && !hasPj) return { status: preferred.length && !preferred.includes("CLT") ? "CLT (fora da preferência)" : primary && primary !== "CLT" ? `CLT aceita · preferência principal: ${primary}` : "CLT ✅", ok: primary && primary !== "CLT" ? null : preferred.length ? preferred.includes("CLT") : true };
-  if (hasPj && hasClt) return { status: "PJ ou CLT (a confirmar)", ok: null };
+  if (hasPj && !hasClt) return { status: preferred.length && !preferred.includes("PJ") ? "PJ (fora da preferência)" : "PJ aceita ✅", ok: preferred.length ? preferred.includes("PJ") : true };
+  if (hasClt && !hasPj) return { status: preferred.length && !preferred.includes("CLT") ? "CLT (fora da preferência)" : "CLT aceita ✅", ok: preferred.length ? preferred.includes("CLT") : true };
+  if (hasPj && hasClt) return preferred.includes("PJ") && preferred.includes("CLT")
+    ? { status: "PJ ou CLT — ambos aceitos ✅", ok: true }
+    : { status: "PJ ou CLT (a confirmar)", ok: null };
+  if (rules?.acceptUnspecifiedContracts) return { status: "Não especificado — qualquer regime aceito ✅", ok: true };
   return { status: "Não especificado — a confirmar", ok: null };
 }
 
@@ -226,11 +228,12 @@ function detectWorkMode(text: string, location: string, rules?: CareerRules): { 
     if (locationAccepted === false) return { status: `Híbrido fora das regiões aceitas (${location})`, ok: false };
     if (hybridDays !== null && rules && hybridDays > rules.maxHybridDays) return { status: `Híbrido ${hybridDays}x/semana — limite do perfil: ${rules.maxHybridDays}x`, ok: false };
     if (locationAccepted === null) return { status: "Híbrido — localização a confirmar", ok: null };
+    if (hybridDays === null && rules?.maxHybridDays === 5) return { status: "Híbrido em região aceita — qualquer frequência aceita ✅", ok: true };
     return { status: hybridDays === null ? "Híbrido em região aceita — dias a confirmar" : `Híbrido ${hybridDays}x/semana em região aceita ✅`, ok: hybridDays === null ? null : true };
   }
   if (onsite) return locationAccepted === false
     ? { status: `Presencial fora das regiões aceitas (${location})`, ok: false }
-    : { status: locationAccepted === null ? "Presencial — localização a confirmar" : "Presencial em região aceita — fora da preferência", ok: null };
+    : { status: locationAccepted === null ? "Presencial — localização a confirmar" : rules?.acceptOnsiteWithinAcceptedRegions ? "Presencial em região aceita ✅" : "Presencial em região aceita — fora da preferência", ok: rules?.acceptOnsiteWithinAcceptedRegions ? true : null };
   return { status: "Não especificado — a confirmar", ok: null };
 }
 
@@ -249,18 +252,33 @@ function detectSeniority(title: string, declaredSeniority: string, rules?: Caree
   return { status: "Não especificado — provável Pleno/Sênior", ok: null };
 }
 
-function detectStack(text: string, jobStack: string[], userSkills?: string[]): { status: string; ok: boolean | null } {
-  void text; // A stack já foi inferida a partir da descrição antes desta análise.
+function isOptionalRequirement(text: string, skill: string): boolean {
+  const normalizedText = normalizeText(text);
+  const normalizedSkill = normalizeText(skill).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const skillPattern = new RegExp(`\\b${normalizedSkill}\\b`, "i");
+  const optionalMarker = /\b(diferenciais?|desejavel|desejaveis|nice to have|ser[aá] um diferencial|plus)\b/i;
+  return normalizedText.split(/\n|[.;]/).some(part => optionalMarker.test(part) && skillPattern.test(part));
+}
+
+function detectStack(text: string, jobStack: string[], userSkills?: string[], rules?: CareerRules): { status: string; ok: boolean | null } {
   const { requiredSkills, matchingSkills, missingSkills } = analyzeStackFit(jobStack, userSkills);
   if (!requiredSkills.length) return { status: "Stack não identificada na vaga — confirmar", ok: null };
   if (!missingSkills.length) return { status: `${matchingSkills.join(", ")} ✅`, ok: true };
+  const optionalMissing = rules?.acceptOptionalRequirements
+    ? missingSkills.filter(skill => isOptionalRequirement(text, skill))
+    : [];
+  const requiredMissing = missingSkills.filter(skill => !optionalMissing.includes(skill));
+  if (!requiredMissing.length) return {
+    status: `${matchingSkills.join(", ")} ✅ · diferenciais aceitos: ${optionalMissing.join(", ")}`,
+    ok: true,
+  };
   if (!matchingSkills.length) return { status: `Impedimentos: ${missingSkills.join(", ")}`, ok: false };
   if (matchingSkills.length / requiredSkills.length < 0.34) return {
-    status: `Baixa aderência: ${matchingSkills.join(", ")} — faltam: ${missingSkills.join(", ")}`,
+    status: `Baixa aderência: ${matchingSkills.join(", ")} — faltam: ${requiredMissing.join(", ")}`,
     ok: false,
   };
   return {
-    status: `${matchingSkills.join(", ")} — faltam: ${missingSkills.join(", ")}`,
+    status: `${matchingSkills.join(", ")} — faltam: ${requiredMissing.join(", ")}${optionalMissing.length ? ` · diferenciais aceitos: ${optionalMissing.join(", ")}` : ""}`,
     ok: null,
   };
 }
@@ -348,7 +366,7 @@ export function computeVerdict(job: {
   const contractRow = detectContratacao(lc, rules);
   const technicalFitRow = stackException
     ? { status: `Exceção técnica aceita: ${stackException} ✅`, ok: true as const }
-    : detectStack(lc, job.stack, userSkills);
+    : detectStack(fullText, job.stack, userSkills, rules);
   const companyRow = detectCompanyType(lc);
   const rows: VerdictRow[] = [
     ...structuralRows,

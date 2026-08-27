@@ -15,17 +15,20 @@ test("preserva preferências novas e legadas como listas", () => {
 test("preset de Alexsandro preserva posicionamento, projeto AMR e regras pessoais", () => {
   const preset = alexsandroProfilePreset();
   assert.equal(preset.careerRules.professionalName, "Alexsandro Ramos");
-  assert.equal(preset.careerRules.professionalTitle, "Desenvolvedor .NET Pleno");
+  assert.equal(preset.careerRules.professionalTitle, "Desenvolvedor .NET Sênior");
   assert.equal(preset.careerRules.baseLocation, "Mogi das Cruzes, SP");
-  assert.deepEqual(preset.preferredMode, ["Remoto", "Híbrido"]);
+  assert.deepEqual(preset.preferredMode, ["Remoto", "Híbrido", "Presencial"]);
   assert.deepEqual(preset.careerRules.acceptedRegions, ["Grande São Paulo"]);
-  assert.equal(preset.careerRules.maxHybridDays, 2);
+  assert.equal(preset.careerRules.maxHybridDays, 5);
   assert.deepEqual(preset.careerRules.preferredContracts, ["PJ", "CLT"]);
-  assert.deepEqual(preset.careerRules.dailyCommunicationLanguages, ["Português"]);
-  assert.deepEqual(preset.careerRules.blockedSeniorities, ["Júnior", "Analista"]);
-  assert.deepEqual(preset.careerRules.blockedWorkTypes, ["Sustentação", "Suporte"]);
+  assert.deepEqual(preset.careerRules.dailyCommunicationLanguages, ["Português", "Inglês"]);
+  assert.deepEqual(preset.careerRules.blockedSeniorities, ["Júnior"]);
+  assert.deepEqual(preset.careerRules.blockedWorkTypes, ["Suporte", "Help desk"]);
   assert.deepEqual(preset.careerRules.coreStack, ["C#", ".NET"]);
-  assert.deepEqual(preset.careerRules.stackExceptions, ["VBA + Access + SQL Server", "QA .NET"]);
+  assert.deepEqual(preset.careerRules.stackExceptions, ["VBA + Access + SQL Server", "QA .NET", "Integração .NET", "Arquitetura .NET", "Tech Lead .NET"]);
+  assert.equal(preset.careerRules.acceptOptionalRequirements, true);
+  assert.equal(preset.careerRules.acceptUnspecifiedContracts, true);
+  assert.equal(preset.careerRules.acceptOnsiteWithinAcceptedRegions, true);
   assert.match(preset.careerRules.anchorProject, /Sistema AMR/);
   assert.match(preset.careerRules.anchorProject, /CP\/ACID/);
   assert.match(preset.careerRules.anchorProject, /AP\/BASE/);
@@ -173,20 +176,21 @@ test("VBA e Visual Basic 6 do perfil são aprovados mesmo quando a vaga é Pleno
   }
 });
 
-test("dá o mesmo poder de veto ao inglês e ao espanhol avançados", () => {
+test("bloqueia idioma avançado que não esteja aceito no perfil", () => {
   const preset = alexsandroProfilePreset();
+  const rules = { ...preset.careerRules, dailyCommunicationLanguages: ["Português"] };
   for (const [requirement, expected] of [["Inglês fluente obrigatório para reuniões diárias", "Inglês avançado exigido"], ["Espanhol fluente obrigatório para reuniões diárias", "Espanhol avançado exigido"]]) {
     const verdict = computeVerdict(
       { title: "Desenvolvedor .NET Sênior", description: requirement, stack: ["C#", ".NET"], seniority: "Sênior", workMode: "Remoto" },
       preset.masteredSkills,
-      preset.careerRules,
+      rules,
     );
     assert.equal(verdict.emoji, "❌");
     assert.equal(verdict.blocker, expected);
   }
 });
 
-test("entende Mogi como Grande São Paulo e aplica o limite do híbrido", () => {
+test("entende Mogi como Grande São Paulo e aceita qualquer frequência híbrida do perfil ampliado", () => {
   const preset = alexsandroProfilePreset();
   const light = computeVerdict(
     { title: "Desenvolvedor .NET Sênior", description: "Híbrido 2 dias por semana", stack: ["C#", ".NET"], seniority: "Sênior", workMode: "Híbrido", location: "Mogi das Cruzes, SP" },
@@ -201,8 +205,7 @@ test("entende Mogi como Grande São Paulo e aplica o limite do híbrido", () => 
     preset.masteredSkills,
     preset.careerRules,
   );
-  assert.equal(intense.emoji, "❌");
-  assert.match(intense.blocker ?? "", /limite do perfil/);
+  assert.equal(intense.emoji, "✅");
 
   const outside = computeVerdict(
     { title: "Desenvolvedor .NET Sênior", description: "Híbrido 1 dia por semana", stack: ["C#", ".NET"], seniority: "Sênior", workMode: "Híbrido", location: "Campinas, SP" },
@@ -222,6 +225,27 @@ test("não reprova por Campinas quando a presença é condicionada a residir lá
   );
   assert.notEqual(verdict.emoji, "❌");
   assert.match(verdict.rows.find(row => row.criterion === "Fase 1 · Geografia")?.status ?? "", /condicionada.*não se aplica/i);
+});
+
+test("perfil ampliado aprova presencial na Grande SP e híbrido sem limite informado", () => {
+  const preset = alexsandroProfilePreset();
+  for (const job of [
+    { title: "Desenvolvedor .NET Sênior", description: "C# e .NET. CLT.", stack: ["C#", ".NET"], seniority: "Sênior", workMode: "Presencial", location: "São Paulo, SP" },
+    { title: "Desenvolvedor .NET Sênior", description: "C# e .NET. CLT. Híbrido em São Paulo.", stack: ["C#", ".NET"], seniority: "Sênior", workMode: "Híbrido", location: "São Paulo, SP" },
+  ]) {
+    assert.equal(computeVerdict(job, preset.masteredSkills, preset.careerRules).emoji, "✅");
+  }
+});
+
+test("perfil ampliado aceita somente os diferenciais técnicos declarados", () => {
+  const preset = alexsandroProfilePreset();
+  const verdict = computeVerdict(
+    { title: "Desenvolvedor .NET Sênior", description: "C# e .NET obrigatórios. Diferenciais: Docker e Kubernetes. CLT e híbrido em São Paulo.", stack: ["C#", ".NET", "Docker", "Kubernetes"], seniority: "Sênior", workMode: "Híbrido", location: "São Paulo, SP" },
+    preset.masteredSkills,
+    preset.careerRules,
+  );
+  assert.equal(verdict.emoji, "✅");
+  assert.match(verdict.rows.find(row => row.criterion === "Fase 3 · Fit técnico")?.status ?? "", /diferenciais aceitos: Docker, Kubernetes/);
 });
 
 test("não confunde Pleno com Sênior na fase de preferências", () => {

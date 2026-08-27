@@ -64,6 +64,12 @@ export type CareerRules = {
   coreStack: string[];
   coreStackMatchMode: "all" | "any";
   stackExceptions: string[];
+  /** Aceita diferenciais técnicos sem tratá-los como competências dominadas. */
+  acceptOptionalRequirements: boolean;
+  /** Não deixa a ausência de regime de contratação rebaixar uma vaga. */
+  acceptUnspecifiedContracts: boolean;
+  /** Aceita presencial desde que a cidade esteja dentro das regiões escolhidas. */
+  acceptOnsiteWithinAcceptedRegions: boolean;
   anchorProject: string;
   discloseGapsInEmail: boolean;
   aiMonthlyTokenLimit: number;
@@ -83,6 +89,9 @@ export const emptyCareerRules = (): CareerRules => ({
   coreStack: [],
   coreStackMatchMode: "any",
   stackExceptions: [],
+  acceptOptionalRequirements: false,
+  acceptUnspecifiedContracts: false,
+  acceptOnsiteWithinAcceptedRegions: false,
   anchorProject: "",
   discloseGapsInEmail: true,
   aiMonthlyTokenLimit: 100_000,
@@ -96,28 +105,31 @@ export const emptyProfileChoices = (): ProfileChoices => ({
 export function alexsandroProfilePreset(): ProfileChoices {
   return {
     seniority: ["Sênior", "Arquiteto"],
-    preferredMode: ["Remoto", "Híbrido"],
+    preferredMode: ["Remoto", "Híbrido", "Presencial"],
     masteredSkills: [
       "C#", ".NET", "AWS", "RabbitMQ", "SQL Server", "React",
       "GitHub Actions", "Terraform", "Visual Basic 6", "VBA", "WCF",
     ],
-    desiredAreas: ["Desenvolvimento Back-end", "Arquitetura de Software", "Cloud", "Full Stack", "Qualidade / QA"],
+    desiredAreas: ["Desenvolvimento Back-end", "Arquitetura de Software", "Cloud", "Full Stack", "Qualidade / QA", "DevOps", "Infraestrutura", "Engenharia de Dados", "Dados / BI"],
     avoidTerms: [],
     minScore: 0,
     careerRules: {
       professionalName: "Alexsandro Ramos",
-      professionalTitle: "Desenvolvedor .NET Pleno",
+      professionalTitle: "Desenvolvedor .NET Sênior",
       professionalSummary: "Desenvolvedor .NET com experiência em C#, .NET 8/10, MediatR, Polly, AWS (ECS Fargate, ALB, SQS e S3), RabbitMQ com MassTransit, SQL Server, React, GitHub Actions e Terraform. Possui experiência profunda com sistemas legados em VB6, COM+, MTS, WebForms e WCF, especialmente em modernização de arquiteturas. Utiliza Claude Code diariamente como ferramenta de desenvolvimento assistido.",
       baseLocation: "Mogi das Cruzes, SP",
       acceptedRegions: ["Grande São Paulo"],
-      maxHybridDays: 2,
+      maxHybridDays: 5,
       preferredContracts: ["PJ", "CLT"],
-      dailyCommunicationLanguages: ["Português"],
-      blockedSeniorities: ["Júnior", "Analista"],
-      blockedWorkTypes: ["Sustentação", "Suporte"],
+      dailyCommunicationLanguages: ["Português", "Inglês"],
+      blockedSeniorities: ["Júnior"],
+      blockedWorkTypes: ["Suporte", "Help desk"],
       coreStack: ["C#", ".NET"],
       coreStackMatchMode: "any",
-      stackExceptions: ["VBA + Access + SQL Server", "QA .NET"],
+      stackExceptions: ["VBA + Access + SQL Server", "QA .NET", "Integração .NET", "Arquitetura .NET", "Tech Lead .NET"],
+      acceptOptionalRequirements: true,
+      acceptUnspecifiedContracts: true,
+      acceptOnsiteWithinAcceptedRegions: true,
       anchorProject: "o Sistema AMR: arquitetura multimodular com módulo Financeiro CP/ACID em SQL Server, módulo Fábrica AP/BASE em SQLite + EFS e infraestrutura na AWS com ECS Fargate e Application Load Balancer. O projeto demonstra decisões conscientes sobre consistência, disponibilidade, arquitetura poliglota de dados e modernização de sistemas legados.",
       discloseGapsInEmail: true,
       aiMonthlyTokenLimit: 100_000,
@@ -150,6 +162,9 @@ export function normalizeCareerRules(value: unknown): CareerRules {
     coreStack: list("coreStack"),
     coreStackMatchMode: candidate.coreStackMatchMode === "all" ? "all" : "any",
     stackExceptions: list("stackExceptions"),
+    acceptOptionalRequirements: candidate.acceptOptionalRequirements === true,
+    acceptUnspecifiedContracts: candidate.acceptUnspecifiedContracts === true,
+    acceptOnsiteWithinAcceptedRegions: candidate.acceptOnsiteWithinAcceptedRegions === true,
     anchorProject: text("anchorProject"),
     discloseGapsInEmail: typeof candidate.discloseGapsInEmail === "boolean" ? candidate.discloseGapsInEmail : defaults.discloseGapsInEmail,
     aiMonthlyTokenLimit: Number.isFinite(Number(candidate.aiMonthlyTokenLimit)) ? Math.max(0, Math.min(10_000_000, Math.round(Number(candidate.aiMonthlyTokenLimit)))) : defaults.aiMonthlyTokenLimit,

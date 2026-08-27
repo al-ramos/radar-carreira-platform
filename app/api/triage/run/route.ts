@@ -254,7 +254,7 @@ export async function POST(request: Request) {
             await db.insert(jobAiFacts).values({ jobId: job.id, descriptionHash, analyzerVersion: AI_FACTS_VERSION, facts: JSON.stringify(facts), provider: completion.provider, model: completion.model, inputTokens: completion.inputTokens, outputTokens: completion.outputTokens, analyzedAt: now }).onConflictDoUpdate({ target: jobAiFacts.jobId, set: { descriptionHash, analyzerVersion: AI_FACTS_VERSION, facts: JSON.stringify(facts), provider: completion.provider, model: completion.model, inputTokens: completion.inputTokens, outputTokens: completion.outputTokens, analyzedAt: now } });
             await db.insert(aiUsageEvents).values({ id: randomUUID(), userId, jobId: job.id, operation: "resolve_ambiguity", provider: completion.provider, model: completion.model, inputTokens: completion.inputTokens, outputTokens: completion.outputTokens, status: "completed", createdAt: now });
           }
-          const effect = applyAiRefinement(verdict, facts);
+          const effect = applyAiRefinement(verdict, facts, canonicalProfile.careerRules);
           finalVerdict = { ...verdict, verdict: effect.verdict, blocker: effect.blocker, result: { ...verdict.result, emoji: effect.verdict === "BATE" ? "✅" : effect.verdict === "PROVAVEL" ? "🟡" : "❌", label: effect.label, blocker: effect.blocker } };
           finalSource = "ai";
           explanation = JSON.stringify({ policy: "conservative-v1", effect: effect.effect, reason: effect.reason, facts });

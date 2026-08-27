@@ -9,3 +9,8 @@ test("IA só rebaixa por evidência objetiva e nunca promove automaticamente", (
   assert.equal(applyAiRefinement(rules, facts("Inglês fluente para comunicação diária")).verdict, "NAO_BATE");
   assert.equal(applyAiRefinement({ ...rules, verdict: "PROVAVEL" }, facts("Não informado")).verdict, "PROVAVEL");
 });
+
+test("IA respeita inglês aceito explicitamente no perfil", () => {
+  const careerRules = { dailyCommunicationLanguages: ["Português", "Inglês"] };
+  assert.equal(applyAiRefinement(rules, facts("Inglês fluente para comunicação diária"), careerRules).verdict, "BATE");
+});

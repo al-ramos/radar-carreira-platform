@@ -1,5 +1,7 @@
 import type { StructuredJobFacts } from "./ai-provider";
 import type { DeterministicTriage } from "./deterministic-triage";
+import { languageAllowed } from "./verdict.ts";
+import type { CareerRules } from "./profile-options.ts";
 
 export type AiRefinementEffect = {
   verdict: DeterministicTriage["verdict"];
@@ -17,12 +19,12 @@ export type AiRefinementEffect = {
  * - a IA nunca eleva automaticamente uma vaga. Isso evita criar candidatura
  *   a partir de uma inferência e deixa qualquer promoção para revisão humana.
  */
-export function applyAiRefinement(rules: DeterministicTriage, facts: StructuredJobFacts): AiRefinementEffect {
+export function applyAiRefinement(rules: DeterministicTriage, facts: StructuredJobFacts, careerRules?: CareerRules): AiRefinementEffect {
   if (rules.blocker) return { verdict: rules.verdict, label: rules.result.label, blocker: rules.blocker, effect: "confirmed", reason: "Bloqueador determinístico preservado." };
 
   const language = facts.languageRequirement.toLocaleLowerCase("pt-BR");
   const advancedLanguage = /(ingl[eê]s|english).{0,32}(fluente|avançado|advanced|c1|c2)|(?:fluente|avançado|advanced|c1|c2).{0,32}(ingl[eê]s|english)/i.test(language);
-  if (advancedLanguage) {
+  if (advancedLanguage && !languageAllowed(careerRules, "Inglês")) {
     return {
       verdict: "NAO_BATE",
       label: "Bloqueador confirmado pela IA",
