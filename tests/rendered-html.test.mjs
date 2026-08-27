@@ -222,6 +222,9 @@ test("triagem por IA fica visível só ao proprietário e consulta job_ai_triage
   assert.match(route, /Acesso restrito ao proprietário/);
   assert.match(route, /includeBacklog/);
   assert.match(route, /!= '⚪'/);
+  assert.match(route, /externalId: jobs\.externalId/);
+  assert.match(route, /sourceId: jobs\.sourceId/);
+  assert.match(route, /leftJoin\(jobSources, eq\(jobs\.sourceId, jobSources\.id\)\)/);
   assert.match(component, /Triagem de vagas/);
   assert.match(component, /CENTRO DE DECISÃO/);
   assert.match(component, /Resumo do filtro atual/);

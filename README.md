@@ -174,6 +174,10 @@ ATS públicos ─────────┘                                  �
 
 As senhas do Gmail não são armazenadas. O conector do Google Apps Script envia apenas mensagens recentes da etiqueta `RadarVagas`, usando uma chave exclusiva cujo hash fica registrado no banco.
 
+### Currículo e assinatura nos rascunhos
+
+Todo rascunho de candidatura recebe o currículo PDF e a assinatura padrão da AMR Solution. Antes de atualizar o `gmail-radarvagas.gs`, envie o currículo ao Google Drive da mesma conta que executa o Apps Script e configure a propriedade do script `RADAR_CV_FILE_ID` com o ID do arquivo — a parte entre `/d/` e a próxima `/` no link do Drive. O arquivo permanece privado no Drive; não deve ser compartilhado publicamente nem enviado ao banco do Radar. Sem essa propriedade, a criação do rascunho falha de forma explícita para nunca preparar uma candidatura sem o currículo.
+
 ## Stack
 
 - Next.js 16 e React 19;

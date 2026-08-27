@@ -48,6 +48,43 @@ function instalarColetaDiaria() {
 const RADAR_DRAFT_CONNECTOR_VERSION = 'radar-drafts-v2';
 const RADAR_SENT_RECONCILIATION_HANDLER = 'reconciliarEnviosAgendadosRadar';
 const RADAR_DRAFT_RECOVERY_HANDLER = 'executarRascunhosPendentesRadar';
+const RADAR_CV_FILE_PROPERTY = 'RADAR_CV_FILE_ID';
+const RADAR_CV_FILE_NAME = 'Alex Ramos Back.pdf';
+const RADAR_DEFAULT_SIGNATURE = [
+  'AMR Solution — Workflow Management & Process Automation',
+  '✉ contato@amrsolution.com.br',
+  '📱 (11) 95285-2634 ● WhatsApp',
+  '📍 Mogi das Cruzes, SP — Brasil',
+  'LinkedIn',
+  'GitHub',
+].join('\n');
+
+function escapeHtmlRadar(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// O currículo permanece privado no Drive da conta que executa o Apps Script.
+// Não é copiado para o Radar nem fica exposto em uma URL pública.
+function optionsComCurriculoEAssinaturaRadar(body) {
+  const fileId = PropertiesService.getScriptProperties().getProperty(RADAR_CV_FILE_PROPERTY);
+  if (!fileId) throw new Error(`Configure ${RADAR_CV_FILE_PROPERTY} nas propriedades do Apps Script antes de criar rascunhos.`);
+  const cv = DriveApp.getFileById(fileId);
+  if (cv.getMimeType() !== MimeType.PDF) throw new Error(`O arquivo configurado em ${RADAR_CV_FILE_PROPERTY} deve ser um PDF.`);
+  const text = `${body.trim()}\n\n${RADAR_DEFAULT_SIGNATURE}`;
+  return {
+    text,
+    options: {
+      htmlBody: escapeHtmlRadar(text).replace(/\n/g, '<br>'),
+      attachments: [cv.getBlob().setName(RADAR_CV_FILE_NAME)],
+      name: 'AMR Solution',
+    },
+  };
+}
 
 // Executa manualmente ou por gatilho. Nunca envia mensagens: apenas cria ou
 // reaproveita rascunhos que já foram aprovados e enfileirados pelo Radar.
@@ -67,11 +104,16 @@ function criarRascunhosRadar(options) {
     const payload = JSON.parse(response.getContentText());
     (payload.drafts || []).forEach(item => {
       try {
+        const content = optionsComCurriculoEAssinaturaRadar(item.body);
         const existing = GmailApp.getDrafts().find(draft => {
           const message = draft.getMessage();
           return message.getTo().toLowerCase() === item.to.toLowerCase() && message.getSubject() === item.subject;
         });
-        const draft = existing || GmailApp.createDraft(item.to, item.subject, item.body);
+        // update substitui um rascunho já existente pela versão com currículo
+        // e assinatura, evitando duplicidade e corrigindo rascunhos antigos.
+        const draft = existing
+          ? existing.update(item.to, item.subject, content.text, content.options)
+          : GmailApp.createDraft(item.to, item.subject, content.text, content.options);
         const gmailThreadId = draft.getMessage().getThread().getId();
         const confirm = confirmarRascunhoRadar(secret, item.outboxId, draft.getId(), item.subject, gmailThreadId);
         if (confirm.getResponseCode() >= 300) throw new Error(confirm.getContentText());

@@ -31,6 +31,11 @@ test("rascunhos avulsos ou em fila pedem criação manual imediata sem enviar e-
   assert.match(connector, /action:'draftCandidates'/);
   assert.match(connector, /action:'missing'/);
   assert.match(connector, /criarRascunhosRadar\(\{ outboxIds: payload\.outboxIds \}\)/);
+  assert.match(connector, /RADAR_CV_FILE_ID/);
+  assert.match(connector, /DriveApp\.getFileById/);
+  assert.match(connector, /attachments: \[cv\.getBlob\(\)\.setName\(RADAR_CV_FILE_NAME\)\]/);
+  assert.match(connector, /existing\.update\(item\.to, item\.subject, content\.text, content\.options\)/);
+  assert.match(connector, /contato@amrsolution\.com\.br/);
   assert.doesNotMatch(connector.split("function doPost")[1], /GmailApp\.sendEmail/);
   assert.match(priority, /GMAIL_DRAFTS_WEBHOOK_TOKEN/);
   assert.match(workflow, /GMAIL_DRAFTS_WEBHOOK_URL/);

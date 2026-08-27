@@ -2,7 +2,7 @@ import { desc, eq, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db/index";
-import { jobAiTriage, jobs } from "../../../../db/schema";
+import { jobAiTriage, jobs, jobSources } from "../../../../db/schema";
 import { isOwnerEmail } from "../../../../lib/access";
 
 export const dynamic = "force-dynamic";
@@ -43,12 +43,19 @@ export async function GET(request: Request) {
       processedAt: jobAiTriage.processedAt,
       title: jobs.title,
       company: jobs.company,
+      externalId: jobs.externalId,
+      sourceId: jobs.sourceId,
+      sourceName: jobSources.name,
       workMode: jobs.workMode,
       location: jobs.location,
+      sourcePublishedAt: jobs.sourcePublishedAt,
+      receivedAt: jobs.firstSeenAt,
       url: jobs.url,
+      contactEmail: jobs.contactEmail,
     })
     .from(jobAiTriage)
     .innerJoin(jobs, eq(jobAiTriage.jobId, jobs.id))
+    .leftJoin(jobSources, eq(jobs.sourceId, jobSources.id))
     .where(includeBacklog ? undefined : NOT_BACKLOG)
     .orderBy(desc(jobAiTriage.processedAt))
     .limit(1000);
