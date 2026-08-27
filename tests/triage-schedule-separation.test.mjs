@@ -3,11 +3,12 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 test("toda importação inicia a triagem agendada pela fila e preserva a separação da coleta normal", async () => {
-  const [worker, workflow, route, script] = await Promise.all([
+  const [worker, workflow, route, script, collectRoute] = await Promise.all([
     readFile(new URL("../worker/index.ts", import.meta.url), "utf8"),
     readFile(new URL("../.github/workflows/collect.yml", import.meta.url), "utf8"),
     readFile(new URL("../app/api/triage/run/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../public/gmail-radarvagas.gs", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/cron/collect/route.ts", import.meta.url), "utf8"),
   ]);
 
   assert.match(worker, /"\/api\/triage\/run"/);
@@ -19,6 +20,8 @@ test("toda importação inicia a triagem agendada pela fila e preserva a separa�
   assert.match(worker, /if \(typeof outcome\.id === "string"\) sourceIds\.add\(outcome\.id\)/);
   assert.match(worker, /\/api\/cron\/email-import/);
   assert.match(worker, /\/api\/admin\/collect/);
+  assert.match(collectRoute, /outcomes\.push\(\{ id: source\.id, inserted: sourceInserted, updated: sourceUpdated \}\)/);
+  assert.match(collectRoute, /\r?\n    outcomes,\r?\n    nextOffset:/);
   assert.match(worker, /continuation: payload\.continuation \+ 1/);
   assert.match(worker, /aiMode: "off"/);
   assert.match(workflow, /Falha transitória ao coletar a fonte no offset/);
