@@ -27,24 +27,23 @@ test("endpoint da extensão LinkedIn responde ao preflight CORS", async()=>{
  assert.match(source,/request\.method === "OPTIONS"/);
 });
 
-test("importação da extensão processa vagas em lotes e registra o progresso", async()=>{
+test("importação da extensão processa todas as vagas válidas em lotes, sem filtro de perfil", async()=>{
  const source=await readFile(new URL("../app/api/collector/import/route.ts",import.meta.url),"utf8");
  assert.match(source,/WRITE_BATCH_SIZE = 50/);
  assert.match(source,/LOOKUP_BATCH_SIZE = 100/);
  assert.match(source,/await db\.batch\(/);
  assert.match(source,/status: "failed"/);
  assert.match(source,/duplicates: duplicateRows/);
- assert.match(source,/filterImportedJobsByProfile/);
- assert.match(source,/rejected: filtered\.rejected/);
+ assert.doesNotMatch(source,/filterImportedJobsByProfile/);
+ assert.match(source,/accepted: items\.length/);
+ assert.match(source,/rejected: 0/);
 });
 
-test("coleta das fontes do sistema filtra pelo perfil antes de gravar vagas", async()=>{
+test("coleta das fontes do sistema importa todas as vagas válidas", async()=>{
  const source=await readFile(new URL("../app/api/cron/collect/route.ts",import.meta.url),"utf8");
- assert.match(source,/filterImportedJobsByProfile\(found/);
- assert.match(source,/requiredStacks: careerRules\.coreStack/);
- assert.match(source,/filtered\.accepted\.map/);
- assert.match(source,/rejectedProfile: filtered\.rejected/);
- assert.match(source,/APInfo, RadarVagas e LinkedIn já chegam/);
+ assert.doesNotMatch(source,/filterImportedJobsByProfile/);
+ assert.match(source,/found\.map/);
+ assert.match(source,/rejectedProfile: 0/);
 });
 
 test("coletores registram início, conclusão e falha no monitoramento", async()=>{

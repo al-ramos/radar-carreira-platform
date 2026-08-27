@@ -1,4 +1,5 @@
 import { scoreFamilyForSelection, type SkillFamily } from "./skill-taxonomy.ts";
+import { priorityApprovalReason } from "./priority-approval.ts";
 
 export type ScoreInput={title:string;description:string;stack:string[];seniority?:string|null;workMode?:string|null;location?:string|null;publishedAt?:Date|string|null};
 export type ScoreProfile={masteredSkills:string[];desiredAreas:string[];avoidTerms:string[];seniority:string[];preferredMode:string[]};
@@ -135,6 +136,8 @@ export function matchesSelectedSeniority(jobSeniority:string|null|undefined,sele
 }
 
 export function scoreJob(job:ScoreInput,profile:ScoreProfile){
+ const priorityTechnology=priorityApprovalReason(`${job.title} ${job.description} ${job.stack.join(" ")}`);
+ if(priorityTechnology)return{score:100,reasons:[`✅ Aprovada por tecnologia prioritária: ${priorityTechnology} (requisito ou diferencial)`]};
  if(!isTechnologyJob(job))return{score:0,reasons:["Vaga fora do escopo de TI — sem pontuação"]};
  const text=`${job.title} ${job.description} ${job.stack.join(" ")}`;
  const blocker=blockedReason(`${job.title} ${job.description}`,profile.avoidTerms);

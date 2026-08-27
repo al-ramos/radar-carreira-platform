@@ -12,7 +12,7 @@ test("importação do LinkedIn mantém vaga fechada fora de novas tentativas", a
   assert.match(normalizer, /n\[aã\]o aceita mais candidaturas/);
   assert.match(route, /job\.applicationClosed \? "closed"/);
   assert.match(route, /values\.status === "closed" \? "closed"/);
-  assert.match(sourceRoute, /const closedItems = items\.filter\(\(job\) => job\.applicationClosed\)/);
+  assert.match(sourceRoute, /const entries = \[\.\.\.new Map\(items\.map/);
   assert.match(sourceRoute, /job\.applicationClosed \? "closed"/);
   assert.match(sourceRoute, /values\.status === "closed" \? "closed"/);
 });

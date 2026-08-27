@@ -1,16 +1,13 @@
 import { asc, eq, inArray, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getDb } from "../../../../db/index";
-import { importRuns, jobSources, jobs, platformSettings, profiles } from "../../../../db/schema";
+import { importRuns, jobSources, jobs, platformSettings } from "../../../../db/schema";
 import { collect, isPullProvider } from "../../../../lib/connectors";
-import { filterImportedJobsByProfile } from "../../../../lib/collector-profile-filter";
-import { OWNER_EMAIL } from "../../../../lib/access";
 import { fingerprint, recordedJobDate, sourcePublishedJobDate } from "../../../../lib/jobs";
 import { inferJobArea } from "../../../../lib/job-area";
 import { recordImportRunJobs } from "../../../../lib/import-tracking";
 import { notifyImportRun } from "../../../../lib/notifications";
 import { shouldArchiveImportedJob } from "../../../../lib/job-archive-policy";
-import { normalizeCareerRules } from "../../../../lib/profile-options";
 
 export const dynamic = "force-dynamic";
 
@@ -33,13 +30,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, skipped: true, message: "Coleta pausada pelo administrador" });
   }
 
-  // APInfo, RadarVagas e LinkedIn já chegam com a busca filtrada no endereço
-  // de origem. Este filtro é exclusivo das fontes pull do catálogo (Greenhouse,
-  // Lever e Ashby), que são as que consultamos diretamente pelo sistema.
-  const ownerProfile = (await getDb().select({ careerRules: profiles.careerRules })
-    .from(profiles).where(eq(profiles.email, OWNER_EMAIL)).limit(1))[0];
-  const careerRules = normalizeCareerRules(ownerProfile?.careerRules);
-
   const offset = Math.max(0, Number.parseInt(request.nextUrl.searchParams.get("offset") ?? "0", 10) || 0);
   const sources = (await getDb().select().from(jobSources).where(eq(jobSources.enabled, true)).orderBy(asc(jobSources.id)))
     .filter((source) => source.collectionMode === "pull" && isPullProvider(source.provider));
@@ -59,10 +49,6 @@ export async function POST(request: Request) {
     try {
       const found = await collect(source.provider, source.externalRef, source.name);
       received += found.length;
-      const filtered = filterImportedJobsByProfile(found, {
-        requiredStacks: careerRules.coreStack,
-        stackMatchMode: careerRules.coreStackMatchMode,
-      });
       let sourceInserted = 0;
       let sourceUpdated = 0;
 
@@ -70,7 +56,7 @@ export async function POST(request: Request) {
       // item isoladamente esgota o tempo do Worker e derruba a próxima fonte
       // com 500/503. Mantemos a coleta em uma fonte por chamada, mas usamos
       // leituras e escritas D1 em lote dentro dela.
-      const entries = [...new Map(filtered.accepted.map((job) => [fingerprint(job), job])).entries()]
+      const entries = [...new Map(found.map((job) => [fingerprint(job), job])).entries()]
         .map(([jobFingerprint, job]) => ({ jobFingerprint, job }));
       const existing = new Set<string>();
       for (const fingerprintBatch of chunks(entries.map((entry) => entry.jobFingerprint), LOOKUP_BATCH_SIZE)) {
@@ -112,19 +98,15 @@ export async function POST(request: Request) {
       await getDb().update(importRuns).set({
         status: "completed", received: found.length, inserted: sourceInserted, updated: sourceUpdated,
         details: JSON.stringify({
-          accepted: filtered.accepted.length,
-          rejectedProfile: filtered.rejected,
-          rejectedJobs: filtered.rejectedJobs,
-          profileRule: careerRules.coreStack.length
-            ? `Exige ${careerRules.coreStackMatchMode === "all" ? "todas" : "alguma"} das stacks obrigatórias: ${careerRules.coreStack.join(", ")}.`
-            : "Perfil sem stacks obrigatórias; nenhuma vaga foi bloqueada na origem.",
+          accepted: found.length, rejectedProfile: 0, rejectedJobs: [],
+          profileRule: "A coleta importa todas as vagas válidas; a avaliação ocorre no Radar e no link original.",
         }),
         finishedAt,
       }).where(eq(importRuns.id, runId));
       await getDb().update(jobSources).set({ lastRunAt: finishedAt, lastSuccessAt: finishedAt, lastError: null, consecutiveFailures: 0 }).where(eq(jobSources.id, source.id));
       await notifyImportRun(getDb(), {
         runId, source: source.name, status: "completed", received: found.length,
-        rejectedProfile: filtered.rejected, inserted: sourceInserted, updated: sourceUpdated,
+        rejectedProfile: 0, inserted: sourceInserted, updated: sourceUpdated,
       }).catch(() => undefined);
     } catch (error) {
       errors++;

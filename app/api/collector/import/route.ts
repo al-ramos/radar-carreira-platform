@@ -1,10 +1,8 @@
 import { eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "../../../../db/index";
-import { importRuns, jobSources, jobs, profiles } from "../../../../db/schema";
-import { filterImportedJobsByProfile } from "../../../../lib/collector-profile-filter";
+import { importRuns, jobSources, jobs } from "../../../../db/schema";
 import { normalizeImportedJobs } from "../../../../lib/import-jobs";
 import { fingerprint, recordedJobDate, sourcePublishedJobDate, type ImportedJob } from "../../../../lib/jobs";
-import { normalizeCareerRules } from "../../../../lib/profile-options";
 import { inferJobArea } from "../../../../lib/job-area";
 import { recordImportRunJobs } from "../../../../lib/import-tracking";
 import { notifyImportRun } from "../../../../lib/notifications";
@@ -77,16 +75,8 @@ export async function POST(request: Request) {
   if (!items.length) return json({ error: "Nenhuma vaga válida recebida" }, { status: 400 });
   if (items.length > 2000) return json({ error: "O limite é de 2.000 vagas por envio" }, { status: 400 });
 
-  const profile = config.userId
-    ? (await db.select({ careerRules: profiles.careerRules }).from(profiles).where(eq(profiles.userId, config.userId)).limit(1))[0]
-    : undefined;
-  const careerRules = normalizeCareerRules(profile?.careerRules);
-  const filtered = filterImportedJobsByProfile(items, {
-    requiredStacks: careerRules.filterImportsByCoreStack ? careerRules.coreStack : [],
-    stackMatchMode: careerRules.coreStackMatchMode,
-  });
-  const entries = [...new Map(filtered.accepted.map(job => [fingerprint(job), job])).entries()].map(([fp, job]) => ({ fp, job }));
-  const duplicateRows = filtered.accepted.length - entries.length;
+  const entries = [...new Map(items.map(job => [fingerprint(job), job])).entries()].map(([fp, job]) => ({ fp, job }));
+  const duplicateRows = items.length - entries.length;
   const runId = crypto.randomUUID();
   const startedAt = new Date();
   await db.insert(importRuns).values({ id: runId, source: "Extensão LinkedIn", sourceId: SOURCE_ID, channel: "extension", status: "running", received: items.length, duplicates: duplicateRows, actorUserId: config.userId ?? "collector", startedAt });
@@ -98,7 +88,7 @@ export async function POST(request: Request) {
       await db.update(importRuns).set({ status: "completed", finishedAt: new Date() }).where(eq(importRuns.id, runId));
       await db.update(jobSources).set({ lastRunAt: new Date() }).where(eq(jobSources.id, SOURCE_ID));
       await notifyImportRun(db, { runId, source: "Extensão LinkedIn", status: "completed", received: items.length, inserted: 0, updated: 0, duplicates: 0 }).catch(() => undefined);
-      return json({ ok: true, accepted: 0, received: items.length, duplicates: 0, rejected: filtered.rejected, inserted: 0, updated: 0, requiredStacks: filtered.requiredStacks, stackMatchMode: filtered.stackMatchMode, message: "Nenhuma vaga atende ao perfil de stacks obrigatórias" });
+      return json({ ok: true, accepted: 0, received: items.length, duplicates: 0, rejected: 0, inserted: 0, updated: 0, message: "Nenhuma vaga nova no lote" });
     }
     const existing = new Set<string>();
     for (const batch of chunks(entries.map(entry => entry.fp), LOOKUP_BATCH_SIZE)) {
@@ -145,7 +135,7 @@ export async function POST(request: Request) {
     await db.update(importRuns).set({ status: "completed", inserted, updated, duplicates: duplicateRows, finishedAt: new Date() }).where(eq(importRuns.id, runId));
     await db.update(jobSources).set({ lastRunAt: new Date() }).where(eq(jobSources.id, SOURCE_ID));
     await notifyImportRun(db, { runId, source: "Extensão LinkedIn", status: "completed", received: items.length, inserted, updated, duplicates: duplicateRows }).catch(() => undefined);
-    return json({ ok: true, accepted: filtered.accepted.length, received: items.length, duplicates: duplicateRows, rejected: filtered.rejected, inserted, updated, requiredStacks: filtered.requiredStacks, stackMatchMode: filtered.stackMatchMode });
+    return json({ ok: true, accepted: items.length, received: items.length, duplicates: duplicateRows, rejected: 0, inserted, updated });
   } catch (error) {
     const detail = error instanceof Error ? error.message : "Falha desconhecida durante a gravação";
     await db.update(importRuns).set({ status: "failed", inserted, updated, duplicates: duplicateRows, errors: 1, finishedAt: new Date() }).where(eq(importRuns.id, runId)).catch(() => undefined);

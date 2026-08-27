@@ -159,6 +159,8 @@ Vagas fora do escopo de TI continuam visíveis, mas não recebem aderência. O p
 
 Em **Configurações → Meu perfil**, a pessoa pode ampliar o recorte sem declarar experiência inexistente: aceitar presencial nas regiões escolhidas, qualquer frequência híbrida, contrato não informado e tecnologias explicitamente marcadas na vaga como diferenciais. Requisitos obrigatórios continuam exigindo evidência no perfil. Idiomas avançados só deixam de bloquear quando estiverem marcados como aceitos para comunicação diária.
 
+As coletas importam todas as vagas válidas, sem filtro de stack. C#, .NET, SQL/PLSQL, VB6/Visual Basic, VBA, Office e Excel recebem score 100 e veredito **Bate** quando aparecem como requisito ou diferencial; essa prioridade prevalece para que a decisão final seja feita no link da vaga. Outras stacks ficam para revisão, sem bloqueio automático. Menções a idioma sem exigência explícita também não bloqueiam.
+
 ## Fluxo dos dados
 
 ```text

@@ -1,10 +1,8 @@
 import { eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "../../../../../db/index";
-import { importRuns, jobSources, jobs, profiles } from "../../../../../db/schema";
-import { filterImportedJobsByProfile } from "../../../../../lib/collector-profile-filter";
+import { importRuns, jobSources, jobs } from "../../../../../db/schema";
 import { normalizeImportedJobsWithDiagnostics } from "../../../../../lib/import-jobs";
 import { fingerprint, recordedJobDate, sourcePublishedJobDate, type ImportedJob } from "../../../../../lib/jobs";
-import { normalizeCareerRules } from "../../../../../lib/profile-options";
 import { inferJobArea } from "../../../../../lib/job-area";
 import { recordImportRunJobs } from "../../../../../lib/import-tracking";
 import { notifyImportRun } from "../../../../../lib/notifications";
@@ -223,32 +221,20 @@ export async function POST(request: Request, { params }: { params: Promise<{ sou
   if (!items.length) return json({ error: "Nenhuma vaga válida recebida", received: rawItems.length, invalid: input.rejected, invalidReasons: input.reasons }, { status: 400 });
   if (items.length > 2000) return json({ error: "O limite é de 2.000 vagas por envio" }, { status: 400 });
 
-  const profile = sourceId === "linkedin-extension" && config.userId
-    ? (await db.select({ careerRules: profiles.careerRules }).from(profiles).where(eq(profiles.userId, config.userId)).limit(1))[0]
-    : undefined;
-  const careerRules = normalizeCareerRules(profile?.careerRules);
-  const closedItems = items.filter((job) => job.applicationClosed);
-  const filtered = filterImportedJobsByProfile(items.filter((job) => !job.applicationClosed), {
-    requiredStacks: sourceId === "linkedin-extension" && careerRules.filterImportsByCoreStack ? careerRules.coreStack : [],
-    stackMatchMode: careerRules.coreStackMatchMode,
-  });
-  const acceptedItems = [...filtered.accepted, ...closedItems];
-  const entries = [...new Map(acceptedItems.map((job) => [fingerprint(job), job])).entries()].map(([fp, job]) => ({
+  const entries = [...new Map(items.map((job) => [fingerprint(job), job])).entries()].map(([fp, job]) => ({
     fp,
     job,
   }));
-  const duplicateRows = acceptedItems.length - entries.length;
+  const duplicateRows = items.length - entries.length;
   const importDetails: ImportDetails = {
     valid: items.length,
     invalid: input.rejected,
     invalidReasons: input.reasons,
-    rejectedProfile: filtered.rejected,
-    rejectedJobs: filtered.rejectedJobs,
+    rejectedProfile: 0,
+    rejectedJobs: [],
     accepted: entries.length,
     skippedExisting: 0,
-    profileRule: filtered.requiredStacks.length
-      ? `Exige ${filtered.stackMatchMode === "all" ? "todas" : "alguma"} das stacks obrigatórias: ${filtered.requiredStacks.join(", ")}.`
-      : "Esta fonte não aplica filtro de stack obrigatório no Radar.",
+    profileRule: "A coleta importa todas as vagas válidas; a avaliação ocorre no Radar e no link original.",
   };
   const runId = collectorRunId(payload?.runId);
   const startedAt = new Date();
@@ -276,8 +262,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ sou
       await db.update(importRuns).set({ status: "completed", details: serializeDetails(importDetails), finishedAt: new Date() }).where(eq(importRuns.id, runId));
       const finishedAt = new Date();
       await db.update(jobSources).set({ lastRunAt: finishedAt, lastSuccessAt: finishedAt, lastError: null, consecutiveFailures: 0 }).where(eq(jobSources.id, sourceId));
-      await notifyImportRun(db, { runId, source: sourceName, status: "completed", received: rawItems.length, valid: items.length, invalid: input.rejected, invalidReasons: input.reasons, rejectedProfile: filtered.rejected, inserted: 0, updated: 0, duplicates: 0 }).catch(() => undefined);
-      return json({ ok: true, runId, accepted: 0, received: rawItems.length, valid: items.length, invalid: input.rejected, invalidReasons: input.reasons, duplicates: 0, rejected: filtered.rejected, inserted: 0, updated: 0, requiredStacks: filtered.requiredStacks, stackMatchMode: filtered.stackMatchMode, message: "Nenhuma vaga atende ao perfil de stacks obrigatórias" });
+      await notifyImportRun(db, { runId, source: sourceName, status: "completed", received: rawItems.length, valid: items.length, invalid: input.rejected, invalidReasons: input.reasons, rejectedProfile: 0, inserted: 0, updated: 0, duplicates: 0 }).catch(() => undefined);
+      return json({ ok: true, runId, accepted: 0, received: rawItems.length, valid: items.length, invalid: input.rejected, invalidReasons: input.reasons, duplicates: 0, rejected: 0, inserted: 0, updated: 0, message: "Nenhuma vaga nova no lote" });
     }
     const existing = new Map<string, typeof jobs.$inferSelect>();
     for (const batch of chunks(entries.map((entry) => entry.fp), LOOKUP_BATCH_SIZE)) {
@@ -339,8 +325,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ sou
       .where(eq(importRuns.id, runId));
     const finishedAt = new Date();
     await db.update(jobSources).set({ lastRunAt: finishedAt, lastSuccessAt: finishedAt, lastError: null, consecutiveFailures: 0 }).where(eq(jobSources.id, sourceId));
-    await notifyImportRun(db, { runId, source: sourceName, status: "completed", received: rawItems.length, valid: items.length, invalid: input.rejected, invalidReasons: input.reasons, rejectedProfile: filtered.rejected, skippedExisting, inserted, updated, duplicates: duplicateRows }).catch(() => undefined);
-    return json({ ok: true, runId, accepted: acceptedItems.length, received: rawItems.length, valid: items.length, invalid: input.rejected, invalidReasons: input.reasons, duplicates: duplicateRows, rejected: filtered.rejected, skippedExisting, inserted, updated, requiredStacks: filtered.requiredStacks, stackMatchMode: filtered.stackMatchMode });
+    await notifyImportRun(db, { runId, source: sourceName, status: "completed", received: rawItems.length, valid: items.length, invalid: input.rejected, invalidReasons: input.reasons, rejectedProfile: 0, skippedExisting, inserted, updated, duplicates: duplicateRows }).catch(() => undefined);
+    return json({ ok: true, runId, accepted: items.length, received: rawItems.length, valid: items.length, invalid: input.rejected, invalidReasons: input.reasons, duplicates: duplicateRows, rejected: 0, skippedExisting, inserted, updated });
   } catch (error) {
     const detail = error instanceof Error ? error.message : "Falha desconhecida durante a gravação";
     await db
@@ -348,7 +334,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ sou
       .set({ status: "failed", inserted, updated, duplicates: duplicateRows, errors: 1, details: serializeDetails(importDetails), finishedAt: new Date() })
       .where(eq(importRuns.id, runId))
       .catch(() => undefined);
-    await notifyImportRun(db, { runId, source: sourceName, status: "failed", received: rawItems.length, valid: items.length, invalid: input.rejected, invalidReasons: input.reasons, rejectedProfile: filtered.rejected, skippedExisting, inserted, updated, duplicates: duplicateRows, error: detail.slice(0, 300) }).catch(() => undefined);
+    await notifyImportRun(db, { runId, source: sourceName, status: "failed", received: rawItems.length, valid: items.length, invalid: input.rejected, invalidReasons: input.reasons, rejectedProfile: 0, skippedExisting, inserted, updated, duplicates: duplicateRows, error: detail.slice(0, 300) }).catch(() => undefined);
     return json(
       { error: "A importação foi interrompida. Reenvie o mesmo lote para concluir as vagas pendentes.", runId, inserted, updated },
       { status: 500 },

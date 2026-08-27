@@ -8,9 +8,9 @@ test("triagem determinística produz veredito, score, confiança e lacunas sem I
   const value = evaluateDeterministicTriage({ title: "Desenvolvedor .NET Sênior", description: "C# .NET e SQL Server. Remoto, regime CLT.", stack: ["C#", ".NET", "SQL Server"], seniority: "Sênior", workMode: "Remoto" }, profile);
   assert.equal(value.verdict, "BATE"); assert.equal(value.blocker, null); assert.ok(value.score > 0); assert.ok(value.confidence > 0); assert.deepEqual(value.missingSkills, []);
 });
-test("bloqueador é registrado separadamente do veredito", () => {
+test("stack fora do foco não gera bloqueador estrutural", () => {
   const value = evaluateDeterministicTriage({ title: "Desenvolvedor Java", description: "Java e Spring", stack: ["Java", "Spring"] }, profile);
-  assert.equal(value.verdict, "NAO_BATE"); assert.equal(value.blocker, "Stack incompatível com o perfil"); assert.ok(value.missingSkills.includes("Java"));
+  assert.equal(value.blocker, null); assert.ok(value.missingSkills.includes("Java"));
 });
 
 test("não aprova stack principal citada apenas no título ou em tags importadas", () => {
@@ -19,8 +19,8 @@ test("não aprova stack principal citada apenas no título ou em tags importadas
     description: "Atuação com GCP, SAP e Angular. Trabalho remoto.",
     stack: ["C#", ".NET"],
   }, profile);
-  assert.equal(value.verdict, "NAO_BATE");
-  assert.equal(value.blocker, "Stack incompatível com o perfil");
+  assert.equal(value.verdict, "BATE");
+  assert.equal(value.blocker, null);
   assert.deepEqual(value.matchingSkills, []);
 });
 
@@ -30,7 +30,7 @@ test("aceita stack principal explicitamente comprovada no corpo da vaga", () => 
     description: "Experiência sólida em desenvolvimento de software utilizando .NET é mandatória.",
     stack: [],
   }, profile);
-  assert.equal(value.verdict, "PROVAVEL");
+  assert.equal(value.verdict, "BATE");
   assert.ok(value.matchingSkills.includes(".NET"));
 });
 

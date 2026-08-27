@@ -81,6 +81,7 @@ const INTERMEDIARIO_RE = /\b(jobgether|betterleap|hired\.com|turing\.com|toptal|
  */
 import type { CareerRules } from "./profile-options";
 import { isTechnicalSkillTag, skillsAreEquivalent, uniqueEquivalentSkills } from "./skill-taxonomy.ts";
+import { priorityApprovalReason } from "./priority-approval.ts";
 
 // ── Funções auxiliares ───────────────────────────────────────────────────────
 
@@ -316,6 +317,12 @@ export function computeVerdict(job: {
   location?: string | null;
 }, userSkills: string[] = [], rules?: CareerRules): VerdictResult {
   const fullText = `${job.title} ${job.description} ${job.workMode ?? ""} ${job.location ?? ""}`;
+  const priorityTechnology = priorityApprovalReason(`${fullText} ${job.stack.join(" ")}`);
+  if (priorityTechnology) return {
+    emoji: "✅",
+    label: "Bate",
+    rows: [{ criterion: "Prioridade", status: `Tecnologia prioritária identificada: ${priorityTechnology} (requisito ou diferencial)`, ok: true }],
+  };
   const lc = fullText.toLowerCase();
   const stackText = `${fullText} ${job.stack.join(" ")}`;
   const stackFit = analyzeStackFit(job.stack, userSkills);
@@ -332,13 +339,13 @@ export function computeVerdict(job: {
       ? { status: "Stack não identificada — continuar com ressalva", ok: null }
       : coreMatch
         ? { status: coreStack.length ? `Ecossistema principal identificado: ${stackFit.requiredSkills.filter(skill => coreStack.some(core => skillsAreEquivalent(skill, core))).join(", ")} ✅` : "Stack compatível com o perfil ✅", ok: true as const }
-        : { status: coreStack.length ? `Fora da stack principal (${coreStack.join(" / ")})` : "Stack incompatível com o perfil", ok: false as const };
+        : { status: coreStack.length ? `Stack fora do foco principal (${coreStack.join(" / ")}) — revisar no link da vaga` : "Stack não confirmada no perfil — revisar no link da vaga", ok: null as const };
 
   const structuralRows: VerdictRow[] = [{ criterion: "Fase 1 · Stack", ...stackGate }];
   const blocked = (blocker: string): VerdictResult => ({ emoji: "❌", label: "Bloqueador estrutural", blocker, rows: structuralRows });
 
   // Fase 1: os bloqueadores são avaliados e interrompem a triagem nesta ordem.
-  if (stackGate.ok === false) return blocked("Stack incompatível com o perfil");
+  // Stack fora do foco é uma informação para revisão, nunca um bloqueio de triagem.
 
   const languageRow = detectLanguageReq(fullText, rules);
   structuralRows.push({ criterion: "Fase 1 · Idioma", ...languageRow });
