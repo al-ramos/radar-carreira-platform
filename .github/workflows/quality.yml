@@ -90,11 +90,11 @@ jobs:
             exit 1
           fi
           printf '%s' "$RADAR_CODEX_MCP_TOKEN" | npx wrangler secret put RADAR_CODEX_MCP_TOKEN
-          if [ -n "$GMAIL_DRAFTS_WEBHOOK_URL" ] && [ -n "$GMAIL_DRAFTS_WEBHOOK_TOKEN" ]; then
-            printf '%s' "$GMAIL_DRAFTS_WEBHOOK_URL" | npx wrangler secret put GMAIL_DRAFTS_WEBHOOK_URL
-            printf '%s' "$GMAIL_DRAFTS_WEBHOOK_TOKEN" | npx wrangler secret put GMAIL_DRAFTS_WEBHOOK_TOKEN
-          else
-            echo "Conector Gmail imediato ainda não configurado; mantendo a rotina diária como alternativa."
+          if [ -z "$GMAIL_DRAFTS_WEBHOOK_URL" ] || [ -z "$GMAIL_DRAFTS_WEBHOOK_TOKEN" ]; then
+            echo "Conector Gmail imediato não configurado; a publicação foi bloqueada para não desativar rascunhos automáticos silenciosamente." >&2
+            exit 1
           fi
+          printf '%s' "$GMAIL_DRAFTS_WEBHOOK_URL" | npx wrangler secret put GMAIL_DRAFTS_WEBHOOK_URL
+          printf '%s' "$GMAIL_DRAFTS_WEBHOOK_TOKEN" | npx wrangler secret put GMAIL_DRAFTS_WEBHOOK_TOKEN
       - name: Publicar Worker
         run: npx wrangler deploy

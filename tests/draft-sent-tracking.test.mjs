@@ -26,6 +26,9 @@ test("envio manual é reconciliado por evidência do Gmail sem autorizar envio a
   assert.match(integrityMigration, /draft_outbox_gmail_draft_unique/);
   assert.match(integrityMigration, /Rascunho duplicado removido/);
   assert.match(route, /action === "sentCandidates"/);
+  assert.match(route, /action === "draftCandidates"/);
+  assert.match(route, /body\.action === "missing"/);
+  assert.match(route, /O Gmail não localizou o rascunho confirmado/);
   assert.match(route, /action === "reconcileSent"/);
   assert.match(route, /requestedOutboxIds \? inArray\(draftOutbox\.id, requestedOutboxIds\)/);
   assert.match(route, /item\.status !== "drafted"/);

@@ -305,6 +305,8 @@ O conector atual:
 
 O Radar cria imediatamente o rascunho de toda vaga aprovada (✅) com e-mail de contato válido, independentemente de a aprovação ter vindo da triagem agendada, IA, Codex ou CSV. A aprovação continua elegível mesmo se o perfil ou as regras forem alterados depois da análise. Isso nunca envia e-mails. A outbox é apenas o registro idempotente e de rastreabilidade da operação, nunca uma espera. Se o conector imediato estiver indisponível, a vaga fica marcada como falha com o motivo visível e o botão **Tentar novamente** aciona o Gmail de novo após a correção.
 
+Depois de salvar e publicar uma nova versão do Apps Script, execute **uma vez** `instalarAutomacaoRascunhosRadar`. Ela instala uma recuperação a cada cinco minutos: consulta os rascunhos que o Radar já confirmou no Gmail, devolve à fila qualquer item que tenha desaparecido e recria somente esses itens. A chamada imediata continua sendo o caminho normal; esse gatilho é a garantia contra falhas transitórias ou estados divergentes. Não envia e-mails.
+
 Para atualizar automaticamente os envios manuais, execute `instalarVerificacaoEnviosRadar` **uma única vez** no Apps Script depois de salvar a versão atual do arquivo. Ela instala um gatilho a cada 15 minutos que consulta somente a pasta **Enviados** e marca no Radar os rascunhos comprovadamente enviados. A rotina não cria rascunhos e não envia e-mails. Para desligá-la, execute `removerVerificacaoEnviosRadar`.
 
 A tela permite reprocessar falhas, consultar a pasta Enviados e confirmar explicitamente um envio que o Gmail não localizou. Essas ações atualizam somente o acompanhamento; nunca disparam uma mensagem.

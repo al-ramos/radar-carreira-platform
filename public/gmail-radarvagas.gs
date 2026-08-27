@@ -47,6 +47,7 @@ function instalarColetaDiaria() {
 
 const RADAR_DRAFT_CONNECTOR_VERSION = 'radar-drafts-v2';
 const RADAR_SENT_RECONCILIATION_HANDLER = 'reconciliarEnviosAgendadosRadar';
+const RADAR_DRAFT_RECOVERY_HANDLER = 'executarRascunhosPendentesRadar';
 
 // Executa manualmente ou por gatilho. Nunca envia mensagens: apenas cria ou
 // reaproveita rascunhos que já foram aprovados e enfileirados pelo Radar.
@@ -93,6 +94,7 @@ function doPost(event) {
     const payload = JSON.parse(event && event.postData && event.postData.contents || '{}');
     const secret = PropertiesService.getScriptProperties().getProperty('RADAR_SECRET');
     if (!secret || payload.token !== secret) return responderWebhookRadar({ ok:false, error:'Não autorizado' });
+    if (payload.action === 'health') return responderWebhookRadar({ ok:true, connectorVersion:RADAR_DRAFT_CONNECTOR_VERSION });
     if (!Array.isArray(payload.outboxIds) || !payload.outboxIds.length) return responderWebhookRadar({ ok:false, error:'Selecione ao menos um rascunho.' });
     if (payload.action === 'prioritizeDrafts') {
       const result = criarRascunhosRadar({ outboxIds: payload.outboxIds });
@@ -124,17 +126,56 @@ function verificarConectorRascunhosRadar() {
   console.log('Conector de rascunhos verificado. Nenhum e-mail foi criado ou enviado.');
 }
 
-// Remove acionadores legados caso algum tenha sido criado em versões anteriores.
-// A criação de rascunhos agora é exclusivamente manual.
+// A recuperação automática é a segunda camada de segurança: a chamada do
+// Radar continua sendo imediata; este gatilho só retoma pendências e detecta
+// rascunhos que tenham sumido da pasta do Gmail. Nunca envia mensagens.
+function instalarAutomacaoRascunhosRadar() {
+  ScriptApp.getProjectTriggers()
+    .filter(trigger => trigger.getHandlerFunction() === RADAR_DRAFT_RECOVERY_HANDLER)
+    .forEach(trigger => ScriptApp.deleteTrigger(trigger));
+  ScriptApp.newTrigger(RADAR_DRAFT_RECOVERY_HANDLER).timeBased().everyMinutes(5).create();
+  console.log('Recuperação automática de rascunhos instalada: a cada 5 minutos. Nenhum e-mail será enviado.');
+}
+
+// Remove apenas o gatilho de recuperação de rascunhos; a criação imediata via
+// webhook continua disponível enquanto o Web App estiver publicado.
 function removerAgendamentoRascunhosRadar() {
   ScriptApp.getProjectTriggers()
-    .filter(trigger => ['executarTriagemDiariaERascunhos', 'executarRascunhosPendentesRadar'].includes(trigger.getHandlerFunction()))
+    .filter(trigger => ['executarTriagemDiariaERascunhos', RADAR_DRAFT_RECOVERY_HANDLER].includes(trigger.getHandlerFunction()))
     .forEach(trigger => ScriptApp.deleteTrigger(trigger));
 }
 
 function executarRascunhosPendentesRadar() {
+  const missing = reconciliarRascunhosRadar();
   criarRascunhosRadar();
-  reconciliarEnviosManuaisRadar();
+  const sent = reconciliarEnviosManuaisRadar();
+  console.log(`Recuperação de rascunhos concluída: ${missing} rascunho(s) ausente(s), ${sent} envio(s) confirmado(s). Nenhum e-mail foi enviado.`);
+}
+
+// Confere os IDs de rascunhos que o Radar já recebeu do Gmail. Um item ausente
+// volta a "failed" no Radar e será recriado por criarRascunhosRadar logo em
+// seguida. Não altera rascunhos existentes e nunca envia e-mails.
+function reconciliarRascunhosRadar() {
+  const secret = PropertiesService.getScriptProperties().getProperty('RADAR_SECRET');
+  if (!secret) throw new Error('Configure RADAR_SECRET nas propriedades do script.');
+  const response = UrlFetchApp.fetch(`${radarUrl()}/api/cron/drafts`, {
+    method:'post', contentType:'application/json', headers:{Authorization:`Bearer ${secret}`},
+    payload:JSON.stringify({action:'draftCandidates',limit:100,connectorVersion:RADAR_DRAFT_CONNECTOR_VERSION}), muteHttpExceptions:true
+  });
+  if (response.getResponseCode() >= 300) throw new Error(response.getContentText());
+  const payload = JSON.parse(response.getContentText());
+  const existingIds = new Set(GmailApp.getDrafts().map(draft => draft.getId()));
+  let missing = 0;
+  (payload.candidates || []).forEach(item => {
+    if (existingIds.has(item.gmailDraftId)) return;
+    const result = UrlFetchApp.fetch(`${radarUrl()}/api/cron/drafts`, {
+      method:'post', contentType:'application/json', headers:{Authorization:`Bearer ${secret}`},
+      payload:JSON.stringify({action:'missing',outboxId:item.outboxId,gmailDraftId:item.gmailDraftId,connectorVersion:RADAR_DRAFT_CONNECTOR_VERSION}), muteHttpExceptions:true
+    });
+    if (result.getResponseCode() >= 300) throw new Error(result.getContentText());
+    missing += 1;
+  });
+  return missing;
 }
 
 // Instala uma verificação leve e independente da criação de rascunhos. Ela

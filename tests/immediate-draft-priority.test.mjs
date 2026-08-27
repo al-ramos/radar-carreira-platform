@@ -23,11 +23,18 @@ test("rascunhos avulsos ou em fila pedem criação manual imediata sem enviar e-
   assert.match(cron, /inArray\(draftOutbox\.id, requestedOutboxIds\)/);
   assert.match(connector, /function doPost\(event\)/);
   assert.match(connector, /payload\.action === 'prioritizeDrafts'/);
+  assert.match(connector, /payload\.action === 'health'/);
   assert.match(connector, /payload\.action === 'reconcileSent'/);
+  assert.match(connector, /function instalarAutomacaoRascunhosRadar/);
+  assert.match(connector, /everyMinutes\(5\)/);
+  assert.match(connector, /function reconciliarRascunhosRadar/);
+  assert.match(connector, /action:'draftCandidates'/);
+  assert.match(connector, /action:'missing'/);
   assert.match(connector, /criarRascunhosRadar\(\{ outboxIds: payload\.outboxIds \}\)/);
   assert.doesNotMatch(connector.split("function doPost")[1], /GmailApp\.sendEmail/);
   assert.match(priority, /GMAIL_DRAFTS_WEBHOOK_TOKEN/);
   assert.match(workflow, /GMAIL_DRAFTS_WEBHOOK_URL/);
+  assert.match(workflow, /a publicação foi bloqueada/);
   assert.match(screen, /rascunho\(s\) foi\(ram\) criado\(s\) agora no Gmail/);
   assert.match(screen, /Criação manual indisponível/);
   assert.match(screen, /draftActionStatuses/);

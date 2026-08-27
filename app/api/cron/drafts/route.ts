@@ -39,7 +39,7 @@ export async function POST(request: Request) {
   const owner = await authenticate(request);
   if (!owner) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   const body = await request.json().catch(() => ({})) as {
-    action?: "prepare" | "confirm" | "fail" | "health" | "sentCandidates" | "reconcileSent";
+    action?: "prepare" | "confirm" | "fail" | "missing" | "health" | "sentCandidates" | "draftCandidates" | "reconcileSent";
     outboxId?: string; gmailDraftId?: string; gmailThreadId?: string; gmailSentId?: string; subject?: string; to?: string; sentAt?: string; isDraft?: boolean;
     error?: string; limit?: number; retryFailed?: boolean; connectorVersion?: string; outboxIds?: string[];
   };
@@ -50,6 +50,34 @@ export async function POST(request: Request) {
   }
 
   if (body.action === "health") return NextResponse.json({ ok: true, connectorVersion: CONNECTOR_VERSION, sent: false });
+
+  // O conector consulta somente itens que o próprio Radar já confirmou como
+  // rascunhos. Isso permite detectar uma exclusão ou perda no Gmail e colocar
+  // o item novamente na fila, sem nunca enviar mensagem.
+  if (body.action === "draftCandidates") {
+    const limit = Math.max(1, Math.min(100, Math.floor(body.limit ?? 100)));
+    const requestedOutboxIds = Array.isArray(body.outboxIds) ? [...new Set(body.outboxIds.filter((id): id is string => typeof id === "string" && id.length > 0))].slice(0, 20) : null;
+    if (Array.isArray(body.outboxIds) && !requestedOutboxIds?.length) return NextResponse.json({ error: "Nenhum rascunho válido foi informado." }, { status: 400 });
+    const candidates = await db.select({
+      outboxId: draftOutbox.id,
+      gmailDraftId: draftOutbox.gmailDraftId,
+      to: jobs.contactEmail,
+      title: jobs.title,
+      externalId: jobs.externalId,
+      contactSubject: jobs.contactSubject,
+      draftSubject: draftOutbox.draftSubject,
+    }).from(draftOutbox)
+      .innerJoin(jobs, eq(draftOutbox.jobId, jobs.id))
+      .where(and(eq(draftOutbox.userId, owner.userId), eq(draftOutbox.status, "drafted"), requestedOutboxIds ? inArray(draftOutbox.id, requestedOutboxIds) : undefined))
+      .limit(limit);
+    return NextResponse.json({
+      candidates: candidates.flatMap((item) => {
+        const to = normalizeContactEmail(item.to);
+        return to && item.gmailDraftId ? [{ outboxId: item.outboxId, gmailDraftId: item.gmailDraftId, to, subject: subjectFor(item) }] : [];
+      }),
+      sent: false,
+    });
+  }
 
   // Esta consulta não pesquisa o Gmail nem cria mensagens. Ela só devolve os
   // rascunhos confirmados que podem ser comparados localmente pelo Apps Script
@@ -121,6 +149,14 @@ export async function POST(request: Request) {
       console.error(`Falha ao notificar envio confirmado de ${item.id}:`, error);
     });
     return NextResponse.json({ ok: true, changed: true, status: "sent", sentAt });
+  }
+
+  if (body.action === "missing") {
+    if (!body.outboxId || !body.gmailDraftId) return NextResponse.json({ error: "Identificadores da fila e do rascunho são obrigatórios" }, { status: 400 });
+    const changed = await db.update(draftOutbox)
+      .set({ status: "failed", error: "O Gmail não localizou o rascunho confirmado; a criação será repetida automaticamente.", updatedAt: new Date() })
+      .where(and(eq(draftOutbox.id, body.outboxId), eq(draftOutbox.userId, owner.userId), eq(draftOutbox.status, "drafted"), eq(draftOutbox.gmailDraftId, body.gmailDraftId)));
+    return NextResponse.json({ ok: true, changed: Boolean(changed.meta.changes), status: changed.meta.changes ? "failed" : "unchanged" });
   }
 
   if (body.action === "confirm" || body.action === "fail") {
