@@ -229,7 +229,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ sou
   const careerRules = normalizeCareerRules(profile?.careerRules);
   const closedItems = items.filter((job) => job.applicationClosed);
   const filtered = filterImportedJobsByProfile(items.filter((job) => !job.applicationClosed), {
-    requiredStacks: sourceId === "linkedin-extension" ? careerRules.coreStack : [],
+    requiredStacks: sourceId === "linkedin-extension" && careerRules.filterImportsByCoreStack ? careerRules.coreStack : [],
     stackMatchMode: careerRules.coreStackMatchMode,
   });
   const acceptedItems = [...filtered.accepted, ...closedItems];

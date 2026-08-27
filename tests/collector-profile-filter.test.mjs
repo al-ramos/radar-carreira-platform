@@ -10,3 +10,14 @@ test("o filtro preserva código e cargo das vagas rejeitadas pelo perfil", async
   assert.match(source, /company: item\.company/);
   assert.match(source, /reason/);
 });
+
+test("a importação só usa stack principal quando o perfil pede bloqueio na entrada", async () => {
+  const [profile, standardImport, sourceImport] = await Promise.all([
+    readFile(new URL("../lib/profile-options.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/collector/import/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/collector/import/[sourceId]/route.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(profile, /filterImportsByCoreStack/);
+  assert.match(standardImport, /careerRules\.filterImportsByCoreStack \? careerRules\.coreStack : \[\]/);
+  assert.match(sourceImport, /careerRules\.filterImportsByCoreStack \? careerRules\.coreStack : \[\]/);
+});

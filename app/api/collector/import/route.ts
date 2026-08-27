@@ -82,7 +82,7 @@ export async function POST(request: Request) {
     : undefined;
   const careerRules = normalizeCareerRules(profile?.careerRules);
   const filtered = filterImportedJobsByProfile(items, {
-    requiredStacks: careerRules.coreStack,
+    requiredStacks: careerRules.filterImportsByCoreStack ? careerRules.coreStack : [],
     stackMatchMode: careerRules.coreStackMatchMode,
   });
   const entries = [...new Map(filtered.accepted.map(job => [fingerprint(job), job])).entries()].map(([fp, job]) => ({ fp, job }));

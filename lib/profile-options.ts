@@ -63,6 +63,8 @@ export type CareerRules = {
   blockedWorkTypes: string[];
   coreStack: string[];
   coreStackMatchMode: "all" | "any";
+  /** Aplica a stack principal como bloqueio antes de a vaga entrar no Radar. */
+  filterImportsByCoreStack: boolean;
   stackExceptions: string[];
   /** Aceita diferenciais técnicos sem tratá-los como competências dominadas. */
   acceptOptionalRequirements: boolean;
@@ -88,6 +90,7 @@ export const emptyCareerRules = (): CareerRules => ({
   blockedWorkTypes: [],
   coreStack: [],
   coreStackMatchMode: "any",
+  filterImportsByCoreStack: false,
   stackExceptions: [],
   acceptOptionalRequirements: false,
   acceptUnspecifiedContracts: false,
@@ -126,6 +129,9 @@ export function alexsandroProfilePreset(): ProfileChoices {
       blockedWorkTypes: ["Suporte", "Help desk"],
       coreStack: ["C#", ".NET"],
       coreStackMatchMode: "any",
+      // A stack principal orienta a aderência; a triagem decide a aprovação.
+      // Assim, áreas aceitas no perfil não são descartadas antes de serem avaliadas.
+      filterImportsByCoreStack: false,
       stackExceptions: ["VBA + Access + SQL Server", "QA .NET", "Integração .NET", "Arquitetura .NET", "Tech Lead .NET"],
       acceptOptionalRequirements: true,
       acceptUnspecifiedContracts: true,
@@ -161,6 +167,7 @@ export function normalizeCareerRules(value: unknown): CareerRules {
     blockedWorkTypes: list("blockedWorkTypes"),
     coreStack: list("coreStack"),
     coreStackMatchMode: candidate.coreStackMatchMode === "all" ? "all" : "any",
+    filterImportsByCoreStack: candidate.filterImportsByCoreStack === true,
     stackExceptions: list("stackExceptions"),
     acceptOptionalRequirements: candidate.acceptOptionalRequirements === true,
     acceptUnspecifiedContracts: candidate.acceptUnspecifiedContracts === true,

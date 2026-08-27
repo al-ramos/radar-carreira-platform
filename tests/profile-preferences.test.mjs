@@ -25,6 +25,7 @@ test("preset de Alexsandro preserva posicionamento, projeto AMR e regras pessoai
   assert.deepEqual(preset.careerRules.blockedSeniorities, ["Júnior"]);
   assert.deepEqual(preset.careerRules.blockedWorkTypes, ["Suporte", "Help desk"]);
   assert.deepEqual(preset.careerRules.coreStack, ["C#", ".NET"]);
+  assert.equal(preset.careerRules.filterImportsByCoreStack, false);
   assert.deepEqual(preset.careerRules.stackExceptions, ["VBA + Access + SQL Server", "QA .NET", "Integração .NET", "Arquitetura .NET", "Tech Lead .NET"]);
   assert.equal(preset.careerRules.acceptOptionalRequirements, true);
   assert.equal(preset.careerRules.acceptUnspecifiedContracts, true);
@@ -32,6 +33,12 @@ test("preset de Alexsandro preserva posicionamento, projeto AMR e regras pessoai
   assert.match(preset.careerRules.anchorProject, /Sistema AMR/);
   assert.match(preset.careerRules.anchorProject, /CP\/ACID/);
   assert.match(preset.careerRules.anchorProject, /AP\/BASE/);
+});
+
+test("não aplica filtro de stack na importação a perfis existentes sem essa escolha explícita", () => {
+  const rules = normalizeCareerRules({ coreStack: ["C#", ".NET"], coreStackMatchMode: "any" });
+  assert.equal(rules.filterImportsByCoreStack, false);
+  assert.equal(normalizeCareerRules({ filterImportsByCoreStack: true }).filterImportsByCoreStack, true);
 });
 
 test("preserva score mínimo zero e limita valores ao intervalo permitido", () => {
