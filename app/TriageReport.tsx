@@ -695,6 +695,10 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
   };
   const openHistory = (nextDraftFilter = "all") => {
     setDraftFilter(nextDraftFilter);
+    // Os atalhos operacionais representam o status do rascunho. Eles não
+    // podem herdar "Sem rascunho, envio ou candidatura", pois esse filtro
+    // exclui justamente um rascunho pronto e faz a tabela parecer vazia.
+    setOutreachFilter("all");
     setHistoryPage(0);
     window.setTimeout(() => document.getElementById("triage-history")?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
   };
