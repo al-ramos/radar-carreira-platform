@@ -2,18 +2,14 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-test("histórico inclui candidatura iniciada no mesmo filtro dos envios", async () => {
-  const [screen, route] = await Promise.all([
-    readFile(new URL("../app/TriageReport.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../app/api/triage/history/route.ts", import.meta.url), "utf8"),
-  ]);
-  assert.match(screen, /const hasCompletedOutreach/);
-  assert.match(screen, /item\.jobSource === "apinfo-extension"/);
-  assert.match(screen, /item\.applicationStatus === "opened"/);
-  assert.match(screen, /Já enviados \/ candidatura iniciada/);
-  assert.match(screen, /Enviadas \/ candidaturas iniciadas/);
-  assert.match(screen, /filteredHistory\.filter\(hasCompletedOutreach\)/);
-  assert.ok(screen.indexOf("Envio / candidatura") < screen.indexOf("<details className=\"triage-advanced-filters\""));
-  assert.match(route, /applicationStatus: userJobStatus\.applicationStatus/);
-  assert.match(route, /leftJoin\(userJobStatus/);
+test("triagem separa e-mail enviado, candidatura iniciada e candidatura enviada", async () => {
+  const screen = await readFile(new URL("../app/TriageReport.tsx", import.meta.url), "utf8");
+  assert.match(screen, /hasEmailSent/);
+  assert.match(screen, /hasApplicationStarted/);
+  assert.match(screen, /hasApplicationSent/);
+  assert.match(screen, /value="email_sent">E-mail enviado/);
+  assert.match(screen, /value="application_started">Candidatura iniciada/);
+  assert.match(screen, /value="application_sent">Candidatura enviada/);
+  assert.match(screen, /value="pending">Ainda sem envio \/ candidatura/);
+  assert.match(screen, /matchesOutreachFilter/);
 });

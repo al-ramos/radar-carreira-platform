@@ -74,7 +74,7 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
     [verdictFilter, setVerdictFilter] = useState("all"),
     [sourceFilter, setSourceFilter] = useState("all"),
     [draftFilter, setDraftFilter] = useState("all"),
-    [outreachFilter, setOutreachFilter] = useState<"all" | "completed" | "pending">("all"),
+    [outreachFilter, setOutreachFilter] = useState<"all" | "email_sent" | "application_started" | "application_sent" | "pending">("all"),
     [jobSourceFilter, setJobSourceFilter] = useState("all"),
     [codeFilter, setCodeFilter] = useState(""),
     [tableSearch, setTableSearch] = useState(""),
@@ -247,9 +247,21 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
   // avaliação real ainda. Ver RC-TI-024.
   const isPending = (item: HistoryItem) => !item.verdict || item.verdict === "⚪";
   const normalizedTableSearch = tableSearch.trim().toLocaleLowerCase("pt-BR");
-  const hasCompletedOutreach = (item: HistoryItem) => item.jobSource === "apinfo-extension"
-    ? item.draftStatus === "sent" || Boolean(item.sentAt)
-    : item.applicationStatus === "opened" || item.applicationStatus === "sent" || item.applicationStatus === "responded" || ["applied", "interview", "offer", "rejected"].includes(item.pipelineStage ?? "");
+  const hasEmailSent = (item: HistoryItem) => item.jobSource === "apinfo-extension"
+    && (item.draftStatus === "sent" || Boolean(item.sentAt));
+  const hasApplicationSent = (item: HistoryItem) => item.jobSource !== "apinfo-extension"
+    && (item.applicationStatus === "sent" || item.applicationStatus === "responded");
+  const hasApplicationStarted = (item: HistoryItem) => item.jobSource !== "apinfo-extension"
+    && !hasApplicationSent(item)
+    && (item.applicationStatus === "opened" || ["applied", "interview", "offer", "rejected"].includes(item.pipelineStage ?? ""));
+  const hasCompletedOutreach = (item: HistoryItem) => hasEmailSent(item) || hasApplicationStarted(item) || hasApplicationSent(item);
+  const matchesOutreachFilter = (item: HistoryItem) => {
+    if (outreachFilter === "all") return true;
+    if (outreachFilter === "email_sent") return hasEmailSent(item);
+    if (outreachFilter === "application_started") return hasApplicationStarted(item);
+    if (outreachFilter === "application_sent") return hasApplicationSent(item);
+    return !hasCompletedOutreach(item);
+  };
   const scopedHistory = currentAssessments.filter((item) => (situationFilter === "all" || (situationFilter === "pending" ? isPending(item) : !isPending(item))) && (verdictFilter === "all" || item.verdict === verdictFilter) && (sourceFilter === "all" || item.source === sourceFilter) && (jobSourceFilter === "all" || item.jobSource === jobSourceFilter) && (externalAiFilter === "all" || (externalAiFilter === "yes") === isExternalAiReassessment(item)) && (!codeFilter.trim() || (item.externalId ?? "").toLowerCase().includes(codeFilter.trim().toLowerCase())) && (!normalizedTableSearch || [item.title, item.company, item.externalId, sourceLabelFor(item.jobSource, item.jobSourceName), item.workMode, item.location, item.contactEmail, item.label, item.blocker].filter(Boolean).join(" ").toLocaleLowerCase("pt-BR").includes(normalizedTableSearch)) && (!publishedDateFilter || dayKey(item.sourcePublishedAt) === publishedDateFilter) && (!receivedDateFilter || dayKey(item.receivedAt) === receivedDateFilter) && (!analysedDateFilter || dayKey(item.processedAt) === analysedDateFilter));
   // Os contadores e a tabela devem falar sobre o mesmo recorte. O filtro de
   // rascunho é aplicado somente depois de contabilizar cada status.
@@ -259,7 +271,7 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
     sent: scopedHistory.filter((item) => item.draftStatus === "sent").length,
     failed: scopedHistory.filter((item) => item.draftStatus === "failed").length,
   };
-  const filteredHistory = scopedHistory.filter((item) => (draftFilter === "all" || item.draftStatus === draftFilter) && (outreachFilter === "all" || (outreachFilter === "completed") === hasCompletedOutreach(item)));
+  const filteredHistory = scopedHistory.filter((item) => (draftFilter === "all" || item.draftStatus === draftFilter) && matchesOutreachFilter(item));
   const sortHistory = (key: typeof sortKey) => {
     if (key === sortKey) setSortDirection((value) => value === "asc" ? "desc" : "asc");
     else { setSortKey(key); setSortDirection("asc"); }
@@ -873,7 +885,9 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
                   <article className="approved"><small>Aprovadas</small><strong>{filteredHistory.filter((item) => item.verdict === "✅").length}</strong></article>
                   <article className="partial"><small>Prováveis</small><strong>{filteredHistory.filter((item) => item.verdict === "🟡").length}</strong></article>
                   <article className="rejected"><small>Não aderentes</small><strong>{filteredHistory.filter((item) => item.verdict === "❌" || item.verdict === "🔴").length}</strong></article>
-                  <article><small>Enviadas / candidaturas iniciadas</small><strong>{filteredHistory.filter(hasCompletedOutreach).length}</strong></article>
+                  <article><small>E-mails enviados</small><strong>{filteredHistory.filter(hasEmailSent).length}</strong></article>
+                  <article><small>Candidaturas iniciadas</small><strong>{filteredHistory.filter(hasApplicationStarted).length}</strong></article>
+                  <article><small>Candidaturas enviadas</small><strong>{filteredHistory.filter(hasApplicationSent).length}</strong></article>
                   <article><small>Analisadas</small><strong>{filteredHistory.length}</strong></article>
                 </>}
               </div>
@@ -883,7 +897,7 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
               <div className="triage-run-settings triage-table-filters">
                 <label>Situação<select value={situationFilter} onChange={(e) => { setSituationFilter(e.target.value as typeof situationFilter); setHistoryPage(0); }}><option value="pending">Não analisadas</option><option value="analysed">Analisadas</option><option value="all">Todas</option></select></label>
                 <label>Veredito<select value={verdictFilter} onChange={(e) => { setVerdictFilter(e.target.value); setHistoryPage(0); }}><option value="all">Todos</option><option value="✅">Aprovadas</option><option value="🟡">Prováveis</option><option value="❌">Reprovadas</option></select></label>
-                <label>Envio / candidatura<select value={outreachFilter} onChange={(e) => { setOutreachFilter(e.target.value as typeof outreachFilter); setHistoryPage(0); }}><option value="all">Todas</option><option value="completed">Já enviados / candidatura iniciada</option><option value="pending">Ainda não enviados / sem candidatura</option></select></label>
+                <label>Envio / candidatura<select value={outreachFilter} onChange={(e) => { setOutreachFilter(e.target.value as typeof outreachFilter); setHistoryPage(0); }}><option value="all">Todas</option><option value="email_sent">E-mail enviado</option><option value="application_started">Candidatura iniciada</option><option value="application_sent">Candidatura enviada</option><option value="pending">Ainda sem envio / candidatura</option></select></label>
                 <label>Origem<select value={sourceFilter} onChange={(e) => { setSourceFilter(e.target.value); setHistoryPage(0); }}><option value="all">Regras, IA e histórico</option><option value="rules">Regras</option><option value="ai">IA</option><option value="legacy">Histórico do Radar</option></select></label>
                 <label>Fonte<select value={jobSourceFilter} onChange={(e) => { setJobSourceFilter(e.target.value); setHistoryPage(0); }}><option value="all">Todas</option>{jobSources.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>
                 <label>Código<input type="text" inputMode="numeric" placeholder="Ex.: 85885" value={codeFilter} onChange={(e) => { setCodeFilter(e.target.value); setHistoryPage(0); }} /></label>
