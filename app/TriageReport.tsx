@@ -60,6 +60,7 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
     [aiProfileError, setAiProfileError] = useState(""),
     [actionSourceOptions, setActionSourceOptions] = useState<FilterOption[] | null>(null),
     [sourceNames, setSourceNames] = useState<Record<string, string>>({}),
+    [sourceCatalog, setSourceCatalog] = useState<SourceCatalogItem[]>([]),
     [history, setHistory] = useState<HistoryItem[]>([]),
     [selectedHistoryJobIds, setSelectedHistoryJobIds] = useState<string[]>([]),
     [batches, setBatches] = useState<Batch[]>([]),
@@ -162,10 +163,16 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
     const controller = new AbortController();
     void fetch("/api/admin/sources", { signal: controller.signal })
       .then(async (response) => response.ok ? readJsonResponse<{ sources?: SourceCatalogItem[] }>(response, "O catálogo de fontes") : Promise.reject(new Error("Falha ao consultar o catálogo de fontes.")))
-      .then((data) => setSourceNames(Object.fromEntries((data.sources ?? [])
-        .filter((item) => item.id && item.name?.trim())
-        .map((item) => [item.id, item.name.trim()]))))
-      .catch((error: unknown) => { if (!(error instanceof DOMException && error.name === "AbortError")) setSourceNames({}); });
+      .then((data) => {
+        const sources = (data.sources ?? []).filter((item) => item.id && item.name?.trim()).map((item) => ({ id: item.id, name: item.name.trim() }));
+        setSourceCatalog(sources);
+        setSourceNames(Object.fromEntries(sources.map((item) => [item.id, item.name])));
+      })
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setSourceCatalog([]);
+        setSourceNames({});
+      });
     return () => controller.abort();
   }, [open]);
   useEffect(() => {
@@ -238,10 +245,16 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
   const sourceLabelFor = (id: string | null | undefined, preferredName?: string | null) => preferredName?.trim() || (id ? sourceNames[id]?.trim() || sourceName(id) : "Não informada");
   const aiTargetJobs = aiTargetJobIds ? currentAssessments.filter((item) => aiTargetJobIds.includes(item.jobId)) : [];
   const isIndividualAiReview = aiTargetJobIds?.length === 1;
-  const jobSources = [...new Map(currentAssessments
-    .filter((item): item is HistoryItem & { jobSource: string } => Boolean(item.jobSource))
-    .map((item) => [item.jobSource, sourceLabelFor(item.jobSource, item.jobSourceName)]),
-  )];
+  // O seletor da tabela não pode depender somente do histórico: uma fonte
+  // cadastrada continua sendo uma opção útil mesmo antes da primeira vaga
+  // triada (ou quando uma importação legada não gravou sourceId).
+  const jobSources = [...new Map([
+    ...sourceCatalog.map((item) => [item.id, item.name] as const),
+    ...sourceOptions.map((item) => [item.id, sourceLabelFor(item.id, item.label)] as const),
+    ...currentAssessments
+      .filter((item): item is HistoryItem & { jobSource: string } => Boolean(item.jobSource))
+      .map((item) => [item.jobSource, sourceLabelFor(item.jobSource, item.jobSourceName)] as const),
+  ])];
   // "Não analisada" cobre tanto vaga sem veredito quanto veredito ⚪ (marcação
   // neutra usada para zerar backlog em lote) — nenhum dos dois passou por
   // avaliação real ainda. Ver RC-TI-024.

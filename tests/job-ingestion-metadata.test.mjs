@@ -83,6 +83,8 @@ test("histórico da triagem mostra o nome legível da fonte", async () => {
   assert.match(report, /sourceNames\[id\]\?\.trim\(\) \|\| sourceName\(id\)/);
   assert.match(report, /sourceLabelFor\(item\.jobSource, item\.jobSourceName\)/);
   assert.match(report, /jobSources\.map\(\(\[id, label\]\)/);
+  assert.match(report, /sourceCatalog\.map\(\(item\) => \[item\.id, item\.name\] as const\)/, "fontes cadastradas ficam disponíveis mesmo sem histórico de triagem");
+  assert.match(report, /sourceOptions\.map\(\(item\) => \[item\.id, sourceLabelFor\(item\.id, item\.label\)\] as const\)/, "fontes já carregadas no Radar também entram no filtro");
 });
 
 test("migração classifica importações antigas e cria índices do filtro", async () => {
