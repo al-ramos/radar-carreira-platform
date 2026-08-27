@@ -4064,6 +4064,10 @@ export default function Dashboard() {
           setFitFilter(0);
           setRequestedMinScore(0);
           setVerdictFilter("all");
+          // A tabela de triagem também exibe vagas cuja candidatura já foi
+          // iniciada. Elas ficam ocultas na fila padrão do Radar, portanto
+          // este atalho precisa incluí-las para sempre localizar a vaga.
+          setReviewVisibility("all");
           setPipelineFilter("all");
           setAreaFilter("all");
           setChannelFilter("all");

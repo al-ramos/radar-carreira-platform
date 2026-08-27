@@ -60,6 +60,7 @@ test("triagem permite ações avulsas por vaga sem contornar os guardrails", asy
   assert.match(dashboard, /open=\{triageOpen\}/);
   assert.match(dashboard, /setQuery\(job\.externalId \?\? job\.jobId\)/);
   assert.match(dashboard, /setSourceFilter\(job\.jobSource \?\? "all"\)/);
+  assert.match(dashboard, /setReviewVisibility\("all"\)/, "o link da triagem precisa incluir candidaturas já iniciadas");
   assert.match(dashboard, /\$\{j\.id\} \$\{j\.externalId \?\? ""\}/);
   assert.match(await read("../app/api/jobs/route.ts"), /eq\(jobs\.id, searchQuery\)/);
   assert.match(styles, /triage-selection-actions/);
