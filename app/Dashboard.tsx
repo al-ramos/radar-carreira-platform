@@ -396,6 +396,15 @@ const operationalNav = [
 const isApinfoJob = (job: Job) =>
   Boolean(job.url && /apinfo\.com/i.test(job.url));
 
+// Importações antigas do LinkedIn podem ter preservado o link direto, mas não
+// o código em `externalId`. O ID no URL é igualmente estável e permite pedir
+// à extensão a confirmação exibida naquela vaga exata.
+const linkedInExternalId = (job: Pick<Job, "externalId" | "url" | "applyUrl">) =>
+  job.externalId
+  ?? [job.applyUrl, job.url]
+    .map((value) => value?.match(/linkedin\.com\/jobs\/view\/(\d{4,30})/i)?.[1])
+    .find(Boolean);
+
 /**
  * A busca de vagas do APinfo é um formulário method="post" — um link comum
  * com "?keyw=código" não funciona porque o parâmetro GET é simplesmente
@@ -2372,12 +2381,13 @@ export default function Dashboard() {
       // repete a consulta por tempo limitado até conseguir gravar o contato.
       scheduleAutoApinfoContactCapture(job);
     }
-    if (/linkedin\.com/i.test(job.url) && job.externalId) {
+    const linkedInJobId = linkedInExternalId(job);
+    if (/linkedin\.com/i.test(job.url) && linkedInJobId) {
       const requestId = crypto.randomUUID();
       linkedInStatusRequestRef.current.set(requestId, job);
       // A extensão lê apenas o texto já exibido na página nova; ela nunca
       // clica nem envia formulários de candidatura.
-      window.setTimeout(() => window.postMessage({ source: "radar-dashboard", type: "RADAR_CHECK_LINKEDIN_APPLICATION", requestId, externalId: job.externalId }, window.location.origin), 1_500);
+      window.setTimeout(() => window.postMessage({ source: "radar-dashboard", type: "RADAR_CHECK_LINKEDIN_APPLICATION", requestId, externalId: linkedInJobId }, window.location.origin), 1_500);
     }
     void updateStage(
       job.id,
