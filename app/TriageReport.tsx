@@ -262,12 +262,16 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
   const normalizedTableSearch = tableSearch.trim().toLocaleLowerCase("pt-BR");
   const hasEmailSent = (item: HistoryItem) => item.jobSource === "apinfo-extension"
     && (item.draftStatus === "sent" || Boolean(item.sentAt));
+  // Um rascunho confirmado já representa uma ação de contato iniciada. Ele
+  // não é e-mail enviado nem candidatura enviada, mas não pode voltar para a
+  // fila "Ainda sem envio / candidatura" junto de vagas sem nenhuma ação.
+  const hasDraftReady = (item: HistoryItem) => item.draftStatus === "drafted";
   const hasApplicationSent = (item: HistoryItem) => item.jobSource !== "apinfo-extension"
     && (item.applicationStatus === "sent" || item.applicationStatus === "responded");
   const hasApplicationStarted = (item: HistoryItem) => item.jobSource !== "apinfo-extension"
     && !hasApplicationSent(item)
     && (item.applicationStatus === "opened" || ["applied", "interview", "offer", "rejected"].includes(item.pipelineStage ?? ""));
-  const hasCompletedOutreach = (item: HistoryItem) => hasEmailSent(item) || hasApplicationStarted(item) || hasApplicationSent(item);
+  const hasCompletedOutreach = (item: HistoryItem) => hasDraftReady(item) || hasEmailSent(item) || hasApplicationStarted(item) || hasApplicationSent(item);
   const matchesOutreachFilter = (item: HistoryItem) => {
     if (outreachFilter === "all") return true;
     if (outreachFilter === "email_sent") return hasEmailSent(item);
@@ -910,7 +914,7 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
               <div className="triage-run-settings triage-table-filters">
                 <label>Situação<select value={situationFilter} onChange={(e) => { setSituationFilter(e.target.value as typeof situationFilter); setHistoryPage(0); }}><option value="pending">Não analisadas</option><option value="analysed">Analisadas</option><option value="all">Todas</option></select></label>
                 <label>Veredito<select value={verdictFilter} onChange={(e) => { setVerdictFilter(e.target.value); setHistoryPage(0); }}><option value="all">Todos</option><option value="✅">Aprovadas</option><option value="🟡">Prováveis</option><option value="❌">Reprovadas</option></select></label>
-                <label>Envio / candidatura<select value={outreachFilter} onChange={(e) => { setOutreachFilter(e.target.value as typeof outreachFilter); setHistoryPage(0); }}><option value="all">Todas</option><option value="email_sent">E-mail enviado</option><option value="application_started">Candidatura iniciada</option><option value="application_sent">Candidatura enviada</option><option value="pending">Ainda sem envio / candidatura</option></select></label>
+                <label>Envio / candidatura<select value={outreachFilter} onChange={(e) => { setOutreachFilter(e.target.value as typeof outreachFilter); setHistoryPage(0); }}><option value="all">Todas</option><option value="email_sent">E-mail enviado</option><option value="application_started">Candidatura iniciada</option><option value="application_sent">Candidatura enviada</option><option value="pending">Sem rascunho, envio ou candidatura</option></select></label>
                 <label>Origem<select value={sourceFilter} onChange={(e) => { setSourceFilter(e.target.value); setHistoryPage(0); }}><option value="all">Regras, IA e histórico</option><option value="rules">Regras</option><option value="ai">IA</option><option value="legacy">Histórico do Radar</option></select></label>
                 <label>Fonte<select value={jobSourceFilter} onChange={(e) => { setJobSourceFilter(e.target.value); setHistoryPage(0); }}><option value="all">Todas</option>{jobSources.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>
                 <label>Código<input type="text" inputMode="numeric" placeholder="Ex.: 85885" value={codeFilter} onChange={(e) => { setCodeFilter(e.target.value); setHistoryPage(0); }} /></label>
