@@ -5,7 +5,7 @@ const aliases:Record<string,keyof ImportedJob>={
  description:"description",descricao:"description",location:"location",local:"location",localidade:"location",
  workmode:"workMode",modalidade:"workMode",seniority:"seniority",senioridade:"seniority",
  stack:"stack",tecnologias:"stack",publishedat:"publishedAt",publicadoem:"publishedAt",datapublicacao:"publishedAt",data:"publishedAt",
- externalid:"externalId",idexterno:"externalId",sourceid:"sourceId",
+ externalid:"externalId",idexterno:"externalId",codigo:"externalId",sourceid:"sourceId",fonte:"sourceId",
  applyurl:"applyUrl",linkcandidatura:"applyUrl",linkdecandidatura:"applyUrl",
  contactemail:"contactEmail",emailcontato:"contactEmail",email:"contactEmail",
  contactsubject:"contactSubject",assuntoemail:"contactSubject",assunto:"contactSubject",applicationclosed:"applicationClosed",encerrada:"applicationClosed"

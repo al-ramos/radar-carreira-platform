@@ -13,6 +13,12 @@ test("mantém a publicação informada pela fonte separada da coleta",()=>{
  assert.equal(job.publishedAt,"13/08/26");
 });
 
+test("reconhece os cabeçalhos Fonte e Código usados no arquivo de importação",()=>{
+ const [job]=normalizeImportedJobs([{título:"Analista",empresa:"Empresa",link:"https://www.apinfo.com/vaga/85321",fonte:"APInfo",código:"85321"}]);
+ assert.equal(job.sourceId,"APInfo");
+ assert.equal(job.externalId,"85321");
+});
+
 test("explica quais dados obrigatórios impediram a entrada no Radar",()=>{
  const result=normalizeImportedJobsWithDiagnostics([{titulo:"Sem link",empresa:"Empresa"},{titulo:"Sem empresa",link:"https://example.com/vaga"},{titulo:"Válida",empresa:"Empresa",link:"https://example.com/valida"}]);
  assert.equal(result.items.length,1);

@@ -11,6 +11,7 @@ import { inferJobArea } from "../../../../lib/job-area";
 import { recordImportRunJobs } from "../../../../lib/import-tracking";
 import { notifyImportRun } from "../../../../lib/notifications";
 import { shouldArchiveImportedJob } from "../../../../lib/job-archive-policy";
+import { inferJobSourceId } from "../../../../lib/job-source";
 
 export const dynamic = "force-dynamic";
 
@@ -34,7 +35,7 @@ function valuesFor(job: ImportedJob, now: Date) {
   return {
     id: crypto.randomUUID(),
     fingerprint: fingerprint(job),
-    sourceId: job.sourceId ?? null,
+    sourceId: inferJobSourceId(job.url, job.sourceId),
     externalId: job.externalId ?? null,
     company: job.company.trim(),
     title: job.title.trim(),

@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { jobSourceLabel } from "../lib/job-source";
 type PilotResult = { batchId: string; processed: Array<{ jobId: string; title: string; company: string; reference: string | null; contactEligible: boolean; aiEligible: boolean; aiStatus: string; verdict: string; label: string; blocker: string | null }>; skipped: number; aiCompleted?: number };
 type HistoryItem = { id: string; batchId: string; jobId: string; verdict: string | null; label: string; blocker: string | null; source: string; confidence: number; rows: string; processedAt: string | null; title: string; company: string; externalId: string | null; description: string; stack: string; jobSource: string | null; jobSourceName: string | null; workMode: string | null; location: string | null; sourcePublishedAt: string | null; receivedAt: string; url: string; applyUrl: string | null; contactEmail: string | null; hasValidContactEmail: boolean; draftStatus: "pending" | "drafted" | "sent" | "failed" | "cancelled" | null; draftSubject: string; draftError: string | null; draftUpdatedAt: string | null; gmailSentId: string | null; sentAt: string | null; applicationStatus: "opened" | "generated" | "sent" | "responded" | null; pipelineStage: "viewed" | "saved" | "applied" | "interview" | "offer" | "rejected" | "archived" | null; trigger: string };
 type Batch = { id: string; trigger: "manual" | "scheduled" | "assistant"; scope: string; status: string; startedAt: string | null; completedAt: string | null; createdAt: string; error: string | null; total: number; completed: number; failed: number; eligible: number; eligibleWithoutContact: number; draftsPending: number; draftsReady: number; draftsFailed: number };
@@ -16,7 +17,7 @@ type FilterOption = { id: string; label: string; count: number };
 type SourceCatalogItem = { id: string; name: string };
 const rowClass: Record<string, string> = { "✅": "approved", "🟡": "partial", "❌": "rejected", "🔴": "rejected" };
 const CODEX_BATCH_SIZE = 50;
-const sourceName = (source: string) => source === "all" ? "todas as fontes" : source === "apinfo-extension" ? "APInfo" : source === "linkedin-extension" ? "LinkedIn" : source;
+const sourceName = (source: string) => source === "all" ? "todas as fontes" : jobSourceLabel(source);
 const isExternalAiReassessment = (item: Pick<HistoryItem, "source" | "rows">) => {
   if (item.source !== "ai") return false;
   try { return JSON.parse(item.rows)?.source === "csv-import"; }
