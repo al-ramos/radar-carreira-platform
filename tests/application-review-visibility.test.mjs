@@ -17,6 +17,11 @@ test("rascunhos e candidaturas enviadas ficam ocultos por padrão na fila de an�
   assert.match(jobsRoute, /notInArray\(jobs\.id, applicationIds\)/);
 });
 
+test("busca explícita mantém visível a vaga que já tem candidatura", async () => {
+  const jobsRoute = await read("../app/api/jobs/route.ts");
+  assert.match(jobsRoute, /reviewVisibility === "pending" && !searchQuery && applicationIds\.length/);
+});
+
 test("tabela informa a situação da candidatura", async () => {
   const dashboard = await read("../app/Dashboard.tsx");
   assert.match(dashboard, /label: "Situação"/);

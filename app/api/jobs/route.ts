@@ -176,7 +176,9 @@ const pipelineIds = pipeline.map((item) => item.jobId);
 const applicationIds = pipeline
   .filter((item) => item.applicationStatus === "opened" || item.applicationStatus === "generated" || item.applicationStatus === "sent" || item.applicationStatus === "responded")
   .map((item) => item.jobId);
-const applicationVisibilityCondition = reviewVisibility === "pending" && applicationIds.length
+// A exclusão padrão organiza a fila, mas não pode esconder uma vaga quando a
+// pessoa a procura deliberadamente por código, título, empresa etc.
+const applicationVisibilityCondition = reviewVisibility === "pending" && !searchQuery && applicationIds.length
   ? notInArray(jobs.id, applicationIds)
   : undefined;
 const stageIds = pipeline.filter((item) => item.stage === pipelineFilter).map((item) => item.jobId);
