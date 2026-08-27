@@ -237,6 +237,38 @@ test("não confunde Pleno com Sênior na fase de preferências", () => {
   assert.doesNotMatch(verdict.rows.find(row => row.criterion === "Fase 1 · Senioridade")?.status ?? "", /Sênior \/ equivalente/);
 });
 
+test("aprova stack principal forte mesmo com lacunas complementares de Full Stack", () => {
+  const preset = alexsandroProfilePreset();
+  const verdict = computeVerdict(
+    {
+      title: "Desenvolvedor Full-Stack Sênior",
+      description: "Modalidade PJ, remoto. Requisitos: JavaScript, TypeScript, Python, C# .NET, React, Vue.js, AWS, Azure, Docker, SQL e PostgreSQL.",
+      stack: ["JavaScript / TypeScript", "Python", "C# / .NET", "React", "Vue.js", "AWS", "Azure", "Docker", "SQL", "PostgreSQL"],
+      workMode: "Híbrido",
+      location: "São Paulo - SP",
+    },
+    preset.masteredSkills,
+    preset.careerRules,
+  );
+  assert.equal(verdict.emoji, "✅");
+  assert.match(verdict.rows.find(row => row.criterion === "Fase 3 · Fit técnico")?.status ?? "", /faltam: .*Python.*Vue\.js.*PostgreSQL/);
+});
+
+test("não aprova stack com cobertura técnica insuficiente", () => {
+  const preset = alexsandroProfilePreset();
+  const verdict = computeVerdict(
+    {
+      title: "Desenvolvedor Full-Stack Sênior",
+      description: "PJ e remoto. Requisitos: C# .NET, Java, Go, Python, Ruby, Kotlin, Scala, Rust, Elixir, PHP.",
+      stack: ["C# / .NET", "Java", "Go", "Python", "Ruby", "Kotlin", "Scala", "Rust", "Elixir", "PHP"],
+      workMode: "Remoto",
+    },
+    preset.masteredSkills,
+    preset.careerRules,
+  );
+  assert.equal(verdict.emoji, "🔴");
+});
+
 test("calcula recência quando o banco devolve a data como texto", () => {
   const result = scoreJob(
     { title: "Desenvolvedor de Software", description: "", stack: [], publishedAt: new Date().toISOString() },

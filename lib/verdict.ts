@@ -364,7 +364,18 @@ export function computeVerdict(job: {
 
   const decisionRows = [workRow, contractRow, seniorRow, technicalFitRow, companyRow];
   const falseCount = decisionRows.filter(row => row.ok === false).length;
-  const reservationCount = decisionRows.filter(row => row.ok === null).length;
+  const technicalCoverage = stackFit.requiredSkills.length
+    ? stackFit.matchingSkills.length / stackFit.requiredSkills.length
+    : 0;
+  // Uma vaga Full Stack costuma listar tecnologias complementares que podem
+  // ser aprendidas no contexto do trabalho. Quando o ecossistema central do
+  // perfil está presente, pelo menos 40% da stack exigida já é dominada e os
+  // demais critérios passaram, essas lacunas continuam explicadas na tela,
+  // mas não rebaixam sozinhas uma vaga de ✅ para 🟡.
+  const complementaryTechnicalReservation = technicalFitRow.ok === null
+    && stackGate.ok === true
+    && technicalCoverage >= 0.4;
+  const reservationCount = decisionRows.filter(row => row.ok === null && !(row === technicalFitRow && complementaryTechnicalReservation)).length;
   if (technicalFitRow.ok === false || falseCount >= 2) return { emoji: "🔴", label: "Não bate", rows };
   if (falseCount === 0 && reservationCount === 0) return { emoji: "✅", label: "Bate", rows };
   return { emoji: "🟡", label: "Provável com ressalvas", rows };
