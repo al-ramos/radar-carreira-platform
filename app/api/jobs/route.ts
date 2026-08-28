@@ -220,11 +220,12 @@ const affinityCandidateCondition = minScore > BASE_TECH_SCORE
   gte(jobs.firstSeenAt, recentAffinityCutoff),
 )
 : undefined;
-// O histórico usa este identificador somente para abrir uma vaga que a pessoa
-// já selecionou. Ele tem precedência para evitar que metadados corrigidos
-// (fonte/código) convertam o atalho em uma tela vazia.
+// O histórico conserva vagas depois que elas saem da fila ativa. Este atalho
+// abre um registro que a pessoa já selecionou, portanto precisa encontrá-lo
+// inclusive quando estiver arquivado; a listagem normal continua limitada às
+// vagas ativas pelo receivedInPeriodCondition.
 const condition = requestedJobId
-? and(eq(jobs.status, "active"), eq(jobs.id, requestedJobId))
+? eq(jobs.id, requestedJobId)
 : and(exactSourceCondition, roleAreaCondition, channelCondition, importRunCondition, seniorityCondition, searchCondition, pipelineCondition, applicationVisibilityCondition, affinityCandidateCondition);
 // Importações antigas podem referenciar um UUID que não sobreviveu na tabela
 // de fontes. Nunca exponha esse identificador interno no Radar: recupera o
