@@ -180,6 +180,26 @@ async function recoverStalledManualTriage(env: Env) {
   console.log(JSON.stringify({ event: "triage_recovery", recovered: recovered.length }));
 }
 
+/**
+ * A coleta é o gatilho normal do rascunho. Esta retomada só cobre itens que
+ * já ficaram pendentes após uma falha transitória ou uma aprovação antiga;
+ * não envia e-mail nem inicia candidatura.
+ */
+async function recoverPendingDrafts(env: Env) {
+  const pending = await env.DB.prepare(`
+    SELECT DISTINCT j.source_id
+    FROM draft_outbox o INNER JOIN jobs j ON j.id = o.job_id
+    WHERE o.status = 'pending' AND j.source_id IS NOT NULL
+    LIMIT 20
+  `).all<{ source_id: string }>();
+  for (const item of pending.results) await env.TRIAGE_QUEUE.send({
+    kind: "scheduled-triage",
+    run: { sourceId: item.source_id, dateScope: "received", homePeriod: "all", aiMode: "off", batchSize: 1 },
+    continuation: 0,
+  } satisfies ScheduledTriageQueueMessage);
+  console.log(JSON.stringify({ event: "draft_recovery", sources: pending.results.length }));
+}
+
 // Image security config. SVG sources with .svg extension auto-skip the
 // optimization endpoint on the client side (served directly, no proxy).
 // To route SVGs through the optimizer (with security headers), set
@@ -272,6 +292,9 @@ const worker = {
         VALUES ('triage-recovery', 'failed', ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET status = excluded.status, started_at = excluded.started_at, completed_at = excluded.completed_at, error = excluded.error, updated_at = excluded.updated_at`
       ).bind(now, now, detail, now).run();
+    }));
+    ctx.waitUntil(recoverPendingDrafts(env).catch((error) => {
+      console.error(JSON.stringify({ event: "draft_recovery_failed", detail: error instanceof Error ? error.message.slice(0, 500) : "Falha ao retomar rascunhos" }));
     }));
   },
   async queue(batch: { messages: QueueMessage[] }, env: Env, ctx: ExecutionContext): Promise<void> {

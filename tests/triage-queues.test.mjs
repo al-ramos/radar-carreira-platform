@@ -38,6 +38,9 @@ test("fila da triagem prioriza ações manuais, recupera atrasos e mantém DLQ",
   assert.match(worker, /try \{/);
   assert.match(worker, /message\.retry\(\{ delaySeconds: 15 \}\)/);
   assert.match(worker, /recoverStalledManualTriage/);
+  assert.match(worker, /recoverPendingDrafts/);
+  assert.match(worker, /event: "draft_recovery"/);
+  assert.match(worker, /o\.status = 'pending'/);
   assert.match(worker, /STALE_MANUAL_TRIAGE_MS = 2 \* 60_000/);
   assert.match(worker, /env\.MANUAL_TRIAGE_QUEUE\.sendBatch/);
   assert.match(worker, /async scheduled/);
