@@ -309,10 +309,22 @@ export async function POST(request: Request) {
         .limit(20);
       for (const { job, analysis } of approvedWithoutOutbox) {
         if (!isSafeForDraft({ verdict: analysis.verdict, contactEmail: job.contactEmail, sourceId: job.sourceId })) continue;
-        const history = await db.select({ id: triageHistory.id }).from(triageHistory)
+        let history = await db.select({ id: triageHistory.id }).from(triageHistory)
           .where(and(eq(triageHistory.userId, userId), eq(triageHistory.jobId, job.id), eq(triageHistory.verdict, "✅")))
           .orderBy(desc(triageHistory.createdAt)).limit(1).then((rows) => rows[0]);
-        if (!history) continue;
+        // Importações antigas e análises avulsas podem ter aprovado a vaga
+        // antes de o histórico aditivo existir. A ausência desse vínculo não
+        // pode deixar um rascunho elegível fora da automação: reconstituímos
+        // a evidência usando a análise persistida e a rodada agendada atual.
+        if (!history) {
+          history = { id: crypto.randomUUID() };
+          await db.insert(triageHistory).values({
+            id: history.id, batchId, userId, jobId: job.id,
+            profileRevision: analysis.profileRevision, rulesRevision: analysis.rulesRevision, instructionsRevision: analysis.instructionsRevision,
+            verdict: "✅", label: analysis.label, blocker: analysis.blocker,
+            source: analysis.source as "rules" | "ai", confidence: analysis.confidence, rows: analysis.rows, createdAt: now,
+          });
+        }
         const inserted = await db.insert(draftOutbox).values({ id: crypto.randomUUID(), userId, jobId: job.id, historyId: history.id, status: "pending", createdAt: now, updatedAt: now }).onConflictDoNothing().returning({ id: draftOutbox.id });
         if (inserted.length) scheduledDraftsQueued += 1;
       }

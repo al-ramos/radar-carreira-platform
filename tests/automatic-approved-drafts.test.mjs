@@ -20,6 +20,9 @@ test("toda aprovação com e-mail válido cria rascunho imediato, sem enviar e-m
   assert.match(run, /\.limit\(20\)/);
   assert.match(run, /requestImmediateDraftCreation\(pendingScheduledOutboxIds\)/);
   assert.match(run, /const approvedWithoutOutbox = await db\.select/, "a agenda recupera aprovações CSV\/IA que ainda não chegaram à outbox");
+  assert.match(run, /a ausência desse vínculo não[\s\S]*rascunho elegível fora da automação/i);
+  assert.match(run, /history = \{ id: crypto\.randomUUID\(\) \}/);
+  assert.match(run, /batchId, userId, jobId: job\.id/);
   assert.match(aiVerdicts, /if \(entry\.verdict === "✅"\)/);
   assert.match(aiVerdicts, /requestImmediateDraftCreation\(pendingOutboxIds\)/);
   assert.match(csvImport, /requestImmediateDraftCreation\(pendingOutboxIds\)/);
