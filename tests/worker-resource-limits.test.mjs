@@ -78,7 +78,7 @@ test("falha da API não exibe as quatro vagas demonstrativas", async () => {
   assert.match(dashboard, /window\.addEventListener\("online"/);
   assert.match(dashboard, /Atualizar agora/);
   assert.match(dashboard, /Sua sessão expirou/);
-  assert.match(dashboard, /sem score/);
+  assert.match(dashboard, /aguardando triagem/);
   assert.doesNotMatch(dashboard, /score: j\.score \?\? 70/);
   assert.match(dashboard, /const visibleMinScore = simplifiedList \? 0 : loadedMinScore/);
   assert.match(dashboard, /setRequestedMinScore\(effectiveMinScore\)/);
