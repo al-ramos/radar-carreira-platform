@@ -133,6 +133,11 @@ export async function POST(request: Request) {
       // como desatualizada) voltam à fila assim que a vaga continua ✅ e tem
       // e-mail válido. A outbox permanece idempotente: só o status é retomado.
       if (existing.status === "failed" || existing.status === "cancelled") {
+        if (!isSafeForDraft({ verdict: row.analysis.verdict, contactEmail: row.job.contactEmail, sourceId: row.job.sourceId })) {
+          if (!row.job.contactEmail?.trim()) noValidContact += 1;
+          else notEligible += 1;
+          continue;
+        }
         await db.update(draftOutbox).set({ status: "pending", error: null, updatedAt: new Date() }).where(eq(draftOutbox.id, existing.id));
         priorityOutboxIds.push(existing.id);
         continue;

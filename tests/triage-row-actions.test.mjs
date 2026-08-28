@@ -5,10 +5,11 @@ import test from "node:test";
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
 test("triagem permite ações avulsas por vaga sem contornar os guardrails", async () => {
-  const [screen, dashboard, queue, review, codexQueue, styles] = await Promise.all([
+  const [screen, dashboard, queue, disqualify, review, codexQueue, styles] = await Promise.all([
     read("../app/TriageReport.tsx"),
     read("../app/Dashboard.tsx"),
     read("../app/api/triage/drafts/queue/route.ts"),
+    read("../app/api/triage/disqualify/route.ts"),
     read("../app/api/triage/ai-review/route.ts"),
     read("../app/api/triage/codex-queue/route.ts"),
     read("../app/platform.css"),
@@ -23,6 +24,8 @@ test("triagem permite ações avulsas por vaga sem contornar os guardrails", asy
   assert.match(screen, /openSelectedApplications/);
   assert.match(screen, /\/api\/triage\/applications\/open/);
   assert.match(screen, /Preparar rascunhos/);
+  assert.match(screen, /Desclassificar/);
+  assert.match(screen, /\/api\/triage\/disqualify/);
   assert.match(screen, /draftActionBlocker/);
   assert.match(screen, /LinkedIn não permite rascunho/);
   assert.match(screen, /E-mail válido exigido/);
@@ -50,6 +53,10 @@ test("triagem permite ações avulsas por vaga sem contornar os guardrails", asy
   assert.match(queue, /inArray\(userJobAnalyses\.jobId, requestedJobIds\)/);
   assert.match(queue, /draft-history-repair/);
   assert.match(queue, /isSafeForDraft/);
+  assert.match(queue, /if \(!isSafeForDraft\(\{ verdict: row\.analysis\.verdict/);
+  assert.match(disqualify, /verdict: "❌"/);
+  assert.match(disqualify, /Desclassificada manualmente/);
+  assert.match(disqualify, /eq\(draftOutbox\.status, "pending"\)/);
   assert.match(review, /requestedJobIds/);
   assert.match(review, /inArray\(jobs\.id, requestedJobIds\)/);
   assert.match(codexQueue, /inArray\(jobs\.id, requestedJobIds\)/);
