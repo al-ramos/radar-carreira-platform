@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, isNull, lt, sql } from "drizzle-orm";
+import { and, desc, eq, gte, isNull, lt, or, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db/index";
@@ -22,7 +22,7 @@ const STALE_SCHEDULE_AFTER_MS = 30 * 60 * 60 * 1000;
  * vagas APInfo consultadas antes da triagem diária. Lotes e outbox são lidos
  * em paralelo para que o card operacional reflita o estado persistido.
  */
-export async function GET() {
+export async function GET(request: Request) {
   const user = await getChatGPTUser();
   if (!user) return NextResponse.json({ error: "Autenticação necessária" }, { status: 401 });
   if (!isOwnerEmail(user.email)) {
@@ -30,6 +30,8 @@ export async function GET() {
   }
 
   const db = getDb();
+  const scope = new URL(request.url).searchParams.get("scope");
+  const pendingScope = scope === "pending";
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
   const todayWindow = saoPauloDayWindow(today);
   const items = await db
@@ -76,7 +78,13 @@ export async function GET() {
     .leftJoin(jobSources, eq(jobs.sourceId, jobSources.id))
     .leftJoin(draftOutbox, and(eq(draftOutbox.userId, user.userId), eq(draftOutbox.jobId, jobs.id)))
     .leftJoin(userJobStatus, and(eq(userJobStatus.userId, user.userId), eq(userJobStatus.jobId, jobs.id)))
-    .where(eq(jobs.status, "active"))
+    // A visão padrão é operacional e mostra somente o acervo ativo. Já o
+    // filtro “Não analisadas” precisa ser fiel ao seu nome: ele também traz
+    // vagas encerradas ou arquivadas que ficaram sem veredito, sem carregar
+    // todo o acervo inativo nas demais visões.
+    .where(pendingScope
+      ? or(isNull(userJobAnalyses.jobId), eq(userJobAnalyses.verdict, "⚪"))
+      : eq(jobs.status, "active"))
     // O resumo e os filtros do Histórico precisam cobrir todo o acervo
     // ativo. Um limite aqui fazia o painel estacionar artificialmente em
     // 1.000, mesmo quando havia mais vagas analisadas.

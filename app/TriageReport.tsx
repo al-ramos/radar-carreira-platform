@@ -94,9 +94,9 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
     [csvImportResult, setCsvImportResult] = useState<{ applied: number; draftsQueued: number; draftsCreated: number; gmailReason: string | null; notFound: string[]; ambiguous: string[]; rejected: Array<{ line: number; reason: string }> } | null>(null),
     [reconcilingAllSent, setReconcilingAllSent] = useState(false);
   const aiPromptRef = useRef<HTMLTextAreaElement>(null);
-  const loadHistory = async () => {
+  const loadHistory = async (scope: "pending" | "analysed" | "all" = situationFilter) => {
     try {
-      const response = await fetch("/api/triage/history");
+      const response = await fetch(scope === "pending" ? "/api/triage/history?scope=pending" : "/api/triage/history");
       if (!response.ok) {
         const legacyResponse = await fetch("/api/admin/triage");
         const legacy = await legacyResponse.json() as { items?: LegacyItem[] };
@@ -315,13 +315,13 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
   const historyPageCount = Math.ceil(filteredHistory.length / historyPageSize);
   const hasActiveAdvancedFilters = draftFilter !== "all" || outreachFilter !== "all" || externalAiFilter !== "all" || Boolean(publishedDateFilter) || Boolean(receivedDateFilter) || Boolean(analysedDateFilter);
   const clearHistoryFilters = (situation: typeof situationFilter = "all") => {
-    setSituationFilter(situation); setVerdictFilter("all"); setSourceFilter("all"); setJobSourceFilter("all"); setCodeFilter(""); setTableSearch(""); setExternalAiFilter("all"); setDraftFilter("all"); setOutreachFilter("all"); setPublishedDateFilter(""); setReceivedDateFilter(""); setAnalysedDateFilter(""); setAdvancedFiltersOpen(false); setHistoryPage(0);
+    setSituationFilter(situation); setVerdictFilter("all"); setSourceFilter("all"); setJobSourceFilter("all"); setCodeFilter(""); setTableSearch(""); setExternalAiFilter("all"); setDraftFilter("all"); setOutreachFilter("all"); setPublishedDateFilter(""); setReceivedDateFilter(""); setAnalysedDateFilter(""); setAdvancedFiltersOpen(false); setHistoryPage(0); void loadHistory(situation);
   };
   const pendingHasOtherFilters = situationFilter === "pending" && (verdictFilter !== "all" || sourceFilter !== "all" || jobSourceFilter !== "all" || Boolean(codeFilter.trim()) || Boolean(tableSearch.trim()) || hasActiveAdvancedFilters);
   const emptyHistoryMessage = situationFilter === "pending"
     ? pendingHasOtherFilters
       ? "Nenhuma vaga não analisada corresponde aos outros filtros. Use “Limpar outros filtros” para ver todas as pendências."
-      : "Não há vagas ativas sem veredito no momento."
+      : "Não há vagas sem veredito no momento."
     : "Nenhuma vaga corresponde aos filtros selecionados.";
   const periodScopedSourceOptions = (actionSourceOptions ?? sourceOptions).map((option) => ({ ...option, label: sourceLabelFor(option.id, option.label) }));
   const actionSources = sourceId && !periodScopedSourceOptions.some((option) => option.id === sourceId)
@@ -926,7 +926,7 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
             <div className="triage-list">
               {historyRecovery?.available ? <div className="triage-operational-alert warning" role="status"><span>Há {historyRecovery.available} avaliação(ões) concluída(s) que precisam ser restauradas no histórico.</span><button type="button" className="triage-queue-button" disabled={recoveringHistory} onClick={() => void recoverMissingHistory()}>{recoveringHistory ? "Restaurando…" : `Restaurar ${historyRecovery.available} avaliação(ões)`}</button></div> : null}
               <div className="triage-run-settings triage-table-filters">
-                <label>Situação<select value={situationFilter} onChange={(e) => { setSituationFilter(e.target.value as typeof situationFilter); setHistoryPage(0); }}><option value="pending">Não analisadas</option><option value="analysed">Analisadas</option><option value="all">Todas</option></select></label>
+                <label>Situação<select value={situationFilter} onChange={(e) => { const next = e.target.value as typeof situationFilter; setSituationFilter(next); setHistoryPage(0); void loadHistory(next); }}><option value="pending">Não analisadas</option><option value="analysed">Analisadas</option><option value="all">Todas</option></select></label>
                 <label>Veredito<select value={verdictFilter} onChange={(e) => { setVerdictFilter(e.target.value); setHistoryPage(0); }}><option value="all">Todos</option><option value="✅">Aprovadas</option><option value="🟡">Prováveis</option><option value="❌">Reprovadas</option></select></label>
                 <label>Envio / candidatura<select value={outreachFilter} onChange={(e) => { setOutreachFilter(e.target.value as typeof outreachFilter); setHistoryPage(0); }}><option value="all">Todas</option><option value="email_sent">E-mail enviado</option><option value="application_started">Candidatura iniciada</option><option value="application_sent">Candidatura enviada</option><option value="pending">Sem rascunho, envio ou candidatura</option></select></label>
                 <label>Origem<select value={sourceFilter} onChange={(e) => { setSourceFilter(e.target.value); setHistoryPage(0); }}><option value="all">Regras, IA e histórico</option><option value="rules">Regras</option><option value="ai">IA</option><option value="legacy">Histórico do Radar</option></select></label>
