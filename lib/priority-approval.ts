@@ -9,8 +9,9 @@ const PRIORITY_TECHNOLOGY_RE = [
 
 /**
  * Tecnologias com prioridade explícita do candidato. A ocorrência pode estar
- * tanto entre requisitos quanto em "diferenciais": ambas justificam a
- * aprovação imediata para posterior decisão no link da vaga.
+ * tanto entre requisitos quanto em "diferenciais". Ela reforça o fit
+ * técnico, mas não substitui os critérios obrigatórios de modalidade,
+ * localidade, senioridade, idioma e evidência no texto da vaga.
  */
 export function priorityApprovalReason(value: string): string | null {
   const match = PRIORITY_TECHNOLOGY_RE.find((pattern) => pattern.test(value));

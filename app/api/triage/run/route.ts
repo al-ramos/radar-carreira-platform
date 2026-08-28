@@ -302,7 +302,7 @@ export async function POST(request: Request) {
     if (run.trigger === "schedule") {
       const approvedWithoutOutbox = await db.select({ job: jobs, analysis: userJobAnalyses })
         .from(jobs)
-        .innerJoin(userJobAnalyses, and(eq(userJobAnalyses.userId, userId), eq(userJobAnalyses.jobId, jobs.id), eq(userJobAnalyses.verdict, "✅")))
+        .innerJoin(userJobAnalyses, and(eq(userJobAnalyses.userId, userId), eq(userJobAnalyses.jobId, jobs.id), eq(userJobAnalyses.verdict, "✅"), eq(userJobAnalyses.profileRevision, versions.profileRevision), eq(userJobAnalyses.rulesRevision, versions.rulesRevision), eq(userJobAnalyses.instructionsRevision, versions.instructionsRevision)))
         .leftJoin(draftOutbox, and(eq(draftOutbox.userId, userId), eq(draftOutbox.jobId, jobs.id)))
         .where(and(eq(jobs.status, "active"), isNull(draftOutbox.id)))
         .orderBy(desc(userJobAnalyses.updatedAt))

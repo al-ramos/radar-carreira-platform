@@ -126,7 +126,7 @@ test("aplica bloqueadores do perfil e respeita exceções de stack e idioma", ()
     ["C#"],
     baseRules,
   );
-  assert.equal(blocked.emoji, "✅");
+  assert.equal(blocked.emoji, "❌");
 
   const exception = computeVerdict(
     { title: "Arquiteto LATAM", description: "Desarrollador em processo de postulación para projetos de arquitetura.", stack: ["Java"] },
@@ -188,7 +188,7 @@ test("bloqueia idioma avançado que não esteja aceito no perfil", () => {
       preset.masteredSkills,
       rules,
     );
-    assert.equal(verdict.emoji, "✅", expected);
+    assert.equal(verdict.emoji, "❌", expected);
   }
 });
 
@@ -226,7 +226,7 @@ test("não reprova por Campinas quando a presença é condicionada a residir lá
     preset.careerRules,
   );
   assert.notEqual(verdict.emoji, "❌");
-  assert.equal(verdict.emoji, "✅");
+  assert.equal(verdict.emoji, "🟡");
 });
 
 test("perfil ampliado aprova presencial na Grande SP e híbrido sem limite informado", () => {
@@ -268,8 +268,8 @@ test("não confunde Pleno com Sênior na fase de preferências", () => {
     preset.masteredSkills,
     preset.careerRules,
   );
-  assert.equal(verdict.emoji, "✅");
-  assert.equal(verdict.label, "Bate");
+  assert.equal(verdict.emoji, "🟡");
+  assert.equal(verdict.label, "Provável com ressalvas");
 });
 
 test("aprova stack principal forte mesmo com lacunas complementares de Full Stack", () => {
@@ -301,7 +301,7 @@ test("não aprova stack com cobertura técnica insuficiente", () => {
     preset.masteredSkills,
     preset.careerRules,
   );
-  assert.equal(verdict.emoji, "✅");
+  assert.equal(verdict.emoji, "🔴");
 });
 
 test("calcula recência quando o banco devolve a data como texto", () => {

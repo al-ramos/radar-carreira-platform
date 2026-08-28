@@ -19,7 +19,7 @@ test("não aprova stack principal citada apenas no título ou em tags importadas
     description: "Atuação com GCP, SAP e Angular. Trabalho remoto.",
     stack: ["C#", ".NET"],
   }, profile);
-  assert.equal(value.verdict, "BATE");
+  assert.equal(value.verdict, "NAO_BATE");
   assert.equal(value.blocker, null);
   assert.deepEqual(value.matchingSkills, []);
 });
@@ -30,7 +30,7 @@ test("aceita stack principal explicitamente comprovada no corpo da vaga", () => 
     description: "Experiência sólida em desenvolvimento de software utilizando .NET é mandatória.",
     stack: [],
   }, profile);
-  assert.equal(value.verdict, "BATE");
+  assert.equal(value.verdict, "PROVAVEL");
   assert.ok(value.matchingSkills.includes(".NET"));
 });
 

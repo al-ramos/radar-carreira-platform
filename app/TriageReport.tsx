@@ -783,7 +783,7 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
                   </label>
                   <label className="triage-reprocess">
                     <input type="checkbox" checked={reprocess} onChange={(e) => setReprocess(e.target.checked)} disabled={runningPilot} />
-                    Incluir vagas já triadas
+                    Reclassificar vagas já triadas com as regras atuais
                   </label>
                   <label>
                     Período da triagem

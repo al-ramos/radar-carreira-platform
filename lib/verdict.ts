@@ -346,32 +346,29 @@ export function computeVerdict(job: {
 
   const languageRow = detectLanguageReq(fullText, rules);
   structuralRows.push({ criterion: "Fase 1 · Idioma", ...languageRow });
-  if (languageRow.ok === false && !priorityTechnology) {
+  if (languageRow.ok === false) {
     return blocked(testAny(fullText, ENGLISH_BLOCKER_RE) ? "Inglês avançado exigido" : "Espanhol avançado exigido");
   }
 
   const seniorRow = detectSeniority(job.title, job.seniority ?? "", rules);
   structuralRows.push({ criterion: "Fase 1 · Senioridade", ...seniorRow });
-  if (seniorRow.ok === false && !priorityTechnology) return blocked(`Senioridade incompatível: ${seniorRow.status}`);
+  if (seniorRow.ok === false) return blocked(`Senioridade incompatível: ${seniorRow.status}`);
 
   const blockedWorkType = includesConfiguredTerm(fullText, rules?.blockedWorkTypes ?? []);
   const workTypeRow = blockedWorkType
     ? { status: `${blockedWorkType} — bloqueado pelo perfil`, ok: false as const }
     : { status: "Sem atuação bloqueada identificada ✅", ok: true as const };
   structuralRows.push({ criterion: "Fase 1 · Atuação", ...workTypeRow });
-  if (blockedWorkType && !priorityTechnology) return blocked(`Tipo de atuação bloqueado: ${blockedWorkType}`);
+  if (blockedWorkType) return blocked(`Tipo de atuação bloqueado: ${blockedWorkType}`);
 
   const workRow = detectWorkMode(lc, job.location ?? "", rules);
   structuralRows.push({ criterion: "Fase 1 · Geografia", ...workRow });
   const locationBlocked = workRow.ok === false && /fora das regioes aceitas|limite do perfil/i.test(normalizeText(workRow.status));
   if (locationBlocked) return blocked(workRow.status);
 
-  // Tecnologia prioritária ajuda a aprovar a aderência técnica, mas nunca
-  // pode ultrapassar o veto geográfico: presencial fora da região aceita
-  // continua incompatível, mesmo quando a vaga menciona C#/.NET/VBA.
-  if (priorityTechnology) return { emoji: "✅", label: "Bate", rows: structuralRows };
-
-  // Fases 2 a 4 só são executadas depois que todos os vetos estruturais passam.
+  // Tecnologia prioritária é somente evidência técnica. As fases 2 a 4 são
+  // obrigatórias para aprovar: ela não pode substituir dados de perfil nem
+  // transformar uma vaga incompleta em ✅.
   const contractRow = detectContratacao(lc, rules);
   const technicalFitRow = stackException
     ? { status: `Exceção técnica aceita: ${stackException} ✅`, ok: true as const }
@@ -389,7 +386,7 @@ export function computeVerdict(job: {
     return { emoji: "✅", label: "Bate", rows };
   }
 
-  const decisionRows = [workRow, contractRow, seniorRow, technicalFitRow, companyRow];
+  const decisionRows = [languageRow, workRow, contractRow, seniorRow, technicalFitRow, companyRow];
   const falseCount = decisionRows.filter(row => row.ok === false).length;
   const technicalCoverage = stackFit.requiredSkills.length
     ? stackFit.matchingSkills.length / stackFit.requiredSkills.length
