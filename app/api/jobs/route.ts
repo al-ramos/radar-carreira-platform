@@ -2,7 +2,7 @@ import { and, asc, desc, eq, gte, inArray, isNull, like, lte, notInArray, notLik
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../chatgpt-auth";
 import { getDb } from "../../../db/index";
-import { importRuns, jobImportRuns, jobs, jobSources, platformSettings, profiles, userJobStatus } from "../../../db/schema";
+import { importRuns, jobImportRuns, jobs, jobSources, platformSettings, profiles, userJobAnalyses, userJobStatus } from "../../../db/schema";
 import { isTechnologyJob, profileAffinitySearchTerms, scoreJob } from "../../../lib/scoring";
 import { inferTechnologyStack } from "../../../lib/technology-stack";
 import { allowedWorkModes, listFromStored, normalizeCareerRules } from "../../../lib/profile-options";
@@ -284,12 +284,16 @@ url: jobs.url,
 applyUrl: jobs.applyUrl,
 contactEmail: jobs.contactEmail,
 contactSubject: jobs.contactSubject,
+triageVerdict: userJobAnalyses.verdict,
 description: degradedMode
 ? sql<string>`''`
 : requiresPostFiltering
 ? sql<string>`substr(${jobs.description}, 1, ${FILTER_DESCRIPTION_CHARS})`
 : sql<string>`substr(${jobs.description}, 1, ${LIST_DESCRIPTION_CHARS})`,
-}).from(jobs).leftJoin(jobSources, eq(jobs.sourceId, jobSources.id)).where(condition).orderBy(
+}).from(jobs)
+  .leftJoin(jobSources, eq(jobs.sourceId, jobSources.id))
+  .leftJoin(userJobAnalyses, and(eq(userJobAnalyses.userId, user?.userId ?? "__anonymous__"), eq(userJobAnalyses.jobId, jobs.id)))
+  .where(condition).orderBy(
 sort === "imported" ? desc(jobs.firstSeenAt) : desc(jobs.publishedAt),
 desc(jobs.createdAt),
 );
@@ -378,6 +382,9 @@ stack,
 score,
 reasons,
 scored,
+// O cálculo de afinidade ajuda a ordenar a fila, mas não é um resultado de
+// triagem. A interface só pode exibir uma nota após um veredito persistido.
+triaged: Boolean(job.triageVerdict && job.triageVerdict !== "⚪"),
 applicationStatus: applicationStatusByJobId.get(job.id) ?? null,
 }));
 

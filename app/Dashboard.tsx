@@ -34,6 +34,7 @@ type Job = {
   id: string;
   score: number;
   scored: boolean;
+  triaged: boolean;
   title: string;
   company: string;
   location: string;
@@ -63,6 +64,7 @@ type ApiJob = {
   id: string;
   score?: number;
   scored?: boolean;
+  triaged?: boolean;
   title: string;
   company: string;
   location?: string;
@@ -114,6 +116,7 @@ type JobDetail = {
   score?: number;
   reasons?: string[];
   scored?: boolean;
+  triaged?: boolean;
 };
 type CollectionOutcome = {
   id: string;
@@ -455,6 +458,7 @@ const adapt = (j: ApiJob): Job => ({
   id: j.id,
   score: j.score ?? 0,
   scored: j.scored ?? false,
+  triaged: j.triaged ?? false,
   title: j.title,
   company: j.company,
   location: j.location ?? "Não informado",
@@ -490,6 +494,8 @@ const adapt = (j: ApiJob): Job => ({
   description: j.description,
   applicationStatus: j.applicationStatus ?? undefined,
 });
+
+const hasVisibleScore = (job: Pick<Job, "scored" | "triaged">) => job.scored && job.triaged;
 
 const formatJobDate = (value?: string) =>
   value
@@ -1922,6 +1928,7 @@ export default function Dashboard() {
             score: typeof data.score === "number" ? data.score : item.score,
             reasons: Array.isArray(data.reasons) ? data.reasons : item.reasons,
             scored: typeof data.scored === "boolean" ? data.scored : item.scored,
+            triaged: typeof data.triaged === "boolean" ? data.triaged : item.triaged,
           } : item);
           loadedJobsRef.current = next;
           return next;
@@ -3293,13 +3300,13 @@ export default function Dashboard() {
                       </span>
                       <span role="cell" className="job-table-cell job-table-cell-score">
                         {currentUser ? (
-                          j.scored ? (
+                          hasVisibleScore(j) ? (
                             <>
                               <strong>{j.score}</strong>
                               {v && <span className={`verdict-badge verdict-${verdictKey}`}>{v.emoji}</span>}
                             </>
                           ) : (
-                            <span title={j.reasons[0] ?? "Sem dados suficientes para calcular a aderência"}>—</span>
+                            <span title="Esta vaga aguarda a triagem">Aguardar</span>
                           )
                         ) : (
                           <span className="score-locked" title="Entre para ver a aderência ao seu perfil">🔒</span>
@@ -3351,7 +3358,7 @@ export default function Dashboard() {
                 key={j.id}
                 role="button"
                 tabIndex={0}
-                className={`job-card ${selectedJob?.id === j.id ? "selected" : ""} ${currentUser && j.scored ? "job-card-scored" : ""}`}
+                className={`job-card ${selectedJob?.id === j.id ? "selected" : ""} ${currentUser && hasVisibleScore(j) ? "job-card-scored" : ""}`}
                 onClick={() => selectJob(j)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
@@ -3362,7 +3369,7 @@ export default function Dashboard() {
               >
                 <div className="score">
                   {currentUser ? (
-                    j.scored ? (
+                    hasVisibleScore(j) ? (
                       <>
                         <strong>{j.score}</strong>
                         <small>pontos</small>
@@ -3371,9 +3378,9 @@ export default function Dashboard() {
                         </span>
                       </>
                     ) : (
-                      <span title={j.reasons[0] ?? "Sem dados suficientes para calcular a aderência"}>
+                      <span title="Esta vaga aguarda a triagem">
                         —
-                        <small>sem score</small>
+                        <small>aguardando triagem</small>
                       </span>
                     )
                   ) : (
@@ -3563,7 +3570,7 @@ export default function Dashboard() {
                 </div>
                 <span className="fit-inline">
                   {currentUser ? (
-                    selectedJob.scored ? (
+                    hasVisibleScore(selectedJob) ? (
                       <>
                         <strong>{selectedJob.score}%</strong>
                         <small>match</small>
@@ -3579,8 +3586,8 @@ export default function Dashboard() {
                       </>
                     ) : (
                       <>
-                        <strong title={selectedJob.reasons[0]}>—</strong>
-                        <small>sem score</small>
+                        <strong title="Esta vaga aguarda a triagem">—</strong>
+                        <small>aguardando triagem</small>
                       </>
                     )
                   ) : (
@@ -3594,10 +3601,13 @@ export default function Dashboard() {
                 </span>
               </div>
               <div className="match-reasons">
-                <h4>COMO O SCORE FOI CALCULADO</h4>
-                {selectedJob.reasons.map((reason) => (
-                  <span key={reason}>{reason}</span>
-                ))}
+                {hasVisibleScore(selectedJob) ? <>
+                  <h4>COMO O SCORE FOI CALCULADO</h4>
+                  {selectedJob.reasons.map((reason) => <span key={reason}>{reason}</span>)}
+                </> : <>
+                  <h4>STATUS DA TRIAGEM</h4>
+                  <span>Esta vaga foi coletada e aguarda avaliação. A nota de aderência será exibida somente após a triagem.</span>
+                </>}
               </div>
               <nav className="job-detail-navigation" aria-label="Navegação entre vagas filtradas">
                 <button
