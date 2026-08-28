@@ -59,7 +59,8 @@ test("triagem permite ações avulsas por vaga sem contornar os guardrails", asy
   assert.match(dashboard, /if \(n === "Radar"\) setTriageOpen\(false\)/);
   assert.match(dashboard, /open=\{triageOpen\}/);
   assert.match(dashboard, /setQuery\(job\.externalId \?\? job\.jobId\)/);
-  assert.match(dashboard, /setSourceFilter\(job\.jobSource \?\? "all"\)/);
+  assert.match(dashboard, /setFocusedJobId\(job\.jobId\)/, "o link da triagem deve usar o identificador exato da vaga");
+  assert.match(dashboard, /setSourceFilter\("all"\)/, "o atalho não pode falhar por uma fonte que mudou depois da coleta");
   assert.match(dashboard, /setReviewVisibility\("all"\)/, "o link da triagem precisa incluir candidaturas já iniciadas");
   assert.match(dashboard, /\$\{j\.id\} \$\{j\.externalId \?\? ""\}/);
   assert.match(await read("../app/api/jobs/route.ts"), /eq\(jobs\.id, searchQuery\)/);

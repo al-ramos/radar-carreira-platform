@@ -578,6 +578,9 @@ export default function Dashboard() {
   const [currentPage, setCurrentPage] = useState(1);
   const [loadingMore, setLoadingMore] = useState(false);
   const pendingTriageJobIdRef = useRef<string | null>(null);
+  // O atalho do histórico abre a vaga exata, não uma aproximação pelo código.
+  // Algumas fontes normalizam esse código depois da coleta.
+  const [focusedJobId, setFocusedJobId] = useState<string | null>(null);
   /** Quando o avanço automático de triagem precisa virar a página, sinaliza
    * para o efeito abaixo selecionar a primeira vaga assim que ela carregar. */
   const pendingAutoAdvanceRef = useRef(false);
@@ -822,6 +825,7 @@ export default function Dashboard() {
   const buildJobsParams = useCallback(
     (page: number) => {
       const params = new URLSearchParams({ page: String(page), limit: "50" });
+      if (focusedJobId) params.set("jobId", focusedJobId);
       if (effectivePeriod) params.set("period", effectivePeriod);
       if (sourceFilter !== "all") params.set("sourceId", sourceFilter);
       if (areaFilter !== "all") params.set("area", areaFilter);
@@ -845,7 +849,7 @@ export default function Dashboard() {
       params.set("sort", sortOrder === "recent" ? "imported" : "score");
       return params.toString();
     },
-    [effectivePeriod, sourceFilter, areaFilter, channelFilter, importRunFilter, ingestionMode, receivedFrom, receivedTo, hasEmailFilter, reviewVisibility, debouncedQuery, requestedMinScore, pipelineFilter, verdictFilter, sortOrder],
+    [focusedJobId, effectivePeriod, sourceFilter, areaFilter, channelFilter, importRunFilter, ingestionMode, receivedFrom, receivedTo, hasEmailFilter, reviewVisibility, debouncedQuery, requestedMinScore, pipelineFilter, verdictFilter, sortOrder],
   );
   useEffect(() => {
     if (!profileReady || profileLoadFailed) return;
@@ -1132,7 +1136,8 @@ export default function Dashboard() {
         const text = `${j.id} ${j.externalId ?? ""} ${j.title} ${j.company} ${j.location} ${j.seniority ?? ""} ${j.stack.join(" ")}`.toLowerCase();
         const searchQuery = query.trim().toLowerCase();
         return (
-          j.score >= visibleMinScore &&
+          (focusedJobId === j.id || (
+            j.score >= visibleMinScore &&
           (!searchQuery || text.includes(searchQuery)) &&
           (reviewVisibility === "all" || !j.applicationStatus) &&
           (pipelineFilter === "all" ||
@@ -1140,10 +1145,12 @@ export default function Dashboard() {
               ? !pipelineStageMap.has(j.id)
               : pipelineStageMap.get(j.id) === pipelineFilter)) &&
           (personalizationPending || verdictFilter === "all" || verdictMap.get(j.id)?.emoji === verdictFilter)
+          ))
         );
       }),
     [
       items,
+      focusedJobId,
       query,
       visibleMinScore,
       reviewVisibility,
@@ -1412,6 +1419,7 @@ export default function Dashboard() {
     return status === "sent" || status === "responded";
   }
   function clearRadarFilters() {
+    setFocusedJobId(null);
     setQuery("");
     setFitFilter(0);
     setPeriod("all");
@@ -2792,7 +2800,7 @@ export default function Dashboard() {
               <input
                 id="radar-search"
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                onChange={(e) => { setFocusedJobId(null); setQuery(e.target.value); }}
                 placeholder="Buscar código, cargo, empresa ou tecnologia"
               />
             </div>
@@ -4122,6 +4130,7 @@ export default function Dashboard() {
         close={() => { setTriageOpen(false); setActive("Radar"); }}
         openJobInRadar={(job) => {
           pendingTriageJobIdRef.current = job.jobId;
+          setFocusedJobId(job.jobId);
           setTriageOpen(false);
           setActive("Radar");
           setViewMode("table");
@@ -4140,7 +4149,7 @@ export default function Dashboard() {
           setReceivedFrom("");
           setReceivedTo("");
           setPeriod("all");
-          setSourceFilter(job.jobSource ?? "all");
+          setSourceFilter("all");
           setQuery(job.externalId ?? job.jobId);
         }}
         sourceId={sourceFilter === "all" ? undefined : sourceFilter}

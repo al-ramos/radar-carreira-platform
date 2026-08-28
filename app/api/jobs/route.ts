@@ -60,6 +60,7 @@ user
 ]);
 
 const searchQuery = (url.searchParams.get("q") ?? "").trim().toLowerCase();
+const requestedJobId = (url.searchParams.get("jobId") ?? "").trim();
 const minScoreParam = degradedMode ? null : url.searchParams.get("minScore");
 const requestedMinScore = minScoreParam !== null && Number.isFinite(Number(minScoreParam))
 ? Math.max(0, Math.min(100, Number(minScoreParam)))
@@ -219,7 +220,12 @@ const affinityCandidateCondition = minScore > BASE_TECH_SCORE
   gte(jobs.firstSeenAt, recentAffinityCutoff),
 )
 : undefined;
-const condition = and(exactSourceCondition, roleAreaCondition, channelCondition, importRunCondition, seniorityCondition, searchCondition, pipelineCondition, applicationVisibilityCondition, affinityCandidateCondition);
+// O histórico usa este identificador somente para abrir uma vaga que a pessoa
+// já selecionou. Ele tem precedência para evitar que metadados corrigidos
+// (fonte/código) convertam o atalho em uma tela vazia.
+const condition = requestedJobId
+? and(eq(jobs.status, "active"), eq(jobs.id, requestedJobId))
+: and(exactSourceCondition, roleAreaCondition, channelCondition, importRunCondition, seniorityCondition, searchCondition, pipelineCondition, applicationVisibilityCondition, affinityCandidateCondition);
 // Importações antigas podem referenciar um UUID que não sobreviveu na tabela
 // de fontes. Nunca exponha esse identificador interno no Radar: recupera o
 // nome registrado na importação e, para os conectores conhecidos, usa a URL.
