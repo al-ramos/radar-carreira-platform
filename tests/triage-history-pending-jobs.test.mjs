@@ -10,10 +10,13 @@ test("histórico inclui todas as vagas ainda não analisadas quando solicitado",
   assert.match(route, /\.from\(jobs\)/);
   assert.match(route, /leftJoin\(userJobAnalyses, and\(eq\(userJobAnalyses\.userId, user\.userId\)/);
   assert.match(route, /const pendingScope = scope === "pending"/);
-  assert.match(route, /or\(isNull\(userJobAnalyses\.jobId\), eq\(userJobAnalyses\.verdict, "⚪"\)\)/);
+  assert.match(route, /const pendingTriageCondition = sql`not exists \(/);
+  assert.match(route, /select 1 from \$\{triageHistory\}/);
+  assert.match(route, /triaged: Boolean\(item\.triaged\)/);
   assert.match(route, /label: item\.label \?\? "Aguardando triagem"/);
   assert.match(report, /useState<"pending" \| "analysed" \| "all">\("all"\)/);
   assert.match(report, /item\.source === "pending" \? "Pendente"/);
+  assert.match(report, /const isPending = \(item: HistoryItem\) => !item\.triaged/);
   assert.match(report, /\/api\/triage\/history\?scope=pending/);
 });
 

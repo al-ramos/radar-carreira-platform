@@ -2,7 +2,7 @@ import { and, asc, desc, eq, gte, inArray, isNull, like, lte, notInArray, notLik
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../chatgpt-auth";
 import { getDb } from "../../../db/index";
-import { importRuns, jobImportRuns, jobs, jobSources, platformSettings, profiles, userJobAnalyses, userJobStatus } from "../../../db/schema";
+import { importRuns, jobImportRuns, jobs, jobSources, platformSettings, profiles, triageHistory, userJobAnalyses, userJobStatus } from "../../../db/schema";
 import { isTechnologyJob, profileAffinitySearchTerms, scoreJob } from "../../../lib/scoring";
 import { inferTechnologyStack } from "../../../lib/technology-stack";
 import { allowedWorkModes, listFromStored, normalizeCareerRules } from "../../../lib/profile-options";
@@ -285,6 +285,15 @@ applyUrl: jobs.applyUrl,
 contactEmail: jobs.contactEmail,
 contactSubject: jobs.contactSubject,
 triageVerdict: userJobAnalyses.verdict,
+// Um registro em user_job_analyses pode vir de cálculos legados de afinidade.
+// A nota somente é apresentada quando a vaga passou por uma triagem auditável.
+triageHistoryId: sql<string | null>`(
+  select ${triageHistory.id} from ${triageHistory}
+  where ${triageHistory.userId} = ${user?.userId ?? "__anonymous__"}
+    and ${triageHistory.jobId} = ${jobs.id}
+  order by ${triageHistory.createdAt} desc
+  limit 1
+)`,
 description: degradedMode
 ? sql<string>`''`
 : requiresPostFiltering
@@ -383,8 +392,8 @@ score,
 reasons,
 scored,
 // O cálculo de afinidade ajuda a ordenar a fila, mas não é um resultado de
-// triagem. A interface só pode exibir uma nota após um veredito persistido.
-triaged: Boolean(job.triageVerdict && job.triageVerdict !== "⚪"),
+// triagem. A interface só pode exibir uma nota após uma triagem auditável.
+triaged: Boolean(job.triageHistoryId),
 applicationStatus: applicationStatusByJobId.get(job.id) ?? null,
 }));
 

@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { jobSourceLabel } from "../lib/job-source";
 type PilotResult = { batchId: string; processed: Array<{ jobId: string; title: string; company: string; reference: string | null; contactEligible: boolean; aiEligible: boolean; aiStatus: string; verdict: string; label: string; blocker: string | null }>; skipped: number; aiCompleted?: number };
-type HistoryItem = { id: string; batchId: string; jobId: string; verdict: string | null; label: string; blocker: string | null; source: string; confidence: number; rows: string; processedAt: string | null; title: string; company: string; externalId: string | null; description: string; stack: string; jobSource: string | null; jobSourceName: string | null; workMode: string | null; location: string | null; sourcePublishedAt: string | null; receivedAt: string; url: string; applyUrl: string | null; contactEmail: string | null; hasValidContactEmail: boolean; draftStatus: "pending" | "drafted" | "sent" | "failed" | "cancelled" | null; draftSubject: string; draftError: string | null; draftUpdatedAt: string | null; gmailSentId: string | null; sentAt: string | null; applicationStatus: "opened" | "generated" | "sent" | "responded" | null; pipelineStage: "viewed" | "saved" | "applied" | "interview" | "offer" | "rejected" | "archived" | null; trigger: string };
+type HistoryItem = { id: string; batchId: string; jobId: string; verdict: string | null; label: string; blocker: string | null; source: string; confidence: number; rows: string; processedAt: string | null; triaged: boolean; title: string; company: string; externalId: string | null; description: string; stack: string; jobSource: string | null; jobSourceName: string | null; workMode: string | null; location: string | null; sourcePublishedAt: string | null; receivedAt: string; url: string; applyUrl: string | null; contactEmail: string | null; hasValidContactEmail: boolean; draftStatus: "pending" | "drafted" | "sent" | "failed" | "cancelled" | null; draftSubject: string; draftError: string | null; draftUpdatedAt: string | null; gmailSentId: string | null; sentAt: string | null; applicationStatus: "opened" | "generated" | "sent" | "responded" | null; pipelineStage: "viewed" | "saved" | "applied" | "interview" | "offer" | "rejected" | "archived" | null; trigger: string };
 type Batch = { id: string; trigger: "manual" | "scheduled" | "assistant"; scope: string; status: string; startedAt: string | null; completedAt: string | null; createdAt: string; error: string | null; total: number; completed: number; failed: number; eligible: number; eligibleWithoutContact: number; draftsPending: number; draftsReady: number; draftsFailed: number };
 type BatchItem = { batchId: string; jobId: string; status: "queued" | "processing" | "completed" | "failed" | "skipped"; error: string | null; attemptCount: number; updatedAt: string; leaseUntil: string | null; title: string; company: string; externalId: string | null };
 type Operational = { pendingDrafts: number; readyDrafts: number; sentDrafts: number; failedDrafts: number; oldestPendingAt: string | null; alerts: Array<{ level: "warning" | "error"; message: string }> };
@@ -263,7 +263,7 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
   // "Não analisada" cobre tanto vaga sem veredito quanto veredito ⚪ (marcação
   // neutra usada para zerar backlog em lote) — nenhum dos dois passou por
   // avaliação real ainda. Ver RC-TI-024.
-  const isPending = (item: HistoryItem) => !item.verdict || item.verdict === "⚪";
+  const isPending = (item: HistoryItem) => !item.triaged;
   const normalizedTableSearch = tableSearch.trim().toLocaleLowerCase("pt-BR");
   const hasEmailSent = (item: HistoryItem) => item.jobSource === "apinfo-extension"
     && (item.draftStatus === "sent" || Boolean(item.sentAt));
@@ -917,13 +917,13 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
               </div>
               <div className="triage-summary triage-summary-compact" aria-label="Resumo do filtro atual">
                 {situationFilter === "pending" ? <article><small>Pendentes neste recorte</small><strong>{filteredHistory.length}</strong></article> : <>
-                  <article className="approved"><small>Aprovadas</small><strong>{filteredHistory.filter((item) => item.verdict === "✅").length}</strong></article>
-                  <article className="partial"><small>Prováveis</small><strong>{filteredHistory.filter((item) => item.verdict === "🟡").length}</strong></article>
-                  <article className="rejected"><small>Não aderentes</small><strong>{filteredHistory.filter((item) => item.verdict === "❌" || item.verdict === "🔴").length}</strong></article>
+                  <article className="approved"><small>Aprovadas na triagem</small><strong>{filteredHistory.filter((item) => item.triaged && item.verdict === "✅").length}</strong></article>
+                  <article className="partial"><small>Prováveis na triagem</small><strong>{filteredHistory.filter((item) => item.triaged && item.verdict === "🟡").length}</strong></article>
+                  <article className="rejected"><small>Não aderentes</small><strong>{filteredHistory.filter((item) => item.triaged && (item.verdict === "❌" || item.verdict === "🔴")).length}</strong></article>
                   <article><small>E-mails enviados</small><strong>{filteredHistory.filter(hasEmailSent).length}</strong></article>
                   <article><small>Candidaturas iniciadas</small><strong>{filteredHistory.filter(hasApplicationStarted).length}</strong></article>
                   <article><small>Candidaturas enviadas</small><strong>{filteredHistory.filter(hasApplicationSent).length}</strong></article>
-                  <article><small>Analisadas</small><strong>{filteredHistory.length}</strong></article>
+                  <article><small>Analisadas</small><strong>{filteredHistory.filter((item) => item.triaged).length}</strong></article>
                 </>}
               </div>
             </div>

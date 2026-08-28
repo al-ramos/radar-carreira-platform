@@ -318,11 +318,6 @@ export function computeVerdict(job: {
 }, userSkills: string[] = [], rules?: CareerRules): VerdictResult {
   const fullText = `${job.title} ${job.description} ${job.workMode ?? ""} ${job.location ?? ""}`;
   const priorityTechnology = priorityApprovalReason(`${fullText} ${job.stack.join(" ")}`);
-  if (priorityTechnology) return {
-    emoji: "✅",
-    label: "Bate",
-    rows: [{ criterion: "Prioridade", status: `Tecnologia prioritária identificada: ${priorityTechnology} (requisito ou diferencial)`, ok: true }],
-  };
   const lc = fullText.toLowerCase();
   const stackText = `${fullText} ${job.stack.join(" ")}`;
   const stackFit = analyzeStackFit(job.stack, userSkills);
@@ -341,7 +336,9 @@ export function computeVerdict(job: {
         ? { status: coreStack.length ? `Ecossistema principal identificado: ${stackFit.requiredSkills.filter(skill => coreStack.some(core => skillsAreEquivalent(skill, core))).join(", ")} ✅` : "Stack compatível com o perfil ✅", ok: true as const }
         : { status: coreStack.length ? `Stack fora do foco principal (${coreStack.join(" / ")}) — revisar no link da vaga` : "Stack não confirmada no perfil — revisar no link da vaga", ok: null as const };
 
-  const structuralRows: VerdictRow[] = [{ criterion: "Fase 1 · Stack", ...stackGate }];
+  const structuralRows: VerdictRow[] = priorityTechnology
+    ? [{ criterion: "Prioridade", status: `Tecnologia prioritária identificada: ${priorityTechnology} (requisito ou diferencial)`, ok: true }]
+    : [{ criterion: "Fase 1 · Stack", ...stackGate }];
   const blocked = (blocker: string): VerdictResult => ({ emoji: "❌", label: "Bloqueador estrutural", blocker, rows: structuralRows });
 
   // Fase 1: os bloqueadores são avaliados e interrompem a triagem nesta ordem.
@@ -349,25 +346,30 @@ export function computeVerdict(job: {
 
   const languageRow = detectLanguageReq(fullText, rules);
   structuralRows.push({ criterion: "Fase 1 · Idioma", ...languageRow });
-  if (languageRow.ok === false) {
+  if (languageRow.ok === false && !priorityTechnology) {
     return blocked(testAny(fullText, ENGLISH_BLOCKER_RE) ? "Inglês avançado exigido" : "Espanhol avançado exigido");
   }
 
   const seniorRow = detectSeniority(job.title, job.seniority ?? "", rules);
   structuralRows.push({ criterion: "Fase 1 · Senioridade", ...seniorRow });
-  if (seniorRow.ok === false) return blocked(`Senioridade incompatível: ${seniorRow.status}`);
+  if (seniorRow.ok === false && !priorityTechnology) return blocked(`Senioridade incompatível: ${seniorRow.status}`);
 
   const blockedWorkType = includesConfiguredTerm(fullText, rules?.blockedWorkTypes ?? []);
   const workTypeRow = blockedWorkType
     ? { status: `${blockedWorkType} — bloqueado pelo perfil`, ok: false as const }
     : { status: "Sem atuação bloqueada identificada ✅", ok: true as const };
   structuralRows.push({ criterion: "Fase 1 · Atuação", ...workTypeRow });
-  if (blockedWorkType) return blocked(`Tipo de atuação bloqueado: ${blockedWorkType}`);
+  if (blockedWorkType && !priorityTechnology) return blocked(`Tipo de atuação bloqueado: ${blockedWorkType}`);
 
   const workRow = detectWorkMode(lc, job.location ?? "", rules);
   structuralRows.push({ criterion: "Fase 1 · Geografia", ...workRow });
   const locationBlocked = workRow.ok === false && /fora das regioes aceitas|limite do perfil/i.test(normalizeText(workRow.status));
   if (locationBlocked) return blocked(workRow.status);
+
+  // Tecnologia prioritária ajuda a aprovar a aderência técnica, mas nunca
+  // pode ultrapassar o veto geográfico: presencial fora da região aceita
+  // continua incompatível, mesmo quando a vaga menciona C#/.NET/VBA.
+  if (priorityTechnology) return { emoji: "✅", label: "Bate", rows: structuralRows };
 
   // Fases 2 a 4 só são executadas depois que todos os vetos estruturais passam.
   const contractRow = detectContratacao(lc, rules);

@@ -35,6 +35,18 @@ export async function GET(request: Request) {
   const pendingScope = scope === "pending";
   const code = query.get("code")?.trim().slice(0, 100) ?? "";
   const codeScope = scope === "code" && Boolean(code);
+  // user_job_analyses contém cálculos antigos de aderência que não representam
+  // uma triagem. O histórico aditivo é a evidência de avaliação concluída.
+  const hasAuditableTriage = sql<number>`exists (
+    select 1 from ${triageHistory}
+    where ${triageHistory.userId} = ${user.userId}
+      and ${triageHistory.jobId} = ${jobs.id}
+  )`;
+  const pendingTriageCondition = sql`not exists (
+    select 1 from ${triageHistory}
+    where ${triageHistory.userId} = ${user.userId}
+      and ${triageHistory.jobId} = ${jobs.id}
+  )`;
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
   const todayWindow = saoPauloDayWindow(today);
   const items = await db
@@ -72,6 +84,7 @@ export async function GET(request: Request) {
       sentAt: draftOutbox.sentAt,
       applicationStatus: userJobStatus.applicationStatus,
       pipelineStage: userJobStatus.stage,
+      triaged: hasAuditableTriage,
     })
     // O Histórico também é a fila de trabalho. Começar por `jobs` preserva
     // as vagas que ainda não têm análise, permitindo que “Não analisadas” e
@@ -91,7 +104,7 @@ export async function GET(request: Request) {
       // inativo na tabela.
       ? sql`instr(lower(coalesce(${jobs.externalId}, '')), lower(${code})) > 0`
       : pendingScope
-        ? or(isNull(userJobAnalyses.jobId), eq(userJobAnalyses.verdict, "⚪"))
+        ? pendingTriageCondition
         : eq(jobs.status, "active"))
     // O resumo e os filtros do Histórico precisam cobrir todo o acervo
     // ativo. Um limite aqui fazia o painel estacionar artificialmente em
@@ -171,6 +184,7 @@ export async function GET(request: Request) {
       sourcePublishedAt: item.sourcePublishedAt ?? item.publishedAt,
       label: item.label ?? "Aguardando triagem",
       source: item.source ?? "pending",
+      triaged: Boolean(item.triaged),
       confidence: item.confidence ?? 0,
       rows: item.rows ?? "[]",
       batchId: "profile-analysis",

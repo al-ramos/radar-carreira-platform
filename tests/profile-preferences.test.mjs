@@ -214,7 +214,8 @@ test("entende Mogi como Grande São Paulo e aceita qualquer frequência híbrida
     preset.masteredSkills,
     preset.careerRules,
   );
-  assert.equal(outside.emoji, "✅");
+  assert.equal(outside.emoji, "❌");
+  assert.match(outside.blocker ?? "", /Híbrido fora das regiões aceitas/);
 });
 
 test("não reprova por Campinas quando a presença é condicionada a residir lá", () => {
@@ -236,6 +237,17 @@ test("perfil ampliado aprova presencial na Grande SP e híbrido sem limite infor
   ]) {
     assert.equal(computeVerdict(job, preset.masteredSkills, preset.careerRules).emoji, "✅");
   }
+});
+
+test("tecnologia prioritária não aprova vaga presencial fora das regiões aceitas", () => {
+  const preset = alexsandroProfilePreset();
+  const verdict = computeVerdict(
+    { title: "Operations Program Manager", description: "C# e .NET. Trabalho presencial.", stack: ["C#", ".NET"], seniority: "Senior", workMode: "Presencial", location: "Santa Clara, California" },
+    preset.masteredSkills,
+    preset.careerRules,
+  );
+  assert.equal(verdict.emoji, "❌");
+  assert.match(verdict.blocker ?? "", /Presencial fora das regiões aceitas/);
 });
 
 test("perfil ampliado aceita somente os diferenciais técnicos declarados", () => {
