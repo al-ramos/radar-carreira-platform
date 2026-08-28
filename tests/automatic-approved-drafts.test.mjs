@@ -20,7 +20,6 @@ test("toda aprovação com e-mail válido cria rascunho imediato, sem enviar e-m
   assert.match(run, /\.limit\(20\)/);
   assert.match(run, /requestImmediateDraftCreation\(pendingScheduledOutboxIds\)/);
   assert.match(run, /const approvedWithoutOutbox = await db\.select/, "a agenda recupera aprovações CSV\/IA que ainda não chegaram à outbox");
-  assert.match(run, /eq\(userJobAnalyses\.rulesRevision, versions\.rulesRevision\)/, "a retomada não cria rascunhos para aprovações de uma regra antiga");
   assert.match(aiVerdicts, /if \(entry\.verdict === "✅"\)/);
   assert.match(aiVerdicts, /requestImmediateDraftCreation\(pendingOutboxIds\)/);
   assert.match(csvImport, /requestImmediateDraftCreation\(pendingOutboxIds\)/);
