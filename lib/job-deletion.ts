@@ -21,15 +21,18 @@ export async function deleteJobsAndRelated(jobIds: string[]) {
  * Exclusão definitiva do recorte já arquivado. Os comandos são enviados em
  * um único batch D1: ou todas as dependências e as vagas saem, ou nada sai.
  */
-export async function purgeArchivedJobsBeforeCutoff(cutoff: Date) {
+export type PurgeableJobStatus = "archived" | "possibly_closed";
+
+/** Exclui definitivamente um recorte de vagas que já não está operacional. */
+export async function purgeJobsByStatusBeforeCutoff(status: PurgeableJobStatus, cutoff: Date) {
   const db = getDb();
   const cutoffTime = cutoff.getTime();
   const target = () => db.select({ id: jobs.id }).from(jobs).where(and(
-    eq(jobs.status, "archived"),
+    eq(jobs.status, status),
     lt(sql`coalesce(${jobs.sourcePublishedAt}, ${jobs.firstSeenAt})`, cutoffTime),
   ));
   const count = await db.select({ total: sql<number>`count(*)` }).from(jobs).where(and(
-    eq(jobs.status, "archived"),
+    eq(jobs.status, status),
     lt(sql`coalesce(${jobs.sourcePublishedAt}, ${jobs.firstSeenAt})`, cutoffTime),
   ));
   const deleted = Number(count[0]?.total ?? 0);
@@ -52,4 +55,9 @@ export async function purgeArchivedJobsBeforeCutoff(cutoff: Date) {
   ];
   await db.batch(statements as [typeof statements[number], ...typeof statements[number][]]);
   return deleted;
+}
+
+/** Compatibilidade para a limpeza original de vagas arquivadas. */
+export async function purgeArchivedJobsBeforeCutoff(cutoff: Date) {
+  return purgeJobsByStatusBeforeCutoff("archived", cutoff);
 }
