@@ -94,9 +94,13 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
     [csvImportResult, setCsvImportResult] = useState<{ applied: number; draftsQueued: number; draftsCreated: number; gmailReason: string | null; notFound: string[]; ambiguous: string[]; rejected: Array<{ line: number; reason: string }> } | null>(null),
     [reconcilingAllSent, setReconcilingAllSent] = useState(false);
   const aiPromptRef = useRef<HTMLTextAreaElement>(null);
-  const loadHistory = async (scope: "pending" | "analysed" | "all" = situationFilter) => {
+  const loadHistory = async (scope: "pending" | "analysed" | "all" = situationFilter, code = codeFilter) => {
     try {
-      const response = await fetch(scope === "pending" ? "/api/triage/history?scope=pending" : "/api/triage/history");
+      const normalizedCode = code.trim();
+      const historyUrl = normalizedCode
+        ? `/api/triage/history?scope=code&code=${encodeURIComponent(normalizedCode)}`
+        : scope === "pending" ? "/api/triage/history?scope=pending" : "/api/triage/history";
+      const response = await fetch(historyUrl);
       if (!response.ok) {
         const legacyResponse = await fetch("/api/admin/triage");
         const legacy = await legacyResponse.json() as { items?: LegacyItem[] };
@@ -931,7 +935,7 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
                 <label>Envio / candidatura<select value={outreachFilter} onChange={(e) => { setOutreachFilter(e.target.value as typeof outreachFilter); setHistoryPage(0); }}><option value="all">Todas</option><option value="email_sent">E-mail enviado</option><option value="application_started">Candidatura iniciada</option><option value="application_sent">Candidatura enviada</option><option value="pending">Sem rascunho, envio ou candidatura</option></select></label>
                 <label>Origem<select value={sourceFilter} onChange={(e) => { setSourceFilter(e.target.value); setHistoryPage(0); }}><option value="all">Regras, IA e histórico</option><option value="rules">Regras</option><option value="ai">IA</option><option value="legacy">Histórico do Radar</option></select></label>
                 <label>Fonte<select value={jobSourceFilter} onChange={(e) => { setJobSourceFilter(e.target.value); setHistoryPage(0); }}><option value="all">Todas</option>{jobSources.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>
-                <label>Código<input type="text" inputMode="numeric" placeholder="Ex.: 85885" value={codeFilter} onChange={(e) => { setCodeFilter(e.target.value); setHistoryPage(0); }} /></label>
+                <label>Código<input type="text" inputMode="numeric" placeholder="Ex.: 85885" value={codeFilter} onChange={(e) => { const next = e.target.value; setCodeFilter(next); setHistoryPage(0); void loadHistory(situationFilter, next); }} /></label>
                 <label>Pesquisar na tabela<input type="search" placeholder="Vaga, empresa, contato…" value={tableSearch} onChange={(e) => { setTableSearch(e.target.value); setHistoryPage(0); }} /></label>
                 <details className="triage-advanced-filters" open={advancedFiltersOpen || hasActiveAdvancedFilters} onToggle={(event) => setAdvancedFiltersOpen(event.currentTarget.open)}>
                   <summary>Mais filtros</summary>

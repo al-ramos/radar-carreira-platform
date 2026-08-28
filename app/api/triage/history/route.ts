@@ -30,8 +30,11 @@ export async function GET(request: Request) {
   }
 
   const db = getDb();
-  const scope = new URL(request.url).searchParams.get("scope");
+  const query = new URL(request.url).searchParams;
+  const scope = query.get("scope");
   const pendingScope = scope === "pending";
+  const code = query.get("code")?.trim().slice(0, 100) ?? "";
+  const codeScope = scope === "code" && Boolean(code);
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
   const todayWindow = saoPauloDayWindow(today);
   const items = await db
@@ -82,9 +85,14 @@ export async function GET(request: Request) {
     // filtro “Não analisadas” precisa ser fiel ao seu nome: ele também traz
     // vagas encerradas ou arquivadas que ficaram sem veredito, sem carregar
     // todo o acervo inativo nas demais visões.
-    .where(pendingScope
-      ? or(isNull(userJobAnalyses.jobId), eq(userJobAnalyses.verdict, "⚪"))
-      : eq(jobs.status, "active"))
+    .where(codeScope
+      // A busca por código é uma consulta pontual: ela deve localizar a vaga
+      // mesmo depois de encerrada ou arquivada, sem carregar todo o acervo
+      // inativo na tabela.
+      ? sql`instr(lower(coalesce(${jobs.externalId}, '')), lower(${code})) > 0`
+      : pendingScope
+        ? or(isNull(userJobAnalyses.jobId), eq(userJobAnalyses.verdict, "⚪"))
+        : eq(jobs.status, "active"))
     // O resumo e os filtros do Histórico precisam cobrir todo o acervo
     // ativo. Um limite aqui fazia o painel estacionar artificialmente em
     // 1.000, mesmo quando havia mais vagas analisadas.

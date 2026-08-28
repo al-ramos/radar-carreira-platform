@@ -16,3 +16,13 @@ test("histórico inclui todas as vagas ainda não analisadas quando solicitado",
   assert.match(report, /item\.source === "pending" \? "Pendente"/);
   assert.match(report, /\/api\/triage\/history\?scope=pending/);
 });
+
+test("busca por código consulta também vagas fora do acervo ativo", async () => {
+  const [route, report] = await Promise.all([
+    readFile(new URL("../app/api/triage/history/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/TriageReport.tsx", import.meta.url), "utf8"),
+  ]);
+  assert.match(route, /const codeScope = scope === "code" && Boolean\(code\)/);
+  assert.match(route, /instr\(lower\(coalesce\(\$\{jobs\.externalId\}, ''\)\), lower\(\$\{code\}\)\) > 0/);
+  assert.match(report, /\/api\/triage\/history\?scope=code&code=\$\{encodeURIComponent\(normalizedCode\)\}/);
+});
