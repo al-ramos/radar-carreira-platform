@@ -94,16 +94,25 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
     [csvImportResult, setCsvImportResult] = useState<{ applied: number; draftsQueued: number; draftsCreated: number; gmailReason: string | null; notFound: string[]; ambiguous: string[]; rejected: Array<{ line: number; reason: string }> } | null>(null),
     [reconcilingAllSent, setReconcilingAllSent] = useState(false);
   const aiPromptRef = useRef<HTMLTextAreaElement>(null);
+  // Digitar o código dispara uma consulta por caractere. Sem um marcador de
+  // versão, uma resposta anterior (por exemplo, para "852") pode chegar após
+  // a resposta de "85278" e substituir a tabela e seus totais pelo recorte
+  // errado. Apenas a consulta mais recente pode atualizar esta tela.
+  const historyRequestVersion = useRef(0);
   const loadHistory = async (scope: "pending" | "analysed" | "all" = situationFilter, code = codeFilter) => {
+    const requestVersion = ++historyRequestVersion.current;
+    const isCurrentRequest = () => requestVersion === historyRequestVersion.current;
     try {
       const normalizedCode = code.trim();
       const historyUrl = normalizedCode
         ? `/api/triage/history?scope=code&code=${encodeURIComponent(normalizedCode)}`
         : scope === "pending" ? "/api/triage/history?scope=pending" : "/api/triage/history";
       const response = await fetch(historyUrl);
+      if (!isCurrentRequest()) return false;
       if (!response.ok) {
         const legacyResponse = await fetch("/api/admin/triage");
         const legacy = await legacyResponse.json() as { items?: LegacyItem[] };
+        if (!isCurrentRequest()) return false;
         if (!legacyResponse.ok) throw new Error("Falha ao consultar as avaliações existentes.");
         const items = (legacy.items ?? []).map((item): HistoryItem => ({ id: `legacy-${item.jobId}`, batchId: "legacy", jobId: item.jobId, verdict: item.veredito, label: item.motivo ?? "Avaliação registrada", blocker: null, source: "legacy", confidence: 0, rows: "", processedAt: item.processedAt, title: item.title, company: item.company, externalId: item.externalId, description: "", stack: "[]", jobSource: item.sourceId, jobSourceName: item.sourceName, workMode: item.workMode, location: item.location, sourcePublishedAt: item.sourcePublishedAt, receivedAt: item.receivedAt, url: item.url, applyUrl: null, contactEmail: item.contactEmail, hasValidContactEmail: Boolean(item.contactEmail?.includes("@")), draftStatus: null, draftSubject: "", draftError: null, draftUpdatedAt: null, gmailSentId: null, sentAt: null, applicationStatus: null, pipelineStage: null, trigger: "legacy" }));
         // Uma falha transitória em /api/triage/history não pode apagar o lote
@@ -116,12 +125,16 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
         return true;
       }
       const data = await response.json() as { items?: HistoryItem[]; batches?: Batch[]; batchItems?: BatchItem[]; operational?: Operational; recovery?: HistoryRecovery };
+      if (!isCurrentRequest()) return false;
       const items = data.items ?? [];
       setHistory(items); setBatches(data.batches ?? []); setBatchItems(data.batchItems ?? []); setOperational(data.operational ?? null); setHistoryRecovery(data.recovery ?? null); setLastSyncedAt(new Date());
       if (!items.length) setMessage("Nenhuma vaga foi triada ainda. Use “Analisar vagas do recorte” para iniciar.");
       else setMessage((current) => current === "Carregando avaliações…" ? "" : current);
       return true;
-    } catch { setMessage("Não foi possível carregar as avaliações da triagem."); return false; }
+    } catch {
+      if (isCurrentRequest()) setMessage("Não foi possível carregar as avaliações da triagem.");
+      return false;
+    }
   };
   const recoverMissingHistory = async () => {
     setRecoveringHistory(true);
