@@ -33,6 +33,66 @@ const startedAt = performance.now();
 try {
 const url = new URL(request.url);
 const degradedMode = url.searchParams.get("degraded") === "1";
+const requestedJobId = (url.searchParams.get("jobId") ?? "").trim();
+// Abrir uma vaga pelo histórico não precisa recalcular os totais, fontes e
+// opções da Home inteira. Essas agregações podem ultrapassar o limite do
+// Worker justamente quando a pessoa só quer consultar uma única vaga antiga.
+if (requestedJobId) {
+  const user = degradedMode ? null : await getChatGPTUser();
+  const directJob = await getDb().select({
+    id: jobs.id,
+    externalId: jobs.externalId,
+    company: jobs.company,
+    title: jobs.title,
+    seniority: jobs.seniority,
+    workMode: jobs.workMode,
+    location: jobs.location,
+    stack: jobs.stack,
+    publishedAt: sql<Date>`coalesce(${jobs.publishedAt}, ${jobs.firstSeenAt})`,
+    sourcePublishedAt: jobs.sourcePublishedAt,
+    firstSeenAt: jobs.firstSeenAt,
+    ingestionMode: jobs.ingestionMode,
+    ingestionChannel: jobs.ingestionChannel,
+    roleArea: jobs.roleArea,
+    sourceName: sql<string>`coalesce(${jobSources.name}, ${"Fonte importada"})`,
+    url: jobs.url,
+    applyUrl: jobs.applyUrl,
+    contactEmail: jobs.contactEmail,
+    contactSubject: jobs.contactSubject,
+    triageHistoryId: sql<string | null>`(
+      select ${triageHistory.id} from ${triageHistory}
+      where ${triageHistory.userId} = ${user?.userId ?? "__anonymous__"}
+        and ${triageHistory.jobId} = ${jobs.id}
+      order by ${triageHistory.createdAt} desc
+      limit 1
+    )`,
+  }).from(jobs)
+    .leftJoin(jobSources, eq(jobs.sourceId, jobSources.id))
+    .where(eq(jobs.id, requestedJobId))
+    .limit(1)
+    .then((rows) => rows[0] ?? null);
+  if (!directJob) return NextResponse.json({ jobs: [], total: 0, mode: "database", degraded: degradedMode });
+  const stack = inferTechnologyStack(`${directJob.title}`, parse(directJob.stack));
+  return NextResponse.json({
+    jobs: [{ ...directJob, description: "", stack, score: 0, reasons: ["Vaga aberta pelo histórico"], scored: false, triaged: Boolean(directJob.triageHistoryId), applicationStatus: null }],
+    total: 1,
+    emailMissingCount: directJob.contactEmail ? 0 : 1,
+    totalLinkedIn: 0,
+    totalApinfo: 0,
+    totalOtherSources: 0,
+    sourcesCount: 0,
+    filterOptions: { sources: [], areas: [], channels: [], importRuns: [] },
+    page: 1,
+    limit: 1,
+    hasMore: false,
+    limited: false,
+    candidateLimit: MAX_AFFINITY_CANDIDATES,
+    mode: "database",
+    personalized: false,
+    degraded: degradedMode,
+    period: "all",
+  }, { headers: { "Cache-Control": "private, no-store", "X-Radar-Jobs-Mode": "direct" } });
+}
 const page = Math.max(1, Number(url.searchParams.get("page") ?? 1));
 const limit = Math.min(Number(url.searchParams.get("limit") ?? 50), 250);
 const offset = (page - 1) * limit;
@@ -60,7 +120,6 @@ user
 ]);
 
 const searchQuery = (url.searchParams.get("q") ?? "").trim().toLowerCase();
-const requestedJobId = (url.searchParams.get("jobId") ?? "").trim();
 const minScoreParam = degradedMode ? null : url.searchParams.get("minScore");
 const requestedMinScore = minScoreParam !== null && Number.isFinite(Number(minScoreParam))
 ? Math.max(0, Math.min(100, Number(minScoreParam)))

@@ -13,6 +13,8 @@ test("atalho da triagem abre a vaga pelo identificador interno exato", async () 
   assert.match(dashboard, /setFocusedJobId\(job\.jobId\)/);
   assert.match(dashboard, /focusedJobId === j\.id/);
   assert.match(jobsRoute, /const requestedJobId = \(url\.searchParams\.get\("jobId"\) \?\? ""\)\.trim\(\)/);
+  assert.match(jobsRoute, /if \(requestedJobId\) \{[\s\S]*?X-Radar-Jobs-Mode": "direct"/);
+  assert.match(jobsRoute, /filterOptions: \{ sources: \[\], areas: \[\], channels: \[\], importRuns: \[\] \}/);
   assert.match(jobsRoute, /const condition = requestedJobId[\s\S]*eq\(jobs\.id, requestedJobId\)/);
   assert.doesNotMatch(jobsRoute, /requestedJobId[\s\S]{0,120}eq\(jobs\.status, "active"\)/);
 });
