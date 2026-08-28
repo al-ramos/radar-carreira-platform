@@ -172,7 +172,13 @@ async function recoverStalledManualTriage(env: Env) {
     `).bind(now, item.batch_id, item.job_id, staleBefore, now).run();
     if (update.meta.changes) recovered.push({ userId: item.user_id, batchId: item.batch_id, jobId: item.job_id, run: { trigger: "portal", batchSize: 1, aiMode: "off", createDrafts: false } });
   }
-  for (let index = 0; index < recovered.length; index += 100) await env.MANUAL_TRIAGE_QUEUE.sendBatch(recovered.slice(index, index + 100));
+  // `sendBatch` espera envelopes com a propriedade `body`. Enviar o payload
+  // diretamente fazia a recuperação agendada falhar com “Message body cannot
+  // be undefined”, deixando itens manuais presos apesar de terem sido
+  // reenfileirados no banco.
+  for (let index = 0; index < recovered.length; index += 100) {
+    await env.MANUAL_TRIAGE_QUEUE.sendBatch(recovered.slice(index, index + 100).map((body) => ({ body })));
+  }
   await env.DB.prepare(`INSERT INTO automation_heartbeats (id, status, started_at, completed_at, error, updated_at)
     VALUES ('triage-recovery', 'completed', ?, ?, NULL, ?)
     ON CONFLICT(id) DO UPDATE SET status = excluded.status, started_at = excluded.started_at, completed_at = excluded.completed_at, error = NULL, updated_at = excluded.updated_at`
