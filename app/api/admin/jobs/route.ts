@@ -16,7 +16,6 @@ function archivedCutoff(value:string|null){
  if(calendarDate.getUTCFullYear()!==year||calendarDate.getUTCMonth()!==month-1||calendarDate.getUTCDate()!==day)return null;
  return new Date(`${value}T00:00:00-03:00`);
 }
-function confirmationForPurge(status:PurgeableJobStatus,date:string){return `EXCLUIR VAGAS ${status==="archived"?"ARQUIVADAS":"POSSIVELMENTE ENCERRADAS"} ANTERIORES A ${date.split("-").reverse().join("/")}`;}
 function purgeableStatus(value:unknown):PurgeableJobStatus|null{return value==="archived"||value==="possibly_closed"?value:null;}
 
 async function admin(){const user=await getChatGPTUser();if(!user)return null;return await can(user,"jobs.view_stats")?user:null}
@@ -37,12 +36,11 @@ export async function GET(request:Request){
 
 export async function POST(request:Request){
  const user=await getChatGPTUser();if(!user)return NextResponse.json({error:"Autenticação necessária"},{status:401});if(!await can(user,"jobs.delete_all"))return NextResponse.json({error:"Ação reservada ao proprietário da plataforma"},{status:403});
- let payload:{action?:unknown;confirmation?:unknown;archivedBefore?:unknown;status?:unknown};try{payload=await request.json()}catch{return NextResponse.json({error:"Envie um comando de exclusão válido"},{status:400})}
+ let payload:{action?:unknown;archivedBefore?:unknown;status?:unknown};try{payload=await request.json()}catch{return NextResponse.json({error:"Envie um comando de exclusão válido"},{status:400})}
  if(payload.action!=="purge_archived_before")return NextResponse.json({error:"Ação de manutenção inválida"},{status:400});
- const archivedBefore=typeof payload.archivedBefore==="string"?payload.archivedBefore:"",cutoff=archivedCutoff(archivedBefore),status=purgeableStatus(payload.status),confirmation=status?confirmationForPurge(status,archivedBefore):"";
+ const archivedBefore=typeof payload.archivedBefore==="string"?payload.archivedBefore:"",cutoff=archivedCutoff(archivedBefore),status=purgeableStatus(payload.status);
  if(!cutoff)return NextResponse.json({error:"Informe uma data válida para o recorte arquivado."},{status:400});
  if(!status)return NextResponse.json({error:"Escolha Arquivadas ou Possivelmente encerradas."},{status:400});
- if(payload.confirmation!==confirmation)return NextResponse.json({error:`Para excluir o recorte selecionado, envie confirmation: ${confirmation}`},{status:400});
  const deleted=await purgeJobsByStatusBeforeCutoff(status,cutoff);
  return NextResponse.json({ok:true,deleted,scope:`${status}_before`,cutoff:cutoff.toISOString()});
 }

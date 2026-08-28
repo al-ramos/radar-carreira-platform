@@ -15,7 +15,7 @@ test("a exclusão administrativa exige confirmação para todas as vagas",async(
  assert.match(route,/purgeJobsByStatusBeforeCutoff/);
  assert.match(route,/possibly_closed/);
  assert.match(route,/archivedBefore/);
- assert.match(route,/confirmationForPurge/);
+ assert.doesNotMatch(route,/confirmationForPurge/);
  assert.match(deletion,/alertReads/);
  assert.match(deletion,/userJobStatus/);
  assert.match(deletion,/jobEvents/);
@@ -32,5 +32,7 @@ test("a exclusão administrativa exige confirmação para todas as vagas",async(
  assert.match(settings,/Excluir acervo inativo/);
  assert.match(settings,/Tipo de vaga/);
  assert.match(settings,/Possivelmente encerradas/);
+ assert.match(settings,/window\.confirm/);
+ assert.doesNotMatch(settings,/archivedConfirmation/);
  assert.match(settings,/type="date"/);
 });
