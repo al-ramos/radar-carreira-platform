@@ -934,13 +934,13 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
               </div>
               <div className="triage-summary triage-summary-compact" aria-label="Resumo do filtro atual">
                 {situationFilter === "pending" ? <article><small>Pendentes neste recorte</small><strong>{filteredHistory.length}</strong></article> : <>
-                  <article className="approved"><small>Aprovadas na triagem</small><strong>{filteredHistory.filter((item) => item.triaged && item.verdict === "✅").length}</strong></article>
-                  <article className="partial"><small>Prováveis na triagem</small><strong>{filteredHistory.filter((item) => item.triaged && item.verdict === "🟡").length}</strong></article>
-                  <article className="rejected"><small>Não aderentes</small><strong>{filteredHistory.filter((item) => item.triaged && (item.verdict === "❌" || item.verdict === "🔴")).length}</strong></article>
+                  <article className="approved"><small>Aprovadas no recorte</small><strong>{filteredHistory.filter((item) => item.verdict === "✅").length}</strong></article>
+                  <article className="partial"><small>Prováveis no recorte</small><strong>{filteredHistory.filter((item) => item.verdict === "🟡").length}</strong></article>
+                  <article className="rejected"><small>Não aderentes</small><strong>{filteredHistory.filter((item) => item.verdict === "❌" || item.verdict === "🔴").length}</strong></article>
                   <article><small>E-mails / rascunhos</small><strong>{filteredHistory.filter(hasEmailOrDraftReady).length}</strong></article>
                   <article><small>Candidaturas iniciadas</small><strong>{filteredHistory.filter(hasApplicationStarted).length}</strong></article>
                   <article><small>Candidaturas enviadas</small><strong>{filteredHistory.filter(hasApplicationSent).length}</strong></article>
-                  <article><small>Analisadas</small><strong>{filteredHistory.filter((item) => item.triaged).length}</strong></article>
+                  <article><small>Registros no recorte</small><strong>{filteredHistory.length}</strong></article>
                 </>}
               </div>
             </div>
