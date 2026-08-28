@@ -5,8 +5,9 @@ import test from "node:test";
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
 test("toda aprovação com e-mail válido cria rascunho imediato, sem enviar e-mail", async () => {
-  const [run, aiVerdicts, csvImport, settings, migration, docs] = await Promise.all([
+  const [run, worker, aiVerdicts, csvImport, settings, migration, docs] = await Promise.all([
     read("../app/api/triage/run/route.ts"),
+    read("../worker/index.ts"),
     read("../lib/apply-ai-verdict.ts"),
     read("../app/api/admin/triage-import/route.ts"),
     read("../app/api/admin/settings/route.ts"),
@@ -23,6 +24,9 @@ test("toda aprovação com e-mail válido cria rascunho imediato, sem enviar e-m
   assert.match(run, /a ausência desse vínculo não[\s\S]*rascunho elegível fora da automação/i);
   assert.match(run, /history = \{ id: crypto\.randomUUID\(\) \}/);
   assert.match(run, /batchId, userId, jobId: job\.id/);
+  assert.match(worker, /a\.verdict = '✅'/);
+  assert.match(worker, /approvedWithoutOutbox/);
+  assert.match(worker, /LEFT JOIN draft_outbox o ON o\.job_id = j\.id AND o\.user_id = a\.user_id/);
   assert.match(aiVerdicts, /if \(entry\.verdict === "✅"\)/);
   assert.match(aiVerdicts, /requestImmediateDraftCreation\(pendingOutboxIds\)/);
   assert.match(csvImport, /requestImmediateDraftCreation\(pendingOutboxIds\)/);

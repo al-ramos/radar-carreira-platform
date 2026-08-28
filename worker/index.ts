@@ -198,12 +198,24 @@ async function recoverPendingDrafts(env: Env) {
     WHERE o.status = 'pending' AND j.source_id IS NOT NULL
     LIMIT 20
   `).all<{ source_id: string }>();
-  for (const item of pending.results) await env.TRIAGE_QUEUE.send({
+  // Uma aprovação pode ter sido persistida antes da outbox (por exemplo, após
+  // indisponibilidade transitória). Ela precisa receber o mesmo gatilho de
+  // recuperação, não apenas os itens que já chegaram a pending.
+  const approvedWithoutOutbox = await env.DB.prepare(`
+    SELECT DISTINCT j.source_id
+    FROM jobs j
+    INNER JOIN user_job_analyses a ON a.job_id = j.id AND a.verdict = '✅'
+    LEFT JOIN draft_outbox o ON o.job_id = j.id AND o.user_id = a.user_id
+    WHERE j.status = 'active' AND o.id IS NULL AND j.source_id IS NOT NULL
+    LIMIT 20
+  `).all<{ source_id: string }>();
+  const sourceIds = new Set([...pending.results, ...approvedWithoutOutbox.results].map((item) => item.source_id));
+  for (const sourceId of sourceIds) await env.TRIAGE_QUEUE.send({
     kind: "scheduled-triage",
-    run: { sourceId: item.source_id, dateScope: "received", homePeriod: "all", aiMode: "off", batchSize: 1 },
+    run: { sourceId, dateScope: "received", homePeriod: "all", aiMode: "off", batchSize: 1 },
     continuation: 0,
   } satisfies ScheduledTriageQueueMessage);
-  console.log(JSON.stringify({ event: "draft_recovery", sources: pending.results.length }));
+  console.log(JSON.stringify({ event: "draft_recovery", pendingSources: pending.results.length, approvedWithoutOutboxSources: approvedWithoutOutbox.results.length, sources: sourceIds.size }));
 }
 
 // Image security config. SVG sources with .svg extension auto-skip the
