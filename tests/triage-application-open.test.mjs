@@ -25,6 +25,10 @@ test("abertura de candidatura registra início, sem submeter formulário", async
   assert.match(dashboard, /const linkedInExternalId/);
   assert.match(dashboard, /job\.externalId\s*\?\?/);
   assert.match(dashboard, /job\.applyUrl, job\.url/);
+  assert.match(dashboard, /isLinkedInJob/);
+  assert.match(dashboard, /updateApplicationStatus\(\s*job,\s*"opened",\s*AUTOMATIC_ACTION_STAGE\.apply/);
+  assert.match(dashboard, /Vaga aberta no LinkedIn e candidatura iniciada registrada/);
+  assert.match(dashboard, /setItems\(current => current\.map\(item => item\.id === job\.id \? \{ \.\.\.item, applicationStatus: optimisticStatus \} : item\)\)/);
   assert.match(dashboard, /const linkedInJobId = linkedInExternalId\(job\)/);
   const linkedInStatus = await read("../app/api/jobs/[id]/linkedin-status/route.ts");
   assert.match(linkedInStatus, /linkedin_application_closed/);

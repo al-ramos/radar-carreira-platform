@@ -1785,6 +1785,9 @@ export default function Dashboard() {
       if (exists) return current.map(item => item.id === job.id ? { ...item, ...optimisticApplication } : item);
       return [...current, { ...job, ...optimisticApplication } as PipelineJob];
     });
+    // A tabela usa a lista do Radar, enquanto o detalhe usa o pipeline. Mantém
+    // ambas em sincronia já no clique, sem exigir atualização da página.
+    setItems(current => current.map(item => item.id === job.id ? { ...item, applicationStatus: optimisticStatus } : item));
 
     const request = (async () => {
       try {
@@ -1797,6 +1800,7 @@ export default function Dashboard() {
         if (!response.ok) throw new Error(data?.error ?? "Não foi possível atualizar o status da candidatura.");
         const application = data.application as PipelineJob;
         setPipelineItems(current => current.map(item => item.id === job.id ? { ...item, ...application } : item));
+        setItems(current => current.map(item => item.id === job.id ? { ...item, applicationStatus: application.applicationStatus ?? optimisticStatus } : item));
         const labels: Record<ApplicationStatus, string> = { opened: "Candidatura iniciada registrada.", generated: "Mensagem registrada como gerada.", sent: "Candidatura marcada como enviada.", responded: "Resposta recebida registrada." };
         setMessage(toast ?? labels[status]);
         return true;
@@ -1807,6 +1811,10 @@ export default function Dashboard() {
           if (previous) return current.map(item => item.id === job.id ? previous : item);
           return current.filter(item => item.id !== job.id);
         });
+        setItems(current => current.map(item => {
+          if (item.id !== job.id || item.applicationStatus !== optimisticStatus) return item;
+          return { ...item, applicationStatus: previous?.applicationStatus };
+        }));
         setMessage(error instanceof Error ? error.message : "Não foi possível atualizar o status da candidatura.");
         return false;
       }
@@ -2388,20 +2396,30 @@ export default function Dashboard() {
       // repete a consulta por tempo limitado até conseguir gravar o contato.
       scheduleAutoApinfoContactCapture(job);
     }
+    const isLinkedInJob = [job.applyUrl, job.url].some((value) => /linkedin\.com/i.test(value ?? ""));
     const linkedInJobId = linkedInExternalId(job);
-    if (/linkedin\.com/i.test(job.url) && linkedInJobId) {
+    if (isLinkedInJob && linkedInJobId) {
       const requestId = crypto.randomUUID();
       linkedInStatusRequestRef.current.set(requestId, job);
       // A extensão lê apenas o texto já exibido na página nova; ela nunca
       // clica nem envia formulários de candidatura.
       window.setTimeout(() => window.postMessage({ source: "radar-dashboard", type: "RADAR_CHECK_LINKEDIN_APPLICATION", requestId, externalId: linkedInJobId }, window.location.origin), 1_500);
     }
-    void updateStage(
-      job.id,
-      AUTOMATIC_ACTION_STAGE.apply,
-      "Página da vaga aberta e status salvo como Candidatura.",
-      "advance",
-    );
+    if (isLinkedInJob) {
+      void updateApplicationStatus(
+        job,
+        "opened",
+        AUTOMATIC_ACTION_STAGE.apply,
+        "Vaga aberta no LinkedIn e candidatura iniciada registrada.",
+      );
+    } else {
+      void updateStage(
+        job.id,
+        AUTOMATIC_ACTION_STAGE.apply,
+        "Página da vaga aberta e status salvo como Candidatura.",
+        "advance",
+      );
+    }
   }
   useEffect(() => {
     function handleLinkedInApplicationStatus(event: MessageEvent) {
