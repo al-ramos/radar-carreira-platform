@@ -1,13 +1,45 @@
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../../chatgpt-auth";
 import { getDb } from "../../../../../db/index";
-import { jobs, profiles, userJobAnalyses } from "../../../../../db/schema";
+import { draftOutbox, jobs, profiles, triageBatches, triageHistory, userJobAnalyses } from "../../../../../db/schema";
 import { analysisVersionsMatch, getAnalysisVersions } from "../../../../../lib/analysis-versions";
 import { canonicalizeProfile } from "../../../../../lib/canonical-profile";
 import { analyzeStoredJobForProfile } from "../../../../../lib/personalized-analysis";
+import { isSafeForDraft } from "../../../../../lib/draft-eligibility";
+import { markImmediateDraftFailure, requestImmediateDraftCreation } from "../../../../../lib/gmail-draft-priority";
 
 export const dynamic = "force-dynamic";
+
+async function queueApprovedDraft(input: {
+  userId: string;
+  job: typeof jobs.$inferSelect;
+  versions: ReturnType<typeof getAnalysisVersions>;
+  analysis: { verdict: string; label: string; blocker: string | null; rows: string; matchingSkills: string; missingSkills: string; source: "rules" };
+  now: Date;
+}) {
+  if (!isSafeForDraft({ verdict: input.analysis.verdict, contactEmail: input.job.contactEmail, sourceId: input.job.sourceId })) return { queued: false, created: 0 };
+  const db = getDb();
+  const existingOutbox = await db.select({ id: draftOutbox.id }).from(draftOutbox)
+    .where(and(eq(draftOutbox.userId, input.userId), eq(draftOutbox.jobId, input.job.id))).limit(1).then((rows) => rows[0]);
+  if (existingOutbox) return { queued: false, created: 0 };
+
+  let history = await db.select({ id: triageHistory.id }).from(triageHistory)
+    .where(and(eq(triageHistory.userId, input.userId), eq(triageHistory.jobId, input.job.id), eq(triageHistory.verdict, "✅")))
+    .orderBy(desc(triageHistory.createdAt)).limit(1).then((rows) => rows[0]);
+  if (!history) {
+    const batchId = crypto.randomUUID();
+    await db.insert(triageBatches).values({ id: batchId, userId: input.userId, trigger: "manual", scope: "radar-analysis", status: "completed", startedAt: input.now, completedAt: input.now, createdAt: input.now });
+    history = { id: crypto.randomUUID() };
+    await db.insert(triageHistory).values({ id: history.id, batchId, userId: input.userId, jobId: input.job.id, ...input.versions, verdict: "✅", label: input.analysis.label, blocker: input.analysis.blocker, source: input.analysis.source, confidence: 100, rows: input.analysis.rows, createdAt: input.now });
+  }
+
+  const outboxId = crypto.randomUUID();
+  await db.insert(draftOutbox).values({ id: outboxId, userId: input.userId, jobId: input.job.id, historyId: history.id, status: "pending", createdAt: input.now, updatedAt: input.now });
+  const immediate = await requestImmediateDraftCreation([outboxId]);
+  if (!immediate.requested) await markImmediateDraftFailure([outboxId], immediate.reason);
+  return { queued: true, created: immediate.created ?? 0, reason: immediate.reason };
+}
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await getChatGPTUser();
@@ -73,7 +105,8 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     && existing.matchingSkills === values.matchingSkills
     && existing.missingSkills === values.missingSkills;
   if (unchanged) {
-    return NextResponse.json({ ok: true, persisted: true, changed: false, analysis: { ...existing, rows: result.verdict.rows, matchingSkills: result.stackFit.matchingSkills, missingSkills: result.stackFit.missingSkills } });
+    const draft = await queueApprovedDraft({ userId: user.userId, job, versions, analysis: values, now });
+    return NextResponse.json({ ok: true, persisted: true, changed: false, draft, analysis: { ...existing, rows: result.verdict.rows, matchingSkills: result.stackFit.matchingSkills, missingSkills: result.stackFit.missingSkills } });
   }
   await db.insert(userJobAnalyses).values(values).onConflictDoUpdate({
     target: [userJobAnalyses.userId, userJobAnalyses.jobId],
@@ -94,5 +127,6 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
       updatedAt: values.updatedAt,
     },
   });
-  return NextResponse.json({ ok: true, persisted: true, changed: true, analysis: { ...values, rows: result.verdict.rows, matchingSkills: result.stackFit.matchingSkills, missingSkills: result.stackFit.missingSkills } });
+  const draft = await queueApprovedDraft({ userId: user.userId, job, versions, analysis: values, now });
+  return NextResponse.json({ ok: true, persisted: true, changed: true, draft, analysis: { ...values, rows: result.verdict.rows, matchingSkills: result.stackFit.matchingSkills, missingSkills: result.stackFit.missingSkills } });
 }
