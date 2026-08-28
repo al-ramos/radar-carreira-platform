@@ -13,4 +13,8 @@ test("triagem não mistura rascunho pronto com vagas sem nenhuma ação de conta
   assert.match(screen, /value="application_sent">Candidatura enviada/);
   assert.match(screen, /value="pending">Sem rascunho, envio ou candidatura/);
   assert.match(screen, /hasDraftReady\(item\) \|\| hasEmailSent\(item\)/);
+  assert.match(screen, /clearHistoryFilters/);
+  assert.match(screen, /setJobSourceFilter\("all"\)/);
+  assert.match(screen, /Limpar outros filtros/);
+  assert.match(screen, /Não há vagas ativas sem veredito no momento/);
 });
