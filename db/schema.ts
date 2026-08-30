@@ -83,6 +83,9 @@ export const userJobAnalyses = sqliteTable("user_job_analyses", {
   rows: text("rows").notNull().default("[]"),
   matchingSkills: text("matching_skills").notNull().default("[]"),
   missingSkills: text("missing_skills").notNull().default("[]"),
+  // Cache auditável da pontuação determinística. Só é reaproveitado quando a
+  // versão do perfil e a própria vaga ainda são atuais.
+  score: integer("score"),
   source: text("source", { enum: ["rules", "ai"] }).notNull().default("rules"),
   confidence: integer("confidence").notNull().default(100),
   explanation: text("explanation"),

@@ -192,11 +192,12 @@ export async function POST(request: Request) {
               userId, jobId: job.id, profileVersion: profile.updatedAt, ...versions,
               verdict: reusedHistory.verdict, label: reusedHistory.label, blocker: reusedHistory.blocker, rows: reusedHistory.rows,
               matchingSkills: JSON.stringify(reusedVerdict.matchingSkills), missingSkills: JSON.stringify(reusedVerdict.missingSkills),
+              score: reusedVerdict.score,
               source: reusedHistory.source, confidence: reusedHistory.confidence,
               explanation: null, createdAt: now, updatedAt: now,
         }).onConflictDoUpdate({
               target: [userJobAnalyses.userId, userJobAnalyses.jobId],
-              set: { profileVersion: profile.updatedAt, ...versions, verdict: reusedHistory.verdict, label: reusedHistory.label, blocker: reusedHistory.blocker, rows: reusedHistory.rows, matchingSkills: JSON.stringify(reusedVerdict.matchingSkills), missingSkills: JSON.stringify(reusedVerdict.missingSkills), source: reusedHistory.source, confidence: reusedHistory.confidence, updatedAt: now },
+              set: { profileVersion: profile.updatedAt, ...versions, verdict: reusedHistory.verdict, label: reusedHistory.label, blocker: reusedHistory.blocker, rows: reusedHistory.rows, matchingSkills: JSON.stringify(reusedVerdict.matchingSkills), missingSkills: JSON.stringify(reusedVerdict.missingSkills), score: reusedVerdict.score, source: reusedHistory.source, confidence: reusedHistory.confidence, updatedAt: now },
         });
         continue;
       }
@@ -272,10 +273,11 @@ export async function POST(request: Request) {
         userId, jobId: job.id, profileVersion: profile.updatedAt, ...versions,
         verdict: finalVerdict.result.emoji, label: finalVerdict.result.label, blocker: finalVerdict.blocker, rows,
         matchingSkills: JSON.stringify(verdict.matchingSkills), missingSkills: JSON.stringify(verdict.missingSkills), source: finalSource, confidence: finalSource === "ai" ? 100 : verdict.confidence,
+        score: verdict.score,
         explanation, createdAt: now, updatedAt: now,
       }).onConflictDoUpdate({
         target: [userJobAnalyses.userId, userJobAnalyses.jobId],
-        set: { profileVersion: profile.updatedAt, ...versions, verdict: finalVerdict.result.emoji, label: finalVerdict.result.label, blocker: finalVerdict.blocker, rows, matchingSkills: JSON.stringify(verdict.matchingSkills), missingSkills: JSON.stringify(verdict.missingSkills), source: finalSource, confidence: finalSource === "ai" ? 100 : verdict.confidence, explanation, updatedAt: now },
+        set: { profileVersion: profile.updatedAt, ...versions, verdict: finalVerdict.result.emoji, label: finalVerdict.result.label, blocker: finalVerdict.blocker, rows, matchingSkills: JSON.stringify(verdict.matchingSkills), missingSkills: JSON.stringify(verdict.missingSkills), score: verdict.score, source: finalSource, confidence: finalSource === "ai" ? 100 : verdict.confidence, explanation, updatedAt: now },
       });
       await db.update(triageBatchItems).set({ status: "completed", historyId, leaseOwner: null, leaseUntil: null, updatedAt: now }).where(and(eq(triageBatchItems.batchId, batchId), eq(triageBatchItems.jobId, job.id)));
       await db.update(triageDeduplication).set({ status: "completed", historyId, leaseOwner: null, leaseUntil: null, updatedAt: now }).where(eq(triageDeduplication.idempotencyKey, key));

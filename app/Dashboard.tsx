@@ -28,6 +28,7 @@ import { buildApinfoApplicationEmail } from "../lib/application-email";
 import { jobAreaLabel } from "../lib/job-area";
 import { normalizeContactEmail } from "../lib/jobs";
 import { AUTOMATIC_ACTION_STAGE, resolveAutomaticStage } from "../lib/pipeline-stage";
+import { observeRadarPerformance } from "../lib/client-performance";
 type ApplicationStatus = "opened" | "generated" | "sent" | "responded";
 type ReviewVisibility = "pending" | "all";
 type Job = {
@@ -530,6 +531,9 @@ function compactPagination(current: number, total: number): Array<number | "star
   return pages;
 }
 export default function Dashboard() {
+  useEffect(() => {
+    observeRadarPerformance("dashboard");
+  }, []);
   const [active, setActive] = useState("Radar"),
     [query, setQuery] = useState(""),
     [items, setItems] = useState<Job[]>([]),
@@ -851,12 +855,20 @@ export default function Dashboard() {
     },
     [focusedJobId, effectivePeriod, sourceFilter, areaFilter, channelFilter, importRunFilter, ingestionMode, receivedFrom, receivedTo, hasEmailFilter, reviewVisibility, debouncedQuery, requestedMinScore, pipelineFilter, verdictFilter, sortOrder],
   );
+  // A lista é o caminho crítico de abertura do Radar. As opções de filtros
+  // (fontes, áreas, canais e importações) chegam logo em seguida em uma
+  // consulta leve, sem atrasar a primeira pintura das vagas.
+  const buildJobsListParams = useCallback((page: number) => {
+    const params = new URLSearchParams(buildJobsParams(page));
+    if (!focusedJobId) params.set("meta", "none");
+    return params.toString();
+  }, [buildJobsParams, focusedJobId]);
   useEffect(() => {
     if (!profileReady || profileLoadFailed) return;
     const controller = new AbortController();
     let staleRetryTimer: ReturnType<typeof setTimeout> | null = null;
     let onlineRetryHandler: (() => void) | null = null;
-    fetchJobsWithRetry(`/api/jobs?${buildJobsParams(1)}`, controller.signal)
+    fetchJobsWithRetry(`/api/jobs?${buildJobsListParams(1)}`, controller.signal)
       .then((data) => {
         const next = (data.jobs ?? [])
           .map(adapt)
@@ -874,10 +886,8 @@ export default function Dashboard() {
             const first = triageJob ?? restored ?? next[0];
             pendingTriageJobIdRef.current = null;
             setSelected(first);
-            void loadJobDetail(first);
           } catch {
             setSelected(next[0]);
-            void loadJobDetail(next[0]);
           }
         }
         setTotalJobs(typeof data.total === "number" ? data.total : next.length);
@@ -950,7 +960,22 @@ export default function Dashboard() {
       if (staleRetryTimer) clearTimeout(staleRetryTimer);
       if (onlineRetryHandler) window.removeEventListener("online", onlineRetryHandler);
     };
-  }, [effectivePeriod, sourceFilter, debouncedQuery, requestedMinScore, pipelineFilter, verdictFilter, sortOrder, buildJobsParams, jobsRefreshVersion, profileReady, profileLoadFailed]);
+  }, [effectivePeriod, sourceFilter, debouncedQuery, requestedMinScore, pipelineFilter, verdictFilter, sortOrder, buildJobsListParams, jobsRefreshVersion, profileReady, profileLoadFailed]);
+  useEffect(() => {
+    if (!profileReady || profileLoadFailed || focusedJobId) return;
+    const controller = new AbortController();
+    const params = new URLSearchParams(buildJobsParams(1));
+    params.set("meta", "only");
+    fetchWithTimeout(`/api/jobs?${params.toString()}`, { cache: "no-store", signal: controller.signal }, PROFILE_FETCH_TIMEOUT_MS)
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error(`HTTP ${response.status}`)))
+      .then((data) => {
+        if (data.filterOptions) setJobFilterOptions(data.filterOptions);
+      })
+      // A lista já está disponível; filtros opcionais não devem transformá-la
+      // em erro caso uma agregação temporariamente falhe.
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [profileReady, profileLoadFailed, focusedJobId, buildJobsParams]);
   useEffect(() => {
     const controller = new AbortController();
     fetchWithTimeout("/api/profile", { cache: "no-store", signal: controller.signal }, PROFILE_FETCH_TIMEOUT_MS)
@@ -1483,7 +1508,7 @@ export default function Dashboard() {
     setLoadingMore(true);
     try {
       const controller = new AbortController();
-      const data = await fetchJobsWithRetry(`/api/jobs?${buildJobsParams(page)}`, controller.signal);
+      const data = await fetchJobsWithRetry(`/api/jobs?${buildJobsListParams(page)}`, controller.signal);
       const next: Job[] = (data.jobs ?? []).map(adapt).sort((a: Job, b: Job) => sortOrder === "recent"
         ? new Date(b.firstSeenAt ?? 0).getTime() - new Date(a.firstSeenAt ?? 0).getTime()
         : b.score - a.score);
@@ -1623,7 +1648,7 @@ export default function Dashboard() {
     const result = `${received} encontradas: ${inserted} novas e ${updated} atualizadas.`;
     setMessage(errors ? `${result} ${errors} fonte(s) falharam — consulte Monitoramento.` : result);
     setSourceVersion((version) => version + 1);
-    const jobsResponse = await fetch(`/api/jobs?${buildJobsParams(1)}`);
+    const jobsResponse = await fetch(`/api/jobs?${buildJobsListParams(1)}`);
     if (jobsResponse.ok) {
       const jobsData = await jobsResponse.json();
       const next = (jobsData.jobs ?? [])

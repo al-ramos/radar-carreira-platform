@@ -33,6 +33,11 @@ const startedAt = performance.now();
 try {
 const url = new URL(request.url);
 const degradedMode = url.searchParams.get("degraded") === "1";
+// "none" mantém o caminho crítico da lista pequeno. A tela pede as opções
+// de filtros em seguida com "only", sem bloquear a primeira renderização.
+const metadataMode = url.searchParams.get("meta") === "only"
+  ? "only"
+  : url.searchParams.get("meta") === "none" ? "none" : "full";
 const requestedJobId = (url.searchParams.get("jobId") ?? "").trim();
 // Abrir uma vaga pelo histórico não precisa recalcular os totais, fontes e
 // opções da Home inteira. Essas agregações podem ultrapassar o limite do
@@ -329,6 +334,38 @@ seniorityCondition,
   applicationVisibilityCondition,
 );
 
+const filterOptionsQueries = () => Promise.all([
+  getDb().select({ id: jobs.sourceId, label: sourceLabel, count: sql<number>`count(*)` })
+    .from(jobs).leftJoin(jobSources, eq(jobs.sourceId, jobSources.id)).where(and(baseCondition, applicationVisibilityCondition))
+    .groupBy(jobs.sourceId, sourceLabel).orderBy(asc(sourceLabel)),
+  getDb().select({ id: jobs.roleArea, count: sql<number>`count(*)` }).from(jobs).where(and(baseCondition, applicationVisibilityCondition)).groupBy(jobs.roleArea),
+  getDb().select({ id: jobs.ingestionChannel, count: sql<number>`count(*)` }).from(jobs).where(and(baseCondition, applicationVisibilityCondition)).groupBy(jobs.ingestionChannel),
+  getDb().select({ id: importRuns.id, source: importRuns.source, sourceId: importRuns.sourceId, channel: importRuns.channel, startedAt: importRuns.startedAt, received: importRuns.received, inserted: importRuns.inserted, updated: importRuns.updated, jobs: sql<number>`count(distinct ${jobImportRuns.jobId})` })
+    .from(importRuns).innerJoin(jobImportRuns, eq(jobImportRuns.runId, importRuns.id))
+    .groupBy(importRuns.id).orderBy(desc(importRuns.startedAt)).limit(30),
+]);
+const serializeFilterOptions = (sourceOptionsRows: Awaited<ReturnType<typeof filterOptionsQueries>>[0], areaOptionsRows: Awaited<ReturnType<typeof filterOptionsQueries>>[1], channelOptionsRows: Awaited<ReturnType<typeof filterOptionsQueries>>[2], recentRuns: Awaited<ReturnType<typeof filterOptionsQueries>>[3]) => ({
+  sources: sourceOptionsRows.map(option => ({ id: option.id ?? "unidentified", label: option.label ?? "Sem fonte identificada", count: Number(option.count) || 0 })),
+  areas: JOB_AREAS.map(option => ({ ...option, count: Number(areaOptionsRows.find(row => row.id === option.id)?.count) || 0 })),
+  channels: [
+    { id: "extension", label: "Extensão", count: Number(channelOptionsRows.find(row => row.id === "extension")?.count) || 0 },
+    { id: "email", label: "E-mail", count: Number(channelOptionsRows.find(row => row.id === "email")?.count) || 0 },
+    { id: "connector", label: "Coleta agendada", count: Number(channelOptionsRows.find(row => row.id === "connector")?.count) || 0 },
+    { id: "file", label: "Arquivo CSV/JSON", count: Number(channelOptionsRows.find(row => row.id === "file")?.count) || 0 },
+    { id: "api", label: "API", count: Number(channelOptionsRows.find(row => row.id === "api")?.count) || 0 },
+  ],
+  importRuns: recentRuns.map(run => ({ ...run, jobs: Number(run.jobs) || 0 })),
+});
+
+if (metadataMode === "only") {
+  const filterOptions = serializeFilterOptions(...await filterOptionsQueries());
+  const durationMs = Math.round(performance.now() - startedAt);
+  console.log(JSON.stringify({ event: "jobs_filter_options", durationMs, period }));
+  return NextResponse.json({ filterOptions, period: period === "all" ? "all" : hours }, {
+    headers: { "Cache-Control": "private, max-age=30, stale-while-revalidate=120", "Server-Timing": `radar-job-options;dur=${durationMs}`, "X-Radar-Jobs-Mode": "metadata" },
+  });
+}
+
 const rowsQuery = getDb().select({
 id: jobs.id,
 externalId: jobs.externalId,
@@ -351,6 +388,10 @@ applyUrl: jobs.applyUrl,
 contactEmail: jobs.contactEmail,
 contactSubject: jobs.contactSubject,
 triageVerdict: userJobAnalyses.verdict,
+analysisScore: userJobAnalyses.score,
+analysisProfileVersion: userJobAnalyses.profileVersion,
+analysisUpdatedAt: userJobAnalyses.updatedAt,
+jobUpdatedAt: jobs.updatedAt,
 // Um registro em user_job_analyses pode vir de cálculos legados de afinidade.
 // A nota somente é apresentada quando a vaga passou por uma triagem auditável.
 triageHistoryId: sql<string | null>`(
@@ -372,7 +413,7 @@ description: degradedMode
 sort === "imported" ? desc(jobs.firstSeenAt) : desc(jobs.publishedAt),
 desc(jobs.createdAt),
 );
-const [rows, eligibleTotals, emailMissingTotals, sourceTotals, sourceOptionsRows, areaOptionsRows, channelOptionsRows, recentRuns] = await Promise.all([
+const [rows, eligibleTotals, emailMissingTotals, sourceTotals, ...metadataRows] = await Promise.all([
 requiresPostFiltering
 ? rowsQuery.limit(MAX_AFFINITY_CANDIDATES)
 : rowsQuery.limit(limit).offset(offset),
@@ -384,21 +425,28 @@ linkedIn: sql<number>`sum(case when ${jobs.url} like ${"%linkedin.com%"} then 1 
 apinfo: sql<number>`sum(case when ${jobs.sourceId} = ${"apinfo-extension"} or ${jobs.url} like ${"%apinfo.com%"} then 1 else 0 end)`,
 sources: sql<number>`count(distinct ${jobs.sourceId})`,
 }).from(jobs).where(and(baseCondition, applicationVisibilityCondition)),
-getDb().select({ id: jobs.sourceId, label: sourceLabel, count: sql<number>`count(*)` })
-  .from(jobs).leftJoin(jobSources, eq(jobs.sourceId, jobSources.id)).where(and(baseCondition, applicationVisibilityCondition))
-  .groupBy(jobs.sourceId, sourceLabel).orderBy(asc(sourceLabel)),
-getDb().select({ id: jobs.roleArea, count: sql<number>`count(*)` }).from(jobs).where(and(baseCondition, applicationVisibilityCondition)).groupBy(jobs.roleArea),
-getDb().select({ id: jobs.ingestionChannel, count: sql<number>`count(*)` }).from(jobs).where(and(baseCondition, applicationVisibilityCondition)).groupBy(jobs.ingestionChannel),
-getDb().select({ id: importRuns.id, source: importRuns.source, sourceId: importRuns.sourceId, channel: importRuns.channel, startedAt: importRuns.startedAt, received: importRuns.received, inserted: importRuns.inserted, updated: importRuns.updated, jobs: sql<number>`count(distinct ${jobImportRuns.jobId})` })
-  .from(importRuns).innerJoin(jobImportRuns, eq(jobImportRuns.runId, importRuns.id))
-  .groupBy(importRuns.id).orderBy(desc(importRuns.startedAt)).limit(30),
+...(metadataMode === "full" ? filterOptionsQueries() : []),
 ]);
 
+const filterOptions = metadataMode === "full"
+  ? serializeFilterOptions(...metadataRows as Awaited<ReturnType<typeof filterOptionsQueries>>)
+  : undefined;
+
 const enriched = rows.map((job) => {
-const stack = inferTechnologyStack(`${job.title} ${job.description}`, parse(job.stack));
+const hasCurrentPersistedScore = Boolean(
+  profile &&
+  job.analysisScore !== null &&
+  job.analysisProfileVersion?.getTime() === profile.updatedAt.getTime() &&
+  job.analysisUpdatedAt?.getTime() >= job.jobUpdatedAt.getTime(),
+);
+const stack = hasCurrentPersistedScore
+  ? parse(job.stack)
+  : inferTechnologyStack(`${job.title} ${job.description}`, parse(job.stack));
 const isTechJob = isTechnologyJob({ title: job.title, description: job.description, stack });
 const match = !isTechJob
 ? { score: 0, reasons: ["Vaga fora do escopo de TI — sem pontuação"], scored: false }
+: hasCurrentPersistedScore
+? { score: Number(job.analysisScore), reasons: ["Pontuação reaproveitada da triagem atual"], scored: true }
 : profileHasScoringSignals
 ? scoreJob(
 {
@@ -478,18 +526,7 @@ totalLinkedIn,
 totalApinfo,
 totalOtherSources: Math.max(0, baseTotal - totalLinkedIn - totalApinfo),
 sourcesCount: Number(sourceTotals[0]?.sources ?? 0),
-filterOptions: {
-  sources: sourceOptionsRows.map(option => ({ id: option.id ?? "unidentified", label: option.label ?? "Sem fonte identificada", count: Number(option.count) || 0 })),
-  areas: JOB_AREAS.map(option => ({ ...option, count: Number(areaOptionsRows.find(row => row.id === option.id)?.count) || 0 })),
-  channels: [
-    { id: "extension", label: "Extensão", count: Number(channelOptionsRows.find(row => row.id === "extension")?.count) || 0 },
-    { id: "email", label: "E-mail", count: Number(channelOptionsRows.find(row => row.id === "email")?.count) || 0 },
-    { id: "connector", label: "Coleta agendada", count: Number(channelOptionsRows.find(row => row.id === "connector")?.count) || 0 },
-    { id: "file", label: "Arquivo CSV/JSON", count: Number(channelOptionsRows.find(row => row.id === "file")?.count) || 0 },
-    { id: "api", label: "API", count: Number(channelOptionsRows.find(row => row.id === "api")?.count) || 0 },
-  ],
-  importRuns: recentRuns.map(run => ({ ...run, jobs: Number(run.jobs) || 0 })),
-},
+filterOptions,
 page,
 limit,
 hasMore: offset + limit < totalCount,

@@ -22,7 +22,11 @@ test("a listagem pagina no D1 antes de enriquecer o fluxo normal", async () => {
   // sem refletir a ordem/paginação reais.
   assert.match(route, /requiresPostFiltering = .*sort === "score"/);
   assert.match(route, /substr\(\$\{jobs\.description\}/);
-  assert.match(route, /const \[rows, eligibleTotals, emailMissingTotals, sourceTotals,/);
+  assert.match(route, /const \[rows, eligibleTotals, emailMissingTotals, sourceTotals, \.\.\.metadataRows\]/);
+  assert.match(route, /metadataMode === "only"/);
+  assert.match(route, /searchParams\.get\("meta"\) === "none"/);
+  assert.match(route, /Pontuação reaproveitada da triagem atual/);
+  assert.match(route, /analysisScore: userJobAnalyses\.score/);
   assert.match(route, /verdictFilter !== "all" && masteredSkills\.length/);
   assert.match(route, /isTechnologyJob/);
   assert.match(route, /profileHasScoringSignals \? requestedMinScore : 0/);
@@ -86,7 +90,10 @@ test("falha da API não exibe as quatro vagas demonstrativas", async () => {
   assert.match(dashboard, /Atualizando pontuação/);
   assert.match(dashboard, /j\.score >= visibleMinScore/);
   assert.match(dashboard, /simplifiedRetryCountRef\.current >= 3/);
-  assert.match(dashboard, /fetchJobsWithRetry\(`\/api\/jobs\?\$\{buildJobsParams\(page\)\}/);
+  assert.match(dashboard, /buildJobsListParams/);
+  assert.match(dashboard, /params\.set\("meta", "none"\)/);
+  assert.match(dashboard, /params\.set\("meta", "only"\)/);
+  assert.doesNotMatch(dashboard, /setSelected\(first\);\s*void loadJobDetail\(first\);/);
   assert.match(dashboard, /if \(!profileReady \|\| profileLoadFailed\) return;/);
   assert.match(dashboard, /if \(!controller\.signal\.aborted\) setProfileReady\(true\)/);
   assert.match(dashboard, /const profileLoading = !profileReady \|\| mode === "loading"/);
@@ -100,11 +107,22 @@ test("falha da API não exibe as quatro vagas demonstrativas", async () => {
 });
 
 test("a lista expõe telemetria de latência e registra falhas para observabilidade", async () => {
-  const route = await read("../app/api/jobs/route.ts");
+  const [route, clientTelemetry, telemetryRoute, nextConfig] = await Promise.all([
+    read("../app/api/jobs/route.ts"),
+    read("../lib/client-performance.ts"),
+    read("../app/api/telemetry/performance/route.ts"),
+    read("../next.config.ts"),
+  ]);
   assert.match(route, /Server-Timing/);
   assert.match(route, /X-Radar-Jobs-Mode/);
   assert.match(route, /event: "jobs_list"/);
   assert.match(route, /event: "jobs_list_failed"/);
+  assert.match(clientTelemetry, /SAMPLE_RATE = 0\.1/);
+  assert.match(clientTelemetry, /largest-contentful-paint/);
+  assert.match(clientTelemetry, /\/api\/telemetry\/performance/);
+  assert.match(telemetryRoute, /event: "client_performance"/);
+  assert.match(nextConfig, /radar-mark\.svg/);
+  assert.match(nextConfig, /max-age=31536000, immutable/);
 });
 
 test("a página autenticada não renderiza o dashboard pesado no Worker", async () => {
