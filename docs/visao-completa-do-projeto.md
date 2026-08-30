@@ -28,17 +28,15 @@ A prioridade atual é consolidar o ciclo **triagem inteligente → revisão → 
 
 1. preservar decisões determinísticas explicáveis e versionadas;
 2. permitir revisão por IA, Codex ou CSV sem perder origem e histórico;
-3. gerar somente rascunhos aprovados, revalidados e com contato válido;
+3. gerar somente rascunhos de decisões oficiais `✅` com contato válido;
 4. tornar filas, importações, triagens, falhas, retomadas e envios visíveis em um centro operacional;
 5. manter a candidatura e o envio sob decisão da pessoa usuária.
 
 Esta prioridade deve permanecer sincronizada entre o README principal, este inventário técnico e o hub do projeto no Notion em toda entrega funcional relevante.
 
-### Publicações de 24–25 de agosto de 2026
+### Marco funcional de 28 de agosto de 2026
 
-O inventário cronológico consolidado das melhorias, correções e práticas de publicação implantadas nesse período está na seção [Publicações recentes do README](../README.md#publicações-recentes--2425-de-agosto-de-2026). Além do ciclo de candidatura assistida, o período consolidou triagem para todas as fontes, recuperação contínua do histórico, navegação preservada, limites operacionais parametrizáveis, monitoramento de automações, integridade dos rascunhos Gmail e manutenção segura de vagas antigas.
-
-Todas as entregas listadas estão na `main` e tiveram publicação confirmada no Cloudflare; commits de merge sem alteração própria não entram no inventário.
+O estado consolidado está na seção [Estado publicado do README](../README.md#estado-publicado--28-de-agosto-de-2026). O marco funcional é o commit [`d2af6b7`](https://github.com/al-ramos/radar-carreira-platform/commit/d2af6b7f5c7cfb15f75666f8f3cccb93622e46d3), publicado no Cloudflare pelo workflow [`33212195271`](https://github.com/al-ramos/radar-carreira-platform/actions/runs/33212195271). O histórico Git registra cada alteração; este documento descreve somente o comportamento vigente para evitar inventários redundantes.
 
 ## 2. Arquitetura em alto nível
 
@@ -87,7 +85,7 @@ flowchart LR
 | Imagens | Cloudflare Images binding | Otimização pelo endpoint do vinext |
 | Banco | Cloudflare D1 / SQLite | Dados do produto e operação |
 | ORM | Drizzle ORM 0.45.2 | Schema tipado e consultas |
-| Migrations | Drizzle Kit / SQL | Evolução do banco; arquivos versionados de `0000` a `0033` |
+| Migrations | Drizzle Kit / SQL | Evolução do banco; arquivos versionados de `0000` a `0043` |
 | Estilos | CSS próprio + Tailwind/PostCSS 4 | Identidade visual e layout |
 | Fonte | Geist | Tipografia do produto |
 | Automação | GitHub Actions | validação, coleta, revalidação e deploy |
@@ -128,6 +126,7 @@ O dashboard organiza os módulos abaixo:
 - Fontes: todas, LinkedIn, APinfo ou demais fontes.
 - Pipeline: todas, não vistas, vistas, salvas, candidaturas, entrevistas e rejeitadas.
 - Veredito: todos, `✅`, `🟡`, `🔴` ou `❌`.
+- Na central de triagem, o recorte padrão mostra vagas não analisadas; a busca por código também localiza itens arquivados.
 - Aderência mínima numérica, inclusive o mínimo definido no perfil.
 - Ordenação por aderência/publicação ou por importação.
 - Paginação no banco, com proteção de período mínimo quando score ou veredito exigem cálculo mais amplo.
@@ -145,15 +144,16 @@ O dashboard organiza os módulos abaixo:
 - A mensagem de candidatura usa somente competências confirmadas, pode explicitar lacunas e nunca envia e-mail automaticamente.
 - Acompanhamento da candidatura distingue `generated`, `sent` e `responded`, com data própria para cada marco.
 - Ações que abririam uma nova candidatura ficam bloqueadas quando o acompanhamento já está em `sent` ou `responded`.
+- Atalhos da triagem abrem candidaturas e vagas arquivadas no Radar; a abertura pelo LinkedIn fica registrada como evidência operacional.
 
 ### Central de triagem
 
-- O recorte combina fonte, período de 24/72/168 horas ou histórico completo, área, canal de entrada e inclusão opcional de vagas já analisadas.
+- O recorte combina fonte, período de 24/72/168 horas ou histórico completo, área, canal de entrada e estado de análise; por padrão, mostra as vagas não analisadas.
 - A triagem manual cria um lote e publica cada vaga na Cloudflare Queue; o histórico exibe `queued`, `processing`, `completed`, `failed` ou `skipped`, tentativas, erro e lease.
 - Uma importação push agenda continuações de 10 vagas, sem teto fixo de continuações, até processar todo o lote; a primeira rodada pode usar IA para ambiguidades e as seguintes avançam deterministicamente sobre as vagas ainda sem análise.
 - Uma execução interrompida pode ser sincronizada e retomada sem recriar decisões já concluídas.
 - A idempotência considera usuário, vaga e revisões do perfil, das regras e das instruções.
-- O painel permite selecionar as vagas visíveis ou todas as filtradas, abrir a vaga no Radar, preparar rascunho, consultar IA, preparar para o Codex e conferir envio.
+- O painel permite selecionar as vagas visíveis ou todas as filtradas, abrir a vaga no Radar, desclassificar uma decisão existente, preparar rascunho, consultar IA, preparar para o Codex e conferir envio. Os contadores usam o mesmo recorte exibido.
 - O sino de notificações abre diretamente o lote e seu log completo.
 - Se a reconciliação não localizar o envio no Gmail, a interface permite confirmação explícita da pessoa antes de atualizar somente o acompanhamento.
 
@@ -163,7 +163,7 @@ O dashboard organiza os módulos abaixo:
 - **Codex:** snapshot persistido do perfil, prompt, filtros e até 50 vagas; o MCP privado permite listar, reivindicar e concluir somente itens autorizados.
 - **CSV externo:** reimporta até 2.000 linhas/2 MB por código externo, informa ausentes e ambiguidades e substitui explicitamente o veredito.
 - Um veredito confirmado pela IA, Codex ou CSV vira a análise oficial com `source = ai` e nova entrada aditiva no histórico.
-- `✅` e `🟡` só liberam rascunho se a revalidação determinística atual continuar segura e houver contato válido; `🔴` e `❌` nunca enfileiram rascunho.
+- Somente `✅` com contato válido libera rascunho; `🟡` permanece para revisão humana e `🔴`/`❌` não entram na fila.
 
 ### Rascunhos Gmail
 
@@ -173,6 +173,7 @@ O dashboard organiza os módulos abaixo:
 - A pessoa pode preparar uma vaga ou seleção, reprocessar falhas, solicitar reconciliação da pasta Enviados ou confirmar o envio manualmente.
 - Para LinkedIn, o caminho por e-mail exige `✅` e contato explícito válido.
 - Três interruptores independentes controlam triagem agendada, entrada automática na outbox e criação real do rascunho. Na configuração atual, qualquer origem de aprovação `✅` pode preparar e criar o rascunho; `🟡` permanece para revisão humana.
+- A execução agendada recupera itens pendentes e aprovações legadas sem histórico ou sem outbox, criando os vínculos ausentes de forma idempotente antes de solicitar o Gmail.
 - O Apps Script cria rascunhos e reconhece o envio feito pela pessoa; nenhuma rota ou automação envia a candidatura.
 - Um gatilho opcional a cada 15 minutos consulta somente a pasta Enviados e reconcilia rascunhos comprovadamente usados.
 - Confirmações de candidatura do LinkedIn recebidas pela etiqueta RadarVagas atualizam o pipeline para `sent`, preservam estados mais avançados e geram uma única notificação na primeira detecção.
@@ -454,6 +455,7 @@ Perfis iniciais:
 | `POST /api/triage/ai-review/run` | consumidor interno dos chunks da revisão |
 | `GET/POST/PATCH /api/triage/codex-queue` | preparar, listar e concluir snapshots privados do Codex |
 | `POST /api/triage/drafts/queue` | preparar, repetir, reconciliar ou confirmar rascunhos |
+| `POST /api/triage/disqualify` | registrar desclassificação manual e cancelar rascunho ainda pendente |
 
 ### Autenticação
 
@@ -571,7 +573,7 @@ A base contém testes para:
 
 `npm test` executa build e testes `*.test.mjs`. A integração RBAC usa loaders que simulam bindings Cloudflare e as migrations reais `0010`/`0011`; a esteira executa ambas as suítes antes da publicação.
 
-Validação realizada em 25/08/2026: **166 testes regulares e 26 testes de integração RBAC passaram**. O lint terminou sem erros e com 7 avisos preexistentes em código de interface e versionamento de análise.
+Validação realizada em 30/08/2026: **213 testes regulares e 26 testes de integração RBAC passaram**. O build foi concluído e o lint terminou sem erros, com 11 avisos preexistentes.
 
 ## 15. Pontos de atenção confirmados
 

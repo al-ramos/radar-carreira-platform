@@ -28,58 +28,19 @@ Portal multiusuário para reunir oportunidades, decidir quais vagas merecem aten
 
 > **Sincronização permanente:** toda mudança funcional relevante deve atualizar este README, a [visão completa do projeto](docs/visao-completa-do-projeto.md) e as páginas correspondentes no Notion na mesma entrega.
 
-## Publicações recentes — 24–25 de agosto de 2026
+## Estado publicado — 28 de agosto de 2026
 
-> **Estado:** todas as entregas abaixo estão na `main` e em produção no Cloudflare. Foram omitidos apenas commits de merge sem alteração própria.
+> **Marco funcional:** commit [`d2af6b7`](https://github.com/al-ramos/radar-carreira-platform/commit/d2af6b7f5c7cfb15f75666f8f3cccb93622e46d3), validado e publicado pelo workflow [`33212195271`](https://github.com/al-ramos/radar-carreira-platform/actions/runs/33212195271). O histórico Git permanece como inventário cronológico; esta seção registra somente o estado consolidado, sem repetir cada commit.
 
-### Melhorias implantadas
+- A triagem abre por padrão nas vagas não analisadas, localiza também vagas arquivadas pelo código e mantém filtros, contadores e seleção no mesmo recorte.
+- Atalhos da triagem abrem a vaga correta no Radar, inclusive candidaturas e itens arquivados, sem que respostas antigas de busca sobrescrevam a navegação atual.
+- O score fica oculto até a vaga ser triada; tecnologias prioritárias são evidência técnica, mas não substituem modalidade, geografia, senioridade, idioma nem requisitos obrigatórios.
+- A aprovação automática respeita a região cadastrada e a pessoa proprietária pode desclassificar manualmente uma vaga, preservando o histórico e cancelando somente rascunhos ainda pendentes.
+- Toda aprovação `✅` com e-mail válido pode criar rascunho imediatamente. A recuperação agendada cobre pendências, decisões antigas, aprovações sem histórico e aprovações sem registro na outbox.
+- O Radar registra a abertura de candidatura no LinkedIn, permite limpar vagas possivelmente encerradas e simplifica a exclusão administrativa com rastreabilidade.
+- Nenhuma dessas automações envia candidatura ou e-mail: a ação final continua sob controle da pessoa usuária.
 
-- tabela de candidaturas integrada à triagem, com exibição da candidatura e descrição com limite ampliado;
-- navegação do Radar preservada no histórico do navegador e ao retornar da triagem;
-- navegação anterior/próxima entre as vagas do recorte filtrado;
-- indicação da última atualização dos dados do Radar;
-- triagem por período mesmo sem fonte definida, inclusive para todas as fontes;
-- triagem automática ampliada para todas as fontes elegíveis;
-- lotes manuais protegidos por limite operacional e triagem agendada com tamanho parametrizável;
-- vagas pendentes exibidas no histórico e recuperação de decisões concluídas ausentes;
-- reavaliação de chaves idempotentes sem histórico e recuperação contínua do Radar;
-- limpeza administrativa de vagas por data de recebimento, com prévia da quantidade afetada;
-- limpeza e arquivamento de vagas antigas usando publicação e paginação para não perder itens;
-- coleta LinkedIn com registro de candidaturas durante a coleta;
-- criação automática de rascunhos Gmail para vagas aprovadas, com retentativa automática e gatilho parametrizável;
-- criação manual de rascunho por e-mail diretamente no Radar;
-- ação de e-mail posicionada no painel de filtros;
-- reconciliação automática dos envios do Gmail;
-- bloqueio de rascunhos para vagas inelegíveis, candidaturas já enviadas ou já preparadas;
-- candidaturas já preparadas ocultadas da lista principal do Radar;
-- triagem contínua de todo o lote importado, sem limite artificial de continuações;
-- análises do Codex enfileiradas em lotes, com solicitação conjunta de todas as filas pendentes;
-- monitoramento operacional centralizado, separando a saúde das automações;
-- registro de saúde, referências de falha e causas de importação no histórico operacional;
-- filtros e log de triagem integrados ao monitor;
-- detalhes da vaga acessíveis diretamente pelas notificações;
-- CSV de triagem enriquecido, com delimitador corrigido e proteção contra reimportação duplicada;
-- atualizações por contato registradas nas vagas e reutilização de e-mails por empresa;
-- confirmação antes da ação de atualização;
-- escopo de candidaturas, contatos e operação sincronizado entre README, documentação técnica e Notion.
-
-### Correções implantadas
-
-- carregamento administrativo e prévia de limpeza por data corrigidos;
-- lint que bloqueava a publicação da limpeza administrativa corrigido;
-- monitoramento operacional, filtro temporal, contratos e tipagem corrigidos;
-- rastreio de rascunhos Gmail e integridade dos identificadores corrigidos;
-- rastreio de falhas do coletor e de falhas D1 corrigido;
-- atalho para vaga sem código corrigido;
-- teste de coleta LinkedIn no CI corrigido;
-- testes do centro operacional, monitoramento, histórico pendente e tabela de candidaturas atualizados;
-- aviso introduzido pelo heartbeat operacional removido;
-- documentação e escopo operacional do README atualizados.
-
-### Operação e publicação
-
-- trabalho concorrente deve usar publicação isolada, preservando alterações locais não relacionadas;
-- depois da confirmação em produção, worktrees e clones temporários exclusivos da publicação são removidos automaticamente quando estão limpos; a cópia principal e trabalhos ativos permanecem preservados.
+Trabalho concorrente deve usar publicação isolada e preservar alterações locais não relacionadas. Clones ou worktrees exclusivos de uma entrega só são removidos após confirmação da publicação e quando estiverem limpos.
 
 > O portal está público, mas o visitante precisa entrar (e-mail/senha ou, quando hospedado em `*.chatgpt.site`, Sign in with ChatGPT) para acessar as áreas identificadas.
 
@@ -89,7 +50,7 @@ Portal multiusuário para reunir oportunidades, decidir quais vagas merecem aten
 - evita duplicações por `fingerprint` e identificador externo;
 - exibe vagas paginadas das últimas 24 horas, 3 dias, 7 dias ou de todo o histórico;
 - calcula um score explicável considerando competências, áreas, senioridade, modalidade, localização, atualidade e termos a evitar;
-- aplica um veredito estratégico em quatro fases, com bloqueadores de stack, idioma, senioridade, atuação e geografia;
+- aplica um veredito estratégico em quatro fases, com bloqueadores de idioma, senioridade, atuação e geografia, além de evidências e ressalvas de stack;
 - oferece aprofundamento opcional por IA, com fatos verificáveis, cache, orçamento mensal e preparação para entrevista;
 - mostra a descrição dentro do Radar, infere tecnologias e mantém separadas a URL estável e a URL de candidatura;
 - permite copiar e compartilhar a descrição, exportar resultados e gerar uma mensagem de candidatura segura;
@@ -98,6 +59,7 @@ Portal multiusuário para reunir oportunidades, decidir quais vagas merecem aten
 - executa triagem manual ou agendada por fonte e período, com histórico, idempotência, filas resilientes, tentativas e retomada;
 - após uma importação push do LinkedIn ou APInfo, percorre todo o lote em continuações de 10 vagas, usando IA apenas nas ambiguidades da primeira rodada;
 - permite revisar um recorte no portal, preparar até 50 vagas para o Codex ou reimportar vereditos externos por CSV;
+- permite desclassificar manualmente uma vaga já avaliada, com decisão aditiva no histórico e cancelamento de rascunho ainda pendente;
 - prepara rascunhos elegíveis no Gmail, acompanha sua criação e reconcilia o envio sem enviar e-mail automaticamente;
 - reconhece confirmações de candidatura recebidas do LinkedIn pelo Gmail, marca o acompanhamento como enviado e notifica somente na primeira transição;
 - registra notificações de importação, triagem e candidatura, com acesso direto aos relatórios operacionais;
@@ -109,7 +71,7 @@ Portal multiusuário para reunir oportunidades, decidir quais vagas merecem aten
 
 ### Para usuários
 
-- Radar com busca por código ou texto, paginação e filtros de período, fonte exata, área profissional, canal de entrada, importação específica, pipeline, veredito e score;
+- Radar com busca por código ou texto, paginação e filtros de período, fonte exata, área profissional, canal de entrada, importação específica, pipeline, veredito e score; a triagem inicia no recorte não analisado e encontra vagas arquivadas pelo código;
 - perfil profissional com competências, áreas, modalidades, senioridades e regras estratégicas de carreira;
 - detalhe da vaga, tecnologias inferidas, score explicado e veredito em quatro fases;
 - análise personalizada persistida somente para vagas elegíveis;
@@ -121,7 +83,8 @@ Portal multiusuário para reunir oportunidades, decidir quais vagas merecem aten
 - exportação CSV compatível com Excel;
 - central de triagem com seleção em lote, filtros, progresso, histórico, logs, saúde operacional e ações por vaga;
 - análise consultiva assíncrona pela IA do portal e fila privada para análise no Codex;
-- preparação de rascunhos Gmail, reprocessamento de falhas e confirmação manual ou reconciliação do envio.
+- preparação de rascunhos Gmail, recuperação de aprovações legadas, reprocessamento de falhas e confirmação manual ou reconciliação do envio;
+- abertura da vaga no Radar e desclassificação manual diretamente pela central de triagem.
 - reutilização em lote de contatos já cadastrados por empresa, disponível junto aos filtros de e-mail.
 
 ### Para administradores
@@ -155,11 +118,11 @@ O produto usa mecanismos complementares, cada um com uma finalidade:
 | Veredito estratégico | `✅`, `🟡`, `🔴` ou `❌` | aplicar preferências e bloqueadores pessoais em quatro fases |
 | IA opcional | fatos, evidências, ambiguidades e perguntas | aprofundar o contexto e, quando confirmado, registrar um novo veredito oficial |
 
-Vagas fora do escopo de TI continuam visíveis, mas não recebem aderência. O perfil salvo no D1 é a única fonte de verdade da triagem; sem competências dominadas não há veredito. Análises do portal, do Codex ou importadas por CSV podem substituir explicitamente o veredito, mas um rascunho só é liberado se a vaga continuar segura na revalidação determinística, tiver contato válido e estiver em **Bate** ou **Provável com ressalvas**. O estado da candidatura não regride: **mensagem gerada → enviada → respondida**.
+Vagas fora do escopo de TI continuam visíveis, mas não recebem aderência. O perfil salvo no D1 é a única fonte de verdade da triagem; sem competências dominadas não há veredito. Análises do portal, do Codex ou importadas por CSV podem substituir explicitamente o veredito. Para entrar na fila de rascunho, a decisão oficial precisa ser `✅` e a vaga precisa ter contato válido; no LinkedIn, o e-mail explícito também é obrigatório. O estado da candidatura não regride: **mensagem gerada → enviada → respondida**.
 
 Em **Configurações → Meu perfil**, a pessoa pode ampliar o recorte sem declarar experiência inexistente: aceitar presencial nas regiões escolhidas, qualquer frequência híbrida, contrato não informado e tecnologias explicitamente marcadas na vaga como diferenciais. Requisitos obrigatórios continuam exigindo evidência no perfil. Idiomas avançados só deixam de bloquear quando estiverem marcados como aceitos para comunicação diária.
 
-As coletas importam todas as vagas válidas, sem filtro de stack. C#, .NET, SQL/PLSQL, VB6/Visual Basic, VBA, Office e Excel recebem score 100 e veredito **Bate** quando aparecem como requisito ou diferencial; essa prioridade prevalece para que a decisão final seja feita no link da vaga. Outras stacks ficam para revisão, sem bloqueio automático. Menções a idioma sem exigência explícita também não bloqueiam.
+As coletas importam todas as vagas válidas, sem filtro de stack. C#, .NET, SQL/PLSQL, VB6/Visual Basic, VBA, Office e Excel são reconhecidas como tecnologias prioritárias quando aparecem como requisito ou diferencial. Essa evidência reforça o fit técnico, mas não concede aprovação sozinha: modalidade, geografia, senioridade, idioma, contratação e requisitos obrigatórios continuam sendo avaliados. Stack fora do foco principal pede revisão, sem virar bloqueio estrutural por si só; menções a idioma sem exigência explícita também não bloqueiam.
 
 ## Fluxo dos dados
 
@@ -215,9 +178,9 @@ npm run lint
 npm run db:generate
 ```
 
-`npm test` executa o build e a suíte regular, atualmente com **166 testes**, que combina regras de negócio com verificações estruturais do código. `npm run test:rbac-integration` executa **26 testes** chamando `can()` de `lib/rbac.ts` contra SQLite real em memória (`node:sqlite`), populado com as migrations `0010`/`0011`, usando loaders que simulam `cloudflare:workers` e o binding D1. A esteira executa as duas suítes; o ambiente oficial continua usando Node.js 22 e os loaders também são compatíveis com Node.js 24 no Windows.
+`npm test` executa o build e a suíte regular, atualmente com **213 testes**, que combina regras de negócio com verificações estruturais do código. `npm run test:rbac-integration` executa **26 testes** chamando `can()` de `lib/rbac.ts` contra SQLite real em memória (`node:sqlite`), populado com as migrations `0010`/`0011`, usando loaders que simulam `cloudflare:workers` e o binding D1. A esteira executa as duas suítes; o ambiente oficial continua usando Node.js 22 e os loaders também são compatíveis com Node.js 24 no Windows.
 
-Validação do escopo em 25/08/2026: **166 testes regulares + 26 testes de integração RBAC passando**; lint sem erros, com 7 avisos preexistentes.
+Validação do escopo em 30/08/2026: **213 testes regulares + 26 testes de integração RBAC passando**; build concluído e lint sem erros, com 11 avisos preexistentes.
 
 ## Banco de dados
 
@@ -263,7 +226,7 @@ O fluxo de decisão possui quatro caminhos:
 3. **Codex:** o portal congela o perfil e o pedido em uma fila privada, acessível pelo MCP do Radar. Seleções maiores são enviadas automaticamente em lotes sequenciais de até 50 vagas, respeitando o teto técnico de cada registro.
 4. **CSV externo:** a administração pode reimportar até 2.000 vereditos por código externo. No histórico, as vagas selecionadas também podem ser baixadas em CSV com código, título, status atual e descrição do status.
 
-Quando a pessoa confirma um resultado da IA, do Codex ou do CSV, ele vira o veredito oficial e entra na mesma trilha de histórico. Para liberar um rascunho, o servidor ainda exige `✅` ou `🟡`, ausência de bloqueador, contato válido e aprovação da checagem determinística atual. No LinkedIn, somente `✅` com e-mail explícito admite candidatura por e-mail.
+Quando a pessoa confirma um resultado da IA, do Codex ou do CSV, ele vira o veredito oficial e entra na mesma trilha de histórico. Para liberar um rascunho, o servidor exige `✅` e contato válido. No LinkedIn, o e-mail explícito também é obrigatório; `🟡` permanece para revisão humana.
 
 ### Automação e segurança
 
@@ -382,7 +345,7 @@ Já implantado:
 - recuperação de coleta por `start_offset`, tentativas controladas e limite seguro para descrições extensas;
 - triagem manual e pós-importação em Cloudflare Queue, com idempotência, leases, retomada e histórico por vaga;
 - revisão assíncrona pela IA do portal, fila privada do Codex e reimportação de vereditos por CSV;
-- veredito de IA aplicável como decisão oficial, preservando a revalidação determinística antes de qualquer rascunho;
+- veredito de IA aplicável como decisão oficial, com origem e histórico preservados antes de qualquer rascunho;
 - outbox de rascunhos Gmail, criação imediata ou controlada por interruptores, reprocessamento e reconciliação de envios;
 - notificações operacionais de importação, triagem e candidatura, com acesso direto aos logs;
 - filtros e seleção em lote na Home e na triagem, exportação somente das vagas selecionadas e reutilização de contato por empresa;
