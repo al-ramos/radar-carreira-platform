@@ -1,4 +1,4 @@
-import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { index, integer, primaryKey, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const profiles = sqliteTable("profiles", {
   userId: text("user_id").primaryKey(), email: text("email").notNull(), name: text("name"),
@@ -92,6 +92,21 @@ export const userJobAnalyses = sqliteTable("user_job_analyses", {
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
 }, t => [primaryKey({ columns: [t.userId, t.jobId] })]);
+
+/**
+ * Amostras anônimas de desempenho do portal. Não armazenam usuário, vaga,
+ * descrição ou URL; servem somente para calcular percentis operacionais.
+ */
+export const performanceSamples = sqliteTable("performance_samples", {
+  id: text("id").primaryKey(),
+  route: text("route").notNull(),
+  metric: text("metric").notNull(),
+  value: real("value").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+}, t => [
+  index("performance_samples_metric_created_idx").on(t.metric, t.createdAt),
+  index("performance_samples_created_idx").on(t.createdAt),
+]);
 
 /** Lote imutável de uma execução manual, agendada ou assistida. */
 export const triageBatches = sqliteTable("triage_batches", {

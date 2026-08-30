@@ -12,7 +12,8 @@
     "test": "npm run build && node --test tests/*.test.mjs",
     "test:rbac-integration": "node --experimental-strip-types --experimental-loader ./tests/helpers/cloudflare-workers-mock-loader.mjs --experimental-loader ./tests/helpers/db-index-mock-loader.mjs --test tests/*.itest.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
-    "db:generate": "drizzle-kit generate"
+    "db:generate": "drizzle-kit generate",
+    "audit:d1": "wrangler d1 execute radar-carreira-db --remote --file scripts/d1-query-plan-audit.sql"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",

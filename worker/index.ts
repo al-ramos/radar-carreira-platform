@@ -151,6 +151,13 @@ interface ExecutionContext {
 }
 
 const STALE_MANUAL_TRIAGE_MS = 2 * 60_000;
+const PERFORMANCE_RETENTION_MS = 30 * 24 * 36e5;
+
+async function purgeExpiredPerformanceSamples(env: Env, scheduledAt: number) {
+  const cutoff = scheduledAt - PERFORMANCE_RETENTION_MS;
+  const result = await env.DB.prepare("DELETE FROM performance_samples WHERE created_at < ?").bind(cutoff).run();
+  console.log(JSON.stringify({ event: "performance_retention", deleted: result.meta.changes, cutoff }));
+}
 
 /** Reenvia somente itens manuais sem progresso, sem tocar em reservas válidas. */
 async function recoverStalledManualTriage(env: Env) {
@@ -301,7 +308,7 @@ const worker = {
 
     return response;
   },
-  async scheduled(_controller: unknown, env: Env, ctx: ExecutionContext): Promise<void> {
+  async scheduled(controller: { scheduledTime: number }, env: Env, ctx: ExecutionContext): Promise<void> {
     ctx.waitUntil(recoverStalledManualTriage(env).catch(async (error) => {
       const now = Date.now();
       const detail = error instanceof Error ? error.message.slice(0, 500) : "Falha ao recuperar a fila manual";
@@ -314,6 +321,12 @@ const worker = {
     ctx.waitUntil(recoverPendingDrafts(env).catch((error) => {
       console.error(JSON.stringify({ event: "draft_recovery_failed", detail: error instanceof Error ? error.message.slice(0, 500) : "Falha ao retomar rascunhos" }));
     }));
+    const scheduledDate = new Date(controller.scheduledTime);
+    if (scheduledDate.getUTCHours() === 3 && scheduledDate.getUTCMinutes() < 2) {
+      ctx.waitUntil(purgeExpiredPerformanceSamples(env, controller.scheduledTime).catch((error) => {
+        console.error(JSON.stringify({ event: "performance_retention_failed", detail: error instanceof Error ? error.message.slice(0, 500) : "Falha ao limpar telemetria antiga" }));
+      }));
+    }
   },
   async queue(batch: { messages: QueueMessage[] }, env: Env, ctx: ExecutionContext): Promise<void> {
     for (const message of batch.messages) {

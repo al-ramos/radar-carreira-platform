@@ -1,8 +1,15 @@
 "use client";
 
-type MetricName = "ttfb" | "fcp" | "lcp" | "cls" | "inp";
+type MetricName =
+  | "ttfb" | "fcp" | "lcp" | "cls" | "inp"
+  | "jobs_api_duration" | "jobs_api_server" | "jobs_api_bytes"
+  | "jobs_meta_duration" | "jobs_meta_server" | "jobs_meta_bytes";
 const SAMPLE_RATE = 0.1;
-const allowed = new Set<MetricName>(["ttfb", "fcp", "lcp", "cls", "inp"]);
+const allowed = new Set<MetricName>([
+  "ttfb", "fcp", "lcp", "cls", "inp",
+  "jobs_api_duration", "jobs_api_server", "jobs_api_bytes",
+  "jobs_meta_duration", "jobs_meta_server", "jobs_meta_bytes",
+]);
 
 /** Mede uma amostra de sessões sem enviar vaga, descrição ou identificador. */
 export function observeRadarPerformance(route: "dashboard") {
@@ -30,6 +37,17 @@ export function observeRadarPerformance(route: "dashboard") {
   observe("event", (entry) => {
     const interaction = entry as PerformanceEntry & { duration?: number };
     if ((interaction.duration ?? 0) > 40) record("inp", Math.max(values.get("inp") ?? 0, interaction.duration ?? 0));
+  });
+  observe("resource", (entry) => {
+    const resource = entry as PerformanceResourceTiming;
+    const url = new URL(resource.name, window.location.href);
+    if (url.pathname !== "/api/jobs") return;
+    const prefix = url.searchParams.get("meta") === "only" ? "jobs_meta" : "jobs_api";
+    record(`${prefix}_duration` as MetricName, resource.duration);
+    record(`${prefix}_bytes` as MetricName, resource.transferSize || resource.encodedBodySize);
+    const timingName = prefix === "jobs_meta" ? "radar-job-options" : "radar-jobs";
+    const serverDuration = resource.serverTiming?.find((timing) => timing.name === timingName)?.duration;
+    if (typeof serverDuration === "number") record(`${prefix}_server` as MetricName, serverDuration);
   });
   let sent = false;
   const flush = () => {
