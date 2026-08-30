@@ -37,10 +37,11 @@ test("monitoramento calcula p75 e p95 em janelas limitadas", async () => {
 test("retenção e auditoria D1 são reproduzíveis", async () => {
   const [worker, audit] = await Promise.all([
     read("../worker/index.ts"),
-    read("../scripts/d1-query-plan-audit.sql"),
+    read("../scripts/audit-d1-query-plans.mjs"),
   ]);
   assert.match(worker, /PERFORMANCE_RETENTION_MS = 30/);
   assert.match(worker, /DELETE FROM performance_samples WHERE created_at < \?/);
   assert.match(audit, /EXPLAIN QUERY PLAN/);
-  assert.match(audit, /jobs_status_first_seen_idx|WHERE status = 'active'/);
+  assert.match(audit, /jobs_status_first_seen_idx/);
+  assert.match(audit, /performance_samples_created_idx/);
 });
