@@ -28,9 +28,9 @@ Portal multiusuário para reunir oportunidades, decidir quais vagas merecem aten
 
 > **Sincronização permanente:** toda mudança funcional relevante deve atualizar este README, a [visão completa do projeto](docs/visao-completa-do-projeto.md) e as páginas correspondentes no Notion na mesma entrega.
 
-## Estado publicado — 28 de agosto de 2026
+## Estado publicado — 30 de agosto de 2026
 
-> **Marco funcional:** commit [`d2af6b7`](https://github.com/al-ramos/radar-carreira-platform/commit/d2af6b7f5c7cfb15f75666f8f3cccb93622e46d3), validado e publicado pelo workflow [`33212195271`](https://github.com/al-ramos/radar-carreira-platform/actions/runs/33212195271). O histórico Git permanece como inventário cronológico; esta seção registra somente o estado consolidado, sem repetir cada commit.
+> **Marco funcional:** commit [`7e417c5`](https://github.com/al-ramos/radar-carreira-platform/commit/7e417c52f7c768632a09fa45e8c4d4144d7db901), validado e publicado pelo workflow [`33329470344`](https://github.com/al-ramos/radar-carreira-platform/actions/runs/33329470344). O histórico Git permanece como inventário cronológico; esta seção registra somente o estado consolidado, sem repetir cada commit.
 
 - A triagem abre por padrão nas vagas não analisadas, localiza também vagas arquivadas pelo código e mantém filtros, contadores e seleção no mesmo recorte.
 - Atalhos da triagem abrem a vaga correta no Radar, inclusive candidaturas e itens arquivados, sem que respostas antigas de busca sobrescrevam a navegação atual.
@@ -38,6 +38,7 @@ Portal multiusuário para reunir oportunidades, decidir quais vagas merecem aten
 - A aprovação automática respeita a região cadastrada e a pessoa proprietária pode desclassificar manualmente uma vaga, preservando o histórico e cancelando somente rascunhos ainda pendentes.
 - Toda aprovação `✅` com e-mail válido pode criar rascunho imediatamente. A recuperação agendada cobre pendências, decisões antigas, aprovações sem histórico e aprovações sem registro na outbox.
 - O Radar registra a abertura de candidatura no LinkedIn, permite limpar vagas possivelmente encerradas e simplifica a exclusão administrativa com rastreabilidade.
+- O Monitoramento mede uma amostra anônima de desempenho, mostra p75/p95 em 24 horas e 7 dias e remove as amostras após 30 dias; os planos D1 críticos são auditáveis por comando reproduzível.
 - Nenhuma dessas automações envia candidatura ou e-mail: a ação final continua sob controle da pessoa usuária.
 
 Trabalho concorrente deve usar publicação isolada e preservar alterações locais não relacionadas. Clones ou worktrees exclusivos de uma entrega só são removidos após confirmação da publicação e quando estiverem limpos.
@@ -64,6 +65,7 @@ Trabalho concorrente deve usar publicação isolada e preservar alterações loc
 - reconhece confirmações de candidatura recebidas do LinkedIn pelo Gmail, marca o acompanhamento como enviado e notifica somente na primeira transição;
 - registra notificações de importação, triagem e candidatura, com acesso direto aos relatórios operacionais;
 - centraliza importações, lotes de triagem e a agenda das automações no monitoramento, com heartbeats persistidos, alertas acionáveis, falhas, último sucesso e filtros por fluxo;
+- mede desempenho operacional anônimo (Web Vitals, lista de vagas e filtros), com p75/p95, retenção de 30 dias e auditoria dos índices D1;
 - envia um resumo diário por Gmail quando existem oportunidades acima do score mínimo;
 - registra análises elegíveis, importações, as vagas e causas de aceite/rejeição de cada lote, eventos, consumo de IA, qualidade dos dados e ciclo de vida das vagas.
 
@@ -176,11 +178,14 @@ npm test
 npm run test:rbac-integration
 npm run lint
 npm run db:generate
+npm run audit:d1
 ```
 
-`npm test` executa o build e a suíte regular, atualmente com **213 testes**, que combina regras de negócio com verificações estruturais do código. `npm run test:rbac-integration` executa **26 testes** chamando `can()` de `lib/rbac.ts` contra SQLite real em memória (`node:sqlite`), populado com as migrations `0010`/`0011`, usando loaders que simulam `cloudflare:workers` e o binding D1. A esteira executa as duas suítes; o ambiente oficial continua usando Node.js 22 e os loaders também são compatíveis com Node.js 24 no Windows.
+`npm test` executa o build e a suíte regular, atualmente com **216 testes**, que combina regras de negócio com verificações estruturais do código. `npm run test:rbac-integration` executa **26 testes** chamando `can()` de `lib/rbac.ts` contra SQLite real em memória (`node:sqlite`), populado com as migrations `0010`/`0011`, usando loaders que simulam `cloudflare:workers` e o binding D1. A esteira executa as duas suítes; o ambiente oficial continua usando Node.js 22 e os loaders também são compatíveis com Node.js 24 no Windows.
 
-Validação do escopo em 30/08/2026: **213 testes regulares + 26 testes de integração RBAC passando**; build concluído e lint sem erros, com 11 avisos preexistentes.
+`npm run audit:d1` executa somente `EXPLAIN QUERY PLAN` contra o D1 remoto e falha se os índices esperados não forem usados. Consulte [desempenho e observabilidade](docs/performance-observability.md) para as métricas coletadas, limites de privacidade, p75/p95, retenção e índices cobertos.
+
+Validação do escopo em 30/08/2026: **216 testes regulares + 26 testes de integração RBAC passando**; build concluído e lint sem erros, com 11 avisos preexistentes.
 
 ## Banco de dados
 
@@ -193,12 +198,12 @@ Principais grupos de tabelas:
 - acompanhamento: `user_job_status` e `user_job_analyses`;
 - triagem: `triage_batches`, `triage_history`, `triage_batch_items`, `triage_deduplication`, `triage_ai_reviews`, `triage_ai_review_chunks` e `job_ai_triage`;
 - candidatura assistida: `draft_outbox`;
-- inteligência: `job_ai_facts` e `ai_usage_events`;
+- inteligência e telemetria: `job_ai_facts`, `ai_usage_events` e `performance_samples`;
 - alertas: `alert_preferences`, `alert_reads` e `alert_deliveries`;
 - administração: `platform_settings` e `notifications`;
 - RBAC: `roles`, `permissions`, `role_permissions`, `groups`, `group_roles`, `user_roles`, `user_groups` e `access_audit_log`.
 
-O schema possui **34 tabelas**. Preferências, snapshots e resultados estruturados são armazenados como JSON textual quando apropriado para D1/SQLite. As chaves compostas e o `userId` isolam pipeline, análise, triagem e leitura por pessoa; leases, chaves de idempotência, heartbeats e outbox protegem e tornam observáveis os fluxos assíncronos.
+O schema possui **35 tabelas**. Preferências, snapshots e resultados estruturados são armazenados como JSON textual quando apropriado para D1/SQLite. As chaves compostas e o `userId` isolam pipeline, análise, triagem e leitura por pessoa; leases, chaves de idempotência, heartbeats, outbox e telemetria com retenção tornam observáveis os fluxos assíncronos.
 
 Cada projeto publicado no Sites possui seu próprio banco D1. Publicar o mesmo código em um novo endereço não transfere automaticamente vagas, perfis, fontes ou configurações do banco anterior.
 
