@@ -107,11 +107,11 @@ test("falha da API não exibe as quatro vagas demonstrativas", async () => {
 });
 
 test("a lista expõe telemetria de latência e registra falhas para observabilidade", async () => {
-  const [route, clientTelemetry, telemetryRoute, nextConfig] = await Promise.all([
+  const [route, clientTelemetry, telemetryRoute, assetRoute] = await Promise.all([
     read("../app/api/jobs/route.ts"),
     read("../lib/client-performance.ts"),
     read("../app/api/telemetry/performance/route.ts"),
-    read("../next.config.ts"),
+    read("../app/api/assets/radar-mark/route.ts"),
   ]);
   assert.match(route, /Server-Timing/);
   assert.match(route, /X-Radar-Jobs-Mode/);
@@ -121,8 +121,8 @@ test("a lista expõe telemetria de latência e registra falhas para observabilid
   assert.match(clientTelemetry, /largest-contentful-paint/);
   assert.match(clientTelemetry, /\/api\/telemetry\/performance/);
   assert.match(telemetryRoute, /event: "client_performance"/);
-  assert.match(nextConfig, /radar-mark\.svg/);
-  assert.match(nextConfig, /max-age=31536000, immutable/);
+  assert.match(assetRoute, /max-age=31536000, immutable/);
+  assert.match(assetRoute, /image\/svg\+xml/);
 });
 
 test("a página autenticada não renderiza o dashboard pesado no Worker", async () => {
