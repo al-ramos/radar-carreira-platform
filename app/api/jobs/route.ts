@@ -132,6 +132,7 @@ const requestedMinScore = minScoreParam !== null && Number.isFinite(Number(minSc
 ? Math.max(0, Math.min(100, Number(minScoreParam)))
 : 0;
 const pipelineFilter = degradedMode ? "all" : url.searchParams.get("pipeline") ?? "all";
+const priorityFilter = degradedMode ? "all" : url.searchParams.get("priority") ?? "all";
 // A tela principal é uma fila de nova análise. Por padrão, não voltamos a
 // apresentar vagas cujo e-mail já está em rascunho ou foi enviado; a pessoa
 // pode pedir explicitamente para incluí-las de novo.
@@ -254,6 +255,10 @@ const pipelineCondition = pipelineFilter === "all"
 : pipelineFilter === "unseen"
 ? pipelineIds.length ? notInArray(jobs.id, pipelineIds) : undefined
 : stageIds.length ? inArray(jobs.id, stageIds) : eq(jobs.id, "__nenhuma_vaga__");
+const priorityIds = pipeline.filter((item) => item.priority === priorityFilter).map((item) => item.jobId);
+const priorityCondition = priorityFilter === "all"
+? undefined
+: priorityIds.length ? inArray(jobs.id, priorityIds) : eq(jobs.id, "__nenhuma_vaga__");
 // O cálculo completo (materializar até MAX_AFFINITY_CANDIDATES, pontuar,
 // ordenar e só então paginar) é necessário sempre que o resultado exibido
 // depende do score — inclusive na ordenação padrão "Pontuação" (sort===
@@ -292,7 +297,7 @@ const affinityCandidateCondition = minScore > BASE_TECH_SCORE
 // vagas ativas pelo receivedInPeriodCondition.
 const condition = requestedJobId
 ? eq(jobs.id, requestedJobId)
-: and(exactSourceCondition, roleAreaCondition, channelCondition, importRunCondition, seniorityCondition, searchCondition, pipelineCondition, applicationVisibilityCondition, affinityCandidateCondition);
+: and(exactSourceCondition, roleAreaCondition, channelCondition, importRunCondition, seniorityCondition, searchCondition, pipelineCondition, priorityCondition, applicationVisibilityCondition, affinityCandidateCondition);
 // Importações antigas podem referenciar um UUID que não sobreviveu na tabela
 // de fontes. Nunca exponha esse identificador interno no Radar: recupera o
 // nome registrado na importação e, para os conectores conhecidos, usa a URL.
@@ -500,6 +505,7 @@ const totalCount = requiresPostFiltering
 : Number(eligibleTotals[0]?.total ?? 0);
 const pageRows = requiresPostFiltering ? filtered.slice(offset, offset + limit) : filtered;
 const applicationStatusByJobId = new Map(pipeline.map((item) => [item.jobId, item.applicationStatus]));
+const priorityByJobId = new Map(pipeline.map((item) => [item.jobId, item.priority]));
 const result = pageRows.map(({ job, stack, score, reasons, scored }) => ({
 ...job,
 description: "",
@@ -511,6 +517,7 @@ scored,
 // triagem. A interface só pode exibir uma nota após uma triagem auditável.
 triaged: Boolean(job.triageHistoryId),
 applicationStatus: applicationStatusByJobId.get(job.id) ?? null,
+priority: priorityByJobId.get(job.id) ?? null,
 }));
 
 const totalLinkedIn = Number(sourceTotals[0]?.linkedIn ?? 0);

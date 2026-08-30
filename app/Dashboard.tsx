@@ -30,6 +30,7 @@ import { normalizeContactEmail } from "../lib/jobs";
 import { AUTOMATIC_ACTION_STAGE, resolveAutomaticStage } from "../lib/pipeline-stage";
 import { observeRadarPerformance } from "../lib/client-performance";
 type ApplicationStatus = "opened" | "generated" | "sent" | "responded";
+type JobPriority = "must_apply" | "high" | "watch";
 type ReviewVisibility = "pending" | "all";
 type Job = {
   id: string;
@@ -60,6 +61,7 @@ type Job = {
   reasons: string[];
   stage: string;
   applicationStatus?: ApplicationStatus;
+  priority?: JobPriority | null;
 };
 type ApiJob = {
   id: string;
@@ -87,6 +89,7 @@ type ApiJob = {
   stack?: string[];
   reasons?: string[];
   applicationStatus?: ApplicationStatus | null;
+  priority?: JobPriority | null;
 };
 type JobIntelligence = {
   facts: {
@@ -100,6 +103,7 @@ type PipelineJob = ApiJob & {
   stage: string;
   note?: string;
   applicationStatus?: ApplicationStatus;
+  priority?: JobPriority | null;
   generatedAt?: string;
   sentAt?: string;
   respondedAt?: string;
@@ -705,6 +709,7 @@ export default function Dashboard() {
   const [pipelineFilter, setPipelineFilter] = useState<"all"|"unseen"|"viewed"|"saved"|"applied"|"interview"|"rejected">(() => {
     try { return (sessionStorage.getItem("radar_pipelineFilter") as "all"|"unseen"|"viewed"|"saved"|"applied"|"interview"|"rejected") ?? "all"; } catch { return "all"; }
   });
+  const [priorityFilter, setPriorityFilter] = useState<"all" | JobPriority>("all");
   const [verdictFilter, setVerdictFilter] = useState<"all"|"✅"|"🟡"|"🔴"|"❌">(() => {
     try { return (sessionStorage.getItem("radar_verdictFilter") as "all"|"✅"|"🟡"|"🔴"|"❌") ?? "all"; } catch { return "all"; }
   });
@@ -856,11 +861,12 @@ export default function Dashboard() {
       // sozinha, disparando de novo a busca completa em loop infinito.
       if (requestedMinScore > 0) params.set("minScore", String(requestedMinScore));
       if (pipelineFilter !== "all") params.set("pipeline", pipelineFilter);
+      if (priorityFilter !== "all") params.set("priority", priorityFilter);
       if (verdictFilter !== "all") params.set("verdict", verdictFilter);
       params.set("sort", sortOrder === "recent" ? "imported" : "score");
       return params.toString();
     },
-    [focusedJobId, effectivePeriod, sourceFilter, areaFilter, channelFilter, importRunFilter, ingestionMode, receivedFrom, receivedTo, hasEmailFilter, reviewVisibility, debouncedQuery, requestedMinScore, pipelineFilter, verdictFilter, sortOrder],
+    [focusedJobId, effectivePeriod, sourceFilter, areaFilter, channelFilter, importRunFilter, ingestionMode, receivedFrom, receivedTo, hasEmailFilter, reviewVisibility, debouncedQuery, requestedMinScore, pipelineFilter, priorityFilter, verdictFilter, sortOrder],
   );
   // A lista é o caminho crítico de abertura do Radar. As opções de filtros
   // (fontes, áreas, canais e importações) chegam logo em seguida em uma
@@ -1943,6 +1949,23 @@ export default function Dashboard() {
     } catch (error) {
       if (previous) setPipelineItems((current) => current.map((item) => item.id === jobId ? previous : item));
       setMessage(error instanceof Error ? error.message : "Não foi possível atualizar o pipeline.");
+    }
+  }
+  async function setJobPriority(job: Job, priority: JobPriority | null) {
+    const previous = pipelineItems.find((item) => item.id === job.id);
+    const stage = previous?.stage ?? "viewed";
+    setPipelineItems((current) => {
+      const exists = current.some((item) => item.id === job.id);
+      return exists ? current.map((item) => item.id === job.id ? { ...item, priority } : item) : [...current, { ...job, stage, priority } as PipelineJob];
+    });
+    try {
+      const response = await fetch("/api/pipeline", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jobId: job.id, stage, priority }) });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(data?.error ?? "Não foi possível salvar a prioridade.");
+      setMessage(priority === "must_apply" ? "Marcada como imperdível." : priority === "high" ? "Marcada como boa oportunidade." : priority === "watch" ? "Marcada para acompanhar." : "Prioridade removida.");
+    } catch (error) {
+      setPipelineItems((current) => previous ? current.map((item) => item.id === job.id ? previous : item) : current.filter((item) => item.id !== job.id));
+      setMessage(error instanceof Error ? error.message : "Não foi possível salvar a prioridade.");
     }
   }
   async function removeFromPipeline(jobId: string) {
@@ -3059,6 +3082,12 @@ export default function Dashboard() {
                   <option value="pending">Pendentes de nova análise</option>
                   <option value="all">Incluir rascunhos e enviadas</option>
                 </select>
+                <select className="pipeline-filter-select" value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value as "all" | JobPriority)} aria-label="Filtrar por prioridade pessoal">
+                  <option value="all">Todas as prioridades</option>
+                  <option value="must_apply">🔥 Imperdíveis</option>
+                  <option value="high">⭐ Boas oportunidades</option>
+                  <option value="watch">👀 Acompanhar</option>
+                </select>
               </div>
             </div>
             <div className="compact-filter-group contact-filter-group">
@@ -3514,6 +3543,15 @@ export default function Dashboard() {
                       </span>
                     )}
                   </div>
+                  <label className="job-priority-control" onClick={(event) => event.stopPropagation()}>
+                    <span>Minha prioridade</span>
+                    <select value={pipelineItems.find((item) => item.id === j.id)?.priority ?? ""} onChange={(event) => setJobPriority(j, (event.target.value || null) as JobPriority | null)} aria-label={`Prioridade pessoal para ${j.title}`}>
+                      <option value="">Sem prioridade</option>
+                      <option value="must_apply">🔥 Imperdível</option>
+                      <option value="high">⭐ Boa oportunidade</option>
+                      <option value="watch">👀 Acompanhar</option>
+                    </select>
+                  </label>
                 </div>
                 <div className="share-wrap" onClick={(e) => e.stopPropagation()}>
                   <button
