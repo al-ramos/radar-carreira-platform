@@ -39,10 +39,11 @@ const metadataMode = url.searchParams.get("meta") === "only"
   ? "only"
   : url.searchParams.get("meta") === "none" ? "none" : "full";
 const requestedJobId = (url.searchParams.get("jobId") ?? "").trim();
+const requestedExternalCode = (url.searchParams.get("code") ?? "").trim();
 // Abrir uma vaga pelo histórico não precisa recalcular os totais, fontes e
 // opções da Home inteira. Essas agregações podem ultrapassar o limite do
 // Worker justamente quando a pessoa só quer consultar uma única vaga antiga.
-if (requestedJobId) {
+if (requestedJobId || requestedExternalCode) {
   const user = degradedMode ? null : await getChatGPTUser();
   const directJob = await getDb().select({
     id: jobs.id,
@@ -73,7 +74,8 @@ if (requestedJobId) {
     )`,
   }).from(jobs)
     .leftJoin(jobSources, eq(jobs.sourceId, jobSources.id))
-    .where(eq(jobs.id, requestedJobId))
+    .where(requestedJobId ? eq(jobs.id, requestedJobId) : eq(jobs.externalId, requestedExternalCode))
+    .orderBy(desc(jobs.firstSeenAt), desc(jobs.createdAt))
     .limit(1)
     .then((rows) => rows[0] ?? null);
   if (!directJob) return NextResponse.json({ jobs: [], total: 0, mode: "database", degraded: degradedMode });

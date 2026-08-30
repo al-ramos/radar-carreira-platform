@@ -210,6 +210,10 @@ function canRetryJobsError(error: JobsFetchError) {
   return error.kind === "transient" || error.kind === "rate_limited";
 }
 
+// Códigos de fonte (APInfo, LinkedIn e similares) identificam uma única vaga
+// e não precisam acionar a listagem completa, que inclui agregações e score.
+const isExternalJobCode = (value: string) => /^\d{4,}$/.test(value);
+
 async function fetchJobsWithRetry(url: string, signal: AbortSignal) {
   let lastError: JobsFetchError | undefined;
   for (let attempt = 0; attempt < JOBS_FETCH_ATTEMPTS; attempt += 1) {
@@ -840,7 +844,10 @@ export default function Dashboard() {
       if (receivedTo) params.set("receivedTo", new Date(receivedTo).toISOString());
       if (hasEmailFilter !== "all") params.set("hasEmail", hasEmailFilter);
       params.set("reviewVisibility", reviewVisibility);
-      if (debouncedQuery) params.set("q", debouncedQuery);
+      if (debouncedQuery) {
+        if (isExternalJobCode(debouncedQuery)) params.set("code", debouncedQuery);
+        else params.set("q", debouncedQuery);
+      }
       // Sempre pedimos o filtro que a pessoa escolheu, mesmo vindo de uma
       // resposta simplificada — quem decide se o pedido é atendido é o
       // servidor (via fetchJobsWithRetry + fallback ?degraded=1), não o

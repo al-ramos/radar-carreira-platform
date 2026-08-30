@@ -10,10 +10,15 @@ test("atalho da triagem abre a vaga pelo identificador interno exato", async () 
 
   assert.match(dashboard, /const \[focusedJobId, setFocusedJobId\] = useState<string \| null>\(null\)/);
   assert.match(dashboard, /if \(focusedJobId\) params\.set\("jobId", focusedJobId\)/);
+  assert.match(dashboard, /isExternalJobCode/);
+  assert.match(dashboard, /params\.set\("code", debouncedQuery\)/);
   assert.match(dashboard, /setFocusedJobId\(job\.jobId\)/);
   assert.match(dashboard, /focusedJobId === j\.id/);
   assert.match(jobsRoute, /const requestedJobId = \(url\.searchParams\.get\("jobId"\) \?\? ""\)\.trim\(\)/);
-  assert.match(jobsRoute, /if \(requestedJobId\) \{[\s\S]*?X-Radar-Jobs-Mode": "direct"/);
+  assert.match(jobsRoute, /const requestedExternalCode = \(url\.searchParams\.get\("code"\) \?\? ""\)\.trim\(\)/);
+  assert.match(jobsRoute, /if \(requestedJobId \|\| requestedExternalCode\)/);
+  assert.match(jobsRoute, /eq\(jobs\.externalId, requestedExternalCode\)/);
+  assert.match(jobsRoute, /if \(requestedJobId \|\| requestedExternalCode\) \{[\s\S]*?X-Radar-Jobs-Mode": "direct"/);
   assert.match(jobsRoute, /filterOptions: \{ sources: \[\], areas: \[\], channels: \[\], importRuns: \[\] \}/);
   assert.match(jobsRoute, /const condition = requestedJobId[\s\S]*eq\(jobs\.id, requestedJobId\)/);
   assert.doesNotMatch(jobsRoute, /requestedJobId[\s\S]{0,120}eq\(jobs\.status, "active"\)/);
