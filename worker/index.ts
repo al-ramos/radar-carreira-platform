@@ -93,13 +93,22 @@ function codexMcpServer(env: Env) {
   });
   server.registerTool("concluir_analise_preparada", {
     title: "Concluir análise preparada do Radar",
-    description: "Marca uma análise preparada como concluída depois que a resposta foi entregue ao usuário. Não grava a conversa nem altera qualquer dado de vaga.",
+    description: "Marca uma análise preparada como concluída depois que a resposta foi entregue ao usuário e registra a conclusão no sino do Radar. Não grava a conversa nem altera qualquer dado de vaga.",
     inputSchema: { id: z.string().uuid().describe("Identificador retornado por abrir_analise_preparada.") },
     annotations: { readOnlyHint: false },
   }, async ({ id }) => {
     const userId = await ownerUserId(env.DB);
     if (!userId) return text({ error: "Perfil da proprietária não encontrado." });
-    const result = await env.DB.prepare("UPDATE triage_ai_reviews SET codex_status = 'completed', codex_completed_at = ? WHERE id = ? AND user_id = ? AND destination = 'codex' AND codex_status IN ('pending', 'claimed')").bind(Date.now(), id, userId).run();
+    const item = await env.DB.prepare("SELECT selection FROM triage_ai_reviews WHERE id = ? AND user_id = ? AND destination = 'codex' AND codex_status IN ('pending', 'claimed') LIMIT 1").bind(id, userId).first<{ selection: string }>();
+    const completedAt = Date.now();
+    const result = await env.DB.prepare("UPDATE triage_ai_reviews SET codex_status = 'completed', codex_completed_at = ? WHERE id = ? AND user_id = ? AND destination = 'codex' AND codex_status IN ('pending', 'claimed')").bind(completedAt, id, userId).run();
+    if (result.meta.changes && item) {
+      const selection = JSON.parse(item.selection) as { jobs?: unknown[] };
+      const jobs = selection.jobs?.length ?? 0;
+      await env.DB.prepare("INSERT INTO notifications (id, type, severity, title, body, link, metadata, read, created_at) VALUES (?, 'triage', 'success', ?, ?, '/?open=triagem', ?, 0, ?)")
+        .bind(crypto.randomUUID(), "Triagem pelo Codex concluída", `${jobs} vaga${jobs === 1 ? "" : "s"} analisada${jobs === 1 ? "" : "s"} · resultado entregue nesta conversa`, JSON.stringify({ reviewId: id, source: "codex", jobs }), completedAt)
+        .run();
+    }
     return text({ id, status: result.meta.changes ? "completed" : "not_found_or_already_completed" });
   });
   return server;

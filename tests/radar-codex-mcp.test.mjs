@@ -13,6 +13,9 @@ test("MCP do Radar expõe apenas ferramentas da fila privada do Codex", async ()
   assert.match(worker, /listar_analises_pendentes/);
   assert.match(worker, /abrir_analise_preparada/);
   assert.match(worker, /concluir_analise_preparada/);
+  assert.match(worker, /Triagem pelo Codex concluída/);
+  assert.match(worker, /INSERT INTO notifications/);
+  assert.match(worker, /reviewId/);
   assert.doesNotMatch(worker, /registerTool\("executar_sql/);
   assert.match(packageJson, /@modelcontextprotocol\/sdk/);
 });

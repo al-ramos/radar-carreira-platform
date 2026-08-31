@@ -231,6 +231,8 @@ O fluxo de decisão possui quatro caminhos:
 3. **Codex:** o portal congela o perfil e o pedido em uma fila privada, acessível pelo MCP do Radar. Seleções maiores são enviadas automaticamente em lotes sequenciais de até 50 vagas, respeitando o teto técnico de cada registro.
 4. **CSV externo:** a administração pode reimportar até 2.000 vereditos por código externo. No histórico, as vagas selecionadas também podem ser baixadas em CSV com código, título, status atual e descrição do status.
 
+No computador que executa o Codex, configure uma vez o MCP privado com `codex mcp add radar-carreira --url https://radar-carreira-platform.al-ramos.workers.dev/mcp/radar --bearer-token-env-var RADAR_CODEX_MCP_TOKEN` e reinicie o Codex. Depois de preparar vagas no portal, o pedido **“Analise todas as triagens pendentes preparadas para o Codex”** abre a fila; ao concluir cada recorte, o sino registra **Triagem pelo Codex concluída**.
+
 Quando a pessoa confirma um resultado da IA, do Codex ou do CSV, ele vira o veredito oficial e entra na mesma trilha de histórico. Para liberar um rascunho, o servidor exige `✅` e contato válido. No LinkedIn, o e-mail explícito também é obrigatório; `🟡` permanece para revisão humana.
 
 ### Automação e segurança
