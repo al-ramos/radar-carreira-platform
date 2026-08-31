@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 
 const digest = async (value: string) => Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)))).map((byte) => byte.toString(16).padStart(2, "0")).join("");
 const list = (value: string) => { try { const parsed: unknown = JSON.parse(value); return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : []; } catch { return []; } };
-const CONNECTOR_VERSION = "radar-drafts-v2";
+const CONNECTOR_VERSION = "radar-drafts-v3-auto-send";
 const subjectFor = (item: { draftSubject: string | null; contactSubject: string | null; title: string; externalId: string | null }) =>
   item.draftSubject?.trim() || item.contactSubject?.trim() || `Candidatura — ${item.title}${item.externalId ? ` (vaga ${item.externalId})` : ""}`;
 const parseSentAt = (value: unknown) => {
@@ -31,9 +31,9 @@ async function authenticate(request: Request) {
 }
 
 /**
- * Ponte segura para o Apps Script: prepara somente itens já enfileirados e
- * não tem nenhuma operação de envio. O Gmail cria
- * ou reutiliza o rascunho e chama `confirm` para fechar a outbox.
+ * Ponte segura para o Apps Script: prepara somente itens já enfileirados. O
+ * Gmail cria ou reutiliza o rascunho, chama `confirm` e somente então pode
+ * enviá-lo; `reconcileSent` exige a evidência da mensagem efetivamente enviada.
  */
 export async function POST(request: Request) {
   const owner = await authenticate(request);
@@ -49,7 +49,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Conector Gmail desatualizado. Atualize o arquivo gmail-radarvagas.gs antes de criar rascunhos." }, { status: 409 });
   }
 
-  if (body.action === "health") return NextResponse.json({ ok: true, connectorVersion: CONNECTOR_VERSION, sent: false });
+  if (body.action === "health") return NextResponse.json({ ok: true, connectorVersion: CONNECTOR_VERSION, automaticSend: true });
 
   // O conector consulta somente itens que o próprio Radar já confirmou como
   // rascunhos. Isso permite detectar uma exclusão ou perda no Gmail e colocar
@@ -163,12 +163,17 @@ export async function POST(request: Request) {
     if (!body.outboxId) return NextResponse.json({ error: "Identificador da fila obrigatório" }, { status: 400 });
     const item = (await db.select().from(draftOutbox).where(and(eq(draftOutbox.id, body.outboxId), eq(draftOutbox.userId, owner.userId))).limit(1))[0];
     if (!item) return NextResponse.json({ error: "Item da fila não encontrado" }, { status: 404 });
-    if (item.status === "drafted" || item.status === "sent") return NextResponse.json({ ok: true, changed: false, status: item.status });
+    if (item.status === "sent") return NextResponse.json({ ok: true, changed: false, status: item.status });
+    if (body.action === "confirm" && item.status === "drafted") return NextResponse.json({ ok: true, changed: false, status: item.status });
     if (body.action === "confirm") {
       if (!body.gmailDraftId) return NextResponse.json({ error: "Identificador do rascunho Gmail obrigatório" }, { status: 400 });
       const linkedDraft = await db.select({ id: draftOutbox.id }).from(draftOutbox).where(and(eq(draftOutbox.gmailDraftId, body.gmailDraftId), ne(draftOutbox.id, item.id))).limit(1).then((rows) => rows[0]);
       if (linkedDraft) return NextResponse.json({ error: "Este rascunho do Gmail já está vinculado a outra vaga; a vinculação duplicada foi bloqueada." }, { status: 409 });
       await db.update(draftOutbox).set({ status: "drafted", gmailDraftId: body.gmailDraftId, gmailThreadId: body.gmailThreadId?.slice(0, 500) || null, draftSubject: body.subject?.trim().slice(0, 500) || null, error: null, updatedAt: new Date() }).where(eq(draftOutbox.id, item.id));
+      return NextResponse.json({ ok: true, changed: true, status: "drafted" });
+    }
+    if (item.status === "drafted") {
+      await db.update(draftOutbox).set({ error: (body.error ?? "Falha ao enviar automaticamente o rascunho").slice(0, 1000), updatedAt: new Date() }).where(eq(draftOutbox.id, item.id));
       return NextResponse.json({ ok: true, changed: true, status: "drafted" });
     }
     await db.update(draftOutbox).set({ status: "failed", error: (body.error ?? "Falha ao criar rascunho").slice(0, 1000), updatedAt: new Date() }).where(eq(draftOutbox.id, item.id));
@@ -186,6 +191,7 @@ export async function POST(request: Request) {
     : eq(draftOutbox.status, "pending");
   const rows = await db.select({
     outboxId: draftOutbox.id,
+    autoSendAuthorized: draftOutbox.autoSendAuthorized,
     jobId: jobs.id,
     sourceId: jobs.sourceId,
     title: jobs.title,
@@ -210,7 +216,7 @@ export async function POST(request: Request) {
     .where(and(eq(draftOutbox.userId, owner.userId), eligibleOutboxStatus, requestedOutboxIds ? inArray(draftOutbox.id, requestedOutboxIds) : undefined))
     .limit(limit);
 
-  const drafts: Array<{ outboxId: string; to: string; subject: string; body: string }> = [];
+  const drafts: Array<{ outboxId: string; to: string; subject: string; body: string; autoSendAuthorized: boolean }> = [];
   for (const row of rows) {
     const safe = isSafeForDraft({ verdict: row.analysisVerdict, contactEmail: row.contactEmail, sourceId: row.sourceId });
     if (!safe) {
@@ -226,7 +232,8 @@ export async function POST(request: Request) {
       to: row.contactEmail!.trim().toLowerCase(),
       subject,
       body: buildApinfoApplicationEmail({ title: row.title, company: row.company, externalId: row.externalId ?? undefined, matchingSkills: list(row.matchingSkills), missingSkills: list(row.missingSkills), seniority: canonicalProfile.seniority, careerRules: canonicalProfile.careerRules }),
+      autoSendAuthorized: row.autoSendAuthorized,
     });
   }
-  return NextResponse.json({ drafts, scanned: rows.length, hasMore: rows.length === limit, connectorVersion: CONNECTOR_VERSION, sent: false });
+  return NextResponse.json({ drafts, scanned: rows.length, hasMore: rows.length === limit, connectorVersion: CONNECTOR_VERSION, automaticSendAuthorized: true });
 }

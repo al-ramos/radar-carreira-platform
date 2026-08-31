@@ -18,7 +18,7 @@ Este documento contém apenas verificações ainda pendentes ou recorrentes. O e
 - Confirmar que coleta, triagem, filas, DLQs e criação de rascunhos exibem última execução, próxima execução, totais, falhas e motivo acionável.
 - Exercitar a restauração do backup sempre que migrations alterarem dados de triagem, histórico, outbox ou candidaturas.
 - Auditar RBAC ponta a ponta antes de ampliar funções administrativas ou permitir múltiplos operadores.
-- Verificar que nenhuma automação cria candidatura, envia e-mail ou envia rascunho sem ação explícita da pessoa usuária.
+- Verificar que o envio automático permanece restrito à autorização explícita registrada, a veredito `✅`, contato válido e outbox confirmada.
 - Validar a recuperação de aprovações `✅` sem histórico ou sem outbox e confirmar que a idempotência impede rascunhos duplicados.
 
 ### P1 — integrações críticas

@@ -4,7 +4,7 @@ import test from "node:test";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
-test("envio manual é reconciliado por evidência do Gmail sem autorizar envio automático", async () => {
+test("todo envio é reconciliado por evidência do Gmail e a reconciliação isolada não envia mensagens", async () => {
   const [schema, migration, threadMigration, integrityMigration, route, script, screen] = await Promise.all([
     read("../db/schema.ts"),
     read("../drizzle/0028_draft_outbox_sent_tracking.sql"),
@@ -49,6 +49,7 @@ test("envio manual é reconciliado por evidência do Gmail sem autorizar envio a
   assert.match(script, /action:'reconcileSent'/);
   assert.match(script, /isDraft:message\.isDraft\(\)/);
   assert.match(script, /payload\.action === 'reconcileSent'/);
+  assert.match(script, /const sentMessage = draft\.send\(\)/);
   const reconciliation = script.split("function reconciliarEnviosManuaisRadar")[1];
   assert.doesNotMatch(reconciliation, /GmailApp\.sendEmail|GmailApp\.createDraft/);
   const scheduledReconciliation = script.split("function reconciliarEnviosAgendadosRadar")[1];
@@ -56,7 +57,7 @@ test("envio manual é reconciliado por evidência do Gmail sem autorizar envio a
   assert.match(screen, /"Envio"/);
   assert.match(screen, /envios registrados/);
   assert.match(screen, /Envio informado manualmente/);
-  assert.match(screen, /Ainda não enviado/);
+  assert.match(screen, /Envio não confirmado/);
   assert.match(screen, /Atualizar envio/);
   assert.match(screen, /Confirmar envio/);
   assert.match(screen, /O Gmail ainda não localizou esta mensagem\. Você confirma que já a enviou\?/);
@@ -65,5 +66,5 @@ test("envio manual é reconciliado por evidência do Gmail sem autorizar envio a
   assert.match(queueRoute, /action === "confirmSent"/);
   assert.match(queueRoute, /Somente um rascunho pronto pode ser confirmado como enviado/);
   assert.match(screen, /Tentar novamente/);
-  assert.match(screen, /não há agendamento/);
+  assert.match(screen, /envia automaticamente/);
 });

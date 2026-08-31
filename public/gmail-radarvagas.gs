@@ -45,7 +45,7 @@ function instalarColetaDiaria() {
   ScriptApp.newTrigger('importarRadarVagas').timeBased().everyDays(1).atHour(8).create();
 }
 
-const RADAR_DRAFT_CONNECTOR_VERSION = 'radar-drafts-v2';
+const RADAR_DRAFT_CONNECTOR_VERSION = 'radar-drafts-v3-auto-send';
 const RADAR_SENT_RECONCILIATION_HANDLER = 'reconciliarEnviosAgendadosRadar';
 const RADAR_DRAFT_RECOVERY_HANDLER = 'executarRascunhosPendentesRadar';
 const RADAR_CV_FILE_PROPERTY = 'RADAR_CV_FILE_ID';
@@ -86,13 +86,15 @@ function optionsComCurriculoEAssinaturaRadar(body) {
   };
 }
 
-// Executa manualmente ou por gatilho. Nunca envia mensagens: apenas cria ou
-// reaproveita rascunhos que já foram aprovados e enfileirados pelo Radar.
+// Cria ou reaproveita rascunhos que já foram aprovados e enfileirados pelo
+// Radar. Quando autoSend=true, envia o rascunho somente depois de o Radar
+// confirmar a vinculação do ID Gmail à vaga; isso impede envio sem outbox.
 function criarRascunhosRadar(options) {
   const secret = PropertiesService.getScriptProperties().getProperty('RADAR_SECRET');
   if (!secret) throw new Error('Configure RADAR_SECRET nas propriedades do script.');
   const outboxIds = options && Array.isArray(options.outboxIds) ? options.outboxIds.filter(id => typeof id === 'string' && id) : null;
-  let processed = 0, scanned = 0;
+  const autoSend = Boolean(options && options.autoSend);
+  let processed = 0, sent = 0, scanned = 0;
   // 10 lotes de 10 cobrem com margem a rotina diária e preservam o limite
   // por chamada. Itens que deixaram de ser seguros são cancelados pelo Radar.
   for (let batch = 0; batch < 10; batch += 1) {
@@ -118,6 +120,14 @@ function criarRascunhosRadar(options) {
         const confirm = confirmarRascunhoRadar(secret, item.outboxId, draft.getId(), item.subject, gmailThreadId);
         if (confirm.getResponseCode() >= 300) throw new Error(confirm.getContentText());
         processed += 1;
+        if (autoSend && item.autoSendAuthorized === true) {
+          const sentMessage = draft.send();
+          const sentConfirmation = confirmarEnvioAutomaticoRadar(secret, item, sentMessage);
+          if (sentConfirmation.getResponseCode() >= 300) {
+            throw new Error(`Mensagem enviada, mas o Radar ainda não confirmou o envio: ${sentConfirmation.getContentText()}`);
+          }
+          sent += 1;
+        }
       } catch (error) {
         registrarFalhaRascunhoRadar(secret, item.outboxId, String(error));
       }
@@ -125,12 +135,13 @@ function criarRascunhosRadar(options) {
     scanned += payload.scanned || 0;
     if (!payload.hasMore) break;
   }
-  console.log(`Rascunhos processados: ${processed}; itens verificados: ${scanned}. Nenhum e-mail foi enviado.`);
-  return { processed: processed, scanned: scanned };
+  console.log(`Rascunhos processados: ${processed}; e-mails enviados automaticamente: ${sent}; itens verificados: ${scanned}.`);
+  return { processed: processed, sent: sent, scanned: scanned };
 }
 
-// Web App autenticado pelo mesmo segredo do conector. O Radar chama somente
-// ações avulsas: criar rascunho ou confirmar um envio já realizado.
+// Web App autenticado pelo mesmo segredo do conector. A ação prioritizeDrafts
+// recebeu autorização explícita para criar e enviar novas candidaturas
+// elegíveis; reconcileSent continua apenas conferindo envios já realizados.
 function doPost(event) {
   try {
     const payload = JSON.parse(event && event.postData && event.postData.contents || '{}');
@@ -139,8 +150,8 @@ function doPost(event) {
     if (payload.action === 'health') return responderWebhookRadar({ ok:true, connectorVersion:RADAR_DRAFT_CONNECTOR_VERSION });
     if (!Array.isArray(payload.outboxIds) || !payload.outboxIds.length) return responderWebhookRadar({ ok:false, error:'Selecione ao menos um rascunho.' });
     if (payload.action === 'prioritizeDrafts') {
-      const result = criarRascunhosRadar({ outboxIds: payload.outboxIds });
-      return responderWebhookRadar({ ok:true, created: result.processed, scanned: result.scanned });
+      const result = criarRascunhosRadar({ outboxIds: payload.outboxIds, autoSend:true });
+      return responderWebhookRadar({ ok:true, created: result.processed, sent: result.sent, scanned: result.scanned });
     }
     if (payload.action === 'reconcileSent') return responderWebhookRadar({ ok:true, confirmed: reconciliarEnviosManuaisRadar({ outboxIds: payload.outboxIds }) });
     return responderWebhookRadar({ ok:false, error:'Ação de prioridade inválida' });
@@ -169,14 +180,14 @@ function verificarConectorRascunhosRadar() {
 }
 
 // A recuperação automática é a segunda camada de segurança: a chamada do
-// Radar continua sendo imediata; este gatilho só retoma pendências e detecta
-// rascunhos que tenham sumido da pasta do Gmail. Nunca envia mensagens.
+// Radar continua sendo imediata; este gatilho retoma candidaturas elegíveis
+// que ainda não chegaram ao estado sent e reconcilia a outbox.
 function instalarAutomacaoRascunhosRadar() {
   ScriptApp.getProjectTriggers()
     .filter(trigger => trigger.getHandlerFunction() === RADAR_DRAFT_RECOVERY_HANDLER)
     .forEach(trigger => ScriptApp.deleteTrigger(trigger));
   ScriptApp.newTrigger(RADAR_DRAFT_RECOVERY_HANDLER).timeBased().everyMinutes(5).create();
-  console.log('Recuperação automática de rascunhos instalada: a cada 5 minutos. Nenhum e-mail será enviado.');
+  console.log('Recuperação automática instalada: a cada 5 minutos, com envio das novas candidaturas elegíveis.');
 }
 
 // Remove apenas o gatilho de recuperação de rascunhos; a criação imediata via
@@ -189,9 +200,9 @@ function removerAgendamentoRascunhosRadar() {
 
 function executarRascunhosPendentesRadar() {
   const missing = reconciliarRascunhosRadar();
-  criarRascunhosRadar();
+  const automatic = criarRascunhosRadar({ autoSend:true });
   const sent = reconciliarEnviosManuaisRadar();
-  console.log(`Recuperação de rascunhos concluída: ${missing} rascunho(s) ausente(s), ${sent} envio(s) confirmado(s). Nenhum e-mail foi enviado.`);
+  console.log(`Recuperação concluída: ${missing} rascunho(s) ausente(s), ${automatic.sent} e-mail(s) enviado(s) automaticamente e ${sent} envio(s) reconciliado(s).`);
 }
 
 // Confere os IDs de rascunhos que o Radar já recebeu do Gmail. Um item ausente
@@ -248,6 +259,17 @@ function confirmarRascunhoRadar(secret, outboxId, gmailDraftId, subject, gmailTh
   return UrlFetchApp.fetch(`${radarUrl()}/api/cron/drafts`, {
     method:'post',contentType:'application/json',headers:{Authorization:`Bearer ${secret}`},
     payload:JSON.stringify({action:'confirm',outboxId:outboxId,gmailDraftId:gmailDraftId,gmailThreadId:gmailThreadId,subject:subject}),muteHttpExceptions:true
+  });
+}
+
+function confirmarEnvioAutomaticoRadar(secret, item, message) {
+  return UrlFetchApp.fetch(`${radarUrl()}/api/cron/drafts`, {
+    method:'post',contentType:'application/json',headers:{Authorization:`Bearer ${secret}`},
+    payload:JSON.stringify({
+      action:'reconcileSent',outboxId:item.outboxId,gmailSentId:message.getId(),
+      to:item.to,subject:message.getSubject(),gmailThreadId:message.getThread().getId(),sentAt:message.getDate().toISOString(),isDraft:message.isDraft(),
+      connectorVersion:RADAR_DRAFT_CONNECTOR_VERSION
+    }),muteHttpExceptions:true
   });
 }
 

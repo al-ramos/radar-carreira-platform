@@ -13,7 +13,7 @@ O Radar Carreira é uma plataforma web multiusuário para centralizar oportunida
 1. **Aquisição:** recebe vagas de ATS públicos, integração LinkedIn, entradas push APInfo, Gmail e arquivos JSON/CSV.
 2. **Qualificação:** normaliza, deduplica, infere tecnologias, calcula aderência e aplica bloqueadores pessoais.
 3. **Triagem e revisão:** processa lotes em filas, preserva histórico e permite revisão pela IA do portal, pelo Codex ou por CSV externo.
-4. **Candidatura assistida:** valida contato e elegibilidade, prepara rascunhos Gmail, reconcilia envios e atualiza o acompanhamento sem enviar e-mail automaticamente.
+4. **Candidatura automática:** valida contato e elegibilidade, prepara o rascunho Gmail com currículo e assinatura, envia e atualiza o acompanhamento com evidência do Gmail.
 5. **Operação:** mantém pipeline pessoal, notificações, alertas, métricas, RBAC, auditoria, qualidade, backup, coleta agendada e publicação contínua.
 
 O sistema é executado como um Cloudflare Worker, com interface Next.js/React compilada por vinext/Vite e persistência em Cloudflare D1 via Drizzle ORM.
@@ -28,7 +28,7 @@ A prioridade atual é consolidar o ciclo **triagem inteligente → revisão → 
 
 1. preservar decisões determinísticas explicáveis e versionadas;
 2. permitir revisão por IA, Codex ou CSV sem perder origem e histórico;
-3. gerar somente rascunhos de decisões oficiais `✅` com contato válido;
+3. enviar somente candidaturas de decisões oficiais `✅` com contato válido;
 4. tornar filas, importações, triagens, falhas, retomadas e envios visíveis em um centro operacional;
 5. manter a candidatura e o envio sob decisão da pessoa usuária.
 
@@ -141,7 +141,7 @@ O dashboard organiza os módulos abaixo:
 - Mantém `url` estável separada de `applyUrl`, que pode conter token temporário de candidatura.
 - Em vagas APinfo, pode abrir a busca pelo código usando o formulário POST exigido pelo site.
 - Contatos podem ser salvos com validação, corrigidos quando o domínio veio truncado e reutilizados individualmente em outras vagas da mesma empresa.
-- A mensagem de candidatura usa somente competências confirmadas, pode explicitar lacunas e nunca envia e-mail automaticamente.
+- A mensagem de candidatura usa somente competências confirmadas, pode explicitar lacunas e é enviada automaticamente após a aprovação `✅` com contato válido.
 - Acompanhamento da candidatura distingue `generated`, `sent` e `responded`, com data própria para cada marco.
 - Ações que abririam uma nova candidatura ficam bloqueadas quando o acompanhamento já está em `sent` ou `responded`.
 - Atalhos da triagem abrem candidaturas e vagas arquivadas no Radar; a abertura pelo LinkedIn fica registrada como evidência operacional.
@@ -174,7 +174,7 @@ O dashboard organiza os módulos abaixo:
 - Para LinkedIn, o caminho por e-mail exige `✅` e contato explícito válido.
 - Três interruptores independentes controlam triagem agendada, entrada automática na outbox e criação real do rascunho. Na configuração atual, qualquer origem de aprovação `✅` pode preparar e criar o rascunho; `🟡` permanece para revisão humana.
 - A execução agendada recupera itens pendentes e aprovações legadas sem histórico ou sem outbox, criando os vínculos ausentes de forma idempotente antes de solicitar o Gmail.
-- O Apps Script cria rascunhos e reconhece o envio feito pela pessoa; nenhuma rota ou automação envia a candidatura.
+- O Apps Script confirma o rascunho na outbox antes de enviar e depois registra o ID da mensagem enviada, destinatário, assunto e data.
 - Um gatilho opcional a cada 15 minutos consulta somente a pasta Enviados e reconcilia rascunhos comprovadamente usados.
 - Confirmações de candidatura do LinkedIn recebidas pela etiqueta RadarVagas atualizam o pipeline para `sent`, preservam estados mais avançados e geram uma única notificação na primeira detecção.
 - A reutilização em lote de contatos já conhecidos por empresa fica no painel de filtros de e-mail e atua somente sobre as vagas filtradas sem contato.
@@ -687,7 +687,7 @@ sequenceDiagram
     R->>G: Solicita criação do rascunho
     G-->>R: ID do rascunho ou envio encontrado
     R->>D: Atualiza outbox, pipeline e notificação
-    Note over G: O conector nunca envia o e-mail
+    Note over G: O conector envia somente após confirmar a outbox
 ```
 
 ### Coleta agendada

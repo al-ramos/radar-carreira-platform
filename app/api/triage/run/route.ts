@@ -295,7 +295,7 @@ export async function POST(request: Request) {
         sourceId: job.sourceId,
       })) {
         const outboxId = crypto.randomUUID();
-        const inserted = await db.insert(draftOutbox).values({ id: outboxId, userId, jobId: job.id, historyId, status: "pending", createdAt: now, updatedAt: now }).onConflictDoNothing().returning({ id: draftOutbox.id });
+        const inserted = await db.insert(draftOutbox).values({ id: outboxId, userId, jobId: job.id, historyId, status: "pending", autoSendAuthorized: true, autoSendAuthorizedAt: now, createdAt: now, updatedAt: now }).onConflictDoNothing().returning({ id: draftOutbox.id });
         // onConflictDoNothing + returning só devolve linha quando realmente
         // inseriu (vaga já enfileirada por outra rodada não conta de novo
         // nem entra na chamada ao conector Gmail desta execução).
@@ -333,7 +333,7 @@ export async function POST(request: Request) {
             source: analysis.source as "rules" | "ai", confidence: analysis.confidence, rows: analysis.rows, createdAt: now,
           });
         }
-        const inserted = await db.insert(draftOutbox).values({ id: crypto.randomUUID(), userId, jobId: job.id, historyId: history.id, status: "pending", createdAt: now, updatedAt: now }).onConflictDoNothing().returning({ id: draftOutbox.id });
+        const inserted = await db.insert(draftOutbox).values({ id: crypto.randomUUID(), userId, jobId: job.id, historyId: history.id, status: "pending", autoSendAuthorized: false, autoSendAuthorizedAt: null, createdAt: now, updatedAt: now }).onConflictDoNothing().returning({ id: draftOutbox.id });
         if (inserted.length) scheduledDraftsQueued += 1;
       }
     }
@@ -359,7 +359,7 @@ export async function POST(request: Request) {
   // que revalida perfil, versões e elegibilidade antes de criar qualquer coisa.
   // O limite de 20 preserva o contrato do conector e espalha uma retomada grande
   // pelas próximas rodadas agendadas.
-  let immediateDraft: { requested: boolean; created?: number; reason?: string } | null = null;
+  let immediateDraft: { requested: boolean; created?: number; sent?: number; reason?: string } | null = null;
   const pendingScheduledOutboxIds = await db.select({ id: draftOutbox.id })
       .from(draftOutbox)
       .where(and(eq(draftOutbox.userId, userId), eq(draftOutbox.status, "pending")))
@@ -387,10 +387,11 @@ export async function POST(request: Request) {
       rejected: processed.filter(item => item.verdict === "NAO_BATE").length,
       draftsQueued: scheduledDraftsQueued,
       draftsCreated: immediateDraft?.created ?? 0,
+      emailsSent: immediateDraft?.sent ?? 0,
       draftsRetried: pendingScheduledOutboxIds.length,
       gmailReason: pendingScheduledOutboxIds.length && !immediateDraft?.requested ? immediateDraft?.reason ?? "conector não confirmou a criação" : null,
     }).catch(() => undefined);
   }
 
-  return NextResponse.json({ ok: true, batchId, referenceDate: run.referenceDate, processed, skipped, hasMore: run.trigger === "schedule" && candidates.length === run.batchSize, aiEligible: processed.filter(item => item.aiEligible).length, aiCompleted: processed.filter(item => item.aiStatus === "completed" || item.aiStatus === "cached").length, draftsCreated: immediateDraft?.created ?? 0, immediateDraft, aiUsed: processed.some(item => item.aiStatus === "completed" || item.aiStatus === "cached") });
+  return NextResponse.json({ ok: true, batchId, referenceDate: run.referenceDate, processed, skipped, hasMore: run.trigger === "schedule" && candidates.length === run.batchSize, aiEligible: processed.filter(item => item.aiEligible).length, aiCompleted: processed.filter(item => item.aiStatus === "completed" || item.aiStatus === "cached").length, draftsCreated: immediateDraft?.created ?? 0, emailsSent: immediateDraft?.sent ?? 0, immediateDraft, aiUsed: processed.some(item => item.aiStatus === "completed" || item.aiStatus === "cached") });
 }

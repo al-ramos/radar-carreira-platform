@@ -123,7 +123,8 @@ export async function notifyDetectedApplication(db: ReturnType<typeof getDb>, ou
  * pasta "Enviados" do Gmail, que um rascunho da outbox já foi enviado
  * manualmente pelo usuário. Não representa nenhum envio feito pelo Radar —
  * só o registro de algo que o usuário já fez fora do portal. Ver ADR-007
- * (nenhum envio automático de candidatura).
+ * O envio automático continua registrado pela mesma trilha de evidência do
+ * Gmail usada na reconciliação manual.
  */
 export type ScheduledTriageOutcome = {
   batchId: string;
@@ -133,6 +134,7 @@ export type ScheduledTriageOutcome = {
   rejected: number;
   draftsQueued: number;
   draftsCreated?: number;
+  emailsSent?: number;
   draftsRetried?: number;
   gmailReason?: string | null;
   error?: string;
@@ -142,10 +144,9 @@ export type ScheduledTriageOutcome = {
  * Notificação padrão ao fim de uma rodada da triagem agendada (Etapa 4 da
  * automação ponta a ponta). Resume o que a rodada fez para observabilidade
  * sem precisar abrir Auditoria/Histórico: quantas vagas foram avaliadas, o
- * desfecho de cada veredito (✅ aciona a criação imediata do rascunho; 🟡
- * fica esperando revisão manual), e se
- * o rascunho chegou a ser criado de verdade no Gmail (quando o interruptor
- * de criação automática também está ligado). Execuções vazias continuam
+ * desfecho de cada veredito (✅ aciona criação e envio imediato; 🟡 fica
+ * esperando revisão manual), e se a candidatura chegou a ser enviada pelo
+ * Gmail. Execuções vazias continuam
  * silenciosas, exceto quando retomam uma pendência de rascunho ou quando o
  * conector informa uma falha acionável.
  */
@@ -162,8 +163,9 @@ export async function notifyScheduledTriage(db: ReturnType<typeof getDb>, outcom
     return;
   }
   const draftsCreated = outcome.draftsCreated ?? 0;
+  const emailsSent = outcome.emailsSent ?? 0;
   const draftsRetried = outcome.draftsRetried ?? 0;
-  if (!outcome.processed && !draftsCreated && !draftsRetried && !outcome.gmailReason) return;
+  if (!outcome.processed && !draftsCreated && !emailsSent && !draftsRetried && !outcome.gmailReason) return;
   const parts = [
     ...(outcome.processed ? [
       `${numberFormat.format(outcome.processed)} vaga${outcome.processed === 1 ? "" : "s"} avaliada${outcome.processed === 1 ? "" : "s"}`,
@@ -171,18 +173,19 @@ export async function notifyScheduledTriage(db: ReturnType<typeof getDb>, outcom
       `${numberFormat.format(outcome.probable)} ${outcome.probable === 1 ? "provável" : "prováveis"} aguardando você`,
     ] : []),
     ...(outcome.rejected ? [`${numberFormat.format(outcome.rejected)} não aderente${outcome.rejected === 1 ? "" : "s"}`] : []),
-    ...(draftsCreated ? [`${numberFormat.format(draftsCreated)} rascunho${draftsCreated === 1 ? "" : "s"} criado${draftsCreated === 1 ? "" : "s"} no Gmail`] : []),
-    ...(draftsRetried && !draftsCreated ? [`${numberFormat.format(draftsRetried)} tentativa${draftsRetried === 1 ? "" : "s"} imediata${draftsRetried === 1 ? "" : "s"} de criar rascunho`] : []),
-    ...(outcome.draftsQueued && !draftsCreated && !draftsRetried ? [`${numberFormat.format(outcome.draftsQueued)} criação${outcome.draftsQueued === 1 ? "" : "ões"} de rascunho acionada${outcome.draftsQueued === 1 ? "" : "s"}`] : []),
+    ...(emailsSent ? [`${numberFormat.format(emailsSent)} candidatura${emailsSent === 1 ? "" : "s"} enviada${emailsSent === 1 ? "" : "s"} automaticamente`] : []),
+    ...(draftsCreated && !emailsSent ? [`${numberFormat.format(draftsCreated)} rascunho${draftsCreated === 1 ? "" : "s"} criado${draftsCreated === 1 ? "" : "s"}; envio não confirmado`] : []),
+    ...(draftsRetried && !draftsCreated && !emailsSent ? [`${numberFormat.format(draftsRetried)} tentativa${draftsRetried === 1 ? "" : "s"} automática${draftsRetried === 1 ? "" : "s"} de candidatura`] : []),
+    ...(outcome.draftsQueued && !draftsCreated && !emailsSent && !draftsRetried ? [`${numberFormat.format(outcome.draftsQueued)} candidatura${outcome.draftsQueued === 1 ? "" : "s"} acionada${outcome.draftsQueued === 1 ? "" : "s"}`] : []),
     ...(outcome.gmailReason ? [`Gmail: ${outcome.gmailReason}`] : []),
   ];
   await createNotification(db, {
     type: "triage",
     severity: outcome.gmailReason ? "error" : "success",
-    title: outcome.processed ? "Triagem agendada concluída" : "Triagem agendada retomou rascunhos",
+    title: outcome.processed ? "Triagem agendada concluída" : "Triagem agendada retomou candidaturas",
     body: parts.join(" · "),
     link: "/?open=triagem",
-    metadata: { batchId: outcome.batchId, processed: outcome.processed, approved: outcome.approved, probable: outcome.probable, rejected: outcome.rejected, draftsQueued: outcome.draftsQueued, draftsCreated, draftsRetried, gmailReason: outcome.gmailReason ?? null },
+    metadata: { batchId: outcome.batchId, processed: outcome.processed, approved: outcome.approved, probable: outcome.probable, rejected: outcome.rejected, draftsQueued: outcome.draftsQueued, draftsCreated, emailsSent, draftsRetried, gmailReason: outcome.gmailReason ?? null },
   });
 }
 

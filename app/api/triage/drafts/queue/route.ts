@@ -20,8 +20,8 @@ type DraftQueueRequest = {
 };
 
 /**
- * Reserva a fila persistente e aciona a criação imediata de rascunhos. Nunca
- * envia e-mail.
+ * Reserva a fila persistente e aciona a criação e o envio imediato da
+ * candidatura aprovada para o e-mail validado.
  */
 export async function POST(request: Request) {
   const user = await getChatGPTUser();
@@ -31,10 +31,10 @@ export async function POST(request: Request) {
   if (body.action === "retryFailed") {
     const now = new Date();
     const failed = await db.select({ id: draftOutbox.id }).from(draftOutbox).where(and(eq(draftOutbox.userId, user.userId), eq(draftOutbox.status, "failed")));
-    for (const item of failed) await db.update(draftOutbox).set({ status: "pending", error: null, updatedAt: now }).where(eq(draftOutbox.id, item.id));
+    for (const item of failed) await db.update(draftOutbox).set({ status: "pending", autoSendAuthorized: true, autoSendAuthorizedAt: now, error: null, updatedAt: now }).where(eq(draftOutbox.id, item.id));
     const immediateDraft = failed.length ? await requestImmediateDraftCreation(failed.map((item) => item.id)) : { requested: false };
     if (!immediateDraft.requested) await markImmediateDraftFailure(failed.map((item) => item.id), immediateDraft.reason);
-    return NextResponse.json({ ok: true, retried: failed.length, sent: false, immediateDraft });
+    return NextResponse.json({ ok: true, retried: failed.length, emailsSent: immediateDraft.sent ?? 0, immediateDraft });
   }
   if (body.action === "reconcileSent") {
     const requestedJobIds = Array.isArray(body.jobIds) ? [...new Set(body.jobIds.filter((id): id is string => typeof id === "string" && id.length > 0))].slice(0, 200) : [];
@@ -120,6 +120,7 @@ export async function POST(request: Request) {
   for (const row of historyRows) if (!latestByJob.has(row.jobId)) latestByJob.set(row.jobId, row);
 
   const now = new Date();
+  const authorizeAutomaticSend = body.action === "queue";
   let repairBatchId: string | null = null;
   const queued: string[] = [];
   const priorityOutboxIds: string[] = [];
@@ -138,12 +139,15 @@ export async function POST(request: Request) {
           else notEligible += 1;
           continue;
         }
-        await db.update(draftOutbox).set({ status: "pending", error: null, updatedAt: new Date() }).where(eq(draftOutbox.id, existing.id));
+        await db.update(draftOutbox).set({ status: "pending", autoSendAuthorized: authorizeAutomaticSend, autoSendAuthorizedAt: authorizeAutomaticSend ? now : null, error: null, updatedAt: now }).where(eq(draftOutbox.id, existing.id));
         priorityOutboxIds.push(existing.id);
         continue;
       }
       alreadyPresent += 1;
-      if (existing.status === "pending") priorityOutboxIds.push(existing.id);
+      if (existing.status === "pending") {
+        if (authorizeAutomaticSend) await db.update(draftOutbox).set({ autoSendAuthorized: true, autoSendAuthorizedAt: now, updatedAt: now }).where(eq(draftOutbox.id, existing.id));
+        priorityOutboxIds.push(existing.id);
+      }
       continue;
     }
     if (!isSafeForDraft({ verdict: row.analysis.verdict, contactEmail: row.job.contactEmail, sourceId: row.job.sourceId })) {
@@ -161,7 +165,7 @@ export async function POST(request: Request) {
       await db.insert(triageHistory).values({ id: historyId, batchId: repairBatchId, userId: user.userId, jobId: row.jobId, profileRevision: row.analysis.profileRevision, rulesRevision: row.analysis.rulesRevision, instructionsRevision: row.analysis.instructionsRevision, verdict: row.analysis.verdict as "✅" | "🟡" | "🔴" | "❌", label: row.analysis.label, blocker: row.analysis.blocker, source: row.analysis.source as "rules" | "ai", confidence: row.analysis.confidence, rows: row.analysis.rows, createdAt: now });
     }
     const outboxId = crypto.randomUUID();
-    await db.insert(draftOutbox).values({ id: outboxId, userId: user.userId, jobId: row.jobId, historyId, status: "pending", createdAt: now, updatedAt: now });
+    await db.insert(draftOutbox).values({ id: outboxId, userId: user.userId, jobId: row.jobId, historyId, status: "pending", autoSendAuthorized: authorizeAutomaticSend, autoSendAuthorizedAt: authorizeAutomaticSend ? now : null, createdAt: now, updatedAt: now });
     queued.push(row.jobId);
     priorityOutboxIds.push(outboxId);
   }
@@ -179,5 +183,5 @@ export async function POST(request: Request) {
     ? await requestImmediateDraftCreation(priorityOutboxIds)
     : { requested: false, reason: requestedJobIds?.length === 1 ? individualUnavailableReason : "Nenhum rascunho pendente está disponível neste recorte." };
   if (priorityOutboxIds.length && !immediateDraft.requested) await markImmediateDraftFailure(priorityOutboxIds, immediateDraft.reason);
-  return NextResponse.json({ ok: true, considered: latestByJob.size, queued: queued.length, queuedJobIds: queued, noValidContact, notEligible, outdated, alreadyPresent, gmailDraftsCreated: immediateDraft.created ?? 0, immediateDraft });
+  return NextResponse.json({ ok: true, considered: latestByJob.size, queued: queued.length, queuedJobIds: queued, noValidContact, notEligible, outdated, alreadyPresent, gmailDraftsCreated: immediateDraft.created ?? 0, emailsSent: immediateDraft.sent ?? 0, immediateDraft });
 }

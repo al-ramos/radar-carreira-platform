@@ -13,7 +13,7 @@ test("contatos já cadastrados podem ser reaproveitados em lote sem busca extern
   assert.match(route, /slice\(0, 100\)/);
   assert.match(route, /Não procura e-mails\s*\* externamente/);
   assert.match(screen, /Consultar contatos já cadastrados/);
-  assert.match(screen, /Preparar rascunhos selecionados/);
+  assert.match(screen, /Enviar candidaturas selecionadas/);
   assert.match(screen, /Selecionar todas as vagas filtradas/);
   assert.match(screen, /toggleFilteredHistory/);
 });

@@ -1073,9 +1073,9 @@ export default function Dashboard() {
   const verdictMap = useMemo(() => {
     return new Map<string, VerdictResult>();
   }, []);
-  // Aprovações registradas antes da criação imediata de rascunhos não têm
-  // outbox. Assim que o Radar é aberto, recuperamos somente essas vagas
-  // elegíveis e acionamos o mesmo conector de rascunho — nunca de envio.
+  // Aprovações registradas antes da automação podem não ter outbox. Assim que
+  // o Radar é aberto, recuperamos somente as vagas ainda elegíveis e acionamos
+  // o conector autorizado de envio.
   useEffect(() => {
     if (!currentUser || !profileReady || profileLoadFailed || approvedDraftRecoveryRequestedRef.current) return;
     approvedDraftRecoveryRequestedRef.current = true;
@@ -1086,13 +1086,16 @@ export default function Dashboard() {
       body: JSON.stringify({ homePeriod: "all" }),
       signal: controller.signal,
     }).then(async (response) => {
-      const result = await response.json().catch(() => null) as { queued?: number; gmailDraftsCreated?: number } | null;
+      const result = await response.json().catch(() => null) as { queued?: number; gmailDraftsCreated?: number; emailsSent?: number } | null;
       if (!response.ok || controller.signal.aborted || !result) return;
-      if ((result.queued ?? 0) || (result.gmailDraftsCreated ?? 0)) {
+      if ((result.queued ?? 0) || (result.gmailDraftsCreated ?? 0) || (result.emailsSent ?? 0)) {
         setJobsRefreshVersion((version) => version + 1);
         const created = result.gmailDraftsCreated ?? 0;
-        setMessage(created
-          ? `${created} rascunho${created === 1 ? "" : "s"} de aprovações anteriores foi criado no Gmail.`
+        const sent = result.emailsSent ?? 0;
+        setMessage(sent
+          ? `${sent} candidatura${sent === 1 ? "" : "s"} anterior${sent === 1 ? " foi enviada" : "es foram enviadas"} automaticamente pelo Gmail.`
+          : created
+          ? `${created} rascunho${created === 1 ? "" : "s"} foi criado, mas o envio ainda não foi confirmado.`
           : "Aprovações anteriores foram colocadas na fila de rascunho.");
       }
     }).catch(() => undefined);

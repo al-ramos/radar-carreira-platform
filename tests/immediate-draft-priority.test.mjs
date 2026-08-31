@@ -4,7 +4,7 @@ import test from "node:test";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
-test("rascunhos avulsos ou em fila pedem criação manual imediata sem enviar e-mail", async () => {
+test("candidaturas elegíveis criam o rascunho e o enviam automaticamente com rastreabilidade", async () => {
   const [queue, cron, connector, workflow, priority, screen] = await Promise.all([
     read("../app/api/triage/drafts/queue/route.ts"),
     read("../app/api/cron/drafts/route.ts"),
@@ -30,7 +30,13 @@ test("rascunhos avulsos ou em fila pedem criação manual imediata sem enviar e-
   assert.match(connector, /function reconciliarRascunhosRadar/);
   assert.match(connector, /action:'draftCandidates'/);
   assert.match(connector, /action:'missing'/);
-  assert.match(connector, /criarRascunhosRadar\(\{ outboxIds: payload\.outboxIds \}\)/);
+  assert.match(connector, /criarRascunhosRadar\(\{ outboxIds: payload\.outboxIds, autoSend:true \}\)/);
+  assert.match(connector, /const sentMessage = draft\.send\(\)/);
+  assert.match(connector, /confirmarRascunhoRadar[\s\S]*draft\.send\(\)/, "a outbox confirma o rascunho antes do envio");
+  assert.match(connector, /function confirmarEnvioAutomaticoRadar/);
+  assert.match(connector, /gmailSentId:message\.getId\(\)/);
+  assert.match(connector, /isDraft:message\.isDraft\(\)/);
+  assert.match(connector, /radar-drafts-v3-auto-send/);
   assert.match(connector, /RADAR_CV_FILE_ID/);
   assert.match(connector, /DriveApp\.getFileById/);
   assert.match(connector, /attachments: \[cv\.getBlob\(\)\.setName\(RADAR_CV_FILE_NAME\)\]/);
@@ -40,12 +46,29 @@ test("rascunhos avulsos ou em fila pedem criação manual imediata sem enviar e-
   assert.match(priority, /GMAIL_DRAFTS_WEBHOOK_TOKEN/);
   assert.match(workflow, /GMAIL_DRAFTS_WEBHOOK_URL/);
   assert.match(workflow, /a publicação foi bloqueada/);
-  assert.match(screen, /rascunho\(s\) foi\(ram\) criado\(s\) agora no Gmail/);
-  assert.match(screen, /Criação manual indisponível/);
+  assert.match(screen, /candidatura\(s\) foi\(ram\) enviada\(s\) automaticamente/);
+  assert.match(screen, /Envio automático indisponível/);
   assert.match(screen, /draftActionStatuses/);
-  assert.match(screen, /Gmail acionado; atualize em instantes para confirmar o rascunho/);
+  assert.match(screen, /Gmail acionado; atualize em instantes para confirmar o envio/);
   assert.match(screen, /item\.draftStatus === "pending" \? null/);
   assert.match(screen, /Tentar novamente/);
   assert.match(screen, /item\.draftError/);
   assert.match(priority, /markImmediateDraftFailure/);
+});
+
+test("a autorização automática não é aplicada retroativamente aos rascunhos existentes", async () => {
+  const [schema, migration, run, connector, queue] = await Promise.all([
+    read("../db/schema.ts"),
+    read("../drizzle/0046_authorize_automatic_email_send.sql"),
+    read("../app/api/triage/run/route.ts"),
+    read("../public/gmail-radarvagas.gs"),
+    read("../app/api/triage/drafts/queue/route.ts"),
+  ]);
+  assert.doesNotThrow(() => new Function(connector), "o Apps Script precisa permanecer sintaticamente válido");
+  assert.match(schema, /autoSendAuthorized/);
+  assert.match(schema, /autoSendAuthorizedAt/);
+  assert.match(migration, /auto_send_authorized` integer DEFAULT false NOT NULL/);
+  assert.match(run, /autoSendAuthorized: false, autoSendAuthorizedAt: null/, "a recuperação de aprovações antigas não autoriza envio");
+  assert.match(connector, /autoSend && item\.autoSendAuthorized === true/);
+  assert.match(queue, /const authorizeAutomaticSend = body\.action === "queue"/);
 });

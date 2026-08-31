@@ -4,7 +4,7 @@ import test from "node:test";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
-test("toda aprovação com e-mail válido cria rascunho imediato, sem enviar e-mail", async () => {
+test("toda aprovação com e-mail válido cria e envia a candidatura imediatamente", async () => {
   const [run, worker, aiVerdicts, csvImport, settings, migration, docs] = await Promise.all([
     read("../app/api/triage/run/route.ts"),
     read("../worker/index.ts"),
@@ -33,5 +33,5 @@ test("toda aprovação com e-mail válido cria rascunho imediato, sem enviar e-m
   assert.match(settings, /scheduledTriageDraftQueueEnabled:true/);
   assert.match(settings, /scheduledTriageAutoCreateEnabled:true/);
   assert.match(migration, /scheduled_triage_auto_create_enabled` = true/);
-  assert.match(docs, /Isso nunca envia e-mails/);
+  assert.match(docs, /envia automaticamente/);
 });

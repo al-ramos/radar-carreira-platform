@@ -18,11 +18,11 @@ async function queueApprovedDraft(input: {
   analysis: { verdict: string; label: string; blocker: string | null; rows: string; matchingSkills: string; missingSkills: string; source: "rules" };
   now: Date;
 }) {
-  if (!isSafeForDraft({ verdict: input.analysis.verdict, contactEmail: input.job.contactEmail, sourceId: input.job.sourceId })) return { queued: false, created: 0 };
+  if (!isSafeForDraft({ verdict: input.analysis.verdict, contactEmail: input.job.contactEmail, sourceId: input.job.sourceId })) return { queued: false, created: 0, sent: 0 };
   const db = getDb();
   const existingOutbox = await db.select({ id: draftOutbox.id }).from(draftOutbox)
     .where(and(eq(draftOutbox.userId, input.userId), eq(draftOutbox.jobId, input.job.id))).limit(1).then((rows) => rows[0]);
-  if (existingOutbox) return { queued: false, created: 0 };
+  if (existingOutbox) return { queued: false, created: 0, sent: 0 };
 
   let history = await db.select({ id: triageHistory.id }).from(triageHistory)
     .where(and(eq(triageHistory.userId, input.userId), eq(triageHistory.jobId, input.job.id), eq(triageHistory.verdict, "✅")))
@@ -35,10 +35,10 @@ async function queueApprovedDraft(input: {
   }
 
   const outboxId = crypto.randomUUID();
-  await db.insert(draftOutbox).values({ id: outboxId, userId: input.userId, jobId: input.job.id, historyId: history.id, status: "pending", createdAt: input.now, updatedAt: input.now });
+  await db.insert(draftOutbox).values({ id: outboxId, userId: input.userId, jobId: input.job.id, historyId: history.id, status: "pending", autoSendAuthorized: true, autoSendAuthorizedAt: input.now, createdAt: input.now, updatedAt: input.now });
   const immediate = await requestImmediateDraftCreation([outboxId]);
   if (!immediate.requested) await markImmediateDraftFailure([outboxId], immediate.reason);
-  return { queued: true, created: immediate.created ?? 0, reason: immediate.reason };
+  return { queued: true, created: immediate.created ?? 0, sent: immediate.sent ?? 0, reason: immediate.reason };
 }
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {

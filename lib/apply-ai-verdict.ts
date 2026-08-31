@@ -15,14 +15,14 @@ export type AiVerdictEntry = { jobId: string; verdict: "✅" | "🟡" | "🔴" |
  * Aplica vereditos vindos de uma leitura de IA (nuvem ou Codex) como veredito
  * oficial da vaga — mesma trilha usada pela reimportação de CSV
  * (/api/admin/triage-import). Decisão explícita do proprietário: a partir de
- * uma análise por IA considerada válida, ✅ pode criar rascunho imediatamente
- * quando houver e-mail válido; 🟡, 🔴 e ❌ ficam apenas no histórico.
+ * uma análise por IA considerada válida, ✅ cria e envia a candidatura quando
+ * houver e-mail válido; 🟡, 🔴 e ❌ ficam apenas no histórico.
  */
-export async function applyAiVerdicts(userId: string, batchScope: string, entries: AiVerdictEntry[]): Promise<{ applied: number; draftsQueued: number; draftsCreated: number }> {
-  if (!entries.length) return { applied: 0, draftsQueued: 0, draftsCreated: 0 };
+export async function applyAiVerdicts(userId: string, batchScope: string, entries: AiVerdictEntry[]): Promise<{ applied: number; draftsQueued: number; draftsCreated: number; emailsSent: number }> {
+  if (!entries.length) return { applied: 0, draftsQueued: 0, draftsCreated: 0, emailsSent: 0 };
   const db = getDb();
   const profile = await db.select().from(profiles).where(eq(profiles.userId, userId)).limit(1).then((r) => r[0]);
-  if (!profile) return { applied: 0, draftsQueued: 0, draftsCreated: 0 };
+  if (!profile) return { applied: 0, draftsQueued: 0, draftsCreated: 0, emailsSent: 0 };
   const canonicalProfile = canonicalizeProfile(profile);
   const versions = getAnalysisVersions(canonicalProfile);
   const now = new Date();
@@ -49,7 +49,7 @@ export async function applyAiVerdicts(userId: string, batchScope: string, entrie
     if (entry.verdict === "✅") {
       if (isSafeForDraft({ verdict: entry.verdict, contactEmail: job.contactEmail, sourceId: job.sourceId })) {
         const outboxId = randomUUID();
-        const inserted = await db.insert(draftOutbox).values({ id: outboxId, userId, jobId: job.id, historyId, status: "pending", createdAt: now, updatedAt: now }).onConflictDoNothing().returning({ id: draftOutbox.id });
+        const inserted = await db.insert(draftOutbox).values({ id: outboxId, userId, jobId: job.id, historyId, status: "pending", autoSendAuthorized: true, autoSendAuthorizedAt: now, createdAt: now, updatedAt: now }).onConflictDoNothing().returning({ id: draftOutbox.id });
         if (inserted.length) { draftsQueued += 1; pendingOutboxIds.push(outboxId); }
       }
     }
@@ -57,5 +57,5 @@ export async function applyAiVerdicts(userId: string, batchScope: string, entrie
   await db.update(triageBatches).set({ status: "completed", completedAt: new Date() }).where(eq(triageBatches.id, batchId));
   const immediateDraft = pendingOutboxIds.length ? await requestImmediateDraftCreation(pendingOutboxIds) : null;
   if (immediateDraft && !immediateDraft.requested) await markImmediateDraftFailure(pendingOutboxIds, immediateDraft.reason);
-  return { applied, draftsQueued, draftsCreated: immediateDraft?.created ?? 0 };
+  return { applied, draftsQueued, draftsCreated: immediateDraft?.created ?? 0, emailsSent: immediateDraft?.sent ?? 0 };
 }

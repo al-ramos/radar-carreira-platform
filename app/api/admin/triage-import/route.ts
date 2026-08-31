@@ -86,7 +86,7 @@ export async function POST(request: Request) {
       if (row.verdict === "✅") {
         if (isSafeForDraft({ verdict: row.verdict, contactEmail: job.contactEmail, sourceId: job.sourceId })) {
           const outboxId = crypto.randomUUID();
-          const inserted = await db.insert(draftOutbox).values({ id: outboxId, userId: user.userId, jobId: job.id, historyId, status: "pending", createdAt: now, updatedAt: now }).onConflictDoNothing().returning({ id: draftOutbox.id });
+          const inserted = await db.insert(draftOutbox).values({ id: outboxId, userId: user.userId, jobId: job.id, historyId, status: "pending", autoSendAuthorized: true, autoSendAuthorizedAt: now, createdAt: now, updatedAt: now }).onConflictDoNothing().returning({ id: draftOutbox.id });
           if (inserted.length) { draftsQueued += 1; pendingOutboxIds.push(outboxId); }
         }
       }
@@ -96,11 +96,11 @@ export async function POST(request: Request) {
   }
 
   await db.update(triageBatches).set({ status: "completed", completedAt: new Date() }).where(eq(triageBatches.id, batchId));
-  let immediateDraft: { requested: boolean; created?: number; reason?: string } | null = null;
+  let immediateDraft: { requested: boolean; created?: number; sent?: number; reason?: string } | null = null;
   if (pendingOutboxIds.length) {
     try { immediateDraft = await requestImmediateDraftCreation(pendingOutboxIds); }
     catch (error) { immediateDraft = { requested: false, reason: error instanceof Error ? error.message : "Falha ao acionar o conector Gmail" }; }
   }
   if (immediateDraft && !immediateDraft.requested) await markImmediateDraftFailure(pendingOutboxIds, immediateDraft.reason);
-  return NextResponse.json({ ok: true, batchId, received: rows.length, applied, draftsQueued, draftsCreated: immediateDraft?.created ?? 0, immediateDraft, notFound, ambiguous, rejected, errors });
+  return NextResponse.json({ ok: true, batchId, received: rows.length, applied, draftsQueued, draftsCreated: immediateDraft?.created ?? 0, emailsSent: immediateDraft?.sent ?? 0, immediateDraft, notFound, ambiguous, rejected, errors });
 }

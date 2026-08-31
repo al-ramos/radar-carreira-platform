@@ -159,10 +159,12 @@ export const triageDeduplication = sqliteTable("triage_deduplication", {
   leaseOwner: text("lease_owner"), leaseUntil: integer("lease_until", { mode: "timestamp_ms" }), attemptCount: integer("attempt_count").notNull().default(0), error: text("error"), updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
 }, t => [index("triage_deduplication_lease_idx").on(t.status, t.leaseUntil)]);
 
-/** Outbox persistente; a etapa futura cria/atualiza, mas nunca envia e-mail. */
+/** Outbox persistente com autorização individual e rastreável para envio automático. */
 export const draftOutbox = sqliteTable("draft_outbox", {
   id: text("id").primaryKey(), userId: text("user_id").notNull(), jobId: text("job_id").notNull().references(() => jobs.id), historyId: text("history_id").notNull().references(() => triageHistory.id),
   status: text("status", { enum: ["pending", "drafted", "sent", "failed", "cancelled"] }).notNull().default("pending"),
+  autoSendAuthorized: integer("auto_send_authorized", { mode: "boolean" }).notNull().default(false),
+  autoSendAuthorizedAt: integer("auto_send_authorized_at", { mode: "timestamp_ms" }),
   gmailDraftId: text("gmail_draft_id"), gmailThreadId: text("gmail_thread_id"), draftSubject: text("draft_subject"), gmailSentId: text("gmail_sent_id"), sentAt: integer("sent_at", { mode: "timestamp_ms" }), error: text("error"),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(), updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
 }, t => [uniqueIndex("draft_outbox_user_job_unique").on(t.userId, t.jobId), uniqueIndex("draft_outbox_gmail_draft_unique").on(t.gmailDraftId), uniqueIndex("draft_outbox_gmail_sent_unique").on(t.gmailSentId), index("draft_outbox_status_idx").on(t.userId, t.status)]);

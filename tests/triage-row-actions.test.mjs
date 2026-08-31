@@ -23,7 +23,8 @@ test("triagem permite ações avulsas por vaga sem contornar os guardrails", asy
   assert.match(screen, /Candidatar/);
   assert.match(screen, /openSelectedApplications/);
   assert.match(screen, /\/api\/triage\/applications\/open/);
-  assert.match(screen, /Preparar rascunhos/);
+  assert.match(screen, /Enviar candidaturas/);
+  assert.match(screen, /Enviar e-mail/);
   assert.match(screen, /Desclassificar/);
   assert.match(screen, /disqualifySelectedJobs/);
   assert.match(screen, /Desclassificar selecionadas/);

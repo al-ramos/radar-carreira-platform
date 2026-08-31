@@ -18,5 +18,5 @@ test("Radar recupera automaticamente aprovações antigas que ainda não têm ra
   assert.match(dashboard, /fetch\("\/api\/triage\/drafts\/queue"/);
   assert.match(dashboard, /JSON\.stringify\(\{ homePeriod: "all" \}\)/);
   assert.match(dashboard, /Aprovações anteriores foram colocadas na fila de rascunho/);
-  assert.match(dashboard, /nunca de envio/);
+  assert.match(dashboard, /o conector autorizado de envio/);
 });

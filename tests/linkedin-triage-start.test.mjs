@@ -50,7 +50,7 @@ test("acionamento manual respeita os filtros ativos da Home", async () => {
   assert.match(queue, /isSafeForDraft\(\{ verdict: row\.analysis\.verdict, contactEmail: row\.job\.contactEmail, sourceId: row\.job\.sourceId/);
   assert.match(queue, /gte\(jobs\.firstSeenAt, cutoff\)/);
   assert.match(ui, /homePeriod: actionPeriod/);
-  assert.match(ui, /Fila preparada para este recorte/);
+  assert.match(ui, /candidatura\(s\) enviada\(s\) automaticamente/);
   assert.match(cron, /isSafeForDraft\(\{ verdict: row\.analysisVerdict, contactEmail: row\.contactEmail, sourceId: row\.sourceId/);
 });
 

@@ -2,15 +2,14 @@ import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "../db/index";
 import { draftOutbox } from "../db/schema";
 
-type ImmediateDraftResult = { requested: boolean; created?: number; reason?: string };
+type ImmediateDraftResult = { requested: boolean; created?: number; sent?: number; reason?: string };
 type ImmediateSentReconciliationResult = { requested: boolean; confirmed?: number; reason?: string };
 
 /**
- * Aciona o Apps Script para os itens informados. A URL e o token ficam em
- * secrets do Worker. Chamada tanto por uma ação manual no portal quanto pela
- * triagem agendada (app/api/triage/run, quando o interruptor "Criar rascunho
- * de verdade no Gmail" está ligado), sempre para vagas que já passaram pela
- * mesma validação de segurança (isSafeForDraft) antes de entrar na fila.
+ * Aciona o Apps Script para criar e enviar as candidaturas informadas. A URL
+ * e o token ficam em secrets do Worker. O conector recebe somente IDs que já
+ * passaram por isSafeForDraft e confirma primeiro o rascunho na outbox antes
+ * de executar GmailDraft.send().
  */
 export async function requestImmediateDraftCreation(outboxIds: string[]): Promise<ImmediateDraftResult> {
   const url = process.env.GMAIL_DRAFTS_WEBHOOK_URL?.trim();
@@ -24,11 +23,11 @@ export async function requestImmediateDraftCreation(outboxIds: string[]): Promis
       body: JSON.stringify({ action: "prioritizeDrafts", token, outboxIds }),
     });
     const raw = await response.text();
-    const payload = parseJson(raw) as { ok?: boolean; created?: number; error?: string } | null;
+    const payload = parseJson(raw) as { ok?: boolean; created?: number; sent?: number; error?: string } | null;
     if (!response.ok || !payload?.ok) return { requested: false, reason: describeConnectorFailure(response.status, payload?.error, raw) };
-    return { requested: true, created: Number(payload.created ?? 0) };
+    return { requested: true, created: Number(payload.created ?? 0), sent: Number(payload.sent ?? 0) };
   } catch (error) {
-    return { requested: false, reason: `Não foi possível acionar o conector Gmail agora. Tente novamente pela ação manual. (${String(error)})` };
+    return { requested: false, reason: `Não foi possível acionar o envio automático no Gmail agora. Tente novamente pela ação manual. (${String(error)})` };
   }
 }
 

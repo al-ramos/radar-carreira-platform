@@ -14,7 +14,7 @@ Portal multiusuário para reunir oportunidades, decidir quais vagas merecem aten
 |---|---|:---:|
 | **1. Decidir** | aplicar perfil canônico, score, bloqueadores e veredito explicável | ✅ Em produção |
 | **2. Revisar** | confirmar o recorte pela IA do portal, pelo Codex ou por CSV, com histórico e origem | ✅ Em produção |
-| **3. Preparar** | criar somente rascunhos seguros, com contato válido e sem enviar e-mail | ✅ Em produção |
+| **3. Candidatar** | criar o rascunho seguro com currículo e assinatura e enviá-lo automaticamente ao contato válido | ✅ Em produção |
 | **4. Operar** | acompanhar filas, importações, triagens, falhas, retomadas e envios em um centro operacional | ✅ Em produção |
 
 ### Próximos focos desta prioridade
@@ -61,7 +61,7 @@ Trabalho concorrente deve usar publicação isolada e preservar alterações loc
 - após uma importação push do LinkedIn ou APInfo, percorre todo o lote em continuações de 10 vagas, usando IA apenas nas ambiguidades da primeira rodada;
 - permite revisar um recorte no portal, preparar até 50 vagas para o Codex ou reimportar vereditos externos por CSV;
 - permite desclassificar manualmente uma vaga já avaliada, com decisão aditiva no histórico e cancelamento de rascunho ainda pendente;
-- prepara rascunhos elegíveis no Gmail, acompanha sua criação e reconcilia o envio sem enviar e-mail automaticamente;
+- cria e envia candidaturas elegíveis no Gmail, com currículo, assinatura e confirmação persistida pela outbox;
 - reconhece confirmações de candidatura recebidas do LinkedIn pelo Gmail, marca o acompanhamento como enviado e notifica somente na primeira transição;
 - registra notificações de importação, triagem e candidatura, com acesso direto aos relatórios operacionais;
 - centraliza importações, lotes de triagem e a agenda das automações no monitoramento, com heartbeats persistidos, alertas acionáveis, falhas, último sucesso e filtros por fluxo;
@@ -239,7 +239,7 @@ Quando a pessoa confirma um resultado da IA, do Codex ou do CSV, ele vira o vere
 - lotes grandes continuam pela fila, em blocos de 10 e sem teto fixo de continuações, até que todas as vagas ainda não analisadas sejam processadas, sem alongar a requisição de importação;
 - três interruptores administrativos controlam separadamente a triagem agendada, a entrada na outbox e a criação real do rascunho no Gmail;
 - a automação agendada aceita somente vagas `✅` para rascunho;
-- o Apps Script cria rascunhos e consulta a pasta Enviados, mas nunca envia e-mail;
+- o Apps Script cria o rascunho, confirma sua vinculação à vaga, envia automaticamente e registra a mensagem comprovada pelo Gmail;
 - criação, falha e envio ficam registrados em `draft_outbox`; cada rascunho e cada mensagem do Gmail só podem pertencer a uma vaga, e a interface distingue confirmação pelo Gmail de informação manual;
 - notificações no sino abrem o log completo do lote ou da importação correspondente.
 
@@ -279,9 +279,9 @@ O conector atual:
 
 ### Rascunhos de candidatura
 
-O Radar cria imediatamente o rascunho de toda vaga aprovada (✅) com e-mail de contato válido, independentemente de a aprovação ter vindo da triagem agendada, IA, Codex ou CSV. A aprovação continua elegível mesmo se o perfil ou as regras forem alterados depois da análise. Isso nunca envia e-mails. A outbox é apenas o registro idempotente e de rastreabilidade da operação, nunca uma espera. Se o conector imediato estiver indisponível, a vaga fica marcada como falha com o motivo visível e o botão **Tentar novamente** aciona o Gmail de novo após a correção.
+O Radar cria imediatamente o rascunho de toda vaga aprovada (✅) com e-mail de contato válido, anexa o currículo, inclui a assinatura e o envia automaticamente, independentemente de a aprovação ter vindo da triagem agendada, IA, Codex ou CSV. A outbox registra primeiro o rascunho e depois a mensagem enviada, impedindo repetição da mesma candidatura. Se o conector imediato estiver indisponível, a vaga fica marcada como falha com o motivo visível e o botão **Tentar novamente** aciona o Gmail de novo após a correção.
 
-Depois de salvar e publicar uma nova versão do Apps Script, execute **uma vez** `instalarAutomacaoRascunhosRadar`. Ela instala uma recuperação a cada cinco minutos: consulta os rascunhos que o Radar já confirmou no Gmail, devolve à fila qualquer item que tenha desaparecido e recria somente esses itens. A chamada imediata continua sendo o caminho normal; esse gatilho é a garantia contra falhas transitórias ou estados divergentes. Não envia e-mails.
+Depois de salvar e publicar uma nova versão do Apps Script, execute **uma vez** `instalarAutomacaoRascunhosRadar`. Ela instala uma recuperação a cada cinco minutos: consulta os itens que o Radar já confirmou, retoma falhas transitórias e envia as novas candidaturas elegíveis que ainda não chegaram ao estado `sent`. A chamada imediata continua sendo o caminho normal.
 
 Para atualizar automaticamente os envios manuais, execute `instalarVerificacaoEnviosRadar` **uma única vez** no Apps Script depois de salvar a versão atual do arquivo. Ela instala um gatilho a cada 15 minutos que consulta somente a pasta **Enviados** e marca no Radar os rascunhos comprovadamente enviados. A rotina não cria rascunhos e não envia e-mails. Para desligá-la, execute `removerVerificacaoEnviosRadar`.
 
