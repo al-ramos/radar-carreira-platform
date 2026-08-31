@@ -79,13 +79,14 @@ export default function AdminSettings({ isOwner }: { isOwner: boolean }) {
     possibly_closed: jobs?.possiblyClosedEligibleForPurge ?? 0,
     closed: jobs?.closedEligibleForPurge ?? 0,
   };
-  const purgeLabels: Record<PurgeScope, string> = { archived: "arquivadas", possibly_closed: "possivelmente encerradas", closed: "encerradas" };
+  const purgeLabels: Record<PurgeScope, { singular: string; plural: string }> = { archived: { singular: "arquivada", plural: "arquivadas" }, possibly_closed: { singular: "possivelmente encerrada", plural: "possivelmente encerradas" }, closed: { singular: "encerrada", plural: "encerradas" } };
   const purgeTotal = purgeTotals[purgeScope];
-  const purgeLabel = purgeLabels[purgeScope];
+  const purgeLabel = purgeTotal === 1 ? purgeLabels[purgeScope].singular : purgeLabels[purgeScope].plural;
+  const purgeQuantity = `${formatNumber(purgeTotal)} ${purgeTotal === 1 ? "vaga" : "vagas"} ${purgeLabel}`;
 
   async function purgeInactive() {
     if (!purgeTotal) return;
-    const warning = `Excluir definitivamente ${formatNumber(purgeTotal)} vagas ${purgeLabel} publicadas antes de ${formatDate(archivedBefore)}? A exclusão é global e remove triagem, pipeline, rascunhos registrados, eventos e demais dados vinculados. Esta ação não pode ser desfeita.`;
+    const warning = `Excluir definitivamente ${purgeQuantity} ${purgeTotal === 1 ? "publicada" : "publicadas"} antes de ${formatDate(archivedBefore)}? A exclusão é global e remove triagem, pipeline, rascunhos registrados, eventos e demais dados vinculados. Esta ação não pode ser desfeita.`;
     if (!window.confirm(warning)) return;
     setPurgingArchived(true);
     setStatus("Excluindo o recorte…");
@@ -94,7 +95,7 @@ export default function AdminSettings({ isOwner }: { isOwner: boolean }) {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
       await refreshSummary();
-      setStatus(`${formatNumber(data.deleted)} vagas ${purgeLabel} e todos os dados vinculados foram removidos definitivamente.`);
+      setStatus(`${formatNumber(data.deleted)} ${data.deleted === 1 ? "vaga" : "vagas"} ${data.deleted === 1 ? purgeLabels[purgeScope].singular : purgeLabels[purgeScope].plural} e todos os dados vinculados foram removidos definitivamente.`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Não foi possível excluir o recorte selecionado.");
     } finally { setPurgingArchived(false); }
@@ -103,7 +104,7 @@ export default function AdminSettings({ isOwner }: { isOwner: boolean }) {
   async function archiveViewed() {
     const viewedTotal = jobs?.viewedEligibleForArchive ?? 0;
     if (!viewedTotal) return;
-    if (!window.confirm(`Arquivar ${formatNumber(viewedTotal)} vagas vistas por você antes de ${formatDate(viewedBefore)}? Elas sairão de “Vistas”, não voltarão para “Não vistas” e permanecerão no banco com todo o histórico.`)) return;
+    if (!window.confirm(`Arquivar ${formatNumber(viewedTotal)} ${viewedTotal === 1 ? "vaga vista" : "vagas vistas"} por você antes de ${formatDate(viewedBefore)}? ${viewedTotal === 1 ? "Ela sairá" : "Elas sairão"} de “Vistas”, não ${viewedTotal === 1 ? "voltará" : "voltarão"} para “Não vistas” e ${viewedTotal === 1 ? "permanecerá" : "permanecerão"} no banco com todo o histórico.`)) return;
     setArchivingViewed(true);
     setStatus("Arquivando as vagas vistas…");
     try {
@@ -111,7 +112,7 @@ export default function AdminSettings({ isOwner }: { isOwner: boolean }) {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
       await refreshSummary();
-      setStatus(`${formatNumber(data.archived)} vagas saíram de “Vistas” e foram arquivadas somente no seu Radar. Nenhuma vaga ou histórico foi apagado.`);
+      setStatus(`${formatNumber(data.archived)} ${data.archived === 1 ? "vaga saiu" : "vagas saíram"} de “Vistas” e ${data.archived === 1 ? "foi arquivada" : "foram arquivadas"} somente no seu Radar. Nenhuma vaga ou histórico foi apagado.`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Não foi possível arquivar as vagas vistas.");
     } finally { setArchivingViewed(false); }
@@ -128,8 +129,8 @@ export default function AdminSettings({ isOwner }: { isOwner: boolean }) {
     {status && <div className="notice">{status}</div>}<div className="source-actions"><button className="primary" onClick={save}>Salvar parâmetros</button></div>
     {isOwner && <section className="admin-danger-zone"><div><p className="eyebrow">MANUTENÇÃO DA BASE</p><h3>Controle transparente do acervo</h3><p>Escolha entre organizar somente o seu Radar ou apagar vagas inativas do banco. A contagem é recalculada para cada data antes de liberar uma ação.</p></div><a href="/api/admin/backup">↓ Baixar backup JSON antes de excluir</a>
       {jobs ? <dl className="admin-job-summary" aria-label="Situação atual do acervo"><div><dt>Total no banco</dt><dd>{formatNumber(jobs.total)}</dd></div><div><dt>Ativas</dt><dd>{formatNumber(jobs.active)}</dd></div><div><dt>Possivelmente encerradas</dt><dd>{formatNumber(jobs.possiblyClosed)}</dd></div><div><dt>Encerradas</dt><dd>{formatNumber(jobs.closed)}</dd></div><div><dt>Arquivadas</dt><dd>{formatNumber(jobs.archived)}</dd></div></dl> : <p>Consultando a situação do acervo…</p>}
-      <section className="admin-maintenance-card admin-personal-maintenance"><h4>Diminuir “Vistas” no meu Radar</h4><p><strong>Alcance pessoal:</strong> move somente suas vagas no estágio “Vista” para “Arquivada”. As vagas permanecem no banco, não reaparecem em “Não vistas” e nenhum histórico, rascunho ou dado de outra pessoa é apagado.</p><label>Arquivar as que foram vistas antes de<input type="date" value={viewedBefore} onChange={event => setViewedBefore(event.target.value)} required /></label><div className="admin-impact" aria-live="polite"><strong>{jobs ? formatNumber(jobs.viewedEligibleForArchive) : "…"}</strong><span>vagas vistas por você entram neste recorte</span></div><button type="button" className="admin-archive-button" disabled={archivingViewed || !viewedBefore || !jobs?.viewedEligibleForArchive} onClick={() => void archiveViewed()}>{archivingViewed ? "Arquivando…" : jobs?.viewedEligibleForArchive ? `Arquivar ${formatNumber(jobs.viewedEligibleForArchive)} vistas` : "Nenhuma vaga neste recorte"}</button></section>
-      <section className="admin-maintenance-card"><h4>Excluir acervo inativo definitivamente</h4><p><strong>Alcance global:</strong> apaga as vagas selecionadas e também triagem, rascunhos registrados, pipeline, eventos e demais dados vinculados. Usuários, preferências, fontes e integrações são preservados. A operação é atômica: se uma etapa falhar, nada é apagado.</p><label>Situação da vaga<select value={purgeScope} onChange={event => setPurgeScope(event.target.value as PurgeScope)}><option value="archived">Arquivadas</option><option value="possibly_closed">Possivelmente encerradas</option><option value="closed">Encerradas</option></select></label><label>Publicadas antes de<input type="date" value={archivedBefore} onChange={event => setArchivedBefore(event.target.value)} required /><small>Usa a data publicada pela fonte; quando ela não existe, usa a data em que o Radar recebeu a vaga.</small></label><div className="admin-impact" aria-live="polite"><strong>{jobs ? formatNumber(purgeTotal) : "…"}</strong><span>vagas {purgeLabel} serão apagadas globalmente</span></div><button type="button" className="admin-danger-button" disabled={purgingArchived || !archivedBefore || !purgeTotal} onClick={() => void purgeInactive()}>{purgingArchived ? "Excluindo…" : purgeTotal ? `Excluir ${formatNumber(purgeTotal)} ${purgeLabel}` : "Nenhuma vaga neste recorte"}</button></section>
+      <section className="admin-maintenance-card admin-personal-maintenance"><h4>Diminuir “Vistas” no meu Radar</h4><p><strong>Alcance pessoal:</strong> move somente suas vagas no estágio “Vista” para “Arquivada”. As vagas permanecem no banco, não reaparecem em “Não vistas” e nenhum histórico, rascunho ou dado de outra pessoa é apagado.</p><label>Arquivar as que foram vistas antes de<input type="date" value={viewedBefore} onChange={event => setViewedBefore(event.target.value)} required /></label><div className="admin-impact" aria-live="polite"><strong>{jobs ? formatNumber(jobs.viewedEligibleForArchive) : "…"}</strong><span>{jobs?.viewedEligibleForArchive === 1 ? "vaga vista" : "vagas vistas"} por você entram neste recorte</span></div><button type="button" className="admin-archive-button" disabled={archivingViewed || !viewedBefore || !jobs?.viewedEligibleForArchive} onClick={() => void archiveViewed()}>{archivingViewed ? "Arquivando…" : jobs?.viewedEligibleForArchive ? `Arquivar ${formatNumber(jobs.viewedEligibleForArchive)} ${jobs.viewedEligibleForArchive === 1 ? "vista" : "vistas"}` : "Nenhuma vaga neste recorte"}</button></section>
+      <section className="admin-maintenance-card"><h4>Excluir acervo inativo definitivamente</h4><p><strong>Alcance global:</strong> apaga as vagas selecionadas e também triagem, rascunhos registrados, pipeline, eventos e demais dados vinculados. Usuários, preferências, fontes e integrações são preservados. A operação é atômica: se uma etapa falhar, nada é apagado.</p><label>Situação da vaga<select value={purgeScope} onChange={event => setPurgeScope(event.target.value as PurgeScope)}><option value="archived">Arquivadas</option><option value="possibly_closed">Possivelmente encerradas</option><option value="closed">Encerradas</option></select></label><label>Publicadas antes de<input type="date" value={archivedBefore} onChange={event => setArchivedBefore(event.target.value)} required /><small>Usa a data publicada pela fonte; quando ela não existe, usa a data em que o Radar recebeu a vaga.</small></label><div className="admin-impact" aria-live="polite"><strong>{jobs ? formatNumber(purgeTotal) : "…"}</strong><span>{purgeTotal === 1 ? "vaga" : "vagas"} {purgeLabel} {purgeTotal === 1 ? "será apagada" : "serão apagadas"} globalmente</span></div><button type="button" className="admin-danger-button" disabled={purgingArchived || !archivedBefore || !purgeTotal} onClick={() => void purgeInactive()}>{purgingArchived ? "Excluindo…" : purgeTotal ? `Excluir ${purgeQuantity}` : "Nenhuma vaga neste recorte"}</button></section>
       <section className="admin-maintenance-card admin-full-cleanup"><h4>Apagar todo o banco de vagas</h4><p>Esta opção ignora situação e data. Todas as vagas são apagadas; itens com histórico operacional protegido podem bloquear a limpeza.</p><label>Para confirmar, digite <strong>{CONFIRMATION}</strong><input value={confirmation} onChange={event => setConfirmation(event.target.value)} placeholder={CONFIRMATION} /></label><button type="button" className="admin-danger-button" disabled={cleaning || confirmation !== CONFIRMATION || !jobs?.total} onClick={() => void clearJobs()}>{cleaning ? "Limpando…" : "Limpar base de vagas"}</button></section>
     </section>}
   </section>;
