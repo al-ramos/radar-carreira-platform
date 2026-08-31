@@ -45,5 +45,5 @@ export async function reserveQueueMessages(db: Db, queue: string, messageCount: 
 export async function queueUsageForToday(db: Db, budget = QUEUE_DAILY_OPERATION_BUDGET, now = new Date()) {
   const rows = await db.select().from(queueDailyUsage).where(eq(queueDailyUsage.dayUtc, utcDay(now)));
   const total = rows.find((row) => row.queue === TOTAL_QUEUE);
-  return { budget, reservedOperations: total?.reservedOperations ?? 0, retryOperations: total?.retryOperations ?? 0, resetAt: queueResetAt(now), queues: rows.filter((row) => row.queue !== TOTAL_QUEUE) };
+  return { budget, reservedOperations: total?.reservedOperations ?? 0, retryOperations: total?.retryOperations ?? 0, updatedAt: total?.updatedAt ?? null, resetAt: queueResetAt(now), queues: rows.filter((row) => row.queue !== TOTAL_QUEUE) };
 }

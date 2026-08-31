@@ -26,6 +26,10 @@ test("protege a cota diária e compacta mensagens da triagem manual", async () =
   assert.match(worker, /manual-triage-batch/);
   assert.match(worker, /isRetryableQueueResponse/);
   assert.match(worker, /recordQueueRetry/);
+  assert.match(worker, /reserveWorkerQueueMessages/);
+  assert.match(worker, /dispatchScheduledTriage/);
+  assert.match(worker, /observePendingDrafts/);
+  assert.doesNotMatch(worker, /recoverPendingDrafts/);
   assert.match(usageRoute, /queueUsageForToday/);
-  assert.match(screen, /Filas hoje:/);
+  assert.match(screen, /Saúde da coleta e triagem/);
 });

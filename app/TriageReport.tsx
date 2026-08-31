@@ -7,7 +7,18 @@ type Batch = { id: string; trigger: "manual" | "scheduled" | "assistant"; scope:
 type BatchItem = { batchId: string; jobId: string; status: "queued" | "processing" | "completed" | "failed" | "skipped"; error: string | null; attemptCount: number; updatedAt: string; leaseUntil: string | null; title: string; company: string; externalId: string | null };
 type Operational = { pendingDrafts: number; readyDrafts: number; sentDrafts: number; failedDrafts: number; oldestPendingAt: string | null; alerts: Array<{ level: "warning" | "error"; message: string }> };
 type HistoryRecovery = { available: number };
-type QueueUsage = { budget: number; reservedOperations: number; retryOperations: number; resetAt: string };
+type QueueUsage = {
+  status: "healthy" | "warning" | "blocked"; budget: number; hardLimit: number; reservedOperations: number; retryOperations: number;
+  usedOperations: number; utilization: number; updatedAt: string | null; resetAt: string; quotaResetAt: string;
+  reason: string; action: string; scheduledEnabled: boolean; pending: number; activeJobs: number;
+  nextExecutionAt: string | null; nextExecutionReason: string;
+  currentVerdicts: { approved: number; probable: number; rejected: number };
+  drafts: { pending: number; ready: number; failed: number; sent: number };
+  lastImport: { id: string; source: string; status: string; startedAt: string; completedAt: string | null; received: number; inserted: number; updated: number; errors: number } | null;
+  lastTriage: { id: string; trigger: string; status: string; startedAt: string; completedAt: string | null; error: string | null; total: number; completed: number; failed: number } | null;
+  failure: { error: string | null; at: string } | null;
+  queues: Array<{ queue: string; reservedOperations: number; emittedMessages: number; retryOperations: number; updatedAt: string }>;
+};
 type AiReview = { id: string; response?: string | null; jobs?: Array<{ id: string; title: string; company: string }>; provider?: string | null; model?: string | null; status?: string; total?: number; completed?: number; failed?: number; chunks?: number; queued?: number; error?: string | null };
 type CodexQueueItem = { id: string; status: "pending" | "claimed" | "completed" | "failed"; createdAt: string; claimedAt?: string | null; completedAt?: string | null; error?: string | null; selection: { filters?: { jobIds?: string[] } } };
 type AiCareerRules = { professionalName: string; professionalTitle: string; professionalSummary: string; baseLocation: string; acceptedRegions: string[]; maxHybridDays: number; preferredContracts: string[]; dailyCommunicationLanguages: string[]; blockedSeniorities: string[]; blockedWorkTypes: string[]; coreStack: string[]; coreStackMatchMode: "all" | "any"; stackExceptions: string[]; anchorProject: string };
@@ -16,6 +27,7 @@ type LegacyItem = { jobId: string; veredito: string; motivo: string | null; proc
 type FilterOption = { id: string; label: string; count: number };
 type SourceCatalogItem = { id: string; name: string };
 const rowClass: Record<string, string> = { "✅": "approved", "🟡": "partial", "❌": "rejected", "🔴": "rejected" };
+const observabilityLabels = { healthy: "Saudável", warning: "Atenção", blocked: "Bloqueada" } as const;
 const CODEX_BATCH_SIZE = 50;
 const sourceName = (source: string) => source === "all" ? "todas as fontes" : jobSourceLabel(source);
 const isExternalAiReassessment = (item: Pick<HistoryItem, "source" | "rows">) => {
@@ -172,6 +184,11 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
     if (!open) return;
     const timer = window.setTimeout(() => { void loadHistory(); void loadCodexQueue(); void loadQueueUsage(); }, 0);
     return () => window.clearTimeout(timer);
+  }, [open]);
+  useEffect(() => {
+    if (!open) return;
+    const timer = window.setInterval(() => { if (document.visibilityState === "visible") void loadQueueUsage(); }, 30_000);
+    return () => window.clearInterval(timer);
   }, [open]);
   useEffect(() => {
     // O catálogo é a fonte de verdade para os nomes. Assim, uma resposta
@@ -855,7 +872,6 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
                     <button className="triage-queue-button" disabled={queueingDrafts || runningPilot || draftCounts.failed === 0} onClick={retryFailedDrafts} title={draftCounts.failed === 0 ? "Não há falhas para reprocessar" : undefined}>Reprocessar{draftCounts.failed ? ` (${draftCounts.failed})` : ""}</button>
                   </article>
                 </div></>}
-                {queueUsage && <small className="triage-queue-quota" aria-live="polite">Filas hoje: {queueUsage.reservedOperations.toLocaleString("pt-BR")} de {queueUsage.budget.toLocaleString("pt-BR")} operações reservadas{queueUsage.retryOperations ? ` · ${queueUsage.retryOperations} retry(s) observado(s)` : ""}. Reset: {date(queueUsage.resetAt)}.</small>}
                 {aiPromptOpen && <section className="triage-ai-prompt" aria-label="Prompt para análise de vagas pela IA">
                   <div className="triage-ai-prompt-heading"><b>Perfil e stack que a IA vai usar</b><small>Esta é a referência do seu perfil salvo no Radar para analisar {aiTargetJobIds?.length ?? actionCandidateCount ?? 0} vaga(s) {aiTargetJobIds ? "selecionada(s)" : "do recorte"}.</small></div>
                   {aiProfileLoading && <small>Carregando o perfil salvo…</small>}
@@ -916,6 +932,50 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
             </div>
           </section>
         )}
+        {queueUsage && <section className={`triage-observability ${queueUsage.status}`} aria-label="Observabilidade da coleta e da triagem" aria-live="polite">
+          <header className="triage-observability-heading">
+            <div><p className="eyebrow">OBSERVABILIDADE</p><h3>Saúde da coleta e triagem</h3></div>
+            <span className="triage-health-badge">{observabilityLabels[queueUsage.status]}</span>
+          </header>
+          <div className="triage-observability-grid">
+            <article>
+              <small>Fila hoje</small>
+              <strong>{queueUsage.usedOperations.toLocaleString("pt-BR")} <em>/ {queueUsage.hardLimit.toLocaleString("pt-BR")}</em></strong>
+              <div className="triage-quota-track" aria-label={`${queueUsage.utilization}% do orçamento preventivo`}><span style={{ width: `${Math.min(100, queueUsage.utilization)}%` }} /></div>
+              <p>Trava preventiva: {queueUsage.budget.toLocaleString("pt-BR")} operações{queueUsage.retryOperations ? ` · ${queueUsage.retryOperations} retry(s)` : ""}</p>
+            </article>
+            <article>
+              <small>Pendentes nas regras atuais</small>
+              <strong>{queueUsage.pending.toLocaleString("pt-BR")} <em>/ {queueUsage.activeJobs.toLocaleString("pt-BR")} ativas</em></strong>
+              <p>{queueUsage.currentVerdicts.approved} aprovadas · {queueUsage.currentVerdicts.probable} prováveis · {queueUsage.currentVerdicts.rejected} não aderentes</p>
+            </article>
+            <article>
+              <small>Última importação</small>
+              <strong>{queueUsage.lastImport ? queueUsage.lastImport.source : "Sem registro"}</strong>
+              <p>{queueUsage.lastImport ? `${date(queueUsage.lastImport.completedAt ?? queueUsage.lastImport.startedAt)} · ${queueUsage.lastImport.received} recebidas · ${queueUsage.lastImport.inserted} novas · ${queueUsage.lastImport.updated} atualizadas` : "Nenhuma importação registrada."}</p>
+            </article>
+            <article>
+              <small>Última triagem</small>
+              <strong>{queueUsage.lastTriage ? queueUsage.lastTriage.status : "Sem registro"}</strong>
+              <p>{queueUsage.lastTriage ? `${date(queueUsage.lastTriage.completedAt ?? queueUsage.lastTriage.startedAt)} · ${queueUsage.lastTriage.completed}/${queueUsage.lastTriage.total} concluídas · ${queueUsage.lastTriage.failed} falhas` : "Nenhuma execução registrada."}</p>
+            </article>
+            <article>
+              <small>Próxima execução</small>
+              <strong>{date(queueUsage.nextExecutionAt)}</strong>
+              <p>{queueUsage.nextExecutionReason}</p>
+            </article>
+            <article>
+              <small>Reset da cota</small>
+              <strong>{date(queueUsage.quotaResetAt)}</strong>
+              <p>{queueUsage.updatedAt ? `Telemetria atualizada em ${date(queueUsage.updatedAt)}.` : "Sem mensagens reservadas hoje."}</p>
+            </article>
+          </div>
+          <div className="triage-observability-guidance">
+            <div><b>O que está acontecendo</b><span>{queueUsage.reason}</span></div>
+            <div><b>Próximo passo</b><span>{queueUsage.action}</span></div>
+            {queueUsage.failure?.error && <details><summary>Ver falha registrada</summary><code>{queueUsage.failure.error}</code></details>}
+          </div>
+        </section>}
         <section className="triage-automation" aria-label="Automação diária e saúde operacional">
           <div className="triage-automation-intro">
             <h3>Automação diária</h3>

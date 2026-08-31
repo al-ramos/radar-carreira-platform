@@ -145,6 +145,74 @@ type QueueMessage = {
 
 const isRetryableQueueResponse = (response: Response) => response.status === 408 || response.status === 429 || response.status >= 500;
 
+const QUEUE_DAILY_OPERATION_BUDGET = 7_500;
+const QUEUE_OPERATIONS_PER_MESSAGE = 3;
+
+class QueueBudgetExceededError extends Error {
+  constructor(readonly resetAt: string) {
+    super(`Limite preventivo diário da fila atingido. Nova tentativa após ${resetAt}.`);
+    this.name = "QueueBudgetExceededError";
+  }
+}
+
+const queueResetAt = (now = new Date()) => {
+  const reset = new Date(now);
+  reset.setUTCHours(24, 0, 0, 0);
+  return reset.toISOString();
+};
+
+const queueErrorDetail = (error: unknown) => error instanceof Error ? error.message.slice(0, 500) : "Falha desconhecida na fila";
+const isQueueQuotaError = (error: unknown) => error instanceof QueueBudgetExceededError
+  || /daily (?:write )?operations limit|queue.*(?:quota|limit)|limite preventivo diário/i.test(queueErrorDetail(error));
+
+async function recordAutomationHeartbeat(env: Env, id: string, status: "running" | "completed" | "failed" | "skipped", startedAt: number, error: string | null = null) {
+  const now = Date.now();
+  await env.DB.prepare(`INSERT INTO automation_heartbeats (id, status, started_at, completed_at, error, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET status = excluded.status, started_at = excluded.started_at,
+      completed_at = excluded.completed_at, error = excluded.error, updated_at = excluded.updated_at`
+  ).bind(id, status, startedAt, status === "running" ? null : now, error, now).run();
+}
+
+/** Reserva write + read + delete antes de qualquer envio iniciado pelo Worker. */
+async function reserveWorkerQueueMessages(env: Env, queue: string, messageCount: number) {
+  const messages = Math.max(0, Math.floor(messageCount));
+  if (!messages) return;
+  const now = Date.now();
+  const day = new Date(now).toISOString().slice(0, 10);
+  const configured = await env.DB.prepare("SELECT queue_daily_operation_budget AS budget FROM platform_settings WHERE id = 'global' LIMIT 1").first<{ budget: number | null }>();
+  const budget = Math.max(1_000, Math.min(10_000, configured?.budget ?? QUEUE_DAILY_OPERATION_BUDGET));
+  const operations = messages * QUEUE_OPERATIONS_PER_MESSAGE;
+  await env.DB.prepare(`INSERT INTO queue_daily_usage (day_utc, queue, reserved_operations, emitted_messages, retry_operations, updated_at)
+    VALUES (?, '__total__', 0, 0, 0, ?) ON CONFLICT(day_utc, queue) DO NOTHING`).bind(day, now).run();
+  const reserved = await env.DB.prepare(`UPDATE queue_daily_usage
+    SET reserved_operations = reserved_operations + ?, emitted_messages = emitted_messages + ?, updated_at = ?
+    WHERE day_utc = ? AND queue = '__total__' AND reserved_operations <= ?`
+  ).bind(operations, messages, now, day, budget - operations).run();
+  if (!reserved.meta.changes) throw new QueueBudgetExceededError(queueResetAt(new Date(now)));
+  await env.DB.prepare(`INSERT INTO queue_daily_usage (day_utc, queue, reserved_operations, emitted_messages, retry_operations, updated_at)
+    VALUES (?, ?, ?, ?, 0, ?)
+    ON CONFLICT(day_utc, queue) DO UPDATE SET reserved_operations = reserved_operations + excluded.reserved_operations,
+      emitted_messages = emitted_messages + excluded.emitted_messages, updated_at = excluded.updated_at`
+  ).bind(day, queue, operations, messages, now).run();
+}
+
+async function dispatchScheduledTriage(env: Env, messages: ScheduledTriageQueueMessage[]) {
+  if (!messages.length) return;
+  const startedAt = Date.now();
+  try {
+    await reserveWorkerQueueMessages(env, "radar-carreira-triage", messages.length);
+    await Promise.all(messages.map((message) => env.TRIAGE_QUEUE.send(message)));
+    await recordAutomationHeartbeat(env, "triage-dispatch", "completed", startedAt);
+    console.log(JSON.stringify({ event: "triage_dispatch", status: "completed", messages: messages.length }));
+  } catch (error) {
+    const detail = queueErrorDetail(error);
+    await recordAutomationHeartbeat(env, "triage-dispatch", "failed", startedAt, detail);
+    console.error(JSON.stringify({ event: "triage_dispatch", status: "failed", messages: messages.length, detail }));
+    throw error;
+  }
+}
+
 async function recordQueueRetry(env: Env, queue: string) {
   const now = Date.now(), day = new Date(now).toISOString().slice(0, 10);
   for (const key of ["__total__", queue]) await env.DB.prepare(`
@@ -193,7 +261,9 @@ async function recoverStalledManualTriage(env: Env) {
   // be undefined”, deixando itens manuais presos apesar de terem sido
   // reenfileirados no banco.
   for (let index = 0; index < recovered.length; index += 100) {
-    await env.MANUAL_TRIAGE_QUEUE.sendBatch(recovered.slice(index, index + 100).map((body) => ({ body })));
+    const messages = recovered.slice(index, index + 100).map((body) => ({ body }));
+    await reserveWorkerQueueMessages(env, "radar-carreira-triage-manual", messages.length);
+    await env.MANUAL_TRIAGE_QUEUE.sendBatch(messages);
   }
   await env.DB.prepare(`INSERT INTO automation_heartbeats (id, status, started_at, completed_at, error, updated_at)
     VALUES ('triage-recovery', 'completed', ?, ?, NULL, ?)
@@ -203,35 +273,29 @@ async function recoverStalledManualTriage(env: Env) {
 }
 
 /**
- * A coleta é o gatilho normal do rascunho. Esta retomada só cobre itens que
- * já ficaram pendentes após uma falha transitória ou uma aprovação antiga;
- * não envia e-mail nem inicia candidatura.
+ * Rascunhos são apenas observados pelo cron. A retomada automática anterior
+ * reenfileirava as mesmas fontes a cada dois minutos e podia esgotar a cota
+ * mesmo sem vagas novas. A correção continua disponível pela ação explícita
+ * no painel, sem criar ou enviar rascunhos silenciosamente.
  */
-async function recoverPendingDrafts(env: Env) {
+async function observePendingDrafts(env: Env) {
+  const startedAt = Date.now();
   const pending = await env.DB.prepare(`
-    SELECT DISTINCT j.source_id
+    SELECT COUNT(*) AS total, COUNT(DISTINCT j.source_id) AS sources
     FROM draft_outbox o INNER JOIN jobs j ON j.id = o.job_id
     WHERE o.status = 'pending' AND j.source_id IS NOT NULL
-    LIMIT 20
-  `).all<{ source_id: string }>();
-  // Uma aprovação pode ter sido persistida antes da outbox (por exemplo, após
-  // indisponibilidade transitória). Ela precisa receber o mesmo gatilho de
-  // recuperação, não apenas os itens que já chegaram a pending.
+  `).first<{ total: number; sources: number }>();
   const approvedWithoutOutbox = await env.DB.prepare(`
-    SELECT DISTINCT j.source_id
+    SELECT COUNT(*) AS total, COUNT(DISTINCT j.source_id) AS sources
     FROM jobs j
     INNER JOIN user_job_analyses a ON a.job_id = j.id AND a.verdict = '✅'
     LEFT JOIN draft_outbox o ON o.job_id = j.id AND o.user_id = a.user_id
     WHERE j.status = 'active' AND o.id IS NULL AND j.source_id IS NOT NULL
-    LIMIT 20
-  `).all<{ source_id: string }>();
-  const sourceIds = new Set([...pending.results, ...approvedWithoutOutbox.results].map((item) => item.source_id));
-  for (const sourceId of sourceIds) await env.TRIAGE_QUEUE.send({
-    kind: "scheduled-triage",
-    run: { sourceId, dateScope: "received", homePeriod: "all", aiMode: "off", batchSize: 1 },
-    continuation: 0,
-  } satisfies ScheduledTriageQueueMessage);
-  console.log(JSON.stringify({ event: "draft_recovery", pendingSources: pending.results.length, approvedWithoutOutboxSources: approvedWithoutOutbox.results.length, sources: sourceIds.size }));
+  `).first<{ total: number; sources: number }>();
+  const total = Number(pending?.total ?? 0) + Number(approvedWithoutOutbox?.total ?? 0);
+  await recordAutomationHeartbeat(env, "draft-monitor", total ? "skipped" : "completed", startedAt,
+    total ? `${total} item(ns) aguardam ação explícita no painel; recuperação automática desativada.` : null);
+  console.log(JSON.stringify({ event: "draft_monitor", pending: Number(pending?.total ?? 0), pendingSources: Number(pending?.sources ?? 0), approvedWithoutOutbox: Number(approvedWithoutOutbox?.total ?? 0), approvedSources: Number(approvedWithoutOutbox?.sources ?? 0) }));
 }
 
 // Image security config. SVG sources with .svg extension auto-skip the
@@ -306,12 +370,15 @@ const worker = {
         if (typeof outcome.id === "string") sourceIds.add(outcome.id);
       }
       if (sourceIds.size) {
-        ctx.waitUntil(Promise.all([...sourceIds].map((sourceId) => env.TRIAGE_QUEUE.send({
+        const messages = [...sourceIds].map((sourceId) => ({
           kind: "scheduled-triage",
           // A rota lê o limite configurado pelo administrador antes de executar.
           run: { sourceId, dateScope: "received", homePeriod: "all", aiMode: "ambiguous", batchSize: 100 },
           continuation: 0,
-        } satisfies ScheduledTriageQueueMessage))).catch(() => undefined));
+        } satisfies ScheduledTriageQueueMessage));
+        // A falha fica persistida no heartbeat antes de ser absorvida aqui;
+        // a resposta da importação já concluída não deve ser revertida.
+        ctx.waitUntil(dispatchScheduledTriage(env, messages).catch(() => undefined));
       }
     }
 
@@ -327,8 +394,8 @@ const worker = {
         ON CONFLICT(id) DO UPDATE SET status = excluded.status, started_at = excluded.started_at, completed_at = excluded.completed_at, error = excluded.error, updated_at = excluded.updated_at`
       ).bind(now, now, detail, now).run();
     }));
-    ctx.waitUntil(recoverPendingDrafts(env).catch((error) => {
-      console.error(JSON.stringify({ event: "draft_recovery_failed", detail: error instanceof Error ? error.message.slice(0, 500) : "Falha ao retomar rascunhos" }));
+    ctx.waitUntil(observePendingDrafts(env).catch((error) => {
+      console.error(JSON.stringify({ event: "draft_monitor_failed", detail: error instanceof Error ? error.message.slice(0, 500) : "Falha ao observar rascunhos" }));
     }));
     const scheduledDate = new Date(controller.scheduledTime);
     if (scheduledDate.getUTCHours() === 3 && scheduledDate.getUTCMinutes() < 2) {
@@ -374,11 +441,11 @@ const worker = {
           // A primeira rodada usa IA somente para as ambiguidades. O próprio
           // servidor informa se há mais vagas sob o limite configurado.
           if (result?.hasMore === true) {
-            await env.TRIAGE_QUEUE.send({
+            await dispatchScheduledTriage(env, [{
               kind: "scheduled-triage",
               run: { ...payload.run, aiMode: "off" },
               continuation: payload.continuation + 1,
-            } satisfies ScheduledTriageQueueMessage);
+            } satisfies ScheduledTriageQueueMessage]);
           }
           message.ack();
           continue;
@@ -394,7 +461,13 @@ const worker = {
         }), env, ctx);
         if (response.ok || !isRetryableQueueResponse(response)) message.ack();
         else { await recordQueueRetry(env, "radar-carreira-triage-manual"); message.retry({ delaySeconds: 15 }); }
-      } catch {
+      } catch (error) {
+        if (isQueueQuotaError(error)) {
+          // O item segue pendente no D1. Fazer retry automático durante o
+          // bloqueio apenas multiplicaria leituras e deletes da mesma cota.
+          message.ack();
+          continue;
+        }
         // Uma exceção isolada não pode interromper a entrega do lote inteiro.
         await recordQueueRetry(env, "unknown");
         message.retry({ delaySeconds: 15 });

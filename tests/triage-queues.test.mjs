@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-test("fila da triagem prioriza ações manuais, recupera atrasos e mantém DLQ", async () => {
+test("fila da triagem prioriza ações manuais, recupera atrasos e mantém DLQ sem fan-out de rascunhos", async () => {
   const [config, workflow, queueRoute, worker, ui] = await Promise.all([
     readFile(new URL("../wrangler.jsonc", import.meta.url), "utf8"),
     readFile(new URL("../.github/workflows/quality.yml", import.meta.url), "utf8"),
@@ -38,12 +38,13 @@ test("fila da triagem prioriza ações manuais, recupera atrasos e mantém DLQ",
   assert.match(worker, /try \{/);
   assert.match(worker, /message\.retry\(\{ delaySeconds: 15 \}\)/);
   assert.match(worker, /recoverStalledManualTriage/);
-  assert.match(worker, /recoverPendingDrafts/);
-  assert.match(worker, /event: "draft_recovery"/);
+  assert.match(worker, /observePendingDrafts/);
+  assert.match(worker, /event: "draft_monitor"/);
   assert.match(worker, /o\.status = 'pending'/);
   assert.match(worker, /STALE_MANUAL_TRIAGE_MS = 2 \* 60_000/);
   assert.match(worker, /env\.MANUAL_TRIAGE_QUEUE\.sendBatch/);
-  assert.match(worker, /sendBatch\(recovered\.slice\(index, index \+ 100\)\.map\(\(body\) => \(\{ body \}\)\)\)/);
+  assert.match(worker, /reserveWorkerQueueMessages\(env, "radar-carreira-triage-manual", messages\.length\)/);
+  assert.match(worker, /env\.MANUAL_TRIAGE_QUEUE\.sendBatch\(messages\)/);
   assert.match(worker, /async scheduled/);
   assert.match(ui, /recoverableManualItemCount/);
   assert.match(ui, /Fila em recuperação/);
