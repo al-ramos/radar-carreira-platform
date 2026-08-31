@@ -13,6 +13,10 @@
 - Diante de um arquivo `.git/index.lock` ou de lock de índice em uso, não encerre processos Git nem remova locks sem confirmação explícita da pessoa usuária. Aguarde, identifique o processo ou use um clone/worktree novo.
 - Não declare publicação concluída até confirmar commit, push e o resultado operacional aplicável; para extensões Chrome locais, informe também que o código enviado só entra em uso após recarregar a pasta no `chrome://extensions`.
 
+## Padrão de branches
+
+- Para este repositório, crie novas branches com o padrão `codex/<nome-da-tarefa>`.
+
 ## Padrões operacionais permanentes
 
 - Registre no card correspondente do Notion toda correção, entrega funcional ou incidente: contexto, causa, evidências, correção aplicada, validação e próximo passo.
