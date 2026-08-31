@@ -1,11 +1,13 @@
-import { and, desc, eq, gte, isNull, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, isNull, lt, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db/index";
-import { draftOutbox, jobs, jobSources, triageBatchItems, triageBatches, triageHistory, userJobAnalyses, userJobStatus } from "../../../../db/schema";
+import { draftOutbox, jobs, jobSources, profiles, triageBatchItems, triageBatches, triageHistory, userJobAnalyses, userJobStatus } from "../../../../db/schema";
 import { isOwnerEmail } from "../../../../lib/access";
 import { hasValidContactEmail } from "../../../../lib/contact-email";
 import { saoPauloDayWindow } from "../../../../lib/triage-orchestrator";
+import { canonicalizeProfile } from "../../../../lib/canonical-profile";
+import { getAnalysisVersions } from "../../../../lib/analysis-versions";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +32,9 @@ export async function GET(request: Request) {
   }
 
   const db = getDb();
+  const profile = await db.select().from(profiles).where(eq(profiles.userId, user.userId)).limit(1).then(rows => rows[0]);
+  if (!profile) return NextResponse.json({ error: "Complete seu perfil antes de consultar a triagem." }, { status: 412 });
+  const versions = getAnalysisVersions(canonicalizeProfile(profile));
   const query = new URL(request.url).searchParams;
   const scope = query.get("scope");
   const pendingScope = scope === "pending";
@@ -41,11 +46,17 @@ export async function GET(request: Request) {
     select 1 from ${triageHistory}
     where ${triageHistory.userId} = ${user.userId}
       and ${triageHistory.jobId} = ${jobs.id}
+      and ${triageHistory.profileRevision} = ${versions.profileRevision}
+      and ${triageHistory.rulesRevision} = ${versions.rulesRevision}
+      and ${triageHistory.instructionsRevision} = ${versions.instructionsRevision}
   )`;
   const pendingTriageCondition = sql`not exists (
     select 1 from ${triageHistory}
     where ${triageHistory.userId} = ${user.userId}
       and ${triageHistory.jobId} = ${jobs.id}
+      and ${triageHistory.profileRevision} = ${versions.profileRevision}
+      and ${triageHistory.rulesRevision} = ${versions.rulesRevision}
+      and ${triageHistory.instructionsRevision} = ${versions.instructionsRevision}
   )`;
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
   const todayWindow = saoPauloDayWindow(today);
@@ -90,7 +101,13 @@ export async function GET(request: Request) {
     // as vagas que ainda não têm análise, permitindo que “Não analisadas” e
     // “Todas” mostrem o estoque real em vez de uma tabela vazia.
     .from(jobs)
-    .leftJoin(userJobAnalyses, and(eq(userJobAnalyses.userId, user.userId), eq(userJobAnalyses.jobId, jobs.id)))
+    .leftJoin(userJobAnalyses, and(
+      eq(userJobAnalyses.userId, user.userId),
+      eq(userJobAnalyses.jobId, jobs.id),
+      eq(userJobAnalyses.profileRevision, versions.profileRevision),
+      eq(userJobAnalyses.rulesRevision, versions.rulesRevision),
+      eq(userJobAnalyses.instructionsRevision, versions.instructionsRevision),
+    ))
     .leftJoin(jobSources, eq(jobs.sourceId, jobSources.id))
     .leftJoin(draftOutbox, and(eq(draftOutbox.userId, user.userId), eq(draftOutbox.jobId, jobs.id)))
     .leftJoin(userJobStatus, and(eq(userJobStatus.userId, user.userId), eq(userJobStatus.jobId, jobs.id)))

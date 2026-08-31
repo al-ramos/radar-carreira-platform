@@ -128,10 +128,12 @@ function matchesBuiltInStackException(fullText: string): string | null {
  * Bloqueadores explícitos de idioma, senioridade vetada, atuação e geografia
  * continuam prevalecendo antes desta preferência.
  */
-function matchesAlwaysApprovedLegacyStack(fullText: string, userSkills: string[]): string | null {
-  const text = normalizeText(fullText);
-  const mentionsVba = /\bvba\b/.test(text);
-  const mentionsVb6 = /\b(?:visual\s+basic\s*6|vb\s*6)\b/.test(text);
+function matchesLegacyStackFocus(title: string, description: string, userSkills: string[]): string | null {
+  const titleText = normalizeText(title);
+  const requiredText = normalizeText(description).split(/\b(?:diferencia(?:l|is)|desejaveis?|nice to have|plus)\b/)[0] ?? "";
+  const focusedText = `${titleText} ${requiredText}`;
+  const mentionsVba = /\bvba\b/.test(focusedText);
+  const mentionsVb6 = /\b(?:visual\s+basic\s*6|vb\s*6)\b/.test(focusedText);
   if (mentionsVba && userSkills.some(skill => skillsAreEquivalent(skill, "VBA"))) return "VBA";
   if (mentionsVb6 && userSkills.some(skill => skillsAreEquivalent(skill, "Visual Basic 6"))) return "Visual Basic 6";
   return null;
@@ -213,10 +215,12 @@ function conditionalPresenceRegion(text: string): string | null {
   return match[1].replace(/\s+(?:deve|devera|precisa|sera|tera|e\s+necessario)\b.*$/i, "").trim() || null;
 }
 
-function detectWorkMode(text: string, location: string, rules?: CareerRules): { status: string; ok: boolean | null } {
-  const remote = REMOTE_RE.test(text);
-  const hybrid = HYBRID_RE.test(text);
-  const onsite = ONSITE_RE.test(text);
+function detectWorkMode(text: string, declaredWorkMode: string, location: string, rules?: CareerRules): { status: string; ok: boolean | null } {
+  const declared = normalizeText(declaredWorkMode);
+  const hasDeclaredMode = Boolean(declared.trim());
+  const remote = hasDeclaredMode ? declared.includes("remoto") || declared.includes("remote") : REMOTE_RE.test(text);
+  const hybrid = hasDeclaredMode ? declared.includes("hibrid") || declared.includes("hybrid") : HYBRID_RE.test(text);
+  const onsite = hasDeclaredMode ? declared.includes("presencial") || declared.includes("on-site") || declared.includes("onsite") : ONSITE_RE.test(text);
   if (remote) return { status: "Remoto ✅", ok: true };
   const acceptedLocations = [...(rules?.acceptedRegions ?? []), rules?.baseLocation ?? ""].filter(Boolean);
   const conditionalRegion = conditionalPresenceRegion(text);
@@ -255,16 +259,28 @@ function detectSeniority(title: string, declaredSeniority: string, rules?: Caree
 
 function isOptionalRequirement(text: string, skill: string): boolean {
   const normalizedText = normalizeText(text);
-  const normalizedSkill = normalizeText(skill).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const skillPattern = new RegExp(`\\b${normalizedSkill}\\b`, "i");
-  const optionalMarker = /\b(diferenciais?|desejavel|desejaveis|nice to have|ser[aá] um diferencial|plus)\b/i;
-  return normalizedText.split(/\n|[.;]/).some(part => optionalMarker.test(part) && skillPattern.test(part));
+  const normalizedSkill = normalizeText(skill);
+  const optionalMarker = /\b(diferencia(?:l|is)|desejavel|desejaveis|nice to have|ser[aá] um diferencial|plus)\b/i;
+  const requiredMarker = /\b(requisitos?|obrigatorio|obrigatorios|mandatorio|mandatorios|required|must have)\b/i;
+  const parts = normalizedText.split(/\n|[.;•]|\s+-\s+|&lt;br\s*\/?&gt;|<br\s*\/?\s*>/i).map(part => part.trim()).filter(Boolean);
+  let optionalSection = false;
+  let optionalMention = false;
+  let requiredMention = false;
+  for (const part of parts) {
+    if (optionalMarker.test(part)) optionalSection = true;
+    if (requiredMarker.test(part)) optionalSection = false;
+    if (!part.includes(normalizedSkill)) continue;
+    if (optionalSection || optionalMarker.test(part)) optionalMention = true;
+    else requiredMention = true;
+  }
+  return optionalMention && !requiredMention;
 }
 
 function detectStack(text: string, jobStack: string[], userSkills?: string[], rules?: CareerRules): { status: string; ok: boolean | null } {
   const { requiredSkills, matchingSkills, missingSkills } = analyzeStackFit(jobStack, userSkills);
   if (!requiredSkills.length) return { status: "Stack não identificada na vaga — confirmar", ok: null };
   if (!missingSkills.length) return { status: `${matchingSkills.join(", ")} ✅`, ok: true };
+  if (!matchingSkills.length) return { status: `Impedimentos: ${missingSkills.join(", ")}`, ok: false };
   const optionalMissing = rules?.acceptOptionalRequirements
     ? missingSkills.filter(skill => isOptionalRequirement(text, skill))
     : [];
@@ -273,7 +289,6 @@ function detectStack(text: string, jobStack: string[], userSkills?: string[], ru
     status: `${matchingSkills.join(", ")} ✅ · diferenciais aceitos: ${optionalMissing.join(", ")}`,
     ok: true,
   };
-  if (!matchingSkills.length) return { status: `Impedimentos: ${missingSkills.join(", ")}`, ok: false };
   if (matchingSkills.length / requiredSkills.length < 0.34) return {
     status: `Baixa aderência: ${matchingSkills.join(", ")} — faltam: ${requiredMissing.join(", ")}`,
     ok: false,
@@ -321,13 +336,13 @@ export function computeVerdict(job: {
   const lc = fullText.toLowerCase();
   const stackText = `${fullText} ${job.stack.join(" ")}`;
   const stackFit = analyzeStackFit(job.stack, userSkills);
-  const alwaysApprovedLegacyStack = matchesAlwaysApprovedLegacyStack(stackText, userSkills);
+  const legacyStackFocus = matchesLegacyStackFocus(job.title, job.description, userSkills);
   const configuredException = matchesStackException(stackText, rules?.stackExceptions ?? []);
   const stackException = matchesBuiltInStackException(stackText) ?? configuredException;
   const coreStack = rules?.coreStack ?? [];
   const coreMatch = coreStack.length ? hasEquivalentSkill(stackFit.requiredSkills, coreStack) : stackFit.matchingSkills.length > 0;
-  const stackGate = alwaysApprovedLegacyStack
-    ? { status: stackException ? `Exceção automática: ${stackException} ✅ · Preferência do perfil: ${alwaysApprovedLegacyStack}` : `Preferência do perfil: ${alwaysApprovedLegacyStack} ✅`, ok: true as const }
+  const stackGate = legacyStackFocus
+    ? { status: stackException ? `Exceção automática: ${stackException} ✅ · Foco da vaga: ${legacyStackFocus}` : `Foco da vaga compatível: ${legacyStackFocus} ✅`, ok: true as const }
     : stackException
     ? { status: `Exceção automática: ${stackException} ✅`, ok: true as const }
     : !stackFit.requiredSkills.length
@@ -336,9 +351,8 @@ export function computeVerdict(job: {
         ? { status: coreStack.length ? `Ecossistema principal identificado: ${stackFit.requiredSkills.filter(skill => coreStack.some(core => skillsAreEquivalent(skill, core))).join(", ")} ✅` : "Stack compatível com o perfil ✅", ok: true as const }
         : { status: coreStack.length ? `Stack fora do foco principal (${coreStack.join(" / ")}) — revisar no link da vaga` : "Stack não confirmada no perfil — revisar no link da vaga", ok: null as const };
 
-  const structuralRows: VerdictRow[] = priorityTechnology
-    ? [{ criterion: "Prioridade", status: `Tecnologia prioritária identificada: ${priorityTechnology} (requisito ou diferencial)`, ok: true }]
-    : [{ criterion: "Fase 1 · Stack", ...stackGate }];
+  const structuralRows: VerdictRow[] = [{ criterion: "Fase 1 · Stack", ...stackGate }];
+  if (priorityTechnology) structuralRows.push({ criterion: "Prioridade", status: `Tecnologia prioritária identificada: ${priorityTechnology}; os demais critérios continuam obrigatórios`, ok: true });
   const blocked = (blocker: string): VerdictResult => ({ emoji: "❌", label: "Bloqueador estrutural", blocker, rows: structuralRows });
 
   // Fase 1: os bloqueadores são avaliados e interrompem a triagem nesta ordem.
@@ -361,7 +375,7 @@ export function computeVerdict(job: {
   structuralRows.push({ criterion: "Fase 1 · Atuação", ...workTypeRow });
   if (blockedWorkType) return blocked(`Tipo de atuação bloqueado: ${blockedWorkType}`);
 
-  const workRow = detectWorkMode(lc, job.location ?? "", rules);
+  const workRow = detectWorkMode(lc, job.workMode ?? "", job.location ?? "", rules);
   structuralRows.push({ criterion: "Fase 1 · Geografia", ...workRow });
   const locationBlocked = workRow.ok === false && /fora das regioes aceitas|limite do perfil/i.test(normalizeText(workRow.status));
   if (locationBlocked) return blocked(workRow.status);
@@ -370,7 +384,9 @@ export function computeVerdict(job: {
   // obrigatórias para aprovar: ela não pode substituir dados de perfil nem
   // transformar uma vaga incompleta em ✅.
   const contractRow = detectContratacao(lc, rules);
-  const technicalFitRow = stackException
+  const technicalFitRow = legacyStackFocus
+    ? { status: `Foco técnico da vaga compatível: ${legacyStackFocus} ✅`, ok: true as const }
+    : stackException
     ? { status: `Exceção técnica aceita: ${stackException} ✅`, ok: true as const }
     : detectStack(fullText, job.stack, userSkills, rules);
   const companyRow = detectCompanyType(lc);
@@ -381,25 +397,9 @@ export function computeVerdict(job: {
     { criterion: "Fase 4 · Empresa", ...companyRow },
   ];
 
-  if (alwaysApprovedLegacyStack) {
-    rows.push({ criterion: "Preferência do perfil", status: `${alwaysApprovedLegacyStack} — aderência prioritária 100% ✅`, ok: true });
-    return { emoji: "✅", label: "Bate", rows };
-  }
-
-  const decisionRows = [languageRow, workRow, contractRow, seniorRow, technicalFitRow, companyRow];
+  const decisionRows = [stackGate, languageRow, workRow, contractRow, seniorRow, technicalFitRow, companyRow];
   const falseCount = decisionRows.filter(row => row.ok === false).length;
-  const technicalCoverage = stackFit.requiredSkills.length
-    ? stackFit.matchingSkills.length / stackFit.requiredSkills.length
-    : 0;
-  // Uma vaga Full Stack costuma listar tecnologias complementares que podem
-  // ser aprendidas no contexto do trabalho. Quando o ecossistema central do
-  // perfil está presente, pelo menos 40% da stack exigida já é dominada e os
-  // demais critérios passaram, essas lacunas continuam explicadas na tela,
-  // mas não rebaixam sozinhas uma vaga de ✅ para 🟡.
-  const complementaryTechnicalReservation = technicalFitRow.ok === null
-    && stackGate.ok === true
-    && technicalCoverage >= 0.4;
-  const reservationCount = decisionRows.filter(row => row.ok === null && !(row === technicalFitRow && complementaryTechnicalReservation)).length;
+  const reservationCount = decisionRows.filter(row => row.ok === null).length;
   if (technicalFitRow.ok === false || falseCount >= 2) return { emoji: "🔴", label: "Não bate", rows };
   if (falseCount === 0 && reservationCount === 0) return { emoji: "✅", label: "Bate", rows };
   return { emoji: "🟡", label: "Provável com ressalvas", rows };

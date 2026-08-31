@@ -122,7 +122,13 @@ export async function POST(request: Request) {
   const candidates = await db
     .select({ job: jobs, analysis: userJobAnalyses })
     .from(jobs)
-    .leftJoin(userJobAnalyses, and(eq(userJobAnalyses.userId, userId), eq(userJobAnalyses.jobId, jobs.id)))
+    .leftJoin(userJobAnalyses, and(
+      eq(userJobAnalyses.userId, userId),
+      eq(userJobAnalyses.jobId, jobs.id),
+      eq(userJobAnalyses.profileRevision, versions.profileRevision),
+      eq(userJobAnalyses.rulesRevision, versions.rulesRevision),
+      eq(userJobAnalyses.instructionsRevision, versions.instructionsRevision),
+    ))
     .where(and(
       eq(jobs.status, "active"),
       scopedToReferenceDay ? gte(dateColumn, saoPauloDayWindow(run.referenceDate).start) : undefined,

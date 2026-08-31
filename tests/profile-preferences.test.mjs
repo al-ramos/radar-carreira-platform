@@ -76,19 +76,19 @@ test("valoriza a primeira família de stack sem punir um perfil amplo", () => {
 test("agrupa tecnologias equivalentes e aumenta o score ao encontrar outra família", () => {
   const profile = { masteredSkills: ["C#", ".NET", "SQL", "SQL Server", "MySQL", "PostgreSQL", "Oracle", "SQLite"], desiredAreas: [], avoidTerms: [], seniority: [], preferredMode: [] };
   const dotnet = scoreJob({ title: "Desenvolvedor .NET", description: "APIs em C#.", stack: ["C#", ".NET"] }, profile);
-  assert.equal(dotnet.score, 100);
+  assert.equal(dotnet.score, 40);
 
   const dotnetAndSql = scoreJob({ title: "Desenvolvedor .NET", description: "APIs em C# com PostgreSQL.", stack: ["C#", ".NET", "PostgreSQL"] }, profile);
-  assert.equal(dotnetAndSql.score, 100);
+  assert.equal(dotnetAndSql.score, 55);
 });
 
 test("menção genérica a idioma não zera a vaga, mas exigência avançada bloqueia", () => {
   const profile = { masteredSkills: ["C#"], desiredAreas: [], avoidTerms: ["inglês", "espanhol"], seniority: [], preferredMode: [] };
   const mention = scoreJob({ title: "Desenvolvedor .NET", description: "Inglês desejável para leitura.", stack: ["C#"] }, profile);
-  assert.equal(mention.score, 100);
+  assert.equal(mention.score, 40);
 
   const required = scoreJob({ title: "Desenvolvedor .NET", description: "Inglês avançado obrigatório.", stack: ["C#"] }, profile);
-  assert.equal(required.score, 100);
+  assert.equal(required.score, 0);
 });
 
 test("reconhece variações semânticas da área de back-end", () => {
@@ -156,7 +156,7 @@ test("reconhece automaticamente as exceções VBA/Access e QA .NET Sênior", () 
     preset.careerRules,
   );
   assert.notEqual(legacy.blocker, "Stack incompatível com o perfil");
-  assert.match(legacy.rows[0].status, /Tecnologia prioritária identificada/);
+  assert.match(legacy.rows[0].status, /Exceção automática: VBA \+ Access \+ SQL Server/);
 
   const qa = computeVerdict(
     { title: "QA .NET Sênior", description: "Automação de testes com Selenium, Playwright e xUnit no ecossistema .NET.", stack: ["Selenium", "Playwright"], seniority: "Sênior", workMode: "Remoto" },
@@ -164,18 +164,18 @@ test("reconhece automaticamente as exceções VBA/Access e QA .NET Sênior", () 
     preset.careerRules,
   );
   assert.notEqual(qa.blocker, "Stack incompatível com o perfil");
-  assert.match(qa.rows[0].status, /Tecnologia prioritária identificada/);
+  assert.match(qa.rows[0].status, /Exceção automática: QA \.NET Sênior/);
 });
 
-test("VBA e Visual Basic 6 do perfil são aprovados mesmo quando a vaga é Pleno", () => {
+test("VBA e Visual Basic 6 continuam prioritários sem dispensar a senioridade", () => {
   const preset = alexsandroProfilePreset();
   for (const [title, description, stack, expected] of [
     ["Desenvolvedor VBA Pleno", "Manutenção de sistemas legados em VBA, Access e SQL Server. Modalidade PJ. Home office.", ["VBA", "Access", "SQL Server"], "VBA"],
     ["Desenvolvedor VB6 Pleno", "Manutenção de sistema legado em Visual Basic 6. Home office.", ["Visual Basic 6"], "Visual Basic 6"],
   ]) {
     const verdict = computeVerdict({ title, description, stack, seniority: "Pleno", workMode: "Remoto" }, preset.masteredSkills, preset.careerRules);
-    assert.equal(verdict.emoji, "✅");
-    assert.match(verdict.rows[0].status, /Tecnologia prioritária identificada/);
+    assert.equal(verdict.emoji, "🟡");
+    assert.match(verdict.rows[0].status, new RegExp(`Foco da vaga.*${expected}`, "i"));
   }
 });
 
@@ -272,7 +272,7 @@ test("não confunde Pleno com Sênior na fase de preferências", () => {
   assert.equal(verdict.label, "Provável com ressalvas");
 });
 
-test("aprova stack principal forte mesmo com lacunas complementares de Full Stack", () => {
+test("mantém como provável a stack principal com lacunas complementares de Full Stack", () => {
   const preset = alexsandroProfilePreset();
   const verdict = computeVerdict(
     {
@@ -285,8 +285,8 @@ test("aprova stack principal forte mesmo com lacunas complementares de Full Stac
     preset.masteredSkills,
     preset.careerRules,
   );
-  assert.equal(verdict.emoji, "✅");
-  assert.equal(verdict.emoji, "✅");
+  assert.equal(verdict.emoji, "🟡");
+  assert.match(verdict.rows.find(row => row.criterion === "Fase 3 · Fit técnico")?.status ?? "", /faltam:/);
 });
 
 test("não aprova stack com cobertura técnica insuficiente", () => {

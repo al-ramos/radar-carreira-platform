@@ -19,4 +19,5 @@ test("reaproveitamento por idempotência também atualiza user_job_analyses", as
   assert.match(reuseBranch, /db\.insert\(userJobAnalyses\)/, "deve upsertar user_job_analyses no caminho de reaproveitamento");
   assert.match(reuseBranch, /target: \[userJobAnalyses\.userId, userJobAnalyses\.jobId\]/, "o upsert deve usar a chave (userId, jobId)");
   assert.match(route, /db\.delete\(triageDeduplication\)/, "chaves concluídas sem histórico devem permitir uma nova avaliação");
+  assert.match(route, /eq\(userJobAnalyses\.rulesRevision, versions\.rulesRevision\)/, "uma regra nova precisa tornar a análise anterior elegível à reavaliação");
 });

@@ -1,7 +1,7 @@
 import type { CanonicalCandidateProfile } from "./canonical-profile";
 
 /** Bump somente quando a semântica determinística da triagem mudar. */
-export const TRIAGE_RULES_VERSION = "rules-v3-evidence-gated";
+export const TRIAGE_RULES_VERSION = "rules-v4-profile-gated";
 /** Bump somente quando o contrato/prompt da avaliação por IA mudar. */
 export const TRIAGE_AI_INSTRUCTIONS_VERSION = "ai-instructions-v1";
 
