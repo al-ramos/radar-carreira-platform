@@ -4,8 +4,9 @@ import { getChatGPTUser } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db/index";
 import { draftOutbox, jobs, triageBatchItems, triageDeduplication, triageHistory, userJobStatus } from "../../../../db/schema";
 import { can } from "../../../../lib/rbac";
-import { deleteJobsAndRelated, purgeJobsByStatusBeforeCutoff, type PurgeableJobStatus } from "../../../../lib/job-deletion";
+import { archiveJobsBeforeCutoff, deleteJobsAndRelated, purgeJobsByStatusBeforeCutoff, type PurgeableJobStatus } from "../../../../lib/job-deletion";
 import { ARCHIVE_BEFORE } from "../../../../lib/job-archive-policy";
+import { parseMaintenanceQuantity } from "../../../../lib/job-maintenance";
 
 export const dynamic="force-dynamic";
 const ALL_CONFIRMATION="EXCLUIR TODAS AS VAGAS";
@@ -24,8 +25,11 @@ export async function GET(request:Request){
  const user=await admin();if(!user)return NextResponse.json({error:"Acesso de administrador necessário"},{status:403});
  const params=new URL(request.url).searchParams,requestedDate=params.get("archivedBefore"),requestedViewedDate=params.get("viewedBefore"),cutoff=requestedDate?archivedCutoff(requestedDate):ARCHIVE_BEFORE,viewedCutoff=requestedViewedDate?archivedCutoff(requestedViewedDate):cutoff;
  if(!cutoff||!viewedCutoff)return NextResponse.json({error:"Informe datas válidas para os recortes."},{status:400});
- const db=getDb(),[statusRows,eligible,possiblyClosed,closed,viewed]=await Promise.all([
+ const db=getDb(),[statusRows,activeEligible,eligible,possiblyClosed,closed,viewed]=await Promise.all([
   db.select({status:jobs.status,total:sql<number>`count(*)`}).from(jobs).groupBy(jobs.status),
+  db.select({total:sql<number>`count(*)`}).from(jobs).where(
+   sql`${jobs.status} = 'active' and coalesce(${jobs.sourcePublishedAt}, ${jobs.firstSeenAt}) < ${cutoff.getTime()}`,
+  ),
   db.select({total:sql<number>`count(*)`}).from(jobs).where(
   sql`${jobs.status} = 'archived' and coalesce(${jobs.sourcePublishedAt}, ${jobs.firstSeenAt}) < ${cutoff.getTime()}`,
   ),
@@ -38,23 +42,30 @@ export async function GET(request:Request){
   db.select({total:sql<number>`count(*)`}).from(userJobStatus).where(and(eq(userJobStatus.userId,user.userId),eq(userJobStatus.stage,"viewed"),lt(userJobStatus.updatedAt,viewedCutoff))),
  ]);
  const statusCount=(status:typeof statusRows[number]["status"])=>Number(statusRows.find(row=>row.status===status)?.total??0),total=statusRows.reduce((sum,row)=>sum+Number(row.total),0);
- return NextResponse.json({total,active:statusCount("active"),possiblyClosed:statusCount("possibly_closed"),closed:statusCount("closed"),archived:statusCount("archived"),archivedEligibleForPurge:Number(eligible[0]?.total??0),possiblyClosedEligibleForPurge:Number(possiblyClosed[0]?.total??0),closedEligibleForPurge:Number(closed[0]?.total??0),viewedEligibleForArchive:Number(viewed[0]?.total??0),archivedBefore:cutoff.toISOString(),viewedBefore:viewedCutoff.toISOString()});
+ return NextResponse.json({total,active:statusCount("active"),possiblyClosed:statusCount("possibly_closed"),closed:statusCount("closed"),archived:statusCount("archived"),activeEligibleForArchive:Number(activeEligible[0]?.total??0),archivedEligibleForPurge:Number(eligible[0]?.total??0),possiblyClosedEligibleForPurge:Number(possiblyClosed[0]?.total??0),closedEligibleForPurge:Number(closed[0]?.total??0),viewedEligibleForArchive:Number(viewed[0]?.total??0),archivedBefore:cutoff.toISOString(),viewedBefore:viewedCutoff.toISOString()});
 }
 
 export async function POST(request:Request){
  const user=await getChatGPTUser();if(!user)return NextResponse.json({error:"Autenticação necessária"},{status:401});if(!await can(user,"jobs.delete_all"))return NextResponse.json({error:"Ação reservada ao proprietário da plataforma"},{status:403});
- let payload:{action?:unknown;archivedBefore?:unknown;viewedBefore?:unknown;status?:unknown};try{payload=await request.json()}catch{return NextResponse.json({error:"Envie um comando de exclusão válido"},{status:400})}
+ let payload:{action?:unknown;archivedBefore?:unknown;viewedBefore?:unknown;status?:unknown;quantity?:unknown};try{payload=await request.json()}catch{return NextResponse.json({error:"Envie um comando de exclusão válido"},{status:400})}
  const requestedCutoff=payload.action==="archive_viewed_before"?payload.viewedBefore:payload.archivedBefore,cutoff=archivedCutoff(typeof requestedCutoff==="string"?requestedCutoff:"");
  if(!cutoff)return NextResponse.json({error:"Informe uma data válida para o recorte."},{status:400});
+ const parsedQuantity=parseMaintenanceQuantity(payload.quantity);
+ if(!parsedQuantity.valid)return NextResponse.json({error:"Informe uma quantidade inteira maior que zero ou deixe em branco para processar todo o recorte."},{status:400});
+ const quantity=parsedQuantity.limit;
  if(payload.action==="archive_viewed_before"){
   const condition=and(eq(userJobStatus.userId,user.userId),eq(userJobStatus.stage,"viewed"),lt(userJobStatus.updatedAt,cutoff)),count=await getDb().select({total:sql<number>`count(*)`}).from(userJobStatus).where(condition),archived=Number(count[0]?.total??0);
   if(archived)await getDb().update(userJobStatus).set({stage:"archived",updatedAt:new Date()}).where(condition);
   return NextResponse.json({ok:true,archived,scope:"viewed_before",cutoff:cutoff.toISOString()});
  }
+ if(payload.action==="archive_active_before"){
+  const archived=await archiveJobsBeforeCutoff(cutoff,quantity);
+  return NextResponse.json({ok:true,archived,scope:"active_before",cutoff:cutoff.toISOString()});
+ }
  if(payload.action!=="purge_archived_before")return NextResponse.json({error:"Ação de manutenção inválida"},{status:400});
  const status=purgeableStatus(payload.status);
  if(!status)return NextResponse.json({error:"Escolha Arquivadas, Possivelmente encerradas ou Encerradas."},{status:400});
- const deleted=await purgeJobsByStatusBeforeCutoff(status,cutoff);
+ const deleted=await purgeJobsByStatusBeforeCutoff(status,cutoff,quantity);
  return NextResponse.json({ok:true,deleted,scope:`${status}_before`,cutoff:cutoff.toISOString()});
 }
 

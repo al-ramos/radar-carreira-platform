@@ -1,4 +1,4 @@
-import { and, eq, inArray, lt, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, lt, sql } from "drizzle-orm";
 import { getDb } from "../db/index";
 import { aiUsageEvents, alertReads, draftOutbox, jobAiFacts, jobAiTriage, jobEvents, jobImportRuns, jobs, triageBatchItems, triageDeduplication, triageHistory, userJobAnalyses, userJobStatus } from "../db/schema";
 
@@ -23,19 +23,44 @@ export async function deleteJobsAndRelated(jobIds: string[]) {
  */
 export type PurgeableJobStatus = "archived" | "possibly_closed" | "closed";
 
+const effectivePublication = sql`coalesce(${jobs.sourcePublishedAt}, ${jobs.firstSeenAt})`;
+
+function limitedJobIds(status: typeof jobs.$inferSelect.status, cutoff: Date, quantity?: number) {
+  const query = getDb().select({ id: jobs.id }).from(jobs).where(and(
+    eq(jobs.status, status),
+    lt(effectivePublication, cutoff.getTime()),
+  )).orderBy(asc(effectivePublication), asc(jobs.id));
+  return quantity === undefined ? query : query.limit(quantity);
+}
+
+/** Arquiva as vagas ativas mais antigas do recorte sem apagar dependências. */
+export async function archiveJobsBeforeCutoff(cutoff: Date, quantity?: number) {
+  const db = getDb();
+  const count = await db.select({ total: sql<number>`count(*)` }).from(jobs).where(and(
+    eq(jobs.status, "active"),
+    lt(effectivePublication, cutoff.getTime()),
+  ));
+  const eligible = Number(count[0]?.total ?? 0);
+  const archived = quantity === undefined ? eligible : Math.min(eligible, quantity);
+  if (!archived) return 0;
+  await db.update(jobs).set({ status: "archived", updatedAt: new Date() }).where(inArray(
+    jobs.id,
+    limitedJobIds("active", cutoff, quantity),
+  ));
+  return archived;
+}
+
 /** Exclui definitivamente um recorte de vagas que já não está operacional. */
-export async function purgeJobsByStatusBeforeCutoff(status: PurgeableJobStatus, cutoff: Date) {
+export async function purgeJobsByStatusBeforeCutoff(status: PurgeableJobStatus, cutoff: Date, quantity?: number) {
   const db = getDb();
   const cutoffTime = cutoff.getTime();
-  const target = () => db.select({ id: jobs.id }).from(jobs).where(and(
-    eq(jobs.status, status),
-    lt(sql`coalesce(${jobs.sourcePublishedAt}, ${jobs.firstSeenAt})`, cutoffTime),
-  ));
+  const target = () => limitedJobIds(status, cutoff, quantity);
   const count = await db.select({ total: sql<number>`count(*)` }).from(jobs).where(and(
     eq(jobs.status, status),
-    lt(sql`coalesce(${jobs.sourcePublishedAt}, ${jobs.firstSeenAt})`, cutoffTime),
+    lt(effectivePublication, cutoffTime),
   ));
-  const deleted = Number(count[0]?.total ?? 0);
+  const eligible = Number(count[0]?.total ?? 0);
+  const deleted = quantity === undefined ? eligible : Math.min(eligible, quantity);
   if (!deleted) return 0;
 
   const statements = [

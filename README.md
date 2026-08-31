@@ -37,7 +37,7 @@ Portal multiusuário para reunir oportunidades, decidir quais vagas merecem aten
 - O score fica oculto até a vaga ser triada; tecnologias prioritárias são evidência técnica, mas não substituem modalidade, geografia, senioridade, idioma nem requisitos obrigatórios.
 - A aprovação automática respeita a região cadastrada e a pessoa proprietária pode desclassificar manualmente uma vaga, preservando o histórico e cancelando somente rascunhos ainda pendentes.
 - Toda aprovação `✅` com e-mail válido pode criar rascunho imediatamente. A recuperação agendada cobre pendências, decisões antigas, aprovações sem histórico e aprovações sem registro na outbox.
-- O Radar registra a abertura de candidatura no LinkedIn. Na manutenção, a pessoa proprietária vê a contagem exata por situação, pode arquivar somente as vagas que já visualizou e excluir definitivamente recortes arquivados, possivelmente encerrados ou encerrados, sempre com data, alcance e impacto explícitos.
+- O Radar registra a abertura de candidatura no LinkedIn. Na manutenção, a pessoa proprietária vê a contagem exata por situação, pode arquivar suas vagas vistas, arquivar globalmente qualquer quantidade do acervo ativo e excluir qualquer quantidade de vagas inativas, sempre com data, alcance, ordenação pelas mais antigas e impacto explícitos.
 - O Monitoramento mede uma amostra anônima de desempenho, mostra p75/p95 em 24 horas e 7 dias e remove as amostras após 30 dias; os planos D1 críticos são auditáveis por comando reproduzível.
 - Nenhuma dessas automações envia candidatura ou e-mail: a ação final continua sob controle da pessoa usuária.
 
