@@ -21,7 +21,7 @@ export async function deleteJobsAndRelated(jobIds: string[]) {
  * Exclusão definitiva do recorte já arquivado. Os comandos são enviados em
  * um único batch D1: ou todas as dependências e as vagas saem, ou nada sai.
  */
-export type PurgeableJobStatus = "archived" | "possibly_closed";
+export type PurgeableJobStatus = "archived" | "possibly_closed" | "closed";
 
 /** Exclui definitivamente um recorte de vagas que já não está operacional. */
 export async function purgeJobsByStatusBeforeCutoff(status: PurgeableJobStatus, cutoff: Date) {

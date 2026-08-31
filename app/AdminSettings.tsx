@@ -1,30 +1,136 @@
 "use client";
 
-import { useEffect,useState } from "react";
+import { useEffect, useState } from "react";
 
-type Settings={collectionEnabled:boolean;emailImportEnabled:boolean;enrichmentEnabled:boolean;scheduledTriageEnabled:boolean;scheduledTriageBatchSize:number;queueDailyOperationBudget:number;manualQueueMessageSize:number;aiReviewChunkSize:number;defaultPeriod:string;defaultMinScore:number;staleAfterDays:number;retentionDays:number};
-type JobSummary={total:number;active:number;closed:number;archivedEligibleForPurge:number;possiblyClosedEligibleForPurge:number};
-const initial:Settings={collectionEnabled:true,emailImportEnabled:true,enrichmentEnabled:true,scheduledTriageEnabled:false,scheduledTriageBatchSize:100,queueDailyOperationBudget:7500,manualQueueMessageSize:25,aiReviewChunkSize:10,defaultPeriod:"24",defaultMinScore:70,staleAfterDays:7,retentionDays:180};
-const CONFIRMATION="EXCLUIR TODAS AS VAGAS";
-const DEFAULT_ARCHIVED_BEFORE="2026-08-15";
-type PurgeScope="archived"|"possibly_closed";
+type Settings = { collectionEnabled: boolean; emailImportEnabled: boolean; enrichmentEnabled: boolean; scheduledTriageEnabled: boolean; scheduledTriageBatchSize: number; queueDailyOperationBudget: number; manualQueueMessageSize: number; aiReviewChunkSize: number; defaultPeriod: string; defaultMinScore: number; staleAfterDays: number; retentionDays: number };
+type JobSummary = { total: number; active: number; possiblyClosed: number; closed: number; archived: number; archivedEligibleForPurge: number; possiblyClosedEligibleForPurge: number; closedEligibleForPurge: number; viewedEligibleForArchive: number };
+type PurgeScope = "archived" | "possibly_closed" | "closed";
 
-export default function AdminSettings({isOwner}:{isOwner:boolean}){
- const[s,setS]=useState(initial),[status,setStatus]=useState("Carregando parâmetros…"),[jobs,setJobs]=useState<JobSummary|null>(null),[confirmation,setConfirmation]=useState(""),[archivedBefore,setArchivedBefore]=useState(DEFAULT_ARCHIVED_BEFORE),[purgeScope,setPurgeScope]=useState<PurgeScope>("archived"),[cleaning,setCleaning]=useState(false),[purgingArchived,setPurgingArchived]=useState(false);
- useEffect(()=>{let cancelled=false;Promise.all([fetch("/api/admin/settings"),fetch(`/api/admin/jobs?archivedBefore=${encodeURIComponent(archivedBefore)}`)]).then(async([settingsResponse,jobsResponse])=>({settingsResponse,jobsResponse,settings:await settingsResponse.json(),summary:await jobsResponse.json()})).then(({settingsResponse,jobsResponse,settings,summary})=>{if(cancelled)return;if(!settingsResponse.ok||!jobsResponse.ok)throw new Error();setS(settings.settings);setJobs(summary);setStatus("")}).catch(()=>{if(!cancelled)setStatus("Não foi possível carregar os parâmetros.")});return()=>{cancelled=true}},[archivedBefore]);
- const toggle=(key:keyof Settings)=>(e:React.ChangeEvent<HTMLInputElement>)=>setS({...s,[key]:e.target.checked});
- async function save(){setStatus("Salvando…");const r=await fetch("/api/admin/settings",{method:"PUT",headers:{"content-type":"application/json"},body:JSON.stringify(s)});setStatus(r.ok?"Parâmetros salvos e ativos.":"Não foi possível salvar.")}
- async function clearJobs(){if(confirmation!==CONFIRMATION){setStatus(`Digite ${CONFIRMATION} para liberar a limpeza.`);return}if(!window.confirm(`Excluir ${jobs?.total??0} vagas do banco? Esta ação não pode ser desfeita.`))return;setCleaning(true);setStatus("Limpando base de vagas…");try{const response=await fetch("/api/admin/jobs",{method:"DELETE",headers:{"content-type":"application/json"},body:JSON.stringify({all:true,confirmation})}),data=await response.json();if(!response.ok)throw new Error(data.error);setJobs({total:0,active:0,closed:0,archivedEligibleForPurge:0,possiblyClosedEligibleForPurge:0});setConfirmation("");setStatus(`${data.deleted} vagas removidas. Usuários, perfil e integrações foram preservados.`)}catch(error){setStatus(error instanceof Error?error.message:"Não foi possível limpar a base.")}finally{setCleaning(false)}}
- const purgeTotal=purgeScope==="archived"?(jobs?.archivedEligibleForPurge??0):(jobs?.possiblyClosedEligibleForPurge??0),purgeLabel=purgeScope==="archived"?"arquivadas":"possivelmente encerradas";
- async function purgeArchived(){if(!window.confirm(`Excluir definitivamente ${purgeTotal} vagas ${purgeLabel} antes de ${archivedBefore.split("-").reverse().join("/")} e todos os dados vinculados? O backup deve estar guardado antes de continuar.`))return;setPurgingArchived(true);setStatus("Excluindo o recorte…");try{const response=await fetch("/api/admin/jobs",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"purge_archived_before",status:purgeScope,archivedBefore})}),data=await response.json();if(!response.ok)throw new Error(data.error);setJobs(current=>current?{...current,total:current.total-data.deleted,closed:current.closed-data.deleted,archivedEligibleForPurge:purgeScope==="archived"?0:current.archivedEligibleForPurge,possiblyClosedEligibleForPurge:purgeScope==="possibly_closed"?0:current.possiblyClosedEligibleForPurge}:current);setStatus(`${data.deleted} vagas ${purgeLabel} e seus dados vinculados foram removidos definitivamente.`)}catch(error){setStatus(error instanceof Error?error.message:"Não foi possível excluir o recorte selecionado.")}finally{setPurgingArchived(false)}}
- return <section className="admin-settings"><div className="admin-heading"><div><p className="eyebrow">ADMINISTRAÇÃO DO PORTAL</p><h3>Parâmetros operacionais</h3></div><span>Somente admin</span></div><div className="switch-grid">
- <label><input type="checkbox" checked={s.collectionEnabled} onChange={toggle("collectionEnabled")}/><span><b>Coleta automática</b><small>Autoriza a rotina diária das fontes.</small></span></label>
- <label><input type="checkbox" checked={s.emailImportEnabled} onChange={toggle("emailImportEnabled")}/><span><b>Importação por e-mail</b><small>Recebe alertas do conector Gmail.</small></span></label>
- <label><input type="checkbox" checked={s.enrichmentEnabled} onChange={toggle("enrichmentEnabled")}/><span><b>Enriquecimento oficial</b><small>Completa descrições por fontes monitoradas.</small></span></label>
- <label><input type="checkbox" checked={s.scheduledTriageEnabled} onChange={toggle("scheduledTriageEnabled")}/><span><b>Triagem agendada</b><small>Avalia por regras e IA ambígua sem intervenção manual.</small></span></label>
- <div className="admin-fixed-policy"><b>Envio automático autorizado</b><small>Toda vaga ✅ com e-mail válido recebe currículo e assinatura, é enviada pelo Gmail e fica registrada na outbox.</small></div></div>
- <div className="profile-grid admin-number-grid"><label>Vagas por triagem agendada<small>De 1 a 1.000 vagas por rodada; continua até concluir as vagas novas.</small><input type="number" min="1" max="1000" value={s.scheduledTriageBatchSize} onChange={e=>setS({...s,scheduledTriageBatchSize:Number(e.target.value)})}/></label><label>Janela inicial<select value={s.defaultPeriod} onChange={e=>setS({...s,defaultPeriod:e.target.value})}><option value="24">Últimas 24 horas</option><option value="72">Últimos 3 dias</option><option value="168">Últimos 7 dias</option><option value="all">Todas</option></select></label><label>Score padrão<input type="number" min="0" max="100" value={s.defaultMinScore} onChange={e=>setS({...s,defaultMinScore:Number(e.target.value)})}/></label><label>Vaga desatualizada após<input type="number" min="1" max="90" value={s.staleAfterDays} onChange={e=>setS({...s,staleAfterDays:Number(e.target.value)})}/></label><label>Retenção do histórico<input type="number" min="30" max="1095" value={s.retentionDays} onChange={e=>setS({...s,retentionDays:Number(e.target.value)})}/></label></div>
- <div className="profile-grid admin-number-grid"><label>Limite diário das filas<small>1.000–10.000 operações; 7.500 mantém margem no plano gratuito.</small><input type="number" min="1000" max="10000" value={s.queueDailyOperationBudget} onChange={e=>setS({...s,queueDailyOperationBudget:Number(e.target.value)})}/></label><label>Vagas por mensagem manual<small>1–100; mais vagas reduzem mensagens.</small><input type="number" min="1" max="100" value={s.manualQueueMessageSize} onChange={e=>setS({...s,manualQueueMessageSize:Number(e.target.value)})}/></label><label>Vagas por lote de IA<small>1–20; ajuste conforme as descrições.</small><input type="number" min="1" max="20" value={s.aiReviewChunkSize} onChange={e=>setS({...s,aiReviewChunkSize:Number(e.target.value)})}/></label></div>
- {status&&<div className="notice">{status}</div>}<div className="source-actions"><button className="primary" onClick={save}>Salvar parâmetros</button></div>
- {isOwner&&<section className="admin-danger-zone"><div><p className="eyebrow">MANUTENÇÃO DA BASE</p><h3>Limpar vagas importadas</h3><p>{jobs?`${jobs.total} vagas no banco (${jobs.active} ativas e ${jobs.closed} encerradas).`:"Consultando a base de vagas…"} A limpeza também remove itens do pipeline e alertas relacionados, mas preserva usuários, preferências, fontes e integrações.</p></div><a href="/api/admin/backup">↓ Baixar backup JSON</a><section><h4>Excluir acervo inativo antes da data escolhida</h4><label>Tipo de vaga<select value={purgeScope} onChange={event=>setPurgeScope(event.target.value as PurgeScope)}><option value="archived">Arquivadas</option><option value="possibly_closed">Possivelmente encerradas</option></select></label><label>Data limite<input type="date" value={archivedBefore} onChange={event=>setArchivedBefore(event.target.value)} required/></label><p>{jobs?`${purgeTotal} vagas ${purgeLabel} serão removidas junto com triagem, rascunhos registrados, pipeline, eventos e demais dados vinculados.`:"Consultando o recorte…"} Esta operação é atômica: se qualquer etapa falhar, nada é apagado.</p><p>Ao clicar, confirme a exclusão na janela final.</p><button type="button" className="admin-danger-button" disabled={purgingArchived||!archivedBefore} onClick={()=>void purgeArchived()}>{purgingArchived?"Excluindo…":`Excluir ${purgeLabel}`}</button></section><label>Para confirmar, digite <strong>{CONFIRMATION}</strong><input value={confirmation} onChange={event=>setConfirmation(event.target.value)} placeholder={CONFIRMATION}/></label><button type="button" className="admin-danger-button" disabled={cleaning||confirmation!==CONFIRMATION||!jobs?.total} onClick={()=>void clearJobs()}>{cleaning?"Limpando…":"Limpar base de vagas"}</button></section>}</section>
+const initial: Settings = { collectionEnabled: true, emailImportEnabled: true, enrichmentEnabled: true, scheduledTriageEnabled: false, scheduledTriageBatchSize: 100, queueDailyOperationBudget: 7500, manualQueueMessageSize: 25, aiReviewChunkSize: 10, defaultPeriod: "24", defaultMinScore: 70, staleAfterDays: 7, retentionDays: 180 };
+const CONFIRMATION = "EXCLUIR TODAS AS VAGAS";
+const formatNumber = (value: number) => value.toLocaleString("pt-BR");
+const formatDate = (value: string) => value.split("-").reverse().join("/");
+const defaultCutoff = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date(Date.now() - 7 * 864e5));
+
+export default function AdminSettings({ isOwner }: { isOwner: boolean }) {
+  const [s, setS] = useState(initial);
+  const [status, setStatus] = useState("Carregando parâmetros…");
+  const [jobs, setJobs] = useState<JobSummary | null>(null);
+  const [confirmation, setConfirmation] = useState("");
+  const [archivedBefore, setArchivedBefore] = useState(defaultCutoff);
+  const [viewedBefore, setViewedBefore] = useState(defaultCutoff);
+  const [purgeScope, setPurgeScope] = useState<PurgeScope>("archived");
+  const [cleaning, setCleaning] = useState(false);
+  const [purgingArchived, setPurgingArchived] = useState(false);
+  const [archivingViewed, setArchivingViewed] = useState(false);
+
+  const summaryUrl = `/api/admin/jobs?archivedBefore=${encodeURIComponent(archivedBefore)}&viewedBefore=${encodeURIComponent(viewedBefore)}`;
+
+  async function refreshSummary() {
+    const response = await fetch(summaryUrl);
+    const summary = await response.json();
+    if (!response.ok) throw new Error(summary.error ?? "Não foi possível consultar os recortes.");
+    setJobs(summary);
+    return summary as JobSummary;
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([fetch("/api/admin/settings"), fetch(summaryUrl)])
+      .then(async ([settingsResponse, jobsResponse]) => ({ settingsResponse, jobsResponse, settings: await settingsResponse.json(), summary: await jobsResponse.json() }))
+      .then(({ settingsResponse, jobsResponse, settings, summary }) => {
+        if (cancelled) return;
+        if (!settingsResponse.ok || !jobsResponse.ok) throw new Error();
+        setS(settings.settings);
+        setJobs(summary);
+        setStatus("");
+      })
+      .catch(() => { if (!cancelled) setStatus("Não foi possível carregar os parâmetros."); });
+    return () => { cancelled = true; };
+  }, [summaryUrl]);
+
+  const toggle = (key: keyof Settings) => (event: React.ChangeEvent<HTMLInputElement>) => setS({ ...s, [key]: event.target.checked });
+
+  async function save() {
+    setStatus("Salvando…");
+    const response = await fetch("/api/admin/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(s) });
+    setStatus(response.ok ? "Parâmetros salvos e ativos." : "Não foi possível salvar.");
+  }
+
+  async function clearJobs() {
+    if (confirmation !== CONFIRMATION) { setStatus(`Digite ${CONFIRMATION} para liberar a limpeza.`); return; }
+    if (!window.confirm(`Excluir ${formatNumber(jobs?.total ?? 0)} vagas do banco? Esta ação não pode ser desfeita.`)) return;
+    setCleaning(true);
+    setStatus("Limpando base de vagas…");
+    try {
+      const response = await fetch("/api/admin/jobs", { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ all: true, confirmation }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error);
+      setJobs({ total: 0, active: 0, possiblyClosed: 0, closed: 0, archived: 0, archivedEligibleForPurge: 0, possiblyClosedEligibleForPurge: 0, closedEligibleForPurge: 0, viewedEligibleForArchive: 0 });
+      setConfirmation("");
+      setStatus(`${formatNumber(data.deleted)} vagas removidas. Usuários, perfil, fontes e integrações foram preservados.`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Não foi possível limpar a base.");
+    } finally { setCleaning(false); }
+  }
+
+  const purgeTotals: Record<PurgeScope, number> = {
+    archived: jobs?.archivedEligibleForPurge ?? 0,
+    possibly_closed: jobs?.possiblyClosedEligibleForPurge ?? 0,
+    closed: jobs?.closedEligibleForPurge ?? 0,
+  };
+  const purgeLabels: Record<PurgeScope, string> = { archived: "arquivadas", possibly_closed: "possivelmente encerradas", closed: "encerradas" };
+  const purgeTotal = purgeTotals[purgeScope];
+  const purgeLabel = purgeLabels[purgeScope];
+
+  async function purgeInactive() {
+    if (!purgeTotal) return;
+    const warning = `Excluir definitivamente ${formatNumber(purgeTotal)} vagas ${purgeLabel} publicadas antes de ${formatDate(archivedBefore)}? A exclusão é global e remove triagem, pipeline, rascunhos registrados, eventos e demais dados vinculados. Esta ação não pode ser desfeita.`;
+    if (!window.confirm(warning)) return;
+    setPurgingArchived(true);
+    setStatus("Excluindo o recorte…");
+    try {
+      const response = await fetch("/api/admin/jobs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "purge_archived_before", status: purgeScope, archivedBefore }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error);
+      await refreshSummary();
+      setStatus(`${formatNumber(data.deleted)} vagas ${purgeLabel} e todos os dados vinculados foram removidos definitivamente.`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Não foi possível excluir o recorte selecionado.");
+    } finally { setPurgingArchived(false); }
+  }
+
+  async function archiveViewed() {
+    const viewedTotal = jobs?.viewedEligibleForArchive ?? 0;
+    if (!viewedTotal) return;
+    if (!window.confirm(`Arquivar ${formatNumber(viewedTotal)} vagas vistas por você antes de ${formatDate(viewedBefore)}? Elas sairão de “Vistas”, não voltarão para “Não vistas” e permanecerão no banco com todo o histórico.`)) return;
+    setArchivingViewed(true);
+    setStatus("Arquivando as vagas vistas…");
+    try {
+      const response = await fetch("/api/admin/jobs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "archive_viewed_before", viewedBefore }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error);
+      await refreshSummary();
+      setStatus(`${formatNumber(data.archived)} vagas saíram de “Vistas” e foram arquivadas somente no seu Radar. Nenhuma vaga ou histórico foi apagado.`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Não foi possível arquivar as vagas vistas.");
+    } finally { setArchivingViewed(false); }
+  }
+
+  return <section className="admin-settings"><div className="admin-heading"><div><p className="eyebrow">ADMINISTRAÇÃO DO PORTAL</p><h3>Parâmetros operacionais</h3></div><span>Somente admin</span></div><div className="switch-grid">
+    <label><input type="checkbox" checked={s.collectionEnabled} onChange={toggle("collectionEnabled")} /><span><b>Coleta automática</b><small>Autoriza a rotina diária das fontes.</small></span></label>
+    <label><input type="checkbox" checked={s.emailImportEnabled} onChange={toggle("emailImportEnabled")} /><span><b>Importação por e-mail</b><small>Recebe alertas do conector Gmail.</small></span></label>
+    <label><input type="checkbox" checked={s.enrichmentEnabled} onChange={toggle("enrichmentEnabled")} /><span><b>Enriquecimento oficial</b><small>Completa descrições por fontes monitoradas.</small></span></label>
+    <label><input type="checkbox" checked={s.scheduledTriageEnabled} onChange={toggle("scheduledTriageEnabled")} /><span><b>Triagem agendada</b><small>Avalia por regras e IA ambígua sem intervenção manual.</small></span></label>
+    <div className="admin-fixed-policy"><b>Envio automático autorizado</b><small>Toda vaga ✅ com e-mail válido recebe currículo e assinatura, é enviada pelo Gmail e fica registrada na outbox.</small></div></div>
+    <div className="profile-grid admin-number-grid"><label>Vagas por triagem agendada<small>De 1 a 1.000 vagas por rodada; continua até concluir as vagas novas.</small><input type="number" min="1" max="1000" value={s.scheduledTriageBatchSize} onChange={e => setS({ ...s, scheduledTriageBatchSize: Number(e.target.value) })} /></label><label>Janela inicial<select value={s.defaultPeriod} onChange={e => setS({ ...s, defaultPeriod: e.target.value })}><option value="24">Últimas 24 horas</option><option value="72">Últimos 3 dias</option><option value="168">Últimos 7 dias</option><option value="all">Todas</option></select></label><label>Score padrão<input type="number" min="0" max="100" value={s.defaultMinScore} onChange={e => setS({ ...s, defaultMinScore: Number(e.target.value) })} /></label><label>Vaga desatualizada após<input type="number" min="1" max="90" value={s.staleAfterDays} onChange={e => setS({ ...s, staleAfterDays: Number(e.target.value) })} /></label><label>Retenção do histórico<input type="number" min="30" max="1095" value={s.retentionDays} onChange={e => setS({ ...s, retentionDays: Number(e.target.value) })} /></label></div>
+    <div className="profile-grid admin-number-grid"><label>Limite diário das filas<small>1.000–10.000 operações; 7.500 mantém margem no plano gratuito.</small><input type="number" min="1000" max="10000" value={s.queueDailyOperationBudget} onChange={e => setS({ ...s, queueDailyOperationBudget: Number(e.target.value) })} /></label><label>Vagas por mensagem manual<small>1–100; mais vagas reduzem mensagens.</small><input type="number" min="1" max="100" value={s.manualQueueMessageSize} onChange={e => setS({ ...s, manualQueueMessageSize: Number(e.target.value) })} /></label><label>Vagas por lote de IA<small>1–20; ajuste conforme as descrições.</small><input type="number" min="1" max="20" value={s.aiReviewChunkSize} onChange={e => setS({ ...s, aiReviewChunkSize: Number(e.target.value) })} /></label></div>
+    {status && <div className="notice">{status}</div>}<div className="source-actions"><button className="primary" onClick={save}>Salvar parâmetros</button></div>
+    {isOwner && <section className="admin-danger-zone"><div><p className="eyebrow">MANUTENÇÃO DA BASE</p><h3>Controle transparente do acervo</h3><p>Escolha entre organizar somente o seu Radar ou apagar vagas inativas do banco. A contagem é recalculada para cada data antes de liberar uma ação.</p></div><a href="/api/admin/backup">↓ Baixar backup JSON antes de excluir</a>
+      {jobs ? <dl className="admin-job-summary" aria-label="Situação atual do acervo"><div><dt>Total no banco</dt><dd>{formatNumber(jobs.total)}</dd></div><div><dt>Ativas</dt><dd>{formatNumber(jobs.active)}</dd></div><div><dt>Possivelmente encerradas</dt><dd>{formatNumber(jobs.possiblyClosed)}</dd></div><div><dt>Encerradas</dt><dd>{formatNumber(jobs.closed)}</dd></div><div><dt>Arquivadas</dt><dd>{formatNumber(jobs.archived)}</dd></div></dl> : <p>Consultando a situação do acervo…</p>}
+      <section className="admin-maintenance-card admin-personal-maintenance"><h4>Diminuir “Vistas” no meu Radar</h4><p><strong>Alcance pessoal:</strong> move somente suas vagas no estágio “Vista” para “Arquivada”. As vagas permanecem no banco, não reaparecem em “Não vistas” e nenhum histórico, rascunho ou dado de outra pessoa é apagado.</p><label>Arquivar as que foram vistas antes de<input type="date" value={viewedBefore} onChange={event => setViewedBefore(event.target.value)} required /></label><div className="admin-impact" aria-live="polite"><strong>{jobs ? formatNumber(jobs.viewedEligibleForArchive) : "…"}</strong><span>vagas vistas por você entram neste recorte</span></div><button type="button" className="admin-archive-button" disabled={archivingViewed || !viewedBefore || !jobs?.viewedEligibleForArchive} onClick={() => void archiveViewed()}>{archivingViewed ? "Arquivando…" : jobs?.viewedEligibleForArchive ? `Arquivar ${formatNumber(jobs.viewedEligibleForArchive)} vistas` : "Nenhuma vaga neste recorte"}</button></section>
+      <section className="admin-maintenance-card"><h4>Excluir acervo inativo definitivamente</h4><p><strong>Alcance global:</strong> apaga as vagas selecionadas e também triagem, rascunhos registrados, pipeline, eventos e demais dados vinculados. Usuários, preferências, fontes e integrações são preservados. A operação é atômica: se uma etapa falhar, nada é apagado.</p><label>Situação da vaga<select value={purgeScope} onChange={event => setPurgeScope(event.target.value as PurgeScope)}><option value="archived">Arquivadas</option><option value="possibly_closed">Possivelmente encerradas</option><option value="closed">Encerradas</option></select></label><label>Publicadas antes de<input type="date" value={archivedBefore} onChange={event => setArchivedBefore(event.target.value)} required /><small>Usa a data publicada pela fonte; quando ela não existe, usa a data em que o Radar recebeu a vaga.</small></label><div className="admin-impact" aria-live="polite"><strong>{jobs ? formatNumber(purgeTotal) : "…"}</strong><span>vagas {purgeLabel} serão apagadas globalmente</span></div><button type="button" className="admin-danger-button" disabled={purgingArchived || !archivedBefore || !purgeTotal} onClick={() => void purgeInactive()}>{purgingArchived ? "Excluindo…" : purgeTotal ? `Excluir ${formatNumber(purgeTotal)} ${purgeLabel}` : "Nenhuma vaga neste recorte"}</button></section>
+      <section className="admin-maintenance-card admin-full-cleanup"><h4>Apagar todo o banco de vagas</h4><p>Esta opção ignora situação e data. Todas as vagas são apagadas; itens com histórico operacional protegido podem bloquear a limpeza.</p><label>Para confirmar, digite <strong>{CONFIRMATION}</strong><input value={confirmation} onChange={event => setConfirmation(event.target.value)} placeholder={CONFIRMATION} /></label><button type="button" className="admin-danger-button" disabled={cleaning || confirmation !== CONFIRMATION || !jobs?.total} onClick={() => void clearJobs()}>{cleaning ? "Limpando…" : "Limpar base de vagas"}</button></section>
+    </section>}
+  </section>;
 }
