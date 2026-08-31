@@ -25,6 +25,9 @@ test("triagem permite ações avulsas por vaga sem contornar os guardrails", asy
   assert.match(screen, /\/api\/triage\/applications\/open/);
   assert.match(screen, /Preparar rascunhos/);
   assert.match(screen, /Desclassificar/);
+  assert.match(screen, /disqualifySelectedJobs/);
+  assert.match(screen, /Desclassificar selecionadas/);
+  assert.match(screen, /jobIds: jobsToDisqualify\.map/);
   assert.match(screen, /\/api\/triage\/disqualify/);
   assert.match(screen, /draftActionBlocker/);
   assert.match(screen, /LinkedIn não permite rascunho/);
@@ -55,6 +58,9 @@ test("triagem permite ações avulsas por vaga sem contornar os guardrails", asy
   assert.match(queue, /isSafeForDraft/);
   assert.match(queue, /if \(!isSafeForDraft\(\{ verdict: row\.analysis\.verdict/);
   assert.match(disqualify, /verdict: "❌"/);
+  assert.match(disqualify, /jobIds\?: string\[\]/);
+  assert.match(disqualify, /inArray\(userJobAnalyses\.jobId, jobIds\)/);
+  assert.match(disqualify, /Desclassifique no máximo 100 vagas por vez/);
   assert.match(disqualify, /Desclassificada manualmente/);
   assert.match(disqualify, /eq\(draftOutbox\.status, "pending"\)/);
   assert.match(review, /requestedJobIds/);
