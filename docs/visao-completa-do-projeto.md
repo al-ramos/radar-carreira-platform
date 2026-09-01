@@ -128,6 +128,7 @@ O dashboard organiza os módulos abaixo:
 - Veredito: todos, `✅`, `🟡`, `🔴` ou `❌`.
 - Na central de triagem, o recorte padrão mostra vagas não analisadas; a busca por código também localiza itens arquivados.
 - Aderência mínima numérica, inclusive o mínimo definido no perfil.
+- **Inteligência de Mercado:** página própria com filtros por período, fonte e área, volume de vagas recebidas, tecnologias, empresas, localidades, modalidades e qualidade dos dados. Salário, contrato e setor só aparecem quando a coleta os armazenar em campos estruturados.
 - Ordenação por aderência/publicação ou por importação.
 - Paginação no banco, com proteção de período mínimo quando score ou veredito exigem cálculo mais amplo.
 - Modo degradado: em falha da personalização, tenta novamente e carrega uma resposta enxuta sem dados demonstrativos.

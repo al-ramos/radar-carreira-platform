@@ -384,6 +384,7 @@ const demo: Job[] = [
 const nav = [
   "Prioridades",
   "Radar",
+  "Inteligência de Mercado",
 ];
 const followUpNav = [
   "Pipeline",
@@ -2586,6 +2587,7 @@ export default function Dashboard() {
       Pipeline: "▦",
       Alertas: "●",
       Métricas: "▥",
+      "Inteligência de Mercado": "◫",
       Monitoramento: "◌",
       Auditoria: "≡",
       Prioridades: "✦",
@@ -2618,6 +2620,7 @@ export default function Dashboard() {
                 setActive(n);
                 if (n === "Prioridades") { setTriageMounted(true); setTriageOpen(true); }
                 if (n === "Radar") setTriageOpen(false);
+                if (n === "Inteligência de Mercado") window.location.assign("/inteligencia-mercado");
                 if (n === "Pipeline") openPipeline();
                 if (n === "Alertas") setAlertsOpen(true);
                 if (n === "Métricas") setAnalyticsOpen(true);

@@ -8,7 +8,7 @@ test("dashboard oferece radar, perfil e pipeline persistente", async () => {
   const dashboard = await read("../app/Dashboard.tsx");
   assert.match(
     dashboard,
-    /const nav\s*=\s*\[\s*"Prioridades",\s*"Radar",?\s*\]/,
+    /const nav\s*=\s*\[\s*"Prioridades",\s*"Radar",\s*"Inteligência de Mercado",?\s*\]/,
   );
   assert.match(dashboard, /const followUpNav\s*=\s*\[/);
   assert.match(dashboard, /Acompanhamento/);

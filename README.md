@@ -82,6 +82,7 @@ Trabalho concorrente deve usar publicação isolada e preservar alterações loc
 - pipeline Kanban com notas e acompanhamento da candidatura;
 - alertas e resumo diário;
 - métricas pessoais de funil, conversão, empresas e tecnologias;
+- página de Inteligência de Mercado com recorte por período, fonte e área, evolução de vagas recebidas e rankings de tecnologias, empresas, localizações e modalidades;
 - exportação CSV compatível com Excel;
 - central de triagem com seleção em lote, filtros, progresso, histórico, logs, saúde operacional e ações por vaga;
 - análise consultiva assíncrona pela IA do portal e fila privada para análise no Codex;
