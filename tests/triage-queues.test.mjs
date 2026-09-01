@@ -15,7 +15,7 @@ test("fila da triagem prioriza ações manuais, recupera atrasos e mantém DLQ s
   assert.match(config, /"queue": "radar-carreira-triage-manual"/);
   assert.match(config, /"max_concurrency": 4/);
   assert.match(config, /"dead_letter_queue": "radar-carreira-triage-manual-dlq"/);
-  assert.match(config, /"crons": \["\*\/2 \* \* \* \*"\]/);
+  assert.match(config, /"crons": \["\*\/15 \* \* \* \*"\]/);
   assert.match(config, /"queue": "radar-carreira-triage"/);
   assert.match(config, /"queue": "radar-carreira-ai-review"/);
   assert.match(config, /"consumers"/);
@@ -40,7 +40,9 @@ test("fila da triagem prioriza ações manuais, recupera atrasos e mantém DLQ s
   assert.match(worker, /recoverStalledManualTriage/);
   assert.match(worker, /observePendingDrafts/);
   assert.match(worker, /event: "draft_monitor"/);
-  assert.match(worker, /o\.status = 'pending'/);
+  assert.match(worker, /draft_outbox WHERE status = 'pending'/);
+  assert.match(worker, /activeBatches/);
+  assert.doesNotMatch(worker, /SELECT i\.batch_id, i\.job_id, b\.user_id/);
   assert.match(worker, /STALE_MANUAL_TRIAGE_MS = 2 \* 60_000/);
   assert.match(worker, /env\.MANUAL_TRIAGE_QUEUE\.sendBatch/);
   assert.match(worker, /reserveWorkerQueueMessages\(env, "radar-carreira-triage-manual", messages\.length\)/);

@@ -347,9 +347,10 @@ const filterOptionsQueries = () => Promise.all([
     .groupBy(jobs.sourceId, sourceLabel).orderBy(asc(sourceLabel)),
   getDb().select({ id: jobs.roleArea, count: sql<number>`count(*)` }).from(jobs).where(and(baseCondition, applicationVisibilityCondition)).groupBy(jobs.roleArea),
   getDb().select({ id: jobs.ingestionChannel, count: sql<number>`count(*)` }).from(jobs).where(and(baseCondition, applicationVisibilityCondition)).groupBy(jobs.ingestionChannel),
-  getDb().select({ id: importRuns.id, source: importRuns.source, sourceId: importRuns.sourceId, channel: importRuns.channel, startedAt: importRuns.startedAt, received: importRuns.received, inserted: importRuns.inserted, updated: importRuns.updated, jobs: sql<number>`count(distinct ${jobImportRuns.jobId})` })
-    .from(importRuns).innerJoin(jobImportRuns, eq(jobImportRuns.runId, importRuns.id))
-    .groupBy(importRuns.id).orderBy(desc(importRuns.startedAt)).limit(30),
+  // `received` já é o total persistido do lote. Agregar todos os vínculos de
+  // job_import_runs antes do LIMIT lia ~57 mil linhas por abertura da Home.
+  getDb().select({ id: importRuns.id, source: importRuns.source, sourceId: importRuns.sourceId, channel: importRuns.channel, startedAt: importRuns.startedAt, received: importRuns.received, inserted: importRuns.inserted, updated: importRuns.updated, jobs: importRuns.received })
+    .from(importRuns).orderBy(desc(importRuns.startedAt)).limit(30),
 ]);
 const serializeFilterOptions = (sourceOptionsRows: Awaited<ReturnType<typeof filterOptionsQueries>>[0], areaOptionsRows: Awaited<ReturnType<typeof filterOptionsQueries>>[1], channelOptionsRows: Awaited<ReturnType<typeof filterOptionsQueries>>[2], recentRuns: Awaited<ReturnType<typeof filterOptionsQueries>>[3]) => ({
   sources: sourceOptionsRows.map(option => ({ id: option.id ?? "unidentified", label: option.label ?? "Sem fonte identificada", count: Number(option.count) || 0 })),

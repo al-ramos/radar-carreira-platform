@@ -703,7 +703,6 @@ export default function Dashboard() {
   const contactBatchSaveFailedRef = useRef(0);
   const pipelineUpdateRequestsRef = useRef(new Map<string, Promise<boolean>>());
   const applicationUpdateRequestsRef = useRef(new Map<string, Promise<boolean>>());
-  const approvedDraftRecoveryRequestedRef = useRef(false);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [profileChoices, setProfileChoices] =
     useState<ProfileChoices>(emptyProfileChoices);
@@ -1074,34 +1073,6 @@ export default function Dashboard() {
   const verdictMap = useMemo(() => {
     return new Map<string, VerdictResult>();
   }, []);
-  // Aprovações registradas antes da automação podem não ter outbox. Assim que
-  // o Radar é aberto, recuperamos somente as vagas ainda elegíveis e acionamos
-  // o conector autorizado de envio.
-  useEffect(() => {
-    if (!currentUser || !profileReady || profileLoadFailed || approvedDraftRecoveryRequestedRef.current) return;
-    approvedDraftRecoveryRequestedRef.current = true;
-    const controller = new AbortController();
-    void fetch("/api/triage/drafts/queue", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ homePeriod: "all" }),
-      signal: controller.signal,
-    }).then(async (response) => {
-      const result = await response.json().catch(() => null) as { queued?: number; gmailDraftsCreated?: number; emailsSent?: number } | null;
-      if (!response.ok || controller.signal.aborted || !result) return;
-      if ((result.queued ?? 0) || (result.gmailDraftsCreated ?? 0) || (result.emailsSent ?? 0)) {
-        setJobsRefreshVersion((version) => version + 1);
-        const created = result.gmailDraftsCreated ?? 0;
-        const sent = result.emailsSent ?? 0;
-        setMessage(sent
-          ? `${sent} candidatura${sent === 1 ? "" : "s"} anterior${sent === 1 ? " foi enviada" : "es foram enviadas"} automaticamente pelo Gmail.`
-          : created
-          ? `${created} rascunho${created === 1 ? "" : "s"} foi criado, mas o envio ainda não foi confirmado.`
-          : "Aprovações anteriores foram colocadas na fila de rascunho.");
-      }
-    }).catch(() => undefined);
-    return () => controller.abort();
-  }, [currentUser, profileReady, profileLoadFailed]);
   /** Cor do trilho do slider — mesmos limiares usados no score das vagas. */
   const fitFilterColor =
     effectiveMinScore >= 80 ? "#2e6b3e" : effectiveMinScore >= 60 ? "#7a6200" : effectiveMinScore > 0 ? "#b04a1a" : "#173f32";

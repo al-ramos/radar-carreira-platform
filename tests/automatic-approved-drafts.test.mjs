@@ -24,9 +24,10 @@ test("toda aprovação com e-mail válido cria e envia a candidatura imediatamen
   assert.match(run, /a ausência desse vínculo não[\s\S]*rascunho elegível fora da automação/i);
   assert.match(run, /history = \{ id: crypto\.randomUUID\(\) \}/);
   assert.match(run, /batchId, userId, jobId: job\.id/);
-  assert.match(worker, /a\.verdict = '✅'/);
-  assert.match(worker, /approvedWithoutOutbox/);
-  assert.match(worker, /LEFT JOIN draft_outbox o ON o\.job_id = j\.id AND o\.user_id = a\.user_id/);
+  const monitor = worker.slice(worker.indexOf("async function observePendingDrafts"), worker.indexOf("// Image security config"));
+  assert.doesNotMatch(monitor, /a\.verdict = '✅'/);
+  assert.doesNotMatch(monitor, /approvedWithoutOutbox/);
+  assert.match(monitor, /approvedRecovery: "explicit_only"/);
   assert.match(aiVerdicts, /if \(entry\.verdict === "✅"\)/);
   assert.match(aiVerdicts, /requestImmediateDraftCreation\(pendingOutboxIds\)/);
   assert.match(csvImport, /requestImmediateDraftCreation\(pendingOutboxIds\)/);

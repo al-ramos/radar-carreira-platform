@@ -238,7 +238,18 @@ const PERFORMANCE_RETENTION_MS = 30 * 24 * 36e5;
 async function finalizeStalledTerminalTriageBatches(env: Env) {
   const now = Date.now();
   const staleBefore = now - STALE_MANUAL_TRIAGE_MS;
-  const result = await env.DB.prepare(`
+  // O UPDATE global anterior avaliava subconsultas contra todos os lotes e
+  // itens (8,2 mil rows_read por execução no incidente). A recuperação é um
+  // fallback: localiza poucos lotes antigos e usa batch_id, que é indexado.
+  const candidates = await env.DB.prepare(`
+    SELECT id FROM triage_batches
+    WHERE status IN ('queued', 'running')
+      AND COALESCE(started_at, created_at) <= ?
+    ORDER BY created_at ASC LIMIT 20
+  `).bind(staleBefore).all<{ id: string }>();
+  let finalized = 0;
+  for (const batch of candidates.results) {
+    const result = await env.DB.prepare(`
     UPDATE triage_batches AS batch
     SET status = CASE
           WHEN EXISTS (SELECT 1 FROM triage_batch_items item WHERE item.batch_id = batch.id AND item.status = 'failed') THEN 'failed'
@@ -250,15 +261,16 @@ async function finalizeStalledTerminalTriageBatches(env: Env) {
             THEN COALESCE(batch.error, 'Uma ou mais vagas falharam; consulte o log do lote.')
           ELSE NULL
         END
-    WHERE batch.status IN ('queued', 'running')
-      AND COALESCE(batch.started_at, batch.created_at) <= ?
+    WHERE batch.id = ? AND batch.status IN ('queued', 'running')
       AND EXISTS (SELECT 1 FROM triage_batch_items item WHERE item.batch_id = batch.id)
       AND NOT EXISTS (
         SELECT 1 FROM triage_batch_items item
         WHERE item.batch_id = batch.id AND item.status IN ('queued', 'processing')
       )
-  `).bind(now, staleBefore).run();
-  console.log(JSON.stringify({ event: "triage_batch_finalization", finalized: result.meta.changes }));
+  `).bind(now, batch.id).run();
+    finalized += result.meta.changes ?? 0;
+  }
+  console.log(JSON.stringify({ event: "triage_batch_finalization", candidates: candidates.results.length, finalized }));
 }
 
 async function purgeExpiredPerformanceSamples(env: Env, scheduledAt: number) {
@@ -271,15 +283,36 @@ async function purgeExpiredPerformanceSamples(env: Env, scheduledAt: number) {
 async function recoverStalledManualTriage(env: Env) {
   const now = Date.now();
   const staleBefore = now - STALE_MANUAL_TRIAGE_MS;
-  const result = await env.DB.prepare(`
-    SELECT i.batch_id, i.job_id, b.user_id
-    FROM triage_batch_items i INNER JOIN triage_batches b ON b.id = i.batch_id
-    WHERE b.trigger = 'manual' AND b.status IN ('queued', 'running')
-      AND ((i.status = 'queued' AND i.updated_at <= ?) OR (i.status = 'processing' AND (i.lease_until IS NULL OR i.lease_until <= ?)))
-    ORDER BY i.updated_at ASC LIMIT 100
-  `).bind(staleBefore, now).all<{ batch_id: string; job_id: string; user_id: string }>();
+  // A consulta anterior começava por todos os itens e fazia JOIN + OR a cada
+  // cron. No acervo atual isso leu, em média, 12,9 mil linhas por execução e
+  // somou mais de 9,2 milhões de rows_read em um dia. Primeiro localizamos os
+  // poucos lotes manuais ativos e depois usamos o índice (batch_id, status).
+  const activeBatches = await env.DB.prepare(`
+    SELECT id, user_id FROM triage_batches
+    WHERE trigger = 'manual' AND status IN ('queued', 'running')
+    ORDER BY created_at DESC LIMIT 10
+  `).all<{ id: string; user_id: string }>();
+  const stalled: Array<{ batch_id: string; job_id: string; user_id: string }> = [];
+  for (const batch of activeBatches.results) {
+    const remaining = 100 - stalled.length;
+    if (remaining <= 0) break;
+    const queued = await env.DB.prepare(`
+      SELECT job_id FROM triage_batch_items
+      WHERE batch_id = ? AND status = 'queued' AND updated_at <= ?
+      ORDER BY updated_at ASC LIMIT ?
+    `).bind(batch.id, staleBefore, remaining).all<{ job_id: string }>();
+    stalled.push(...queued.results.map((item) => ({ batch_id: batch.id, job_id: item.job_id, user_id: batch.user_id })));
+    const processingRemaining = 100 - stalled.length;
+    if (processingRemaining <= 0) break;
+    const processing = await env.DB.prepare(`
+      SELECT job_id FROM triage_batch_items
+      WHERE batch_id = ? AND status = 'processing' AND (lease_until IS NULL OR lease_until <= ?)
+      ORDER BY updated_at ASC LIMIT ?
+    `).bind(batch.id, now, processingRemaining).all<{ job_id: string }>();
+    stalled.push(...processing.results.map((item) => ({ batch_id: batch.id, job_id: item.job_id, user_id: batch.user_id })));
+  }
   const recovered: TriageQueueMessage[] = [];
-  for (const item of result.results) {
+  for (const item of stalled) {
     const update = await env.DB.prepare(`
       UPDATE triage_batch_items SET status = 'queued', lease_owner = NULL, lease_until = NULL, error = NULL, updated_at = ?
       WHERE batch_id = ? AND job_id = ?
@@ -311,22 +344,15 @@ async function recoverStalledManualTriage(env: Env) {
  */
 async function observePendingDrafts(env: Env) {
   const startedAt = Date.now();
-  const pending = await env.DB.prepare(`
-    SELECT COUNT(*) AS total, COUNT(DISTINCT j.source_id) AS sources
-    FROM draft_outbox o INNER JOIN jobs j ON j.id = o.job_id
-    WHERE o.status = 'pending' AND j.source_id IS NOT NULL
-  `).first<{ total: number; sources: number }>();
-  const approvedWithoutOutbox = await env.DB.prepare(`
-    SELECT COUNT(*) AS total, COUNT(DISTINCT j.source_id) AS sources
-    FROM jobs j
-    INNER JOIN user_job_analyses a ON a.job_id = j.id AND a.verdict = '✅'
-    LEFT JOIN draft_outbox o ON o.job_id = j.id AND o.user_id = a.user_id
-    WHERE j.status = 'active' AND o.id IS NULL AND j.source_id IS NOT NULL
-  `).first<{ total: number; sources: number }>();
-  const total = Number(pending?.total ?? 0) + Number(approvedWithoutOutbox?.total ?? 0);
+  // O cron é um observador, não uma fila de recuperação. Contar aprovações
+  // sem outbox varria jobs + análises + outbox a cada dois minutos (4,1 M de
+  // rows_read/dia) sem mudar o estado. O painel detalhado continua oferecendo
+  // essa visão quando a pessoa o abre; o heartbeat periódico usa só a outbox.
+  const pending = await env.DB.prepare(`SELECT COUNT(*) AS total FROM draft_outbox WHERE status = 'pending'`).first<{ total: number }>();
+  const total = Number(pending?.total ?? 0);
   await recordAutomationHeartbeat(env, "draft-monitor", total ? "skipped" : "completed", startedAt,
     total ? `${total} item(ns) aguardam ação explícita no painel; recuperação automática desativada.` : null);
-  console.log(JSON.stringify({ event: "draft_monitor", pending: Number(pending?.total ?? 0), pendingSources: Number(pending?.sources ?? 0), approvedWithoutOutbox: Number(approvedWithoutOutbox?.total ?? 0), approvedSources: Number(approvedWithoutOutbox?.sources ?? 0) }));
+  console.log(JSON.stringify({ event: "draft_monitor", pending: total, approvedRecovery: "explicit_only" }));
 }
 
 // Image security config. SVG sources with .svg extension auto-skip the
@@ -416,9 +442,6 @@ const worker = {
     return response;
   },
   async scheduled(controller: { scheduledTime: number }, env: Env, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(finalizeStalledTerminalTriageBatches(env).catch((error) => {
-      console.error(JSON.stringify({ event: "triage_batch_finalization_failed", detail: error instanceof Error ? error.message.slice(0, 500) : "Falha ao finalizar lotes antigos" }));
-    }));
     ctx.waitUntil(recoverStalledManualTriage(env).catch(async (error) => {
       const now = Date.now();
       const detail = error instanceof Error ? error.message.slice(0, 500) : "Falha ao recuperar a fila manual";
@@ -428,10 +451,18 @@ const worker = {
         ON CONFLICT(id) DO UPDATE SET status = excluded.status, started_at = excluded.started_at, completed_at = excluded.completed_at, error = excluded.error, updated_at = excluded.updated_at`
       ).bind(now, now, detail, now).run();
     }));
-    ctx.waitUntil(observePendingDrafts(env).catch((error) => {
-      console.error(JSON.stringify({ event: "draft_monitor_failed", detail: error instanceof Error ? error.message.slice(0, 500) : "Falha ao observar rascunhos" }));
-    }));
     const scheduledDate = new Date(controller.scheduledTime);
+    // A observação de rascunhos não muda estado e não precisa varrer o banco
+    // na mesma frequência da recuperação de leases. Uma execução por hora é
+    // suficiente para o painel e mantém uma margem ampla na cota gratuita.
+    if (scheduledDate.getUTCMinutes() < 5) {
+      ctx.waitUntil(finalizeStalledTerminalTriageBatches(env).catch((error) => {
+        console.error(JSON.stringify({ event: "triage_batch_finalization_failed", detail: error instanceof Error ? error.message.slice(0, 500) : "Falha ao finalizar lotes antigos" }));
+      }));
+      ctx.waitUntil(observePendingDrafts(env).catch((error) => {
+        console.error(JSON.stringify({ event: "draft_monitor_failed", detail: error instanceof Error ? error.message.slice(0, 500) : "Falha ao observar rascunhos" }));
+      }));
+    }
     if (scheduledDate.getUTCHours() === 3 && scheduledDate.getUTCMinutes() < 2) {
       ctx.waitUntil(purgeExpiredPerformanceSamples(env, controller.scheduledTime).catch((error) => {
         console.error(JSON.stringify({ event: "performance_retention_failed", detail: error instanceof Error ? error.message.slice(0, 500) : "Falha ao limpar telemetria antiga" }));
@@ -507,9 +538,6 @@ const worker = {
         message.retry({ delaySeconds: 15 });
       }
     }
-    ctx.waitUntil(finalizeStalledTerminalTriageBatches(env).catch((error) => {
-      console.error(JSON.stringify({ event: "triage_batch_finalization_failed", detail: error instanceof Error ? error.message.slice(0, 500) : "Falha ao finalizar lotes antigos" }));
-    }));
   },
 };
 

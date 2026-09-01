@@ -12,11 +12,13 @@ test("aprovação registrada no Radar cria rascunho imediatamente", async () => 
   assert.match(route, /const draft = await queueApprovedDraft/);
 });
 
-test("Radar recupera automaticamente aprovações antigas que ainda não têm rascunho", async () => {
-  const dashboard = await readFile(new URL("../app/Dashboard.tsx", import.meta.url), "utf8");
-  assert.match(dashboard, /approvedDraftRecoveryRequestedRef/);
-  assert.match(dashboard, /fetch\("\/api\/triage\/drafts\/queue"/);
-  assert.match(dashboard, /JSON\.stringify\(\{ homePeriod: "all" \}\)/);
-  assert.match(dashboard, /Aprovações anteriores foram colocadas na fila de rascunho/);
-  assert.match(dashboard, /o conector autorizado de envio/);
+test("aprovações antigas exigem ação explícita e não varrem o D1 ao abrir o Radar", async () => {
+  const [dashboard, triage] = await Promise.all([
+    readFile(new URL("../app/Dashboard.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/TriageReport.tsx", import.meta.url), "utf8"),
+  ]);
+  assert.doesNotMatch(dashboard, /approvedDraftRecoveryRequestedRef/);
+  assert.doesNotMatch(dashboard, /JSON\.stringify\(\{ homePeriod: "all" \}\)/);
+  assert.match(triage, /Enviar candidaturas selecionadas/);
+  assert.match(triage, /onClick=\{\(\) => void queueDrafts/);
 });

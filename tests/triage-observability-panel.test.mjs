@@ -23,6 +23,8 @@ test("expõe observabilidade acionável da triagem no painel", async () => {
   assert.match(screen, /Pendentes nas regras atuais/);
   assert.match(screen, /Próxima execução/);
   assert.match(screen, /O que está acontecendo/);
+  assert.match(screen, /Proteção de leituras D1/);
+  assert.match(screen, /Histórico sem polling/);
   assert.match(styles, /\.triage-observability\.blocked/);
 
   // O cron observa pendências, mas não cria um fan-out automático de fontes.

@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, isNull, lt, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db/index";
@@ -103,8 +103,7 @@ export async function GET(request: Request) {
     // as vagas que ainda não têm análise, permitindo que “Não analisadas” e
     // “Todas” mostrem o estoque real em vez de uma tabela vazia.
     .from(jobs)
-    .leftJoin(userJobAnalyses, and(
-      eq(userJobAnalyses.userId, user.userId),
+    .leftJoin(userJobAnalyses, and(eq(userJobAnalyses.userId, user.userId),
       eq(userJobAnalyses.jobId, jobs.id),
       eq(userJobAnalyses.profileRevision, versions.profileRevision),
       eq(userJobAnalyses.rulesRevision, versions.rulesRevision),
@@ -130,8 +129,7 @@ export async function GET(request: Request) {
     // 1.000, mesmo quando havia mais vagas analisadas.
     .orderBy(desc(userJobAnalyses.updatedAt), desc(jobs.firstSeenAt));
 
-  const [batchRows, batchItemRows, outboxRows, batchDraftRows, batchHistoryRows, repairableRows, todayReceived] = await Promise.all([
-    db.select({
+  const batchRows = await db.select({
       id: triageBatches.id,
       trigger: triageBatches.trigger,
       scope: triageBatches.scope,
@@ -140,7 +138,12 @@ export async function GET(request: Request) {
       completedAt: triageBatches.completedAt,
       createdAt: triageBatches.createdAt,
       error: triageBatches.error,
-    }).from(triageBatches).where(eq(triageBatches.userId, user.userId)).orderBy(desc(triageBatches.createdAt)).limit(30),
+    }).from(triageBatches).where(eq(triageBatches.userId, user.userId)).orderBy(desc(triageBatches.createdAt)).limit(30);
+  // O painel só abre logs detalhados dos lotes recentes. Restringir por ID
+  // evita reler todos os itens históricos a cada abertura da triagem.
+  const recentBatchIds = batchRows.slice(0, 5).map((batch) => batch.id);
+  const summaryBatchIds = batchRows.map((batch) => batch.id);
+  const [batchItemRows, outboxRows, batchDraftRows, batchHistoryRows, todayReceived] = await Promise.all([
     db.select({
       batchId: triageBatchItems.batchId, jobId: triageBatchItems.jobId, status: triageBatchItems.status,
       error: triageBatchItems.error, attemptCount: triageBatchItems.attemptCount, updatedAt: triageBatchItems.updatedAt,
@@ -148,18 +151,14 @@ export async function GET(request: Request) {
     }).from(triageBatchItems)
       .innerJoin(triageBatches, eq(triageBatchItems.batchId, triageBatches.id))
       .innerJoin(jobs, eq(triageBatchItems.jobId, jobs.id))
-      .where(eq(triageBatches.userId, user.userId)),
+      .where(and(eq(triageBatches.userId, user.userId), recentBatchIds.length ? inArray(triageBatchItems.batchId, recentBatchIds) : sql`0 = 1`)),
     db.select({ status: draftOutbox.status, createdAt: draftOutbox.createdAt, sentAt: draftOutbox.sentAt }).from(draftOutbox).where(eq(draftOutbox.userId, user.userId)),
     db.select({ batchId: triageHistory.batchId, status: draftOutbox.status }).from(draftOutbox)
       .innerJoin(triageHistory, eq(draftOutbox.historyId, triageHistory.id))
-      .where(eq(draftOutbox.userId, user.userId)),
+      .where(and(eq(draftOutbox.userId, user.userId), summaryBatchIds.length ? inArray(triageHistory.batchId, summaryBatchIds) : sql`0 = 1`)),
     db.select({ batchId: triageHistory.batchId, verdict: triageHistory.verdict, contactEmail: jobs.contactEmail }).from(triageHistory)
       .innerJoin(jobs, eq(triageHistory.jobId, jobs.id))
-      .where(eq(triageHistory.userId, user.userId)),
-    db.select({ jobId: triageHistory.jobId }).from(triageHistory)
-      .innerJoin(triageBatchItems, and(eq(triageBatchItems.batchId, triageHistory.batchId), eq(triageBatchItems.jobId, triageHistory.jobId), eq(triageBatchItems.status, "completed")))
-      .leftJoin(userJobAnalyses, and(eq(userJobAnalyses.userId, user.userId), eq(userJobAnalyses.jobId, triageHistory.jobId)))
-      .where(and(eq(triageHistory.userId, user.userId), isNull(userJobAnalyses.jobId))),
+      .where(and(eq(triageHistory.userId, user.userId), summaryBatchIds.length ? inArray(triageHistory.batchId, summaryBatchIds) : sql`0 = 1`)),
     db.select({ total: sql<number>`count(*)` }).from(jobs).where(and(eq(jobs.status, "active"), gte(jobs.firstSeenAt, todayWindow.start), lt(jobs.firstSeenAt, todayWindow.end))).then((rows) => Number(rows[0]?.total ?? 0)),
   ]);
 
@@ -226,7 +225,9 @@ export async function GET(request: Request) {
     // Diário operacional persistido: explica espera, tentativa, erro e a
     // última alteração sem depender de logs efêmeros da Queue.
     batchItems: batchItemRows,
-    recovery: { available: new Set(repairableRows.map((row) => row.jobId)).size },
+    // A verificação completa de reparo continua na rota explícita de repair;
+    // não varre dezenas de milhares de linhas em toda abertura do painel.
+    recovery: { available: 0 },
     operational: {
       pendingDrafts: pendingDrafts.length,
       readyDrafts: readyDrafts.length,

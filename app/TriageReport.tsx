@@ -9,6 +9,7 @@ const withAvailabilityLabel = (item: HistoryItem): HistoryItem => {
 };
 type Batch = { id: string; trigger: "manual" | "scheduled" | "assistant"; scope: string; status: string; startedAt: string | null; completedAt: string | null; createdAt: string; error: string | null; total: number; completed: number; failed: number; eligible: number; eligibleWithoutContact: number; draftsPending: number; draftsReady: number; draftsFailed: number };
 type BatchItem = { batchId: string; jobId: string; status: "queued" | "processing" | "completed" | "failed" | "skipped"; error: string | null; attemptCount: number; updatedAt: string; leaseUntil: string | null; title: string; company: string; externalId: string | null };
+type BatchProgress = { batch: Batch; counts: { queued: number; processing: number; completed: number; failed: number; skipped: number }; recoverable: number; polledAt: string };
 type Operational = { pendingDrafts: number; readyDrafts: number; sentDrafts: number; failedDrafts: number; oldestPendingAt: string | null; alerts: Array<{ level: "warning" | "error"; message: string }> };
 type HistoryRecovery = { available: number };
 type QueueUsage = {
@@ -84,6 +85,7 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
     [selectedHistoryJobIds, setSelectedHistoryJobIds] = useState<string[]>([]),
     [batches, setBatches] = useState<Batch[]>([]),
     [batchItems, setBatchItems] = useState<BatchItem[]>([]),
+    [manualProgress, setManualProgress] = useState<BatchProgress | null>(null),
     [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null),
     [syncingBatch, setSyncingBatch] = useState(false),
     [operational, setOperational] = useState<Operational | null>(null),
@@ -111,6 +113,7 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
     [csvImportResult, setCsvImportResult] = useState<{ applied: number; draftsQueued: number; draftsCreated: number; emailsSent: number; gmailReason: string | null; notFound: string[]; ambiguous: string[]; rejected: Array<{ line: number; reason: string }> } | null>(null),
     [reconcilingAllSent, setReconcilingAllSent] = useState(false);
   const aiPromptRef = useRef<HTMLTextAreaElement>(null);
+  const historyLoadedAtRef = useRef(0);
   // Digitar o código dispara uma consulta por caractere. Sem um marcador de
   // versão, uma resposta anterior (por exemplo, para "852") pode chegar após
   // a resposta de "85278" e substituir a tabela e seus totais pelo recorte
@@ -145,6 +148,7 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
       if (!isCurrentRequest()) return false;
       const items = (data.items ?? []).map(withAvailabilityLabel);
       setHistory(items); setBatches(data.batches ?? []); setBatchItems(data.batchItems ?? []); setOperational(data.operational ?? null); setHistoryRecovery(data.recovery ?? null); setLastSyncedAt(new Date());
+      historyLoadedAtRef.current = Date.now();
       if (!items.length) setMessage("Nenhuma vaga foi triada ainda. Use “Analisar vagas do recorte” para iniciar.");
       else setMessage((current) => current === "Carregando avaliações…" ? "" : current);
       return true;
@@ -176,23 +180,43 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
       setCodexQueueItems(data.items ?? []);
     } catch { /* A triagem continua disponível mesmo se o histórico do Codex não carregar. */ }
   };
-  const loadQueueUsage = async () => {
+  const loadQueueUsage = async (compact = false) => {
     try {
-      const response = await fetch("/api/triage/queue-usage");
-      if (response.ok) setQueueUsage(await readJsonResponse<QueueUsage>(response, "O uso das filas"));
+      const response = await fetch(`/api/triage/queue-usage${compact ? "?compact=1" : ""}`, { cache: "no-store" });
+      if (response.ok) {
+        const data = await readJsonResponse<Partial<QueueUsage>>(response, "O uso das filas");
+        setQueueUsage((current) => current ? { ...current, ...data } : data as QueueUsage);
+      }
     } catch { /* A triagem permanece utilizável se a telemetria estiver indisponível. */ }
+  };
+  const loadManualProgress = async (batchId: string) => {
+    try {
+      const response = await fetch(`/api/triage/progress?batchId=${encodeURIComponent(batchId)}`, { cache: "no-store" });
+      if (!response.ok) return;
+      const progress = await readJsonResponse<BatchProgress>(response, "O progresso da triagem");
+      setManualProgress(progress);
+      setBatches((current) => current.map((batch) => batch.id === progress.batch.id ? { ...batch, ...progress.batch } : batch));
+      setLastSyncedAt(new Date(progress.polledAt));
+      if (!["queued", "running"].includes(progress.batch.status)) {
+        setManualProgress(null);
+        void loadHistory();
+      }
+    } catch { /* Mantém o último progresso visível e tenta novamente no próximo intervalo. */ }
   };
   useEffect(() => {
     // O painel pode montar fechado enquanto a Home termina de carregar. Só
     // consulta o histórico quando ele estiver visível e refaz a carga na
     // primeira abertura, sem depender de alterar um filtro.
     if (!open) return;
-    const timer = window.setTimeout(() => { void loadHistory(); void loadCodexQueue(); void loadQueueUsage(); }, 0);
+    const timer = window.setTimeout(() => {
+      if (Date.now() - historyLoadedAtRef.current > 5 * 60_000) void loadHistory();
+      void loadCodexQueue(); void loadQueueUsage();
+    }, 0);
     return () => window.clearTimeout(timer);
   }, [open]);
   useEffect(() => {
     if (!open) return;
-    const timer = window.setInterval(() => { if (document.visibilityState === "visible") void loadQueueUsage(); }, 30_000);
+    const timer = window.setInterval(() => { if (document.visibilityState === "visible") void loadQueueUsage(true); }, 120_000);
     return () => window.clearInterval(timer);
   }, [open]);
   useEffect(() => {
@@ -260,14 +284,17 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
   // que o usuário inicie a próxima triagem do recorte.
   const manualIsActive = (latestManual?.status === "queued" || latestManual?.status === "running") && (latestManual.total ?? 0) > 0;
   const latestManualItems = latestManual ? batchItems.filter((item) => item.batchId === latestManual.id) : [];
-  const manualItemCounts = latestManualItems.reduce((counts, item) => ({ ...counts, [item.status]: counts[item.status] + 1 }), { queued: 0, processing: 0, completed: 0, failed: 0, skipped: 0 });
-  const recoverableManualItemCount = latestManualItems.filter((item) => {
+  const cachedManualItemCounts = latestManualItems.reduce((counts, item) => ({ ...counts, [item.status]: counts[item.status] + 1 }), { queued: 0, processing: 0, completed: 0, failed: 0, skipped: 0 });
+  const hasCurrentManualProgress = Boolean(manualProgress && manualProgress.batch.id === latestManual?.id);
+  const manualItemCounts = hasCurrentManualProgress && manualProgress ? manualProgress.counts : cachedManualItemCounts;
+  const cachedRecoverableManualItemCount = latestManualItems.filter((item) => {
     const updatedAt = new Date(item.updatedAt).getTime();
     const leaseUntil = item.leaseUntil ? new Date(item.leaseUntil).getTime() : 0;
     const staleQueued = item.status === "queued" && updatedAt < Date.now() - 5 * 60_000;
     const expiredProcessing = item.status === "processing" && leaseUntil <= Date.now();
     return staleQueued || expiredProcessing;
   }).length;
+  const recoverableManualItemCount = hasCurrentManualProgress && manualProgress ? manualProgress.recoverable : cachedRecoverableManualItemCount;
   const queueWindowStartedAt = queueUsage ? new Date(queueUsage.resetAt).getTime() - 24 * 60 * 60_000 : null;
   const manualQuotaRecovered = Boolean(
     latestManual?.status === "failed"
@@ -276,8 +303,9 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
       && new Date(latestManual.completedAt ?? latestManual.createdAt).getTime() < queueWindowStartedAt,
   );
   useEffect(() => {
-    if (!manualIsActive) return;
-    const timer = window.setInterval(() => { if (document.visibilityState === "visible") void loadHistory(); }, 4000);
+    if (!manualIsActive || !latestManual?.id) return;
+    void loadManualProgress(latestManual.id);
+    const timer = window.setInterval(() => { if (document.visibilityState === "visible") void loadManualProgress(latestManual.id); }, 30_000);
     return () => window.clearInterval(timer);
   }, [manualIsActive, latestManual?.id]);
   useEffect(() => {
@@ -1002,6 +1030,11 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
               <strong>{date(queueUsage.quotaResetAt)}</strong>
               <p>{queueUsage.updatedAt ? `Telemetria atualizada em ${date(queueUsage.updatedAt)}.` : "Sem mensagens reservadas hoje."}</p>
             </article>
+            <article>
+              <small>Proteção de leituras D1</small>
+              <strong>Ativa</strong>
+              <p>Histórico sem polling · progresso compacto em 30 s · cron em 15 min · varreduras globais no máximo a cada hora.</p>
+            </article>
           </div>
           <div className="triage-observability-guidance">
             <div><b>O que está acontecendo</b><span>{queueUsage.reason}</span></div>
@@ -1116,7 +1149,7 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
           </section>
         )}
         <section className="triage-manual-status" aria-live="polite" aria-label="Acompanhamento do lote manual">
-          <div><p className="eyebrow">SEU ÚLTIMO LOTE</p><h3>{latestManual ? latestManual.total === 0 ? "Nenhuma vaga pendente" : latestManual.status === "completed" ? "Triagem concluída" : latestManual.status === "failed" ? "Triagem com falha" : latestManual.status === "running" ? "Triagem em andamento" : "Triagem na fila" : "Nenhum lote manual iniciado"}</h3>{latestManual && <small className="triage-sync-status">{manualIsActive ? "Sincronização automática a cada 4 segundos" : "Estado final sincronizado"}{lastSyncedAt ? ` · atualizado às ${date(lastSyncedAt.toISOString())}` : ""}</small>}</div>
+          <div><p className="eyebrow">SEU ÚLTIMO LOTE</p><h3>{latestManual ? latestManual.total === 0 ? "Nenhuma vaga pendente" : latestManual.status === "completed" ? "Triagem concluída" : latestManual.status === "failed" ? "Triagem com falha" : latestManual.status === "running" ? "Triagem em andamento" : "Triagem na fila" : "Nenhum lote manual iniciado"}</h3>{latestManual && <small className="triage-sync-status">{manualIsActive ? "Progresso compacto a cada 30 segundos" : "Estado final sincronizado"}{lastSyncedAt ? ` · atualizado às ${date(lastSyncedAt.toISOString())}` : ""}</small>}</div>
           {latestManual ? <><div className="triage-manual-progress"><p>{manualSummary(latestManual)}</p>{latestManual.total > 0 && <><div className="triage-progress-bar" aria-label={`${manualItemCounts.completed + manualItemCounts.failed + manualItemCounts.skipped} de ${latestManual.total} vagas finalizadas`}><span style={{ width: `${Math.round(((manualItemCounts.completed + manualItemCounts.failed + manualItemCounts.skipped) / latestManual.total) * 100)}%` }} /></div><div className="triage-progress-counts"><span>{manualItemCounts.queued} na fila</span><span>{manualItemCounts.processing} em análise</span><span>{manualItemCounts.completed} concluídas</span>{manualItemCounts.skipped > 0 && <span>{manualItemCounts.skipped} ignoradas</span>}{manualItemCounts.failed > 0 && <span className="failed">{manualItemCounts.failed} falhas</span>}</div>{latestManual.error && (manualQuotaRecovered ? <p className="triage-batch-recovered">O bloqueio de cota não está mais ativo. Retome o lote abaixo quando quiser continuar.</p> : <p className="triage-batch-error">{latestManual.error}</p>)}<details className="triage-batch-log"><summary>Ver log do lote ({latestManualItems.length} vaga(s))</summary><ol>{latestManualItems.map((item) => <li key={item.jobId} className={item.status}><b>{batchItemStatus(item)}</b><span>{item.title} · {item.company}{item.externalId ? ` · código ${item.externalId}` : ""}</span><small>{item.attemptCount} tentativa(s) · atualização: {date(item.updatedAt)}{item.leaseUntil && item.status === "processing" ? ` · reserva até ${date(item.leaseUntil)}` : ""}</small>{item.error && <em>{item.error}</em>}</li>)}</ol></details></>}</div><div><button type="button" className="triage-card-action" disabled={syncingBatch} onClick={() => void syncManualBatch()}>{syncingBatch ? "Sincronizando…" : "Sincronizar agora"}</button>{recoverableManualItemCount > 0 && <button type="button" className="triage-card-action secondary" disabled={resumingBatch} onClick={() => void resumePendingBatch()}>{resumingBatch ? "Retomando…" : `Retomar ${recoverableManualItemCount} pendente(s)`}</button>}<button type="button" className="triage-card-action secondary" onClick={() => openHistory()}>Ver resultados</button></div></> : <p>Escolha o recorte acima e use a etapa 1. O andamento e o resultado aparecerão aqui.</p>}
         </section>
       </section>

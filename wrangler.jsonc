@@ -27,7 +27,7 @@
     "enabled": true
   },
   "triggers": {
-    "crons": ["*/2 * * * *"]
+    "crons": ["*/15 * * * *"]
   },
   "queues": {
     "producers": [
