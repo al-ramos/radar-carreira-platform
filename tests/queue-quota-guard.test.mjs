@@ -30,6 +30,12 @@ test("protege a cota diária e compacta mensagens da triagem manual", async () =
   assert.match(worker, /dispatchScheduledTriage/);
   assert.match(worker, /observePendingDrafts/);
   assert.doesNotMatch(worker, /recoverPendingDrafts/);
+  assert.match(worker, /finalizeStalledTerminalTriageBatches/);
+  assert.match(worker, /NOT EXISTS[\s\S]*item\.status IN \('queued', 'processing'\)/);
+  assert.match(worker, /event: "triage_batch_finalization"/);
   assert.match(usageRoute, /queueUsageForToday/);
   assert.match(screen, /Saúde da coleta e triagem/);
+  assert.match(screen, /isQueueQuotaError/);
+  assert.match(screen, /O limite da janela anterior já foi renovado/);
+  assert.match(screen, /O bloqueio de cota não está mais ativo/);
 });

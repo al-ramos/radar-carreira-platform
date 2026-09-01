@@ -230,6 +230,37 @@ interface ExecutionContext {
 const STALE_MANUAL_TRIAGE_MS = 2 * 60_000;
 const PERFORMANCE_RETENTION_MS = 30 * 24 * 36e5;
 
+/**
+ * Repara lotes cuja última etapa de persistência foi interrompida depois que
+ * todos os itens já chegaram a um estado terminal. O atraso evita disputar o
+ * status com uma execução ainda ativa.
+ */
+async function finalizeStalledTerminalTriageBatches(env: Env) {
+  const now = Date.now();
+  const staleBefore = now - STALE_MANUAL_TRIAGE_MS;
+  const result = await env.DB.prepare(`
+    UPDATE triage_batches AS batch
+    SET status = CASE
+          WHEN EXISTS (SELECT 1 FROM triage_batch_items item WHERE item.batch_id = batch.id AND item.status = 'failed') THEN 'failed'
+          ELSE 'completed'
+        END,
+        completed_at = ?,
+        error = CASE
+          WHEN EXISTS (SELECT 1 FROM triage_batch_items item WHERE item.batch_id = batch.id AND item.status = 'failed')
+            THEN COALESCE(batch.error, 'Uma ou mais vagas falharam; consulte o log do lote.')
+          ELSE NULL
+        END
+    WHERE batch.status IN ('queued', 'running')
+      AND COALESCE(batch.started_at, batch.created_at) <= ?
+      AND EXISTS (SELECT 1 FROM triage_batch_items item WHERE item.batch_id = batch.id)
+      AND NOT EXISTS (
+        SELECT 1 FROM triage_batch_items item
+        WHERE item.batch_id = batch.id AND item.status IN ('queued', 'processing')
+      )
+  `).bind(now, staleBefore).run();
+  console.log(JSON.stringify({ event: "triage_batch_finalization", finalized: result.meta.changes }));
+}
+
 async function purgeExpiredPerformanceSamples(env: Env, scheduledAt: number) {
   const cutoff = scheduledAt - PERFORMANCE_RETENTION_MS;
   const result = await env.DB.prepare("DELETE FROM performance_samples WHERE created_at < ?").bind(cutoff).run();
@@ -385,6 +416,9 @@ const worker = {
     return response;
   },
   async scheduled(controller: { scheduledTime: number }, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(finalizeStalledTerminalTriageBatches(env).catch((error) => {
+      console.error(JSON.stringify({ event: "triage_batch_finalization_failed", detail: error instanceof Error ? error.message.slice(0, 500) : "Falha ao finalizar lotes antigos" }));
+    }));
     ctx.waitUntil(recoverStalledManualTriage(env).catch(async (error) => {
       const now = Date.now();
       const detail = error instanceof Error ? error.message.slice(0, 500) : "Falha ao recuperar a fila manual";
@@ -473,6 +507,9 @@ const worker = {
         message.retry({ delaySeconds: 15 });
       }
     }
+    ctx.waitUntil(finalizeStalledTerminalTriageBatches(env).catch((error) => {
+      console.error(JSON.stringify({ event: "triage_batch_finalization_failed", detail: error instanceof Error ? error.message.slice(0, 500) : "Falha ao finalizar lotes antigos" }));
+    }));
   },
 };
 
