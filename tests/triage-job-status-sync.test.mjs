@@ -34,3 +34,11 @@ test("detalhe sincroniza encerramento sem apagar o acompanhamento anterior", asy
   assert.match(source, /disabled=\{selectedJobUnavailable \|\| hasSentApplication/);
   assert.match(source, /!selectedJobUnavailable && selectedApplication\.applicationStatus === "opened"/);
 });
+
+test("deploy sem migration não consome leitura do D1 antes de publicar", async () => {
+  const workflow = await read("../.github/workflows/quality.yml");
+
+  assert.match(workflow, /Detectar migrations alteradas/);
+  assert.match(workflow, /git diff --quiet .* -- drizzle\//);
+  assert.match(workflow, /if: steps\.migrations\.outputs\.changed == 'true'/);
+});

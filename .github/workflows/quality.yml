@@ -57,6 +57,19 @@ jobs:
     steps:
       - name: Baixar código
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Detectar migrations alteradas
+        id: migrations
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          elif git diff --quiet "${{ github.event.before }}" "${{ github.sha }}" -- drizzle/; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
       - name: Preparar Node.js
         uses: actions/setup-node@v5
         with:
@@ -70,6 +83,7 @@ jobs:
           printf 'CLOUDFLARE_API_TOKEN=%s\n' "$(printf '%s' "$CLOUDFLARE_API_TOKEN" | tr -d '\r\n')" >> "$GITHUB_ENV"
           printf 'CLOUDFLARE_ACCOUNT_ID=%s\n' "$(printf '%s' "$CLOUDFLARE_ACCOUNT_ID" | tr -d '\r\n')" >> "$GITHUB_ENV"
       - name: Aplicar migrations D1 pendentes
+        if: steps.migrations.outputs.changed == 'true'
         run: npx wrangler d1 migrations apply radar-carreira-db --remote
       - name: Garantir filas da triagem
         shell: bash
