@@ -45,7 +45,7 @@ function instalarColetaDiaria() {
   ScriptApp.newTrigger('importarRadarVagas').timeBased().everyDays(1).atHour(8).create();
 }
 
-const RADAR_DRAFT_CONNECTOR_VERSION = 'radar-drafts-v3-auto-send';
+const RADAR_DRAFT_CONNECTOR_VERSION = 'radar-drafts-v4-sent-first';
 const RADAR_SENT_RECONCILIATION_HANDLER = 'reconciliarEnviosAgendadosRadar';
 const RADAR_DRAFT_RECOVERY_HANDLER = 'executarRascunhosPendentesRadar';
 const RADAR_CV_FILE_PROPERTY = 'RADAR_CV_FILE_ID';
@@ -94,7 +94,7 @@ function criarRascunhosRadar(options) {
   if (!secret) throw new Error('Configure RADAR_SECRET nas propriedades do script.');
   const outboxIds = options && Array.isArray(options.outboxIds) ? options.outboxIds.filter(id => typeof id === 'string' && id) : null;
   const autoSend = Boolean(options && options.autoSend);
-  let processed = 0, sent = 0, scanned = 0;
+  let processed = 0, sent = 0, reconciled = 0, scanned = 0;
   // 10 lotes de 10 cobrem com margem a rotina diária e preservam o limite
   // por chamada. Itens que deixaram de ser seguros são cancelados pelo Radar.
   for (let batch = 0; batch < 10; batch += 1) {
@@ -106,6 +106,16 @@ function criarRascunhosRadar(options) {
     const payload = JSON.parse(response.getContentText());
     (payload.drafts || []).forEach(item => {
       try {
+        // A pasta Enviados é consultada antes de criar ou enviar qualquer
+        // mensagem. Uma correspondência exata vira registro no Radar e
+        // encerra este item sem duplicar a candidatura.
+        const alreadySent = encontrarMensagemEnviadaRadar(item);
+        if (alreadySent) {
+          const confirmation = registrarEnvioConciliadoRadar(secret, item, alreadySent);
+          if (confirmation.getResponseCode() >= 300) throw new Error(confirmation.getContentText());
+          reconciled += 1;
+          return;
+        }
         const content = optionsComCurriculoEAssinaturaRadar(item.body);
         const existing = GmailApp.getDrafts().find(draft => {
           const message = draft.getMessage();
@@ -135,8 +145,8 @@ function criarRascunhosRadar(options) {
     scanned += payload.scanned || 0;
     if (!payload.hasMore) break;
   }
-  console.log(`Rascunhos processados: ${processed}; e-mails enviados automaticamente: ${sent}; itens verificados: ${scanned}.`);
-  return { processed: processed, sent: sent, scanned: scanned };
+  console.log(`Rascunhos processados: ${processed}; e-mails enviados automaticamente: ${sent}; envios anteriores conciliados sem reenvio: ${reconciled}; itens verificados: ${scanned}.`);
+  return { processed: processed, sent: sent, reconciled: reconciled, scanned: scanned };
 }
 
 // Web App autenticado pelo mesmo segredo do conector. A ação prioritizeDrafts
@@ -151,7 +161,7 @@ function doPost(event) {
     if (!Array.isArray(payload.outboxIds) || !payload.outboxIds.length) return responderWebhookRadar({ ok:false, error:'Selecione ao menos um rascunho.' });
     if (payload.action === 'prioritizeDrafts') {
       const result = criarRascunhosRadar({ outboxIds: payload.outboxIds, autoSend:true });
-      return responderWebhookRadar({ ok:true, created: result.processed, sent: result.sent, scanned: result.scanned });
+      return responderWebhookRadar({ ok:true, created: result.processed, sent: result.sent, reconciled: result.reconciled, scanned: result.scanned });
     }
     if (payload.action === 'reconcileSent') return responderWebhookRadar({ ok:true, confirmed: reconciliarEnviosManuaisRadar({ outboxIds: payload.outboxIds }) });
     return responderWebhookRadar({ ok:false, error:'Ação de prioridade inválida' });
@@ -273,6 +283,24 @@ function confirmarEnvioAutomaticoRadar(secret, item, message) {
   });
 }
 
+function registrarEnvioConciliadoRadar(secret, candidate, message) {
+  return UrlFetchApp.fetch(`${radarUrl()}/api/cron/drafts`, {
+    method:'post',contentType:'application/json',headers:{Authorization:`Bearer ${secret}`},
+    payload:JSON.stringify({
+      action:'reconcileSent',outboxId:candidate.outboxId,gmailSentId:message.getId(),
+      to:candidate.to,subject:message.getSubject(),gmailThreadId:candidate.gmailThreadId || null,
+      sentAt:message.getDate().toISOString(),isDraft:message.isDraft(),connectorVersion:RADAR_DRAFT_CONNECTOR_VERSION
+    }),muteHttpExceptions:true
+  });
+}
+
+function registrarEnvioNaoLocalizadoRadar(secret, outboxId) {
+  return UrlFetchApp.fetch(`${radarUrl()}/api/cron/drafts`, {
+    method:'post',contentType:'application/json',headers:{Authorization:`Bearer ${secret}`},
+    payload:JSON.stringify({action:'reconcileMissing',outboxId:outboxId,connectorVersion:RADAR_DRAFT_CONNECTOR_VERSION}),muteHttpExceptions:true
+  });
+}
+
 function registrarFalhaRascunhoRadar(secret, outboxId, error) {
   return UrlFetchApp.fetch(`${radarUrl()}/api/cron/drafts`, {
     method:'post',contentType:'application/json',headers:{Authorization:`Bearer ${secret}`},
@@ -296,15 +324,14 @@ function reconciliarEnviosManuaisRadar(options) {
   let confirmed = 0;
   (payload.candidates || []).forEach(candidate => {
     const message = encontrarMensagemEnviadaRadar(candidate);
-    if (!message) return;
-    const confirmation = UrlFetchApp.fetch(`${radarUrl()}/api/cron/drafts`, {
-      method:'post',contentType:'application/json',headers:{Authorization:`Bearer ${secret}`},
-      payload:JSON.stringify({
-        action:'reconcileSent',outboxId:candidate.outboxId,gmailSentId:message.getId(),
-        to:candidate.to,subject:message.getSubject(),gmailThreadId:candidate.gmailThreadId,sentAt:message.getDate().toISOString(),isDraft:message.isDraft(),
-        connectorVersion:RADAR_DRAFT_CONNECTOR_VERSION
-      }),muteHttpExceptions:true
-    });
+    if (!message) {
+      if (candidate.reconciliationOnly) {
+        const missing = registrarEnvioNaoLocalizadoRadar(secret, candidate.outboxId);
+        if (missing.getResponseCode() >= 300) console.warn(`Não foi possível encerrar a verificação de ${candidate.outboxId}: ${missing.getContentText()}`);
+      }
+      return;
+    }
+    const confirmation = registrarEnvioConciliadoRadar(secret, candidate, message);
     if (confirmation.getResponseCode() >= 300) {
       console.warn(`Não foi possível confirmar envio de ${candidate.outboxId}: ${confirmation.getContentText()}`);
       return;
@@ -317,7 +344,7 @@ function reconciliarEnviosManuaisRadar(options) {
 
 function encontrarMensagemEnviadaRadar(candidate) {
   const escapedSubject = String(candidate.subject || '').replace(/["\\]/g, ' ');
-  const since = new Date(candidate.draftedAt).getTime() - 60 * 1000;
+  const since = new Date(candidate.searchFrom || candidate.draftedAt).getTime() - 24 * 60 * 60 * 1000;
   // Não use a conversa como prova de envio: um rascunho pertence à mesma
   // conversa e seria confundido com mensagem enviada. A busca começa em
   // Enviados e elimina explicitamente qualquer mensagem ainda em rascunho.

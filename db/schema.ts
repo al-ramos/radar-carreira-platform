@@ -162,7 +162,7 @@ export const triageDeduplication = sqliteTable("triage_deduplication", {
 /** Outbox persistente com autorização individual e rastreável para envio automático. */
 export const draftOutbox = sqliteTable("draft_outbox", {
   id: text("id").primaryKey(), userId: text("user_id").notNull(), jobId: text("job_id").notNull().references(() => jobs.id), historyId: text("history_id").notNull().references(() => triageHistory.id),
-  status: text("status", { enum: ["pending", "drafted", "sent", "failed", "cancelled"] }).notNull().default("pending"),
+  status: text("status", { enum: ["pending", "checking", "drafted", "sent", "failed", "cancelled"] }).notNull().default("pending"),
   autoSendAuthorized: integer("auto_send_authorized", { mode: "boolean" }).notNull().default(false),
   autoSendAuthorizedAt: integer("auto_send_authorized_at", { mode: "timestamp_ms" }),
   gmailDraftId: text("gmail_draft_id"), gmailThreadId: text("gmail_thread_id"), draftSubject: text("draft_subject"), gmailSentId: text("gmail_sent_id"), sentAt: integer("sent_at", { mode: "timestamp_ms" }), error: text("error"),

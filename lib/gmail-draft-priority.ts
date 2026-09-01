@@ -2,7 +2,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "../db/index";
 import { draftOutbox } from "../db/schema";
 
-type ImmediateDraftResult = { requested: boolean; created?: number; sent?: number; reason?: string };
+type ImmediateDraftResult = { requested: boolean; created?: number; sent?: number; reconciled?: number; reason?: string };
 type ImmediateSentReconciliationResult = { requested: boolean; confirmed?: number; reason?: string };
 
 /**
@@ -23,9 +23,9 @@ export async function requestImmediateDraftCreation(outboxIds: string[]): Promis
       body: JSON.stringify({ action: "prioritizeDrafts", token, outboxIds }),
     });
     const raw = await response.text();
-    const payload = parseJson(raw) as { ok?: boolean; created?: number; sent?: number; error?: string } | null;
+    const payload = parseJson(raw) as { ok?: boolean; created?: number; sent?: number; reconciled?: number; error?: string } | null;
     if (!response.ok || !payload?.ok) return { requested: false, reason: describeConnectorFailure(response.status, payload?.error, raw) };
-    return { requested: true, created: Number(payload.created ?? 0), sent: Number(payload.sent ?? 0) };
+    return { requested: true, created: Number(payload.created ?? 0), sent: Number(payload.sent ?? 0), reconciled: Number(payload.reconciled ?? 0) };
   } catch (error) {
     return { requested: false, reason: `Não foi possível acionar o envio automático no Gmail agora. Tente novamente pela ação manual. (${String(error)})` };
   }

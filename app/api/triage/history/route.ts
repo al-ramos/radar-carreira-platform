@@ -91,6 +91,7 @@ export async function GET(request: Request) {
       draftStatus: draftOutbox.status,
       draftError: draftOutbox.error,
       draftUpdatedAt: draftOutbox.updatedAt,
+      gmailDraftId: draftOutbox.gmailDraftId,
       gmailSentId: draftOutbox.gmailSentId,
       sentAt: draftOutbox.sentAt,
       applicationStatus: userJobStatus.applicationStatus,
@@ -172,14 +173,14 @@ export async function GET(request: Request) {
   const draftSummary = new Map<string, { pending: number; ready: number; failed: number }>();
   for (const draft of batchDraftRows) {
     const summary = draftSummary.get(draft.batchId) ?? { pending: 0, ready: 0, failed: 0 };
-    if (draft.status === "pending") summary.pending += 1;
+    if (draft.status === "pending" || draft.status === "checking") summary.pending += 1;
     if (draft.status === "drafted") summary.ready += 1;
     if (draft.status === "failed") summary.failed += 1;
     draftSummary.set(draft.batchId, summary);
   }
 
   const now = Date.now();
-  const pendingDrafts = outboxRows.filter((row) => row.status === "pending");
+  const pendingDrafts = outboxRows.filter((row) => row.status === "pending" || row.status === "checking");
   const readyDrafts = outboxRows.filter((row) => row.status === "drafted");
   const sentDrafts = outboxRows.filter((row) => row.status === "sent");
   const failedDrafts = outboxRows.filter((row) => row.status === "failed");
@@ -193,8 +194,6 @@ export async function GET(request: Request) {
   return NextResponse.json({
     items: items.map((item) => ({
       ...item,
-      // O detalhe persistido explica o veredito na mesma linha da tabela.
-      label: item.explanation?.trim() ? `${item.label} · ${item.explanation.trim()}` : item.label,
       // Importações anteriores à coluna `source_published_at` ainda possuem a
       // data de publicação em `published_at`. Sem esse fallback, a consulta
       // APInfo do dia perde vagas que foram efetivamente publicadas hoje.

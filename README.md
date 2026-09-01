@@ -281,13 +281,13 @@ O conector atual:
 
 ### Rascunhos de candidatura
 
-O Radar cria imediatamente o rascunho de toda vaga aprovada (✅) com e-mail de contato válido, anexa o currículo, inclui a assinatura e o envia automaticamente, independentemente de a aprovação ter vindo da triagem agendada, IA, Codex ou CSV. A outbox registra primeiro o rascunho e depois a mensagem enviada, impedindo repetição da mesma candidatura. Se o conector imediato estiver indisponível, a vaga fica marcada como falha com o motivo visível e o botão **Tentar novamente** aciona o Gmail de novo após a correção.
+O Radar cria imediatamente o rascunho de toda vaga aprovada (✅) com e-mail de contato válido, anexa o currículo, inclui a assinatura e o envia automaticamente, independentemente de a aprovação ter vindo da triagem agendada, IA, Codex ou CSV. Antes de criar ou enviar, o conector consulta a pasta **Enviados** pelo destinatário, assunto e janela da vaga; quando encontra uma mensagem anterior, apenas a vincula ao acompanhamento e não reenvia. A outbox registra primeiro o rascunho e depois a mensagem enviada, impedindo repetição da mesma candidatura. Se o conector imediato estiver indisponível, a vaga fica marcada como falha com o motivo visível e o botão **Tentar novamente** aciona o Gmail de novo após a correção.
 
 Depois de salvar e publicar uma nova versão do Apps Script, execute **uma vez** `instalarAutomacaoRascunhosRadar`. Ela instala uma recuperação a cada cinco minutos: consulta os itens que o Radar já confirmou, retoma falhas transitórias e envia as novas candidaturas elegíveis que ainda não chegaram ao estado `sent`. A chamada imediata continua sendo o caminho normal.
 
 Para atualizar automaticamente os envios manuais, execute `instalarVerificacaoEnviosRadar` **uma única vez** no Apps Script depois de salvar a versão atual do arquivo. Ela instala um gatilho a cada 15 minutos que consulta somente a pasta **Enviados** e marca no Radar os rascunhos comprovadamente enviados. A rotina não cria rascunhos e não envia e-mails. Para desligá-la, execute `removerVerificacaoEnviosRadar`.
 
-A tela permite reprocessar falhas, consultar a pasta Enviados e confirmar explicitamente um envio que o Gmail não localizou. Essas ações atualizam somente o acompanhamento; nunca disparam uma mensagem.
+A tela permite reprocessar falhas, consultar a pasta Enviados mesmo quando a vaga ainda não possui rascunho no Radar e confirmar explicitamente um envio que o Gmail não localizou. Um envio conciliado sem rascunho aparece como **Não houve** na coluna Rascunho e **Enviado** na coluna Envio. Essas ações de verificação atualizam somente o acompanhamento; nunca disparam uma mensagem.
 
 ## Coleta de fontes públicas
 

@@ -1,10 +1,12 @@
-import { and, desc, eq, gte, inArray } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, or } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../../chatgpt-auth";
 import { getDb } from "../../../../../db/index";
-import { draftOutbox, jobs, triageBatches, triageHistory, userJobAnalyses } from "../../../../../db/schema";
+import { draftOutbox, jobs, triageBatches, triageHistory, userJobAnalyses, userJobStatus } from "../../../../../db/schema";
+import { normalizeContactEmail } from "../../../../../lib/contact-email";
 import { isSafeForDraft } from "../../../../../lib/draft-eligibility";
 import { markImmediateDraftFailure, requestImmediateDraftCreation, requestImmediateSentReconciliation } from "../../../../../lib/gmail-draft-priority";
+import { resolveAutomaticStage } from "../../../../../lib/pipeline-stage";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +20,29 @@ type DraftQueueRequest = {
   homePeriod?: string;
   jobIds?: string[];
 };
+
+async function recordApplicationSent(userId: string, jobId: string, sentAt: Date) {
+  const db = getDb();
+  const existing = await db.select().from(userJobStatus)
+    .where(and(eq(userJobStatus.userId, userId), eq(userJobStatus.jobId, jobId)))
+    .limit(1).then((rows) => rows[0]);
+  const applicationStatus = existing?.applicationStatus === "responded" ? "responded" as const : "sent" as const;
+  const values = {
+    userId,
+    jobId,
+    stage: resolveAutomaticStage(existing?.stage, "applied"),
+    note: existing?.note ?? "Envio confirmado no acompanhamento do Gmail.",
+    applicationStatus,
+    generatedAt: existing?.generatedAt ?? sentAt,
+    sentAt: existing?.sentAt ?? sentAt,
+    respondedAt: existing?.respondedAt ?? null,
+    updatedAt: new Date(),
+  };
+  await db.insert(userJobStatus).values(values).onConflictDoUpdate({
+    target: [userJobStatus.userId, userJobStatus.jobId],
+    set: { stage: values.stage, note: values.note, applicationStatus: values.applicationStatus, generatedAt: values.generatedAt, sentAt: values.sentAt, respondedAt: values.respondedAt, updatedAt: values.updatedAt },
+  });
+}
 
 /**
  * Reserva a fila persistente e aciona a criação e o envio imediato da
@@ -42,23 +67,46 @@ export async function POST(request: Request) {
     // todos os rascunhos aguardando confirmação — não é mais preciso
     // escolher vaga por vaga para varrer "Enviados" no Gmail.
     if (!requestedJobIds.length) {
-      const pending = await db.select({ id: draftOutbox.id }).from(draftOutbox).where(and(eq(draftOutbox.userId, user.userId), eq(draftOutbox.status, "drafted")));
+      const pending = await db.select({ id: draftOutbox.id }).from(draftOutbox).where(and(eq(draftOutbox.userId, user.userId), or(eq(draftOutbox.status, "drafted"), eq(draftOutbox.status, "checking"))));
       if (!pending.length) return NextResponse.json({ ok: true, checked: 0, confirmed: 0 });
       const reconciliation = await requestImmediateSentReconciliation(pending.map((item) => item.id));
       if (!reconciliation.requested) return NextResponse.json({ error: reconciliation.reason ?? "Não foi possível consultar o Gmail agora." }, { status: 503 });
       return NextResponse.json({ ok: true, checked: pending.length, confirmed: reconciliation.confirmed ?? 0 });
     }
     if (requestedJobIds.length === 1) {
-      const outbox = await db.select({ id: draftOutbox.id, status: draftOutbox.status }).from(draftOutbox).where(and(eq(draftOutbox.userId, user.userId), eq(draftOutbox.jobId, requestedJobIds[0]))).limit(1).then((rows) => rows[0]);
-      if (!outbox) return NextResponse.json({ error: "Rascunho não encontrado para esta vaga." }, { status: 404 });
+      let outbox = await db.select({ id: draftOutbox.id, status: draftOutbox.status }).from(draftOutbox).where(and(eq(draftOutbox.userId, user.userId), eq(draftOutbox.jobId, requestedJobIds[0]))).limit(1).then((rows) => rows[0]);
+      if (!outbox) {
+        const row = await db.select({ historyId: triageHistory.id, job: jobs, analysis: userJobAnalyses })
+          .from(userJobAnalyses)
+          .innerJoin(jobs, eq(userJobAnalyses.jobId, jobs.id))
+          .leftJoin(triageHistory, and(eq(triageHistory.userId, user.userId), eq(triageHistory.jobId, jobs.id)))
+          .where(and(eq(userJobAnalyses.userId, user.userId), eq(userJobAnalyses.jobId, requestedJobIds[0])))
+          .orderBy(desc(triageHistory.createdAt)).limit(1).then((rows) => rows[0]);
+        if (!row) return NextResponse.json({ error: "A vaga não possui análise vinculada para conferir o envio." }, { status: 404 });
+        if (!normalizeContactEmail(row.job.contactEmail)) return NextResponse.json({ error: "A vaga não possui e-mail válido para conferir o envio." }, { status: 409 });
+        let historyId = row.historyId;
+        if (!historyId) {
+          const now = new Date();
+          const batchId = crypto.randomUUID();
+          historyId = crypto.randomUUID();
+          await db.insert(triageBatches).values({ id: batchId, userId: user.userId, trigger: "manual", scope: "sent-history-repair", status: "completed", startedAt: now, completedAt: now, createdAt: now });
+          await db.insert(triageHistory).values({ id: historyId, batchId, userId: user.userId, jobId: row.job.id, profileRevision: row.analysis.profileRevision, rulesRevision: row.analysis.rulesRevision, instructionsRevision: row.analysis.instructionsRevision, verdict: row.analysis.verdict, label: row.analysis.label, blocker: row.analysis.blocker, source: row.analysis.source, confidence: row.analysis.confidence, rows: row.analysis.rows, createdAt: now });
+        }
+        const now = new Date();
+        const outboxId = crypto.randomUUID();
+        await db.insert(draftOutbox).values({ id: outboxId, userId: user.userId, jobId: row.job.id, historyId, status: "checking", autoSendAuthorized: false, autoSendAuthorizedAt: null, createdAt: now, updatedAt: now });
+        outbox = { id: outboxId, status: "checking" };
+      }
       if (outbox.status === "sent") return NextResponse.json({ ok: true, alreadySent: true, confirmed: 1 });
-      if (outbox.status !== "drafted") return NextResponse.json({ error: "O rascunho ainda não está pronto para conferir o envio." }, { status: 409 });
+      if (outbox.status === "failed" || outbox.status === "cancelled") {
+        await db.update(draftOutbox).set({ status: "checking", autoSendAuthorized: false, autoSendAuthorizedAt: null, error: null, updatedAt: new Date() }).where(eq(draftOutbox.id, outbox.id));
+      }
       const reconciliation = await requestImmediateSentReconciliation([outbox.id]);
       if (!reconciliation.requested) return NextResponse.json({ error: reconciliation.reason ?? "Não foi possível consultar o Gmail agora." }, { status: 503 });
       return NextResponse.json({ ok: true, confirmed: reconciliation.confirmed ?? 0 });
     }
     const outboxItems = await db.select({ id: draftOutbox.id, status: draftOutbox.status }).from(draftOutbox).where(and(eq(draftOutbox.userId, user.userId), inArray(draftOutbox.jobId, requestedJobIds)));
-    const drafted = outboxItems.filter((item) => item.status === "drafted");
+    const drafted = outboxItems.filter((item) => item.status === "drafted" || item.status === "checking");
     if (!drafted.length) return NextResponse.json({ ok: true, checked: 0, confirmed: 0 });
     const reconciliation = await requestImmediateSentReconciliation(drafted.map((item) => item.id));
     if (!reconciliation.requested) return NextResponse.json({ error: reconciliation.reason ?? "Não foi possível consultar o Gmail agora." }, { status: 503 });
@@ -71,11 +119,12 @@ export async function POST(request: Request) {
     const requestedJobIds = Array.isArray(body.jobIds) ? [...new Set(body.jobIds.filter((id): id is string => typeof id === "string" && id.length > 0))].slice(0, 2) : [];
     if (requestedJobIds.length !== 1) return NextResponse.json({ error: "Escolha uma única vaga para confirmar o envio." }, { status: 400 });
     const outbox = await db.select({ id: draftOutbox.id, status: draftOutbox.status }).from(draftOutbox).where(and(eq(draftOutbox.userId, user.userId), eq(draftOutbox.jobId, requestedJobIds[0]))).limit(1).then((rows) => rows[0]);
-    if (!outbox) return NextResponse.json({ error: "Rascunho não encontrado para esta vaga." }, { status: 404 });
+    if (!outbox) return NextResponse.json({ error: "Registro de acompanhamento não encontrado para esta vaga. Use Verificar envio primeiro." }, { status: 404 });
     if (outbox.status === "sent") return NextResponse.json({ ok: true, alreadySent: true, confirmed: 1 });
-    if (outbox.status !== "drafted") return NextResponse.json({ error: "Somente um rascunho pronto pode ser confirmado como enviado." }, { status: 409 });
+    if (!["drafted", "checking", "cancelled", "failed"].includes(outbox.status)) return NextResponse.json({ error: "O acompanhamento ainda está sendo preparado; tente novamente em instantes." }, { status: 409 });
     const now = new Date();
-    await db.update(draftOutbox).set({ status: "sent", sentAt: now, error: null, updatedAt: now }).where(and(eq(draftOutbox.id, outbox.id), eq(draftOutbox.userId, user.userId), eq(draftOutbox.status, "drafted")));
+    await db.update(draftOutbox).set({ status: "sent", sentAt: now, error: null, updatedAt: now }).where(and(eq(draftOutbox.id, outbox.id), eq(draftOutbox.userId, user.userId)));
+    await recordApplicationSent(user.userId, requestedJobIds[0], now);
     return NextResponse.json({ ok: true, confirmed: 1, manuallyConfirmed: true, sentAt: now });
   }
   const sourceId = body.sourceId?.trim();
@@ -126,6 +175,7 @@ export async function POST(request: Request) {
   const priorityOutboxIds: string[] = [];
   let noValidContact = 0;
   let notEligible = 0;
+  const outdated = 0;
   let alreadyPresent = 0;
   for (const row of latestByJob.values()) {
     const existing = existingOutboxByJob.get(row.jobId);
@@ -183,5 +233,5 @@ export async function POST(request: Request) {
     ? await requestImmediateDraftCreation(priorityOutboxIds)
     : { requested: false, reason: requestedJobIds?.length === 1 ? individualUnavailableReason : "Nenhum rascunho pendente está disponível neste recorte." };
   if (priorityOutboxIds.length && !immediateDraft.requested) await markImmediateDraftFailure(priorityOutboxIds, immediateDraft.reason);
-  return NextResponse.json({ ok: true, considered: latestByJob.size, queued: queued.length, queuedJobIds: queued, noValidContact, notEligible, outdated, alreadyPresent, gmailDraftsCreated: immediateDraft.created ?? 0, emailsSent: immediateDraft.sent ?? 0, immediateDraft });
+  return NextResponse.json({ ok: true, considered: latestByJob.size, queued: queued.length, queuedJobIds: queued, noValidContact, notEligible, outdated, alreadyPresent, gmailDraftsCreated: immediateDraft.created ?? 0, emailsSent: immediateDraft.sent ?? 0, emailsReconciled: immediateDraft.reconciled ?? 0, immediateDraft });
 }

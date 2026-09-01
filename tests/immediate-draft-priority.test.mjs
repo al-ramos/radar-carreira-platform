@@ -32,11 +32,13 @@ test("candidaturas elegíveis criam o rascunho e o enviam automaticamente com ra
   assert.match(connector, /action:'missing'/);
   assert.match(connector, /criarRascunhosRadar\(\{ outboxIds: payload\.outboxIds, autoSend:true \}\)/);
   assert.match(connector, /const sentMessage = draft\.send\(\)/);
+  assert.match(connector, /const alreadySent = encontrarMensagemEnviadaRadar\(item\)/);
+  assert.match(connector, /envios anteriores conciliados sem reenvio/);
   assert.match(connector, /confirmarRascunhoRadar[\s\S]*draft\.send\(\)/, "a outbox confirma o rascunho antes do envio");
   assert.match(connector, /function confirmarEnvioAutomaticoRadar/);
   assert.match(connector, /gmailSentId:message\.getId\(\)/);
   assert.match(connector, /isDraft:message\.isDraft\(\)/);
-  assert.match(connector, /radar-drafts-v3-auto-send/);
+  assert.match(connector, /radar-drafts-v4-sent-first/);
   assert.match(connector, /RADAR_CV_FILE_ID/);
   assert.match(connector, /DriveApp\.getFileById/);
   assert.match(connector, /attachments: \[cv\.getBlob\(\)\.setName\(RADAR_CV_FILE_NAME\)\]/);
@@ -47,10 +49,11 @@ test("candidaturas elegíveis criam o rascunho e o enviam automaticamente com ra
   assert.match(workflow, /GMAIL_DRAFTS_WEBHOOK_URL/);
   assert.match(workflow, /a publicação foi bloqueada/);
   assert.match(screen, /candidatura\(s\) foi\(ram\) enviada\(s\) automaticamente/);
+  assert.match(screen, /nenhum novo e-mail foi enviado/);
   assert.match(screen, /Envio automático indisponível/);
   assert.match(screen, /draftActionStatuses/);
   assert.match(screen, /Gmail acionado; atualize em instantes para confirmar o envio/);
-  assert.match(screen, /item\.draftStatus === "pending" \? null/);
+  assert.match(screen, /item\.draftStatus === "checking" \|\| item\.draftStatus === "drafted" \|\| item\.draftStatus === "sent"/);
   assert.match(screen, /Tentar novamente/);
   assert.match(screen, /item\.draftError/);
   assert.match(priority, /markImmediateDraftFailure/);

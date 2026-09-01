@@ -167,14 +167,15 @@ O dashboard organiza os módulos abaixo:
 
 ### Rascunhos Gmail
 
-- A outbox persiste `pending`, `drafted`, `sent`, `failed` ou `cancelled`, IDs do Gmail, assunto, erro e datas.
+- A outbox persiste `pending`, `checking`, `drafted`, `sent`, `failed` ou `cancelled`, IDs do Gmail, assunto, erro e datas; `checking` isola a reconciliação e nunca entra na criação automática.
 - Índices únicos impedem que o mesmo rascunho ou a mesma mensagem enviada do Gmail sejam associados a duas vagas; a migration 0035 saneia duplicidades legadas antes de aplicar a restrição.
 - O histórico diferencia um envio comprovado pelo Gmail de uma confirmação informada manualmente pela pessoa usuária.
 - A pessoa pode preparar uma vaga ou seleção, reprocessar falhas, solicitar reconciliação da pasta Enviados ou confirmar o envio manualmente.
 - Para LinkedIn, o caminho por e-mail exige `✅` e contato explícito válido.
 - Três interruptores independentes controlam triagem agendada, entrada automática na outbox e criação real do rascunho. Na configuração atual, qualquer origem de aprovação `✅` pode preparar e criar o rascunho; `🟡` permanece para revisão humana.
 - A execução agendada recupera itens pendentes e aprovações legadas sem histórico ou sem outbox, criando os vínculos ausentes de forma idempotente antes de solicitar o Gmail.
-- O Apps Script confirma o rascunho na outbox antes de enviar e depois registra o ID da mensagem enviada, destinatário, assunto e data.
+- O Apps Script consulta primeiro a pasta Enviados por destinatário, assunto e janela da vaga. Se já existir mensagem, registra o envio sem criar ou reenviar; caso contrário, confirma o rascunho na outbox antes de enviar e depois registra o ID da mensagem, destinatário, assunto e data.
+- A reconciliação pode criar um vínculo de acompanhamento para envios antigos sem outbox; nesses casos a interface informa que não houve rascunho do Radar e registra o envio também no pipeline da vaga.
 - Um gatilho opcional a cada 15 minutos consulta somente a pasta Enviados e reconcilia rascunhos comprovadamente usados.
 - Confirmações de candidatura do LinkedIn recebidas pela etiqueta RadarVagas atualizam o pipeline para `sent`, preservam estados mais avançados e geram uma única notificação na primeira detecção.
 - A reutilização em lote de contatos já conhecidos por empresa fica no painel de filtros de e-mail e atua somente sobre as vagas filtradas sem contato.
