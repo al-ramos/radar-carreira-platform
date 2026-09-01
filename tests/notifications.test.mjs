@@ -115,7 +115,7 @@ test("evidência do LinkedIn marca a candidatura como enviada e notifica apenas 
   assert.match(route, /if\(!alreadySent\)await notifyDetectedApplication/);
   assert.match(dashboard, /function hasSentApplication\(job: Job\)/);
   assert.match(dashboard, /Uma nova candidatura foi bloqueada/);
-  assert.match(dashboard, /disabled=\{hasSentApplication\(selectedJob\)\}/);
+  assert.match(dashboard, /disabled=\{selectedJobUnavailable \|\| hasSentApplication\(selectedJob\)\}/);
 });
 
 test("a notificação de triagem destaca o log persistido do lote correspondente", async () => {

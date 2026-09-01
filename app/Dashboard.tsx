@@ -117,6 +117,7 @@ type CurrentUser = {
 type JobDetail = {
   description: string;
   descriptionSource: string;
+  jobStatus?: "active" | "possibly_closed" | "closed" | "archived";
   stack?: string[];
   score?: number;
   reasons?: string[];
@@ -1455,6 +1456,12 @@ export default function Dashboard() {
   const selectedJobEligible = selectedJobVerdict?.emoji === "✅" || selectedJobVerdict?.emoji === "🟡";
   const selectedJobRejected = Boolean(selectedJobVerdict && !selectedJobEligible);
   const selectedApplication = selectedJob ? pipelineItems.find(item => item.id === selectedJob.id) : undefined;
+  const selectedJobUnavailable = Boolean(jobDetail?.jobStatus && jobDetail.jobStatus !== "active");
+  const selectedJobAvailabilityLabel = jobDetail?.jobStatus === "closed"
+    ? "Vaga encerrada na fonte"
+    : jobDetail?.jobStatus === "possibly_closed"
+      ? "Vaga possivelmente encerrada"
+      : jobDetail?.jobStatus === "archived" ? "Vaga arquivada" : null;
   function hasSentApplication(job: Job) {
     const status = pipelineItems.find(item => item.id === job.id)?.applicationStatus;
     return status === "sent" || status === "responded";
@@ -3692,6 +3699,12 @@ export default function Dashboard() {
                       </a>
                     </p>
                   )}
+                  {selectedJobAvailabilityLabel && (
+                    <p className={`job-availability-banner ${jobDetail?.jobStatus}`} role="status">
+                      <strong>{selectedJobAvailabilityLabel}</strong>
+                      <small>Estado sincronizado com a fonte. O histórico anterior foi preservado, mas novas ações de candidatura estão bloqueadas.</small>
+                    </p>
+                  )}
                 </div>
                 <span className="fit-inline">
                   {currentUser ? (
@@ -3814,14 +3827,14 @@ export default function Dashboard() {
                 <button
                   type="button"
                   className="primary-job-action"
-                  disabled={hasSentApplication(selectedJob)}
-                  title={hasSentApplication(selectedJob) ? "Candidatura já enviada — nova candidatura bloqueada" : selectedJobRejected ? `${selectedJobVerdict?.emoji} ${selectedJobVerdict?.label}: abrir mesmo assim` : "Abrir candidatura"}
+                  disabled={selectedJobUnavailable || hasSentApplication(selectedJob)}
+                  title={selectedJobUnavailable ? "Vaga encerrada ou arquivada na fonte — nova candidatura bloqueada" : hasSentApplication(selectedJob) ? "Candidatura já enviada — nova candidatura bloqueada" : selectedJobRejected ? `${selectedJobVerdict?.emoji} ${selectedJobVerdict?.label}: abrir mesmo assim` : "Abrir candidatura"}
                   onClick={() => {
                     openJobApplication(selectedJob);
                     advanceToNextJob();
                   }}
                 >
-                  {hasSentApplication(selectedJob) ? "Candidatura enviada" : "Candidatar"}
+                  {selectedJobUnavailable ? "Vaga encerrada" : hasSentApplication(selectedJob) ? "Candidatura enviada" : "Candidatar"}
                 </button>
                 {isApinfoJob(selectedJob) && (
                   <>
@@ -3863,7 +3876,8 @@ export default function Dashboard() {
                   <button
                     type="button"
                     className="primary-job-action"
-                    title={`Cria uma mensagem pronta para ${selectedJob.contactEmail}; revise antes de enviar`}
+                    disabled={selectedJobUnavailable}
+                    title={selectedJobUnavailable ? "Vaga encerrada ou arquivada na fonte — novo rascunho bloqueado" : `Cria uma mensagem pronta para ${selectedJob.contactEmail}; revise antes de enviar`}
                     onClick={() => {
                       const mailto = buildContactMailto(selectedJob);
                       if (mailto) {
@@ -3884,16 +3898,17 @@ export default function Dashboard() {
                   </button>
                 )}
                 {selectedApplication?.applicationStatus && (
-                  <div className="application-tracking" aria-label="Acompanhamento da candidatura">
+                  <div className={`application-tracking${selectedJobUnavailable ? " unavailable" : ""}`} aria-label="Acompanhamento da candidatura">
                     <span>
-                      {selectedApplication.applicationStatus === "opened" ? "Candidatura iniciada" : selectedApplication.applicationStatus === "generated" ? "Mensagem gerada" : selectedApplication.applicationStatus === "sent" ? "Candidatura enviada" : "Resposta recebida"}
+                      {selectedJobAvailabilityLabel ?? (selectedApplication.applicationStatus === "opened" ? "Candidatura iniciada" : selectedApplication.applicationStatus === "generated" ? "Mensagem gerada" : selectedApplication.applicationStatus === "sent" ? "Candidatura enviada" : "Resposta recebida")}
+                      {selectedJobUnavailable && <small>Estado da fonte sincronizado; acompanhamento anterior preservado.</small>}
                       {selectedApplication.generatedAt && <small>Gerada em {formatJobDate(selectedApplication.generatedAt)}</small>}
                       {selectedApplication.sentAt && <small>Enviada em {formatJobDate(selectedApplication.sentAt)}</small>}
                       {selectedApplication.respondedAt && <small>Resposta em {formatJobDate(selectedApplication.respondedAt)}</small>}
                     </span>
-                    {selectedApplication.applicationStatus === "generated" && <button type="button" onClick={() => updateApplicationStatus(selectedJob, "sent", AUTOMATIC_ACTION_STAGE.mark_sent)}>Marcar como enviada</button>}
-                    {selectedApplication.applicationStatus === "opened" && <button type="button" onClick={() => updateApplicationStatus(selectedJob, "sent", AUTOMATIC_ACTION_STAGE.mark_sent)}>Confirmar candidatura enviada</button>}
-                    {selectedApplication.applicationStatus === "sent" && <button type="button" onClick={() => updateApplicationStatus(selectedJob, "responded", AUTOMATIC_ACTION_STAGE.mark_sent)}>Registrar resposta</button>}
+                    {!selectedJobUnavailable && selectedApplication.applicationStatus === "generated" && <button type="button" onClick={() => updateApplicationStatus(selectedJob, "sent", AUTOMATIC_ACTION_STAGE.mark_sent)}>Marcar como enviada</button>}
+                    {!selectedJobUnavailable && selectedApplication.applicationStatus === "opened" && <button type="button" onClick={() => updateApplicationStatus(selectedJob, "sent", AUTOMATIC_ACTION_STAGE.mark_sent)}>Confirmar candidatura enviada</button>}
+                    {!selectedJobUnavailable && selectedApplication.applicationStatus === "sent" && <button type="button" onClick={() => updateApplicationStatus(selectedJob, "responded", AUTOMATIC_ACTION_STAGE.mark_sent)}>Registrar resposta</button>}
                   </div>
                 )}
                 {(() => {

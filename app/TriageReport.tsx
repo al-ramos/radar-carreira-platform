@@ -2,7 +2,11 @@
 import { useEffect, useRef, useState } from "react";
 import { jobSourceLabel } from "../lib/job-source";
 type PilotResult = { batchId: string; processed: Array<{ jobId: string; title: string; company: string; reference: string | null; contactEligible: boolean; aiEligible: boolean; aiStatus: string; verdict: string; label: string; blocker: string | null }>; skipped: number; aiCompleted?: number };
-type HistoryItem = { id: string; batchId: string; jobId: string; verdict: string | null; label: string; blocker: string | null; source: string; confidence: number; rows: string; processedAt: string | null; triaged: boolean; title: string; company: string; externalId: string | null; description: string; stack: string; jobSource: string | null; jobSourceName: string | null; workMode: string | null; location: string | null; sourcePublishedAt: string | null; receivedAt: string; url: string; applyUrl: string | null; contactEmail: string | null; hasValidContactEmail: boolean; draftStatus: "pending" | "checking" | "drafted" | "sent" | "failed" | "cancelled" | null; draftSubject: string; draftError: string | null; draftUpdatedAt: string | null; gmailDraftId: string | null; gmailSentId: string | null; sentAt: string | null; applicationStatus: "opened" | "generated" | "sent" | "responded" | null; pipelineStage: "viewed" | "saved" | "applied" | "interview" | "offer" | "rejected" | "archived" | null; trigger: string };
+type HistoryItem = { id: string; batchId: string; jobId: string; verdict: string | null; label: string; blocker: string | null; source: string; confidence: number; rows: string; processedAt: string | null; triaged: boolean; title: string; company: string; jobStatus?: "active" | "possibly_closed" | "closed" | "archived"; externalId: string | null; description: string; stack: string; jobSource: string | null; jobSourceName: string | null; workMode: string | null; location: string | null; sourcePublishedAt: string | null; receivedAt: string; url: string; applyUrl: string | null; contactEmail: string | null; hasValidContactEmail: boolean; draftStatus: "pending" | "checking" | "drafted" | "sent" | "failed" | "cancelled" | null; draftSubject: string; draftError: string | null; draftUpdatedAt: string | null; gmailDraftId: string | null; gmailSentId: string | null; sentAt: string | null; applicationStatus: "opened" | "generated" | "sent" | "responded" | null; pipelineStage: "viewed" | "saved" | "applied" | "interview" | "offer" | "rejected" | "archived" | null; trigger: string };
+const withAvailabilityLabel = (item: HistoryItem): HistoryItem => {
+  const availability = item.jobStatus === "closed" ? "Vaga encerrada na fonte" : item.jobStatus === "possibly_closed" ? "Vaga possivelmente encerrada" : item.jobStatus === "archived" ? "Vaga arquivada" : null;
+  return availability ? { ...item, label: `${availability} · ${item.label}` } : item;
+};
 type Batch = { id: string; trigger: "manual" | "scheduled" | "assistant"; scope: string; status: string; startedAt: string | null; completedAt: string | null; createdAt: string; error: string | null; total: number; completed: number; failed: number; eligible: number; eligibleWithoutContact: number; draftsPending: number; draftsReady: number; draftsFailed: number };
 type BatchItem = { batchId: string; jobId: string; status: "queued" | "processing" | "completed" | "failed" | "skipped"; error: string | null; attemptCount: number; updatedAt: string; leaseUntil: string | null; title: string; company: string; externalId: string | null };
 type Operational = { pendingDrafts: number; readyDrafts: number; sentDrafts: number; failedDrafts: number; oldestPendingAt: string | null; alerts: Array<{ level: "warning" | "error"; message: string }> };
@@ -139,7 +143,7 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
       }
       const data = await response.json() as { items?: HistoryItem[]; batches?: Batch[]; batchItems?: BatchItem[]; operational?: Operational; recovery?: HistoryRecovery };
       if (!isCurrentRequest()) return false;
-      const items = data.items ?? [];
+      const items = (data.items ?? []).map(withAvailabilityLabel);
       setHistory(items); setBatches(data.batches ?? []); setBatchItems(data.batchItems ?? []); setOperational(data.operational ?? null); setHistoryRecovery(data.recovery ?? null); setLastSyncedAt(new Date());
       if (!items.length) setMessage("Nenhuma vaga foi triada ainda. Use “Analisar vagas do recorte” para iniciar.");
       else setMessage((current) => current === "Carregando avaliações…" ? "" : current);
@@ -349,6 +353,7 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
   const historyPageSize = 10;
   const visibleHistory = orderedHistory.slice(historyPage * historyPageSize, (historyPage + 1) * historyPageSize);
   const selectedHistory = currentAssessments.filter((item) => selectedHistoryJobIds.includes(item.jobId));
+  const selectedAvailableHistory = selectedHistory.filter((item) => !item.jobStatus || item.jobStatus === "active");
   const allFilteredSelected = filteredHistory.length > 0 && filteredHistory.every((item) => selectedHistoryJobIds.includes(item.jobId));
   const toggleHistoryJob = (jobId: string) => setSelectedHistoryJobIds((current) => current.includes(jobId) ? current.filter((id) => id !== jobId) : [...current, jobId]);
   const toggleFilteredHistory = () => setSelectedHistoryJobIds((current) => allFilteredSelected ? current.filter((id) => !filteredHistory.some((item) => item.jobId === id)) : [...new Set([...current, ...filteredHistory.map((item) => item.jobId)])]);
@@ -448,6 +453,16 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
     }
   };
   const queueDrafts = async (jobIds?: string[]) => {
+    if (jobIds?.length) {
+      jobIds = jobIds.filter((jobId) => {
+        const item = currentAssessments.find((candidate) => candidate.jobId === jobId);
+        return !item?.jobStatus || item.jobStatus === "active";
+      });
+      if (!jobIds.length) {
+        setMessage("As vagas selecionadas estão encerradas ou arquivadas na fonte; nenhum e-mail foi preparado.");
+        return;
+      }
+    }
     setQueueingDrafts(true);
     setMessage(jobIds?.length ? `Verificando ${jobIds.length} vaga(s) selecionada(s) para envio…` : "Verificando candidaturas elegíveis para envio…");
     try {
@@ -516,7 +531,7 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
     }
   };
   const openSelectedApplications = async (items: HistoryItem[]) => {
-    const candidates = items.filter((item) => item.applicationStatus !== "sent" && item.applicationStatus !== "responded" && !["rejected", "archived"].includes(item.pipelineStage ?? "") && Boolean(item.applyUrl || item.url)).slice(0, 20);
+    const candidates = items.filter((item) => (!item.jobStatus || item.jobStatus === "active") && item.applicationStatus !== "sent" && item.applicationStatus !== "responded" && !["rejected", "archived"].includes(item.pipelineStage ?? "") && Boolean(item.applyUrl || item.url)).slice(0, 20);
     if (!candidates.length) {
       setMessage("Nenhuma vaga selecionada pode iniciar candidatura: elas já foram enviadas, estão indisponíveis ou não têm link.");
       return;
@@ -1081,11 +1096,11 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
               {selectedHistory.length > 0 && <div className="triage-selection-actions" aria-live="polite">
                 <span><b>{selectedHistory.length}</b> vaga(s) selecionada(s)</span>
                 <button type="button" className="triage-queue-button" disabled={aiReviewLoading} onClick={() => void openAiPrompt(selectedHistory.map((item) => item.jobId))}>Consultar IA</button>
-                <button type="button" className="triage-queue-button" disabled={openingApplications || selectedHistory.length > 20} onClick={() => void openSelectedApplications(selectedHistory)} title={selectedHistory.length > 20 ? "Abra até 20 vagas por vez para evitar bloqueio de pop-ups." : "Abre os portais e registra candidatura iniciada; nunca envia formulários."}>{openingApplications ? "Abrindo candidaturas…" : `Abrir candidaturas (${Math.min(selectedHistory.length, 20)})`}</button>
+                <button type="button" className="triage-queue-button" disabled={openingApplications || selectedAvailableHistory.length === 0 || selectedAvailableHistory.length > 20} onClick={() => void openSelectedApplications(selectedAvailableHistory)} title={selectedAvailableHistory.length === 0 ? "As vagas selecionadas estão encerradas ou arquivadas na fonte." : selectedAvailableHistory.length > 20 ? "Abra até 20 vagas por vez para evitar bloqueio de pop-ups." : "Abre os portais e registra candidatura iniciada; nunca envia formulários."}>{openingApplications ? "Abrindo candidaturas…" : `Abrir candidaturas (${Math.min(selectedAvailableHistory.length, 20)})`}</button>
                 <button type="button" className="triage-queue-button" onClick={downloadSelectedHistoryCsv} title="Baixa código, título, status atual e descrição do status das vagas selecionadas.">Baixar CSV</button>
                 {selectedHistory.length === 1 && selectedHistory[0].jobSource === "apinfo-extension" && selectedHistory[0].hasValidContactEmail && selectedHistory[0].draftStatus !== "sent" && <><button type="button" className="triage-queue-button" disabled={reconcilingSentJobId === selectedHistory[0].jobId} onClick={() => void reconcileSentDraft(selectedHistory[0].jobId)}>{reconcilingSentJobId === selectedHistory[0].jobId ? "Consultando Gmail…" : "Verificar envio no Gmail"}</button>{selectedHistory[0].draftStatus && <button type="button" className="triage-queue-button" disabled={reconcilingSentJobId === selectedHistory[0].jobId} onClick={() => void confirmSentDraft(selectedHistory[0].jobId)}>Confirmar envio</button>}</>}
                 <button type="button" className="triage-queue-button" disabled={queueingDrafts || selectedHistory.length > 100} onClick={() => void reuseSelectedCompanyContacts()} title={selectedHistory.length > 100 ? "Consulte até 100 vagas por vez." : "Procura somente e-mails de empresas já cadastrados no Radar e preenche vagas sem contato."}>Consultar contatos já cadastrados</button>
-                <button type="button" className="triage-queue-button" disabled={queueingDrafts || selectedHistory.length > 100} onClick={() => void queueDrafts(selectedHistory.map((item) => item.jobId))} title={selectedHistory.length > 100 ? "Envie até 100 vagas por vez." : "Cria e envia pelo Gmail somente candidaturas ✅ com e-mail válido."}>Enviar candidaturas selecionadas</button>
+                <button type="button" className="triage-queue-button" disabled={queueingDrafts || selectedAvailableHistory.length === 0 || selectedAvailableHistory.length > 100} onClick={() => void queueDrafts(selectedAvailableHistory.map((item) => item.jobId))} title={selectedAvailableHistory.length === 0 ? "As vagas selecionadas estão encerradas ou arquivadas na fonte." : selectedAvailableHistory.length > 100 ? "Envie até 100 vagas por vez." : "Cria e envia pelo Gmail somente candidaturas ✅ com e-mail válido."}>Enviar candidaturas selecionadas ({selectedAvailableHistory.length})</button>
                 <button type="button" className="triage-disqualify-button" disabled={disqualifyingSelection || selectedHistory.every((item) => item.verdict === "❌" || item.verdict === "🔴")} onClick={() => void disqualifySelectedJobs()} title="Marca todas as vagas selecionadas como não aderentes e cancela somente rascunhos ainda pendentes.">{disqualifyingSelection ? "Desclassificando…" : `Desclassificar selecionadas (${selectedHistory.filter((item) => item.verdict !== "❌" && item.verdict !== "🔴").length})`}</button>
                 <button type="button" className="triage-selection-clear" onClick={() => setSelectedHistoryJobIds([])}>Limpar seleção</button>
               </div>}

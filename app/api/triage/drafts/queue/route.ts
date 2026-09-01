@@ -149,6 +149,7 @@ export async function POST(request: Request) {
       .leftJoin(triageHistory, and(eq(triageHistory.userId, user.userId), eq(triageHistory.jobId, jobs.id)))
       .where(and(
         eq(userJobAnalyses.userId, user.userId),
+        eq(jobs.status, "active"),
         requestedJobIds ? inArray(userJobAnalyses.jobId, requestedJobIds) : undefined,
         // Fonte/área/canal/período são recortes do painel de lote e não fazem
         // sentido quando vagas específicas foram pedidas (ação de uma linha ou

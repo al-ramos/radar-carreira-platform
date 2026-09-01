@@ -66,5 +66,5 @@ export async function POST(request:Request){
     : profileHasScoringSignals
       ? {...scoreJob({title:job.title,description,stack:inferredStack,seniority:job.seniority,workMode:job.workMode,location:job.location,publishedAt:job.publishedAt??job.firstSeenAt},{masteredSkills,desiredAreas,avoidTerms:listFromStored(profile?.avoidTerms),seniority,preferredMode}),scored:true}
       : {score:0,reasons:["Complete seu perfil para calcular a aderência"],scored:false};
-  return NextResponse.json({description,descriptionSource:source,stack:inferredStack,...match});
+  return NextResponse.json({description,descriptionSource:source,stack:inferredStack,jobStatus:job.status,...match});
 }

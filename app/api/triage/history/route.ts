@@ -74,6 +74,7 @@ export async function GET(request: Request) {
       processedAt: userJobAnalyses.updatedAt,
       title: jobs.title,
       company: jobs.company,
+      jobStatus: jobs.status,
       externalId: jobs.externalId,
       description: jobs.description,
       stack: jobs.stack,
