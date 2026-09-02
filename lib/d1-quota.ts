@@ -1,8 +1,21 @@
 const D1_READ_LIMIT = /exceeded D1(?:'s)? free tier daily row read limit|daily row read limit/i;
 
+function errorDetail(error: unknown, seen = new Set<unknown>()): string {
+  if (error == null || seen.has(error)) return "";
+  if (typeof error === "string") return error;
+  if (typeof error !== "object") return String(error);
+  seen.add(error);
+  const value = error as { message?: unknown; cause?: unknown; errors?: unknown; stack?: unknown };
+  return [
+    typeof value.message === "string" ? value.message : "",
+    typeof value.stack === "string" ? value.stack : "",
+    errorDetail(value.cause, seen),
+    ...(Array.isArray(value.errors) ? value.errors.map((item) => errorDetail(item, seen)) : []),
+  ].filter(Boolean).join("\n");
+}
+
 export function isD1ReadQuotaError(error: unknown) {
-  const detail = error instanceof Error ? error.message : String(error ?? "");
-  return D1_READ_LIMIT.test(detail);
+  return D1_READ_LIMIT.test(errorDetail(error));
 }
 
 export function nextD1Reset(now = new Date()) {

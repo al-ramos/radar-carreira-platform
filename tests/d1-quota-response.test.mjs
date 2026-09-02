@@ -25,4 +25,7 @@ test("cota diária D1 vira resposta acionável e não um 500 genérico", async (
   assert.match(jobs, /d1QuotaResponse\(error\)/);
   assert.match(collector, /return await handlePost\(request, context\)/);
   assert.match(collector, /d1QuotaResponse\(error\)/);
+  assert.match(collector, /RADAR_DATABASE_UNAVAILABLE/);
+  assert.match(collector, /status: 503/);
+  assert.doesNotMatch(jobs, /eligibleTotals/);
 });

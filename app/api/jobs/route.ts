@@ -546,7 +546,7 @@ filterOptions,
 page,
 limit,
 hasMore: offset + limit < totalCount,
-limited: requiresPostFiltering && Number(eligibleTotals[0]?.total ?? 0) > MAX_AFFINITY_CANDIDATES,
+limited: requiresPostFiltering && Number(summaryTotals[0]?.eligible ?? 0) > MAX_AFFINITY_CANDIDATES,
 // Devolvido para a mensagem de aviso no cliente nunca ficar dessincronizada
 // deste teto — antes era um número fixo no Dashboard.tsx que ficou
 // desatualizado quando MAX_AFFINITY_CANDIDATES mudou de 2.500 para 500.

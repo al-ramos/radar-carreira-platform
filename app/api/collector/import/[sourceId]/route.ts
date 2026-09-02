@@ -349,6 +349,15 @@ export async function POST(request: Request, context: { params: Promise<{ source
   } catch (error) {
     const quota = d1QuotaResponse(error);
     if (quota) return quota;
-    throw error;
+    console.error(JSON.stringify({
+      event: "collector_import_bootstrap_failed",
+      sourceId: (await context.params).sourceId,
+      error: error instanceof Error ? error.message : "Banco indisponível",
+    }));
+    return json({
+      error: "O banco do Radar está temporariamente indisponível. O lote não foi importado e pode ser reenviado com segurança.",
+      code: "RADAR_DATABASE_UNAVAILABLE",
+      retryable: true,
+    }, { status: 503, headers: { "Retry-After": "900" } });
   }
 }
