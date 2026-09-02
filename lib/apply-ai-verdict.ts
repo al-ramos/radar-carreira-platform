@@ -1,11 +1,12 @@
 import { eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { getDb } from "../db/index";
-import { draftOutbox, jobs, profiles, triageBatches, triageHistory, userJobAnalyses } from "../db/schema";
+import { jobs, profiles, triageBatches, triageHistory, userJobAnalyses } from "../db/schema";
 import { canonicalizeProfile } from "./canonical-profile";
 import { getAnalysisVersions } from "./analysis-versions";
 import { isSafeForDraft } from "./draft-eligibility";
 import { markImmediateDraftFailure, requestImmediateDraftCreation } from "./gmail-draft-priority";
+import { queueApprovedDraftOutbox } from "./approved-draft-outbox";
 
 const LABELS: Record<string, string> = { "✅": "Aprovada", "🟡": "Provável com ressalvas", "🔴": "Não bate", "❌": "Bloqueador estrutural" };
 
@@ -15,8 +16,8 @@ export type AiVerdictEntry = { jobId: string; verdict: "✅" | "🟡" | "🔴" |
  * Aplica vereditos vindos de uma leitura de IA (nuvem ou Codex) como veredito
  * oficial da vaga — mesma trilha usada pela reimportação de CSV
  * (/api/admin/triage-import). Decisão explícita do proprietário: a partir de
- * uma análise por IA considerada válida, ✅ cria e envia a candidatura quando
- * houver e-mail válido; 🟡, 🔴 e ❌ ficam apenas no histórico.
+ * uma análise por IA considerada válida, ✅ cria o rascunho quando houver
+ * e-mail válido; o envio depende de confirmação explícita no portal.
  */
 export async function applyAiVerdicts(userId: string, batchScope: string, entries: AiVerdictEntry[]): Promise<{ applied: number; draftsQueued: number; draftsCreated: number; emailsSent: number }> {
   if (!entries.length) return { applied: 0, draftsQueued: 0, draftsCreated: 0, emailsSent: 0 };
@@ -33,7 +34,7 @@ export async function applyAiVerdicts(userId: string, batchScope: string, entrie
   let applied = 0, draftsQueued = 0;
   for (const entry of entries) {
     const job = await db.select().from(jobs).where(eq(jobs.id, entry.jobId)).limit(1).then((r) => r[0]);
-    if (!job) continue;
+    if (!job || job.description.trim().length < 80) continue;
     const historyId = randomUUID();
     const label = LABELS[entry.verdict];
     const blocker = entry.verdict === "❌" ? (entry.note || label) : null;
@@ -48,9 +49,8 @@ export async function applyAiVerdicts(userId: string, batchScope: string, entrie
 
     if (entry.verdict === "✅") {
       if (isSafeForDraft({ verdict: entry.verdict, contactEmail: job.contactEmail, sourceId: job.sourceId })) {
-        const outboxId = randomUUID();
-        const inserted = await db.insert(draftOutbox).values({ id: outboxId, userId, jobId: job.id, historyId, status: "pending", autoSendAuthorized: true, autoSendAuthorizedAt: now, createdAt: now, updatedAt: now }).onConflictDoNothing().returning({ id: draftOutbox.id });
-        if (inserted.length) { draftsQueued += 1; pendingOutboxIds.push(outboxId); }
+        const outboxId = await queueApprovedDraftOutbox({ userId, jobId: job.id, historyId, now });
+        if (outboxId) { draftsQueued += 1; pendingOutboxIds.push(outboxId); }
       }
     }
   }

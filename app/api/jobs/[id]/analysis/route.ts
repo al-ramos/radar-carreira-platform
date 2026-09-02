@@ -1,13 +1,14 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, gte } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../../chatgpt-auth";
 import { getDb } from "../../../../../db/index";
-import { draftOutbox, jobs, profiles, triageBatches, triageHistory, userJobAnalyses } from "../../../../../db/schema";
+import { jobs, profiles, triageBatches, triageHistory, userJobAnalyses } from "../../../../../db/schema";
 import { analysisVersionsMatch, getAnalysisVersions } from "../../../../../lib/analysis-versions";
 import { canonicalizeProfile } from "../../../../../lib/canonical-profile";
 import { analyzeStoredJobForProfile } from "../../../../../lib/personalized-analysis";
 import { isSafeForDraft } from "../../../../../lib/draft-eligibility";
 import { markImmediateDraftFailure, requestImmediateDraftCreation } from "../../../../../lib/gmail-draft-priority";
+import { queueApprovedDraftOutbox } from "../../../../../lib/approved-draft-outbox";
 
 export const dynamic = "force-dynamic";
 
@@ -20,12 +21,8 @@ async function queueApprovedDraft(input: {
 }) {
   if (!isSafeForDraft({ verdict: input.analysis.verdict, contactEmail: input.job.contactEmail, sourceId: input.job.sourceId })) return { queued: false, created: 0, sent: 0 };
   const db = getDb();
-  const existingOutbox = await db.select({ id: draftOutbox.id }).from(draftOutbox)
-    .where(and(eq(draftOutbox.userId, input.userId), eq(draftOutbox.jobId, input.job.id))).limit(1).then((rows) => rows[0]);
-  if (existingOutbox) return { queued: false, created: 0, sent: 0 };
-
   let history = await db.select({ id: triageHistory.id }).from(triageHistory)
-    .where(and(eq(triageHistory.userId, input.userId), eq(triageHistory.jobId, input.job.id), eq(triageHistory.verdict, "✅")))
+    .where(and(eq(triageHistory.userId, input.userId), eq(triageHistory.jobId, input.job.id), eq(triageHistory.verdict, "✅"), gte(triageHistory.createdAt, input.job.triageInputUpdatedAt)))
     .orderBy(desc(triageHistory.createdAt)).limit(1).then((rows) => rows[0]);
   if (!history) {
     const batchId = crypto.randomUUID();
@@ -34,8 +31,8 @@ async function queueApprovedDraft(input: {
     await db.insert(triageHistory).values({ id: history.id, batchId, userId: input.userId, jobId: input.job.id, ...input.versions, verdict: "✅", label: input.analysis.label, blocker: input.analysis.blocker, source: input.analysis.source, confidence: 100, rows: input.analysis.rows, createdAt: input.now });
   }
 
-  const outboxId = crypto.randomUUID();
-  await db.insert(draftOutbox).values({ id: outboxId, userId: input.userId, jobId: input.job.id, historyId: history.id, status: "pending", autoSendAuthorized: true, autoSendAuthorizedAt: input.now, createdAt: input.now, updatedAt: input.now });
+  const outboxId = await queueApprovedDraftOutbox({ userId: input.userId, jobId: input.job.id, historyId: history.id, now: input.now });
+  if (!outboxId) return { queued: false, created: 0, sent: 0 };
   const immediate = await requestImmediateDraftCreation([outboxId]);
   if (!immediate.requested) await markImmediateDraftFailure([outboxId], immediate.reason);
   return { queued: true, created: immediate.created ?? 0, sent: immediate.sent ?? 0, reason: immediate.reason };
@@ -46,12 +43,13 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   if (!user) return NextResponse.json({ error: "Autenticação necessária" }, { status: 401 });
   const { id } = await params;
   const db = getDb();
-  const [row, profile] = await Promise.all([
+  const [row, profile, job] = await Promise.all([
     db.select().from(userJobAnalyses).where(and(eq(userJobAnalyses.userId, user.userId), eq(userJobAnalyses.jobId, id))).limit(1).then(rows => rows[0]),
     db.select().from(profiles).where(eq(profiles.userId, user.userId)).limit(1).then(rows => rows[0]),
+    db.select().from(jobs).where(eq(jobs.id, id)).limit(1).then(rows => rows[0]),
   ]);
   if (!row) return NextResponse.json({ analysis: null });
-  if (!profile || !analysisVersionsMatch(row, getAnalysisVersions(canonicalizeProfile(profile)))) {
+  if (!job || job.description.trim().length < 80 || row.updatedAt < job.triageInputUpdatedAt || !profile || !analysisVersionsMatch(row, getAnalysisVersions(canonicalizeProfile(profile)))) {
     return NextResponse.json({ analysis: null, stale: true });
   }
   return NextResponse.json({ analysis: { ...row, rows: JSON.parse(row.rows), matchingSkills: JSON.parse(row.matchingSkills), missingSkills: JSON.parse(row.missingSkills) } });
@@ -68,6 +66,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     db.select().from(userJobAnalyses).where(and(eq(userJobAnalyses.userId, user.userId), eq(userJobAnalyses.jobId, id))).limit(1).then(rows => rows[0]),
   ]);
   if (!job) return NextResponse.json({ error: "Vaga não encontrada" }, { status: 404 });
+  if (job.description.trim().length < 80) return NextResponse.json({ error: "Descrição da vaga ausente ou incompleta; faça uma nova coleta antes de analisar." }, { status: 422 });
   if (!profile) return NextResponse.json({ error: "Complete seu perfil antes de registrar análises" }, { status: 412 });
 
   const result = analyzeStoredJobForProfile(job, profile);

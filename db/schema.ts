@@ -1,4 +1,5 @@
 import { index, integer, primaryKey, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { sql } from "drizzle-orm";
 
 export const profiles = sqliteTable("profiles", {
   userId: text("user_id").primaryKey(), email: text("email").notNull(), name: text("name"),
@@ -38,10 +39,11 @@ export const jobs = sqliteTable("jobs", {
   sourcePublishedAt: integer("source_published_at", { mode: "timestamp_ms" }),
   ingestionMode: text("ingestion_mode", { enum: ["automatic", "manual"] }).notNull().default("manual"),
   ingestionChannel: text("ingestion_channel", { enum: ["extension", "email", "connector", "file", "api"] }).notNull().default("file"),
-  roleArea: text("role_area").notNull().default("other"),
-  url: text("url").notNull(), applyUrl: text("apply_url"),
-  contactEmail: text("contact_email"), contactSubject: text("contact_subject"), description: text("description").notNull().default(""),
-  firstSeenAt: integer("first_seen_at", { mode: "timestamp_ms" }).notNull(), lastSeenAt: integer("last_seen_at", { mode: "timestamp_ms" }).notNull(),
+    roleArea: text("role_area").notNull().default("other"),
+    url: text("url").notNull(), applyUrl: text("apply_url"),
+    contactEmail: text("contact_email"), contactSubject: text("contact_subject"), description: text("description").notNull().default(""),
+    triageInputUpdatedAt: integer("triage_input_updated_at", { mode: "timestamp_ms" }).notNull().default(sql`0`),
+    firstSeenAt: integer("first_seen_at", { mode: "timestamp_ms" }).notNull(), lastSeenAt: integer("last_seen_at", { mode: "timestamp_ms" }).notNull(),
   status: text("status", { enum: ["active", "possibly_closed", "closed", "archived"] }).notNull().default("active"),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(), updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
 }, t => [uniqueIndex("jobs_fingerprint_unique").on(t.fingerprint)]);
@@ -124,7 +126,11 @@ export const triageHistory = sqliteTable("triage_history", {
   verdict: text("verdict", { enum: ["✅", "🟡", "🔴", "❌"] }).notNull(), label: text("label").notNull(), blocker: text("blocker"),
   source: text("source", { enum: ["rules", "ai"] }).notNull(), confidence: integer("confidence").notNull(), rows: text("rows").notNull().default("[]"),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-}, t => [index("triage_history_user_job_created_idx").on(t.userId, t.jobId, t.createdAt), index("triage_history_batch_idx").on(t.batchId)]);
+}, t => [
+  index("triage_history_user_job_created_idx").on(t.userId, t.jobId, t.createdAt),
+    index("triage_history_current_version_idx").on(t.userId, t.jobId, t.profileRevision, t.rulesRevision, t.instructionsRevision, t.createdAt),
+  index("triage_history_batch_idx").on(t.batchId),
+]);
 
 export const triageBatchItems = sqliteTable("triage_batch_items", {
   batchId: text("batch_id").notNull().references(() => triageBatches.id), jobId: text("job_id").notNull().references(() => jobs.id),

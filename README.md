@@ -36,6 +36,7 @@ Portal multiusuário para reunir oportunidades, decidir quais vagas merecem aten
 - Atalhos da triagem abrem a vaga correta no Radar, inclusive candidaturas e itens arquivados, sem que respostas antigas de busca sobrescrevam a navegação atual.
 - O score fica oculto até a vaga ser triada; tecnologias prioritárias são evidência técnica, mas não substituem modalidade, geografia, senioridade, idioma nem requisitos obrigatórios.
 - A aprovação automática respeita a região cadastrada e a pessoa proprietária pode desclassificar manualmente uma vaga, preservando o histórico e cancelando somente rascunhos ainda pendentes.
+- Vagas do LinkedIn com descrição ausente ou curta ficam bloqueadas como inconclusivas e não entram em regras, IA, Codex ou rascunhos. Quando a extensão recolhe a descrição íntegra, a revisão do conteúdo invalida a análise anterior e dispara uma nova triagem.
 - Toda aprovação `✅` com e-mail válido pode criar rascunho imediatamente. A recuperação agendada cobre pendências, decisões antigas, aprovações sem histórico e aprovações sem registro na outbox.
 - O Radar registra a abertura de candidatura no LinkedIn. Na manutenção, a pessoa proprietária vê a contagem exata por situação, pode arquivar suas vagas vistas, arquivar globalmente qualquer quantidade do acervo ativo e excluir qualquer quantidade de vagas inativas, sempre com data, alcance, ordenação pelas mais antigas e impacto explícitos.
 - O Monitoramento mede uma amostra anônima de desempenho, mostra p75/p95 em 24 horas e 7 dias e remove as amostras após 30 dias; os planos D1 críticos são auditáveis por comando reproduzível.
@@ -61,7 +62,7 @@ Trabalho concorrente deve usar publicação isolada e preservar alterações loc
 - após uma importação push do LinkedIn ou APInfo, percorre todo o lote em continuações de 10 vagas, usando IA apenas nas ambiguidades da primeira rodada;
 - permite revisar um recorte no portal, preparar até 50 vagas para o Codex ou reimportar vereditos externos por CSV;
 - permite desclassificar manualmente uma vaga já avaliada, com decisão aditiva no histórico e cancelamento de rascunho ainda pendente;
-- cria e envia candidaturas elegíveis no Gmail, com currículo, assinatura e confirmação persistida pela outbox;
+- cria automaticamente rascunhos elegíveis no Gmail, com currículo, assinatura e confirmação persistida pela outbox; o envio exige confirmação explícita no portal;
 - reconhece confirmações de candidatura recebidas do LinkedIn pelo Gmail, marca o acompanhamento como enviado e notifica somente na primeira transição;
 - registra notificações de importação, triagem e candidatura, com acesso direto aos relatórios operacionais;
 - centraliza importações, lotes de triagem e a agenda das automações no monitoramento, com heartbeats persistidos, alertas acionáveis, falhas, último sucesso e filtros por fluxo;
@@ -223,7 +224,7 @@ Para ativar o aprofundamento opcional com IA, configure diretamente no ambiente 
 
 ## Triagem inteligente e candidatura assistida
 
-A central de triagem transforma um recorte da Home em um lote rastreável. O recorte pode combinar fonte, período, área, canal e vagas já analisadas; a execução manual entra em Cloudflare Queue e cada vaga mantém estado, número de tentativas, lease, erro e histórico. Lotes interrompidos podem ser retomados, e a chave de idempotência inclui usuário, vaga e versões do perfil, das regras e das instruções.
+A central de triagem transforma um recorte da Home em um lote rastreável. O recorte pode combinar fonte, período, área, canal e vagas já analisadas; a execução manual entra em Cloudflare Queue e cada vaga mantém estado, número de tentativas, lease, erro e histórico. Lotes interrompidos podem ser retomados, e a chave de idempotência inclui usuário, vaga, revisão do conteúdo e versões do perfil, das regras e das instruções.
 
 O fluxo de decisão possui quatro caminhos:
 
@@ -239,10 +240,11 @@ Quando a pessoa confirma um resultado da IA, do Codex ou do CSV, ele vira o vere
 ### Automação e segurança
 
 - importações push do LinkedIn ou APInfo podem iniciar a triagem logo após a persistência do lote;
+- a importação LinkedIn rejeita registros com descrição menor que 80 caracteres; a extensão só confirma uma página quando código, título e descrição pertencem ao detalhe aberto, com três tentativas antes de bloquear o avanço;
 - lotes grandes continuam pela fila, em blocos de 10 e sem teto fixo de continuações, até que todas as vagas ainda não analisadas sejam processadas, sem alongar a requisição de importação;
 - três interruptores administrativos controlam separadamente a triagem agendada, a entrada na outbox e a criação real do rascunho no Gmail;
 - a automação agendada aceita somente vagas `✅` para rascunho;
-- o Apps Script cria o rascunho, confirma sua vinculação à vaga, envia automaticamente e registra a mensagem comprovada pelo Gmail;
+- o Apps Script cria o rascunho e confirma sua vinculação à vaga; somente uma autorização explícita no portal permite enviá-lo e registrar a mensagem comprovada pelo Gmail;
 - criação, falha e envio ficam registrados em `draft_outbox`; cada rascunho e cada mensagem do Gmail só podem pertencer a uma vaga, e a interface distingue confirmação pelo Gmail de informação manual;
 - notificações no sino abrem o log completo do lote ou da importação correspondente.
 
@@ -282,9 +284,9 @@ O conector atual:
 
 ### Rascunhos de candidatura
 
-O Radar cria imediatamente o rascunho de toda vaga aprovada (✅) com e-mail de contato válido, anexa o currículo, inclui a assinatura e o envia automaticamente, independentemente de a aprovação ter vindo da triagem agendada, IA, Codex ou CSV. Antes de criar ou enviar, o conector consulta a pasta **Enviados** pelo destinatário, assunto e janela da vaga; quando encontra uma mensagem anterior, apenas a vincula ao acompanhamento e não reenvia. A outbox registra primeiro o rascunho e depois a mensagem enviada, impedindo repetição da mesma candidatura. Se o conector imediato estiver indisponível, a vaga fica marcada como falha com o motivo visível e o botão **Tentar novamente** aciona o Gmail de novo após a correção.
+O Radar cria imediatamente o rascunho de toda vaga aprovada (✅) com e-mail de contato válido, anexa o currículo e inclui a assinatura, independentemente de a aprovação ter vindo da triagem agendada, IA, Codex ou CSV. O rascunho não é enviado automaticamente: o envio exige confirmação explícita no portal. Antes de criar ou enviar, o conector consulta a pasta **Enviados** pelo destinatário, assunto e janela da vaga; quando encontra uma mensagem anterior, apenas a vincula ao acompanhamento e não reenvia. A outbox registra primeiro o rascunho e depois a mensagem enviada, impedindo repetição da mesma candidatura. Se o conector imediato estiver indisponível, a vaga fica marcada como falha com o motivo visível e o botão **Tentar novamente** aciona o Gmail novamente após a confirmação da pessoa usuária.
 
-Depois de salvar e publicar uma nova versão do Apps Script, execute **uma vez** `instalarAutomacaoRascunhosRadar`. Ela instala uma recuperação a cada cinco minutos: consulta os itens que o Radar já confirmou, retoma falhas transitórias e envia as novas candidaturas elegíveis que ainda não chegaram ao estado `sent`. A chamada imediata continua sendo o caminho normal.
+Depois de salvar e publicar uma nova versão do Apps Script, execute **uma vez** `instalarAutomacaoRascunhosRadar`. Ela instala uma recuperação a cada cinco minutos: consulta os itens que o Radar já confirmou e retoma a criação de rascunhos pendentes. Somente itens com autorização explícita registrada podem ser enviados. A chamada imediata continua sendo o caminho normal.
 
 Para atualizar automaticamente os envios manuais, execute `instalarVerificacaoEnviosRadar` **uma única vez** no Apps Script depois de salvar a versão atual do arquivo. Ela instala um gatilho a cada 15 minutos que consulta somente a pasta **Enviados** e marca no Radar os rascunhos comprovadamente enviados. A rotina não cria rascunhos e não envia e-mails. Para desligá-la, execute `removerVerificacaoEnviosRadar`.
 

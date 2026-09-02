@@ -1,13 +1,15 @@
-import { and, desc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { env } from "cloudflare:workers";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db/index";
-import { aiUsageEvents, jobs, platformSettings, profiles, triageAiReviewChunks, triageAiReviews, userJobAnalyses } from "../../../../db/schema";
+import { aiUsageEvents, jobs, platformSettings, profiles, triageAiReviewChunks, triageAiReviews } from "../../../../db/schema";
 import { isOwnerEmail } from "../../../../lib/access";
 import { getAiProviderStatus, type AiReviewProfile } from "../../../../lib/ai-provider";
+import { getAnalysisVersions } from "../../../../lib/analysis-versions";
 import { canonicalizeProfile } from "../../../../lib/canonical-profile";
+import { hasTriageableDescription, needsCurrentTriage } from "../../../../lib/current-triage";
 import { normalizeCareerRules } from "../../../../lib/profile-options";
 import { reserveQueueMessages } from "../../../../lib/queue-quota";
 
@@ -34,10 +36,11 @@ export async function POST(request: Request) {
   if (!sourceId && !requestedJobIds?.length) return NextResponse.json({ error: "Selecione uma fonte ou vagas antes de pedir a análise." }, { status: 400 });
   if (!["24", "72", "168", "all"].includes(homePeriod) || (ingestionChannel && !channels.has(ingestionChannel)) || prompt.length < 8) return NextResponse.json({ error: "Parâmetros da análise inválidos." }, { status: 400 });
   const db = getDb(), profile = await db.select().from(profiles).where(eq(profiles.userId, user.userId)).limit(1).then(rows => rows[0]); if (!profile) return NextResponse.json({ error: "Complete seu perfil antes de solicitar uma análise." }, { status: 412 });
+  const canonical = canonicalizeProfile(profile), versions = getAnalysisVersions(canonical);
   const cutoff = homePeriod === "all" ? null : new Date(Date.now() - Number(homePeriod) * 36e5);
-  const selected = await db.select({ id: jobs.id, title: jobs.title, company: jobs.company, location: jobs.location, url: jobs.url, description: jobs.description }).from(jobs).leftJoin(userJobAnalyses, and(eq(userJobAnalyses.userId, user.userId), eq(userJobAnalyses.jobId, jobs.id))).where(and(eq(jobs.status, "active"), requestedJobIds?.length ? inArray(jobs.id, requestedJobIds) : sourceId === "all" ? undefined : eq(jobs.sourceId, sourceId), requestedJobIds?.length ? undefined : cutoff ? gte(jobs.firstSeenAt, cutoff) : undefined, roleArea && roleArea !== "all" ? eq(jobs.roleArea, roleArea) : undefined, ingestionChannel ? eq(jobs.ingestionChannel, ingestionChannel as "extension" | "email" | "connector" | "file" | "api") : undefined, includeTriaged || requestedJobIds?.length ? undefined : isNull(userJobAnalyses.jobId))).orderBy(desc(jobs.firstSeenAt), desc(jobs.createdAt)).limit(MAX_ASYNC_AI_REVIEW_JOBS + 1);
+  const selected = await db.select({ id: jobs.id, title: jobs.title, company: jobs.company, location: jobs.location, url: jobs.url, description: jobs.description }).from(jobs).where(and(eq(jobs.status, "active"), hasTriageableDescription(), requestedJobIds?.length ? inArray(jobs.id, requestedJobIds) : sourceId === "all" ? undefined : eq(jobs.sourceId, sourceId), requestedJobIds?.length ? undefined : cutoff ? gte(jobs.firstSeenAt, cutoff) : undefined, roleArea && roleArea !== "all" ? eq(jobs.roleArea, roleArea) : undefined, ingestionChannel ? eq(jobs.ingestionChannel, ingestionChannel as "extension" | "email" | "connector" | "file" | "api") : undefined, includeTriaged || requestedJobIds?.length ? undefined : needsCurrentTriage(user.userId, versions))).orderBy(desc(jobs.firstSeenAt), desc(jobs.createdAt)).limit(MAX_ASYNC_AI_REVIEW_JOBS + 1);
   if (!selected.length) return NextResponse.json({ error: "Nenhuma vaga corresponde ao recorte atual." }, { status: 404 }); if (selected.length > MAX_ASYNC_AI_REVIEW_JOBS) return NextResponse.json({ error: `A análise aceita até ${MAX_ASYNC_AI_REVIEW_JOBS} vagas por solicitação.` }, { status: 422 });
-  const canonical = canonicalizeProfile(profile), reviewProfile: AiReviewProfile = { seniority: canonical.seniority, preferredMode: canonical.preferredMode, masteredSkills: canonical.masteredSkills, desiredAreas: canonical.desiredAreas, avoidTerms: canonical.avoidTerms, minScore: canonical.minScore, careerRules: canonical.careerRules }, reviewJobs: Job[] = selected.map(job => ({ ...job, description: job.description.slice(0, 3200) }));
+  const reviewProfile: AiReviewProfile = { seniority: canonical.seniority, preferredMode: canonical.preferredMode, masteredSkills: canonical.masteredSkills, desiredAreas: canonical.desiredAreas, avoidTerms: canonical.avoidTerms, minScore: canonical.minScore, careerRules: canonical.careerRules }, reviewJobs: Job[] = selected.map(job => ({ ...job, description: job.description.slice(0, 3200) }));
   const status = getAiProviderStatus(); if (!status.configured) return NextResponse.json({ error: "A IA ainda não está configurada no ambiente de produção." }, { status: 503 });
   const monthStart = new Date(); monthStart.setUTCDate(1); monthStart.setUTCHours(0, 0, 0, 0); const usage = await db.select({ total: sql<number>`coalesce(sum(${aiUsageEvents.inputTokens} + ${aiUsageEvents.outputTokens}), 0)` }).from(aiUsageEvents).where(and(eq(aiUsageEvents.userId, user.userId), gte(aiUsageEvents.createdAt, monthStart))).then(rows => Number(rows[0]?.total ?? 0));
   const queueSettings = await db.select({ queueBudget: platformSettings.queueDailyOperationBudget, aiChunkSize: platformSettings.aiReviewChunkSize }).from(platformSettings).where(eq(platformSettings.id, "global")).limit(1).then(rows => rows[0]);

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, isNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNull, lt, sql } from "drizzle-orm";
 import { createHash, randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
@@ -6,6 +6,7 @@ import { getDb } from "../../../../db/index";
 import { aiUsageEvents, draftOutbox, jobAiFacts, jobSources, jobs, platformSettings, profiles, triageBatchItems, triageBatches, triageDeduplication, triageHistory, userJobAnalyses } from "../../../../db/schema";
 import { getAnalysisVersions } from "../../../../lib/analysis-versions";
 import { canonicalizeProfile } from "../../../../lib/canonical-profile";
+import { hasTriageableDescription, needsCurrentTriage } from "../../../../lib/current-triage";
 import { evaluateDeterministicTriage, needsAiRefinement } from "../../../../lib/deterministic-triage";
 import { normalizeTriageRunRequest, saoPauloDayWindow, type TriageRunRequest } from "../../../../lib/triage-orchestrator";
 import { triageIdempotencyKey } from "../../../../lib/triage-idempotency";
@@ -15,6 +16,7 @@ import { normalizeCareerRules } from "../../../../lib/profile-options";
 import { applyAiRefinement } from "../../../../lib/triage-ai-refinement";
 import { notifyScheduledTriage } from "../../../../lib/notifications";
 import { markImmediateDraftFailure, requestImmediateDraftCreation } from "../../../../lib/gmail-draft-priority";
+import { queueApprovedDraftOutbox } from "../../../../lib/approved-draft-outbox";
 
 export const dynamic = "force-dynamic";
 const AI_FACTS_VERSION = "job-facts-v1";
@@ -128,6 +130,7 @@ export async function POST(request: Request) {
       eq(userJobAnalyses.profileRevision, versions.profileRevision),
       eq(userJobAnalyses.rulesRevision, versions.rulesRevision),
       eq(userJobAnalyses.instructionsRevision, versions.instructionsRevision),
+      gte(userJobAnalyses.updatedAt, jobs.triageInputUpdatedAt),
     ))
     .where(and(
       eq(jobs.status, "active"),
@@ -138,9 +141,8 @@ export async function POST(request: Request) {
       run.roleArea ? eq(jobs.roleArea, run.roleArea) : undefined,
       run.ingestionChannel ? eq(jobs.ingestionChannel, run.ingestionChannel) : undefined,
       queuedJobId ? eq(jobs.id, queuedJobId) : undefined,
-      run.reprocess ? undefined : run.aiMode === "ambiguous"
-        ? or(isNull(userJobAnalyses.jobId), and(eq(userJobAnalyses.source, "rules"), lt(userJobAnalyses.confidence, 100), isNull(userJobAnalyses.blocker)))
-        : isNull(userJobAnalyses.jobId),
+      hasTriageableDescription(),
+      run.reprocess ? undefined : needsCurrentTriage(userId, versions),
     ))
     .orderBy(desc(jobs.firstSeenAt), desc(jobs.createdAt))
     .limit(run.batchSize);
@@ -169,7 +171,7 @@ export async function POST(request: Request) {
   let scheduledDraftsQueued = 0;
   try {
     for (const { job, analysis } of candidates) {
-      const key = triageIdempotencyKey(userId, job.id, versions);
+      const key = triageIdempotencyKey(userId, job.id, versions, job.triageInputUpdatedAt);
       const claimed = await db.select().from(triageDeduplication).where(eq(triageDeduplication.idempotencyKey, key)).limit(1).then(rows => rows[0]);
       // A reavaliação é uma solicitação explícita do operador: preserva o
       // histórico aditivo, mas não deixa uma execução normal duplicar o mesmo
@@ -294,12 +296,7 @@ export async function POST(request: Request) {
         contactEmail: job.contactEmail,
         sourceId: job.sourceId,
       })) {
-        const outboxId = crypto.randomUUID();
-        const inserted = await db.insert(draftOutbox).values({ id: outboxId, userId, jobId: job.id, historyId, status: "pending", autoSendAuthorized: true, autoSendAuthorizedAt: now, createdAt: now, updatedAt: now }).onConflictDoNothing().returning({ id: draftOutbox.id });
-        // onConflictDoNothing + returning só devolve linha quando realmente
-        // inseriu (vaga já enfileirada por outra rodada não conta de novo
-        // nem entra na chamada ao conector Gmail desta execução).
-        if (inserted.length) scheduledDraftsQueued += 1;
+        if (await queueApprovedDraftOutbox({ userId, jobId: job.id, historyId, now })) scheduledDraftsQueued += 1;
       }
       processed.push({ jobId: job.id, title: job.title, company: job.company, reference: job.externalId, contactEligible: Boolean(job.contactEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(job.contactEmail.trim())), aiEligible: aiRefinement.eligible, aiStatus, verdict: finalVerdict.verdict, label: finalVerdict.result.label, blocker: finalVerdict.blocker });
     }
@@ -310,15 +307,15 @@ export async function POST(request: Request) {
     if (run.trigger === "schedule") {
       const approvedWithoutOutbox = await db.select({ job: jobs, analysis: userJobAnalyses })
         .from(jobs)
-        .innerJoin(userJobAnalyses, and(eq(userJobAnalyses.userId, userId), eq(userJobAnalyses.jobId, jobs.id), eq(userJobAnalyses.verdict, "✅")))
+        .innerJoin(userJobAnalyses, and(eq(userJobAnalyses.userId, userId), eq(userJobAnalyses.jobId, jobs.id), eq(userJobAnalyses.verdict, "✅"), gte(userJobAnalyses.updatedAt, jobs.triageInputUpdatedAt)))
         .leftJoin(draftOutbox, and(eq(draftOutbox.userId, userId), eq(draftOutbox.jobId, jobs.id)))
-        .where(and(eq(jobs.status, "active"), isNull(draftOutbox.id)))
+        .where(and(eq(jobs.status, "active"), hasTriageableDescription(), isNull(draftOutbox.id)))
         .orderBy(desc(userJobAnalyses.updatedAt))
         .limit(20);
       for (const { job, analysis } of approvedWithoutOutbox) {
         if (!isSafeForDraft({ verdict: analysis.verdict, contactEmail: job.contactEmail, sourceId: job.sourceId })) continue;
         let history = await db.select({ id: triageHistory.id }).from(triageHistory)
-          .where(and(eq(triageHistory.userId, userId), eq(triageHistory.jobId, job.id), eq(triageHistory.verdict, "✅")))
+          .where(and(eq(triageHistory.userId, userId), eq(triageHistory.jobId, job.id), eq(triageHistory.verdict, "✅"), gte(triageHistory.createdAt, job.triageInputUpdatedAt)))
           .orderBy(desc(triageHistory.createdAt)).limit(1).then((rows) => rows[0]);
         // Importações antigas e análises avulsas podem ter aprovado a vaga
         // antes de o histórico aditivo existir. A ausência desse vínculo não

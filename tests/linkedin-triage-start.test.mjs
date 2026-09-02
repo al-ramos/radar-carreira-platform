@@ -46,7 +46,13 @@ test("acionamento manual respeita os filtros ativos da Home", async () => {
   assert.match(aiReview, /sourceId === "all" \? undefined/);
   assert.match(codexQueue, /sourceId === "all" \? undefined/);
   assert.match(preview, /gte\(jobs\.firstSeenAt, cutoff\)/);
-  assert.match(preview, /count\(userJobAnalyses\.jobId\)/);
+  assert.match(preview, /hasCurrentTriage\(user\.userId, versions\)/);
+  assert.match(preview, /missingDescription/);
+  assert.match(ui, /sem descrição íntegra/);
+  assert.match(asyncRoute, /needsCurrentTriage\(user\.userId, versions\)/);
+  assert.match(route, /needsCurrentTriage\(userId, versions\)/);
+  assert.match(worker, /url\.pathname === "\/api\/collector\/import"/);
+  assert.match(worker, /sourceIds\.add\("linkedin-extension"\)/);
   assert.match(queue, /isSafeForDraft\(\{ verdict: row\.analysis\.verdict, contactEmail: row\.job\.contactEmail, sourceId: row\.job\.sourceId/);
   assert.match(queue, /gte\(jobs\.firstSeenAt, cutoff\)/);
   assert.match(ui, /homePeriod: actionPeriod/);

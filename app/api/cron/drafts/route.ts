@@ -1,10 +1,12 @@
-import { and, eq, inArray, ne, or } from "drizzle-orm";
+import { and, eq, gte, inArray, ne, or } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getDb } from "../../../../db/index";
 import { draftOutbox, jobSources, jobs, profiles, triageHistory, userJobAnalyses, userJobStatus } from "../../../../db/schema";
 import { buildApinfoApplicationEmail } from "../../../../lib/application-email";
 import { canonicalizeProfile } from "../../../../lib/canonical-profile";
+import { getAnalysisVersions } from "../../../../lib/analysis-versions";
 import { normalizeContactEmail } from "../../../../lib/contact-email";
+import { hasTriageableDescription } from "../../../../lib/current-triage";
 import { isSafeForDraft } from "../../../../lib/draft-eligibility";
 import { notifyDraftSent } from "../../../../lib/notifications";
 import { resolveAutomaticStage } from "../../../../lib/pipeline-stage";
@@ -207,9 +209,22 @@ export async function POST(request: Request) {
 
   if (body.action === "confirm" || body.action === "fail") {
     if (!body.outboxId) return NextResponse.json({ error: "Identificador da fila obrigatório" }, { status: 400 });
-    const item = (await db.select().from(draftOutbox).where(and(eq(draftOutbox.id, body.outboxId), eq(draftOutbox.userId, owner.userId))).limit(1))[0];
+    const item = (await db.select({
+      id: draftOutbox.id,
+      status: draftOutbox.status,
+      historyCreatedAt: triageHistory.createdAt,
+      triageInputUpdatedAt: jobs.triageInputUpdatedAt,
+      description: jobs.description,
+    }).from(draftOutbox)
+      .innerJoin(jobs, eq(draftOutbox.jobId, jobs.id))
+      .innerJoin(triageHistory, eq(draftOutbox.historyId, triageHistory.id))
+      .where(and(eq(draftOutbox.id, body.outboxId), eq(draftOutbox.userId, owner.userId))).limit(1))[0];
     if (!item) return NextResponse.json({ error: "Item da fila não encontrado" }, { status: 404 });
     if (item.status === "sent") return NextResponse.json({ ok: true, changed: false, status: item.status });
+    if (item.description.trim().length < 80 || item.historyCreatedAt < item.triageInputUpdatedAt) {
+      await db.update(draftOutbox).set({ status: "cancelled", autoSendAuthorized: false, autoSendAuthorizedAt: null, error: "Dados da vaga foram atualizados; aguardando nova triagem.", updatedAt: new Date() }).where(eq(draftOutbox.id, item.id));
+      return NextResponse.json({ error: "O rascunho pertence a uma versão desatualizada da vaga." }, { status: 409 });
+    }
     if (body.action === "confirm" && item.status === "drafted") return NextResponse.json({ ok: true, changed: false, status: item.status });
     if (body.action === "confirm") {
       if (!body.gmailDraftId) return NextResponse.json({ error: "Identificador do rascunho Gmail obrigatório" }, { status: 400 });
@@ -229,6 +244,7 @@ export async function POST(request: Request) {
   const profile = (await db.select().from(profiles).where(eq(profiles.userId, owner.userId)).limit(1))[0];
   if (!profile) return NextResponse.json({ drafts: [], reason: "Perfil não encontrado" });
   const canonicalProfile = canonicalizeProfile(profile);
+  const versions = getAnalysisVersions(canonicalProfile);
   const limit = Math.max(1, Math.min(20, Math.floor(body.limit ?? 10)));
   const requestedOutboxIds = Array.isArray(body.outboxIds) ? [...new Set(body.outboxIds.filter((id): id is string => typeof id === "string" && id.length > 0))].slice(0, 20) : null;
   if (Array.isArray(body.outboxIds) && !requestedOutboxIds?.length) return NextResponse.json({ drafts: [], reason: "Nenhum item de rascunho válido foi informado." }, { status: 400 });
@@ -259,9 +275,9 @@ export async function POST(request: Request) {
     analysisVerdict: userJobAnalyses.verdict,
   }).from(draftOutbox)
     .innerJoin(jobs, eq(draftOutbox.jobId, jobs.id))
-    .innerJoin(triageHistory, eq(draftOutbox.historyId, triageHistory.id))
-    .innerJoin(userJobAnalyses, and(eq(userJobAnalyses.userId, draftOutbox.userId), eq(userJobAnalyses.jobId, draftOutbox.jobId)))
-    .where(and(eq(draftOutbox.userId, owner.userId), eligibleOutboxStatus, requestedOutboxIds ? inArray(draftOutbox.id, requestedOutboxIds) : undefined))
+    .innerJoin(triageHistory, and(eq(draftOutbox.historyId, triageHistory.id), eq(triageHistory.profileRevision, versions.profileRevision), eq(triageHistory.rulesRevision, versions.rulesRevision), eq(triageHistory.instructionsRevision, versions.instructionsRevision), gte(triageHistory.createdAt, jobs.triageInputUpdatedAt)))
+    .innerJoin(userJobAnalyses, and(eq(userJobAnalyses.userId, draftOutbox.userId), eq(userJobAnalyses.jobId, draftOutbox.jobId), eq(userJobAnalyses.profileRevision, versions.profileRevision), eq(userJobAnalyses.rulesRevision, versions.rulesRevision), eq(userJobAnalyses.instructionsRevision, versions.instructionsRevision), gte(userJobAnalyses.updatedAt, jobs.triageInputUpdatedAt)))
+    .where(and(eq(draftOutbox.userId, owner.userId), hasTriageableDescription(), eligibleOutboxStatus, requestedOutboxIds ? inArray(draftOutbox.id, requestedOutboxIds) : undefined))
     .limit(limit);
 
   const drafts: Array<{ outboxId: string; to: string; subject: string; body: string; autoSendAuthorized: boolean; searchFrom: string }> = [];

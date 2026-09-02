@@ -2,13 +2,14 @@ import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db/index";
-import { draftOutbox, jobs, profiles, triageBatches, triageHistory, userJobAnalyses } from "../../../../db/schema";
+import { jobs, profiles, triageBatches, triageHistory, userJobAnalyses } from "../../../../db/schema";
 import { isOwnerEmail } from "../../../../lib/access";
 import { canonicalizeProfile } from "../../../../lib/canonical-profile";
 import { getAnalysisVersions } from "../../../../lib/analysis-versions";
 import { isSafeForDraft } from "../../../../lib/draft-eligibility";
 import { parseCsvTriageImport } from "../../../../lib/csv-triage-import";
 import { markImmediateDraftFailure, requestImmediateDraftCreation } from "../../../../lib/gmail-draft-priority";
+import { queueApprovedDraftOutbox } from "../../../../lib/approved-draft-outbox";
 
 export const dynamic = "force-dynamic";
 
@@ -64,6 +65,10 @@ export async function POST(request: Request) {
     if (matches.length === 0) { notFound.push(row.externalId); continue; }
     if (matches.length > 1) { ambiguous.push(row.externalId); continue; }
     const job = matches[0];
+    if (job.description.trim().length < 80) {
+      errors.push({ code: row.externalId, error: "Descrição da vaga ausente ou incompleta; faça uma nova coleta antes de importar o veredito." });
+      continue;
+    }
     try {
       const historyId = crypto.randomUUID();
       const label = LABELS[row.verdict];
@@ -85,9 +90,8 @@ export async function POST(request: Request) {
 
       if (row.verdict === "✅") {
         if (isSafeForDraft({ verdict: row.verdict, contactEmail: job.contactEmail, sourceId: job.sourceId })) {
-          const outboxId = crypto.randomUUID();
-          const inserted = await db.insert(draftOutbox).values({ id: outboxId, userId: user.userId, jobId: job.id, historyId, status: "pending", autoSendAuthorized: true, autoSendAuthorizedAt: now, createdAt: now, updatedAt: now }).onConflictDoNothing().returning({ id: draftOutbox.id });
-          if (inserted.length) { draftsQueued += 1; pendingOutboxIds.push(outboxId); }
+          const outboxId = await queueApprovedDraftOutbox({ userId: user.userId, jobId: job.id, historyId, now });
+          if (outboxId) { draftsQueued += 1; pendingOutboxIds.push(outboxId); }
         }
       }
     } catch (error) {

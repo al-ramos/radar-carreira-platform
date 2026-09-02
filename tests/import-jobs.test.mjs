@@ -33,7 +33,7 @@ test("endpoint da extensão LinkedIn responde ao preflight CORS", async()=>{
  assert.match(source,/request\.method === "OPTIONS"/);
 });
 
-test("importação da extensão processa todas as vagas válidas em lotes, sem filtro de perfil", async()=>{
+test("importação da extensão processa em lotes somente vagas com descrição íntegra, sem filtro de perfil", async()=>{
  const source=await readFile(new URL("../app/api/collector/import/route.ts",import.meta.url),"utf8");
  assert.match(source,/WRITE_BATCH_SIZE = 50/);
  assert.match(source,/LOOKUP_BATCH_SIZE = 100/);
@@ -41,8 +41,9 @@ test("importação da extensão processa todas as vagas válidas em lotes, sem f
  assert.match(source,/status: "failed"/);
  assert.match(source,/duplicates: duplicateRows/);
  assert.doesNotMatch(source,/filterImportedJobsByProfile/);
+ assert.match(source,/description\?\.trim\(\)\.length.*>= 80/);
  assert.match(source,/accepted: items\.length/);
- assert.match(source,/rejected: 0/);
+ assert.match(source,/rejected, inserted, updated/);
 });
 
 test("coleta das fontes do sistema importa todas as vagas válidas", async()=>{

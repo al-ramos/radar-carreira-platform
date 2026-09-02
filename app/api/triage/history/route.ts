@@ -8,6 +8,7 @@ import { hasValidContactEmail } from "../../../../lib/contact-email";
 import { saoPauloDayWindow } from "../../../../lib/triage-orchestrator";
 import { canonicalizeProfile } from "../../../../lib/canonical-profile";
 import { getAnalysisVersions } from "../../../../lib/analysis-versions";
+import { hasCurrentTriage, hasTriageableDescription, needsCurrentTriage } from "../../../../lib/current-triage";
 
 export const dynamic = "force-dynamic";
 
@@ -42,22 +43,8 @@ export async function GET(request: Request) {
   const codeScope = scope === "code" && Boolean(code);
   // user_job_analyses contém cálculos antigos de aderência que não representam
   // uma triagem. O histórico aditivo é a evidência de avaliação concluída.
-  const hasAuditableTriage = sql<number>`exists (
-    select 1 from ${triageHistory}
-    where ${triageHistory.userId} = ${user.userId}
-      and ${triageHistory.jobId} = ${jobs.id}
-      and ${triageHistory.profileRevision} = ${versions.profileRevision}
-      and ${triageHistory.rulesRevision} = ${versions.rulesRevision}
-      and ${triageHistory.instructionsRevision} = ${versions.instructionsRevision}
-  )`;
-  const pendingTriageCondition = sql`not exists (
-    select 1 from ${triageHistory}
-    where ${triageHistory.userId} = ${user.userId}
-      and ${triageHistory.jobId} = ${jobs.id}
-      and ${triageHistory.profileRevision} = ${versions.profileRevision}
-      and ${triageHistory.rulesRevision} = ${versions.rulesRevision}
-      and ${triageHistory.instructionsRevision} = ${versions.instructionsRevision}
-  )`;
+  const hasAuditableTriage = hasCurrentTriage(user.userId, versions);
+  const pendingTriageCondition = needsCurrentTriage(user.userId, versions);
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
   const todayWindow = saoPauloDayWindow(today);
   const items = await db
@@ -97,7 +84,7 @@ export async function GET(request: Request) {
       sentAt: draftOutbox.sentAt,
       applicationStatus: userJobStatus.applicationStatus,
       pipelineStage: userJobStatus.stage,
-      triaged: hasAuditableTriage,
+      triaged: sql<boolean>`${hasTriageableDescription()} and ${hasAuditableTriage}`,
     })
     // O Histórico também é a fila de trabalho. Começar por `jobs` preserva
     // as vagas que ainda não têm análise, permitindo que “Não analisadas” e
@@ -108,6 +95,8 @@ export async function GET(request: Request) {
       eq(userJobAnalyses.profileRevision, versions.profileRevision),
       eq(userJobAnalyses.rulesRevision, versions.rulesRevision),
       eq(userJobAnalyses.instructionsRevision, versions.instructionsRevision),
+      gte(userJobAnalyses.updatedAt, jobs.triageInputUpdatedAt),
+      hasTriageableDescription(),
     ))
     .leftJoin(jobSources, eq(jobs.sourceId, jobSources.id))
     .leftJoin(draftOutbox, and(eq(draftOutbox.userId, user.userId), eq(draftOutbox.jobId, jobs.id)))

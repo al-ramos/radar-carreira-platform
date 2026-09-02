@@ -1,10 +1,11 @@
-import { and, count, desc, eq, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db/index";
-import { automationHeartbeats, draftOutbox, importRuns, jobs, platformSettings, profiles, triageBatchItems, triageBatches, triageHistory, userJobAnalyses } from "../../../../db/schema";
+import { automationHeartbeats, draftOutbox, importRuns, jobs, platformSettings, profiles, triageBatchItems, triageBatches, userJobAnalyses } from "../../../../db/schema";
 import { isOwnerEmail } from "../../../../lib/access";
 import { getAnalysisVersions } from "../../../../lib/analysis-versions";
+import { hasTriageableDescription, needsCurrentTriage } from "../../../../lib/current-triage";
 import { canonicalizeProfile } from "../../../../lib/canonical-profile";
 import { queueUsageForToday } from "../../../../lib/queue-quota";
 import { deriveTriageObservability } from "../../../../lib/triage-observability";
@@ -57,14 +58,8 @@ export async function GET(request: Request) {
 
   const versions = getAnalysisVersions(canonicalizeProfile(profile));
   const budget = Math.max(1_000, Math.min(10_000, settings?.queueDailyOperationBudget ?? 7_500));
-  const pendingCurrentVersion = sql<number>`not exists (
-    select 1 from ${triageHistory}
-    where ${triageHistory.userId} = ${user.userId}
-      and ${triageHistory.jobId} = ${jobs.id}
-      and ${triageHistory.profileRevision} = ${versions.profileRevision}
-      and ${triageHistory.rulesRevision} = ${versions.rulesRevision}
-      and ${triageHistory.instructionsRevision} = ${versions.instructionsRevision}
-  )`;
+  const pendingCurrentVersion = needsCurrentTriage(user.userId, versions);
+  const descriptionReady = hasTriageableDescription();
 
   const [usage, latestImport, latestTriage, dispatchHeartbeat, recoveryHeartbeat, activeSummary, verdictRows, draftRows] = await Promise.all([
     queueUsageForToday(db, budget),
@@ -74,16 +69,19 @@ export async function GET(request: Request) {
     db.select().from(automationHeartbeats).where(eq(automationHeartbeats.id, "triage-recovery")).limit(1).then((rows) => rows[0] ?? null),
     db.select({
       total: count(),
-      pending: sql<number>`sum(case when ${pendingCurrentVersion} then 1 else 0 end)`,
+      pending: sql<number>`sum(case when ${descriptionReady} and ${pendingCurrentVersion} then 1 else 0 end)`,
+      missingDescription: sql<number>`sum(case when not (${descriptionReady}) then 1 else 0 end)`,
     }).from(jobs).where(eq(jobs.status, "active")).then((rows) => rows[0]),
     db.select({ verdict: userJobAnalyses.verdict, total: count() })
       .from(userJobAnalyses)
       .innerJoin(jobs, and(eq(jobs.id, userJobAnalyses.jobId), eq(jobs.status, "active")))
       .where(and(
+        descriptionReady,
         eq(userJobAnalyses.userId, user.userId),
         eq(userJobAnalyses.profileRevision, versions.profileRevision),
         eq(userJobAnalyses.rulesRevision, versions.rulesRevision),
         eq(userJobAnalyses.instructionsRevision, versions.instructionsRevision),
+        gte(userJobAnalyses.updatedAt, jobs.triageInputUpdatedAt),
       )).groupBy(userJobAnalyses.verdict),
     db.select({ status: draftOutbox.status, total: count() }).from(draftOutbox)
       .where(eq(draftOutbox.userId, user.userId)).groupBy(draftOutbox.status),
@@ -122,6 +120,7 @@ export async function GET(request: Request) {
     hardLimit: 10_000,
     scheduledEnabled: settings?.scheduledTriageEnabled ?? false,
     pending: Number(activeSummary?.pending ?? 0),
+    missingDescription: Number(activeSummary?.missingDescription ?? 0),
     activeJobs: Number(activeSummary?.total ?? 0),
     currentVerdicts: {
       approved: verdictTotal("✅"), probable: verdictTotal("🟡"),

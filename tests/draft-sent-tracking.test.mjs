@@ -78,7 +78,7 @@ test("todo envio é reconciliado por evidência do Gmail e a reconciliação iso
   assert.match(screen, /"Envio"/);
   assert.match(screen, /envios registrados/);
   assert.match(screen, /Envio informado manualmente/);
-  assert.match(screen, /Envio não confirmado/);
+  assert.match(screen, /Aguardando sua confirmação/);
   assert.match(screen, /Verificar envio no Gmail/);
   assert.match(screen, /Envio conciliado sem rascunho do Radar/);
   assert.match(screen, /item\.gmailDraftId \? "Rascunho usado" : "Não houve"/);
@@ -89,5 +89,5 @@ test("todo envio é reconciliado por evidência do Gmail e a reconciliação iso
   assert.match(queueRoute, /action === "confirmSent"/);
   assert.match(queueRoute, /Use Verificar envio primeiro/);
   assert.match(screen, /Tentar novamente/);
-  assert.match(screen, /envia automaticamente/);
+  assert.match(screen, /O envio só acontece após sua confirmação/);
 });

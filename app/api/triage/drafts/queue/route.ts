@@ -2,11 +2,14 @@ import { and, desc, eq, gte, inArray, or } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../../chatgpt-auth";
 import { getDb } from "../../../../../db/index";
-import { draftOutbox, jobs, triageBatches, triageHistory, userJobAnalyses, userJobStatus } from "../../../../../db/schema";
+import { draftOutbox, jobs, profiles, triageBatches, triageHistory, userJobAnalyses, userJobStatus } from "../../../../../db/schema";
 import { normalizeContactEmail } from "../../../../../lib/contact-email";
+import { hasTriageableDescription } from "../../../../../lib/current-triage";
 import { isSafeForDraft } from "../../../../../lib/draft-eligibility";
 import { markImmediateDraftFailure, requestImmediateDraftCreation, requestImmediateSentReconciliation } from "../../../../../lib/gmail-draft-priority";
 import { resolveAutomaticStage } from "../../../../../lib/pipeline-stage";
+import { canonicalizeProfile } from "../../../../../lib/canonical-profile";
+import { getAnalysisVersions } from "../../../../../lib/analysis-versions";
 
 export const dynamic = "force-dynamic";
 
@@ -45,17 +48,24 @@ async function recordApplicationSent(userId: string, jobId: string, sentAt: Date
 }
 
 /**
- * Reserva a fila persistente e aciona a criação e o envio imediato da
- * candidatura aprovada para o e-mail validado.
+ * Reserva a fila persistente e aciona o conector do Gmail. A criação do
+ * rascunho pode ser automática; o envio só é autorizado pela ação explícita
+ * `queue` desta rota.
  */
 export async function POST(request: Request) {
   const user = await getChatGPTUser();
   if (!user) return NextResponse.json({ error: "Autenticação necessária" }, { status: 401 });
   const db = getDb();
   const body = await request.json().catch(() => ({})) as DraftQueueRequest;
+  const profile = await db.select().from(profiles).where(eq(profiles.userId, user.userId)).limit(1).then((rows) => rows[0]);
+  if (!profile) return NextResponse.json({ error: "Complete seu perfil antes de preparar candidaturas." }, { status: 412 });
+  const versions = getAnalysisVersions(canonicalizeProfile(profile));
   if (body.action === "retryFailed") {
     const now = new Date();
-    const failed = await db.select({ id: draftOutbox.id }).from(draftOutbox).where(and(eq(draftOutbox.userId, user.userId), eq(draftOutbox.status, "failed")));
+    const failed = await db.select({ id: draftOutbox.id }).from(draftOutbox)
+      .innerJoin(jobs, eq(draftOutbox.jobId, jobs.id))
+      .innerJoin(triageHistory, and(eq(draftOutbox.historyId, triageHistory.id), eq(triageHistory.profileRevision, versions.profileRevision), eq(triageHistory.rulesRevision, versions.rulesRevision), eq(triageHistory.instructionsRevision, versions.instructionsRevision)))
+      .where(and(eq(draftOutbox.userId, user.userId), eq(draftOutbox.status, "failed"), hasTriageableDescription(), gte(triageHistory.createdAt, jobs.triageInputUpdatedAt)));
     for (const item of failed) await db.update(draftOutbox).set({ status: "pending", autoSendAuthorized: true, autoSendAuthorizedAt: now, error: null, updatedAt: now }).where(eq(draftOutbox.id, item.id));
     const immediateDraft = failed.length ? await requestImmediateDraftCreation(failed.map((item) => item.id)) : { requested: false };
     if (!immediateDraft.requested) await markImmediateDraftFailure(failed.map((item) => item.id), immediateDraft.reason);
@@ -78,9 +88,9 @@ export async function POST(request: Request) {
       if (!outbox) {
         const row = await db.select({ historyId: triageHistory.id, job: jobs, analysis: userJobAnalyses })
           .from(userJobAnalyses)
-          .innerJoin(jobs, eq(userJobAnalyses.jobId, jobs.id))
-          .leftJoin(triageHistory, and(eq(triageHistory.userId, user.userId), eq(triageHistory.jobId, jobs.id)))
-          .where(and(eq(userJobAnalyses.userId, user.userId), eq(userJobAnalyses.jobId, requestedJobIds[0])))
+          .innerJoin(jobs, and(eq(userJobAnalyses.jobId, jobs.id), gte(userJobAnalyses.updatedAt, jobs.triageInputUpdatedAt)))
+          .leftJoin(triageHistory, and(eq(triageHistory.userId, user.userId), eq(triageHistory.jobId, jobs.id), eq(triageHistory.profileRevision, versions.profileRevision), eq(triageHistory.rulesRevision, versions.rulesRevision), eq(triageHistory.instructionsRevision, versions.instructionsRevision), gte(triageHistory.createdAt, jobs.triageInputUpdatedAt)))
+          .where(and(eq(userJobAnalyses.userId, user.userId), eq(userJobAnalyses.jobId, requestedJobIds[0]), eq(userJobAnalyses.profileRevision, versions.profileRevision), eq(userJobAnalyses.rulesRevision, versions.rulesRevision), eq(userJobAnalyses.instructionsRevision, versions.instructionsRevision), hasTriageableDescription()))
           .orderBy(desc(triageHistory.createdAt)).limit(1).then((rows) => rows[0]);
         if (!row) return NextResponse.json({ error: "A vaga não possui análise vinculada para conferir o envio." }, { status: 404 });
         if (!normalizeContactEmail(row.job.contactEmail)) return NextResponse.json({ error: "A vaga não possui e-mail válido para conferir o envio." }, { status: 409 });
@@ -145,11 +155,15 @@ export async function POST(request: Request) {
       analysis: userJobAnalyses,
     })
       .from(userJobAnalyses)
-      .innerJoin(jobs, eq(userJobAnalyses.jobId, jobs.id))
-      .leftJoin(triageHistory, and(eq(triageHistory.userId, user.userId), eq(triageHistory.jobId, jobs.id)))
+      .innerJoin(jobs, and(eq(userJobAnalyses.jobId, jobs.id), gte(userJobAnalyses.updatedAt, jobs.triageInputUpdatedAt)))
+      .leftJoin(triageHistory, and(eq(triageHistory.userId, user.userId), eq(triageHistory.jobId, jobs.id), eq(triageHistory.profileRevision, versions.profileRevision), eq(triageHistory.rulesRevision, versions.rulesRevision), eq(triageHistory.instructionsRevision, versions.instructionsRevision), gte(triageHistory.createdAt, jobs.triageInputUpdatedAt)))
       .where(and(
         eq(userJobAnalyses.userId, user.userId),
+        eq(userJobAnalyses.profileRevision, versions.profileRevision),
+        eq(userJobAnalyses.rulesRevision, versions.rulesRevision),
+        eq(userJobAnalyses.instructionsRevision, versions.instructionsRevision),
         eq(jobs.status, "active"),
+        hasTriageableDescription(),
         requestedJobIds ? inArray(userJobAnalyses.jobId, requestedJobIds) : undefined,
         // Fonte/área/canal/período são recortes do painel de lote e não fazem
         // sentido quando vagas específicas foram pedidas (ação de uma linha ou
@@ -197,6 +211,11 @@ export async function POST(request: Request) {
       alreadyPresent += 1;
       if (existing.status === "pending") {
         if (authorizeAutomaticSend) await db.update(draftOutbox).set({ autoSendAuthorized: true, autoSendAuthorizedAt: now, updatedAt: now }).where(eq(draftOutbox.id, existing.id));
+        priorityOutboxIds.push(existing.id);
+      } else if (existing.status === "drafted" && authorizeAutomaticSend) {
+        // Um rascunho automático não autoriza envio. Esta ação explícita do
+        // portal devolve o item à fila com autorização individual.
+        await db.update(draftOutbox).set({ status: "pending", autoSendAuthorized: true, autoSendAuthorizedAt: now, error: null, updatedAt: now }).where(eq(draftOutbox.id, existing.id));
         priorityOutboxIds.push(existing.id);
       }
       continue;

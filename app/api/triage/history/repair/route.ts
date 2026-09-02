@@ -1,9 +1,12 @@
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, gte, isNull } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../../chatgpt-auth";
 import { getDb } from "../../../../../db/index";
-import { profiles, triageBatchItems, triageHistory, userJobAnalyses } from "../../../../../db/schema";
+import { jobs, profiles, triageBatchItems, triageHistory, userJobAnalyses } from "../../../../../db/schema";
 import { isOwnerEmail } from "../../../../../lib/access";
+import { canonicalizeProfile } from "../../../../../lib/canonical-profile";
+import { getAnalysisVersions } from "../../../../../lib/analysis-versions";
+import { hasTriageableDescription } from "../../../../../lib/current-triage";
 
 /**
  * Recupera somente avaliações já concluídas e registradas no histórico que,
@@ -16,9 +19,10 @@ export async function POST() {
   if (!isOwnerEmail(user.email)) return NextResponse.json({ error: "Acesso restrito ao proprietário" }, { status: 403 });
 
   const db = getDb();
-  const profile = await db.select({ updatedAt: profiles.updatedAt }).from(profiles)
+  const profile = await db.select().from(profiles)
     .where(eq(profiles.userId, user.userId)).limit(1).then((rows) => rows[0]);
   if (!profile) return NextResponse.json({ error: "Perfil técnico não encontrado" }, { status: 412 });
+  const versions = getAnalysisVersions(canonicalizeProfile(profile));
 
   const missingRows = await db.select({
     id: triageHistory.id, jobId: triageHistory.jobId,
@@ -26,13 +30,22 @@ export async function POST() {
     verdict: triageHistory.verdict, label: triageHistory.label, blocker: triageHistory.blocker, rows: triageHistory.rows,
     source: triageHistory.source, confidence: triageHistory.confidence, createdAt: triageHistory.createdAt,
   }).from(triageHistory)
+    .innerJoin(jobs, eq(triageHistory.jobId, jobs.id))
     .innerJoin(triageBatchItems, and(
       eq(triageBatchItems.batchId, triageHistory.batchId),
       eq(triageBatchItems.jobId, triageHistory.jobId),
       eq(triageBatchItems.status, "completed"),
     ))
     .leftJoin(userJobAnalyses, and(eq(userJobAnalyses.userId, user.userId), eq(userJobAnalyses.jobId, triageHistory.jobId)))
-    .where(and(eq(triageHistory.userId, user.userId), isNull(userJobAnalyses.jobId)))
+    .where(and(
+      eq(triageHistory.userId, user.userId),
+      eq(triageHistory.profileRevision, versions.profileRevision),
+      eq(triageHistory.rulesRevision, versions.rulesRevision),
+      eq(triageHistory.instructionsRevision, versions.instructionsRevision),
+      gte(triageHistory.createdAt, jobs.triageInputUpdatedAt),
+      hasTriageableDescription(),
+      isNull(userJobAnalyses.jobId),
+    ))
     .orderBy(desc(triageHistory.createdAt));
 
   // Há histórico aditivo (regras e, às vezes, refinamento por IA) para a mesma

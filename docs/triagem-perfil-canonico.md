@@ -8,6 +8,8 @@ Em execução, a única fonte do perfil do candidato é o registro autenticado n
 
 Sem `mastered_skills` no perfil canônico, a triagem não produz veredito. A ação correta é solicitar o cadastro das competências; nunca assumir uma stack fixa ou usar memória de sessão.
 
+A descrição da vaga também faz parte da versão da decisão. Registros com menos de 80 caracteres ficam pendentes como inconclusivos e são excluídos de regras, IA, Codex e rascunhos. Quando a coleta altera título, empresa, senioridade, modalidade, localização, stack, área ou descrição, `triage_input_updated_at` avança; históricos e análises anteriores deixam de ser vigentes e a nova versão entra novamente na fila.
+
 ## Decisão determinística
 
 | Resultado | Regra |
@@ -29,5 +31,5 @@ Tecnologias prioritárias — C#, .NET, SQL/PLSQL, VB6/Visual Basic, VBA, Office
 - Vaga marcada com senioridade ou tipo de atuação bloqueado no perfil: **BLOQUEADA**.
 - Vaga VBA + Access + SQL Server ou QA .NET Sênior configurada como exceção: não é bloqueada somente pela stack; os demais critérios continuam valendo.
 - Vaga com requisitos técnicos parcialmente atendidos e sem veto: **PROVÁVEL** ou **NÃO BATE**, conforme os critérios desfavoráveis e ressalvas registrados nas linhas do veredito.
-- Vaga `✅` com contato válido: elegível ao envio automático; o rascunho com currículo e assinatura é confirmado na outbox antes do envio.
+- Vaga `✅` com contato válido: elegível à criação automática de rascunho; o envio exige confirmação explícita registrada na outbox.
 - Desclassificação manual: grava nova decisão `❌`, preserva a análise anterior e cancela somente rascunhos ainda pendentes.

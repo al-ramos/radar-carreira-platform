@@ -1,6 +1,6 @@
-import { eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "../../../../db/index";
-import { importRuns, jobSources, jobs } from "../../../../db/schema";
+import { draftOutbox, importRuns, jobSources, jobs } from "../../../../db/schema";
 import { normalizeImportedJobs } from "../../../../lib/import-jobs";
 import { fingerprint, recordedJobDate, sourcePublishedJobDate, type ImportedJob } from "../../../../lib/jobs";
 import { inferJobArea } from "../../../../lib/job-area";
@@ -47,6 +47,7 @@ function valuesFor(job: ImportedJob, now: Date) {
     contactEmail: job.contactEmail ?? null,
     contactSubject: job.contactSubject ?? null,
     description: job.description ?? "",
+    triageInputUpdatedAt: now,
     firstSeenAt: now,
     lastSeenAt: now,
     status: job.applicationClosed ? "closed" as const : shouldArchiveImportedJob(sourcePublishedAt, now) ? "archived" as const : "active" as const,
@@ -71,15 +72,17 @@ export async function POST(request: Request) {
 
   const payload = await request.json().catch(() => null) as { action?: string; jobs?: unknown[] } | null;
   if (payload?.action === "test") return json({ ok: true, connected: true });
-  const items = normalizeImportedJobs(Array.isArray(payload?.jobs) ? payload.jobs : []);
-  if (!items.length) return json({ error: "Nenhuma vaga válida recebida" }, { status: 400 });
-  if (items.length > 2000) return json({ error: "O limite é de 2.000 vagas por envio" }, { status: 400 });
+  const normalizedItems = normalizeImportedJobs(Array.isArray(payload?.jobs) ? payload.jobs : []);
+  const items = normalizedItems.filter((job) => (job.description?.trim().length ?? 0) >= 80);
+  const rejected = normalizedItems.length - items.length;
+  if (!items.length) return json({ error: "Nenhuma vaga com descrição íntegra foi recebida", received: normalizedItems.length, rejected }, { status: 422 });
+  if (normalizedItems.length > 2000) return json({ error: "O limite é de 2.000 vagas por envio" }, { status: 400 });
 
   const entries = [...new Map(items.map(job => [fingerprint(job), job])).entries()].map(([fp, job]) => ({ fp, job }));
   const duplicateRows = items.length - entries.length;
   const runId = crypto.randomUUID();
   const startedAt = new Date();
-  await db.insert(importRuns).values({ id: runId, source: "Extensão LinkedIn", sourceId: SOURCE_ID, channel: "extension", status: "running", received: items.length, duplicates: duplicateRows, actorUserId: config.userId ?? "collector", startedAt });
+  await db.insert(importRuns).values({ id: runId, source: "Extensão LinkedIn", sourceId: SOURCE_ID, channel: "extension", status: "running", received: normalizedItems.length, duplicates: duplicateRows, errors: rejected, actorUserId: config.userId ?? "collector", startedAt });
 
   let inserted = 0;
   let updated = 0;
@@ -87,8 +90,8 @@ export async function POST(request: Request) {
     if (!entries.length) {
       await db.update(importRuns).set({ status: "completed", finishedAt: new Date() }).where(eq(importRuns.id, runId));
       await db.update(jobSources).set({ lastRunAt: new Date() }).where(eq(jobSources.id, SOURCE_ID));
-      await notifyImportRun(db, { runId, source: "Extensão LinkedIn", status: "completed", received: items.length, inserted: 0, updated: 0, duplicates: 0 }).catch(() => undefined);
-      return json({ ok: true, accepted: 0, received: items.length, duplicates: 0, rejected: 0, inserted: 0, updated: 0, message: "Nenhuma vaga nova no lote" });
+      await notifyImportRun(db, { runId, source: "Extensão LinkedIn", status: "completed", received: normalizedItems.length, inserted: 0, updated: 0, duplicates: 0 }).catch(() => undefined);
+      return json({ ok: true, accepted: 0, received: normalizedItems.length, duplicates: 0, rejected, inserted: 0, updated: 0, message: "Nenhuma vaga nova no lote" });
     }
     const existing = new Set<string>();
     for (const batch of chunks(entries.map(entry => entry.fp), LOOKUP_BATCH_SIZE)) {
@@ -100,6 +103,16 @@ export async function POST(request: Request) {
       const now = new Date();
       const statements = batch.map(({ job }) => {
         const values = valuesFor(job, now);
+        const triageInputChanged = sql<boolean>`
+          coalesce(${jobs.company}, '') <> ${values.company}
+          or coalesce(${jobs.title}, '') <> ${values.title}
+          or coalesce(${jobs.seniority}, '') <> coalesce(${values.seniority}, '')
+          or coalesce(${jobs.workMode}, '') <> coalesce(${values.workMode}, '')
+          or coalesce(${jobs.location}, '') <> coalesce(${values.location}, '')
+          or coalesce(${jobs.stack}, '[]') <> ${values.stack}
+          or coalesce(${jobs.roleArea}, '') <> ${values.roleArea}
+          or coalesce(${jobs.description}, '') <> ${values.description}
+        `;
         return db.insert(jobs).values(values).onConflictDoUpdate({
           target: jobs.fingerprint,
           set: {
@@ -120,6 +133,7 @@ export async function POST(request: Request) {
             contactEmail: sql`coalesce(${values.contactEmail}, ${jobs.contactEmail})`,
             contactSubject: sql`coalesce(${values.contactSubject}, ${jobs.contactSubject})`,
             description: values.description,
+            triageInputUpdatedAt: sql`case when ${triageInputChanged} then ${now.getTime()} else ${jobs.triageInputUpdatedAt} end`,
             lastSeenAt: now,
             status: values.status === "closed" ? "closed" : values.status === "archived" ? "archived" : sql`case when ${jobs.status} in ('archived', 'closed') then ${jobs.status} else 'active' end`,
             updatedAt: now,
@@ -127,19 +141,35 @@ export async function POST(request: Request) {
         });
       });
       await db.batch(statements as [typeof statements[number], ...typeof statements[number][]]);
+      const changedJobs = await db.select({ id: jobs.id }).from(jobs).where(and(
+        inArray(jobs.fingerprint, batch.map(entry => entry.fp)),
+        eq(jobs.triageInputUpdatedAt, now),
+      ));
+      if (changedJobs.length) {
+        await db.update(draftOutbox).set({
+          status: "cancelled",
+          autoSendAuthorized: false,
+          autoSendAuthorizedAt: null,
+          error: "Dados da vaga foram atualizados; aguardando nova triagem.",
+          updatedAt: now,
+        }).where(and(
+          inArray(draftOutbox.jobId, changedJobs.map(job => job.id)),
+          inArray(draftOutbox.status, ["pending", "checking", "drafted", "failed"]),
+        ));
+      }
       await recordImportRunJobs(db, runId, batch.map(entry => entry.fp), existing, now);
       batch.forEach(entry => existing.has(entry.fp) ? updated++ : inserted++);
       await db.update(importRuns).set({ inserted, updated, duplicates: duplicateRows }).where(eq(importRuns.id, runId));
     }
 
-    await db.update(importRuns).set({ status: "completed", inserted, updated, duplicates: duplicateRows, finishedAt: new Date() }).where(eq(importRuns.id, runId));
+    await db.update(importRuns).set({ status: "completed", inserted, updated, duplicates: duplicateRows, errors: rejected, finishedAt: new Date() }).where(eq(importRuns.id, runId));
     await db.update(jobSources).set({ lastRunAt: new Date() }).where(eq(jobSources.id, SOURCE_ID));
-    await notifyImportRun(db, { runId, source: "Extensão LinkedIn", status: "completed", received: items.length, inserted, updated, duplicates: duplicateRows }).catch(() => undefined);
-    return json({ ok: true, accepted: items.length, received: items.length, duplicates: duplicateRows, rejected: 0, inserted, updated });
+    await notifyImportRun(db, { runId, source: "Extensão LinkedIn", status: "completed", received: normalizedItems.length, inserted, updated, duplicates: duplicateRows }).catch(() => undefined);
+    return json({ ok: true, accepted: items.length, received: normalizedItems.length, duplicates: duplicateRows, rejected, inserted, updated });
   } catch (error) {
     const detail = error instanceof Error ? error.message : "Falha desconhecida durante a gravação";
     await db.update(importRuns).set({ status: "failed", inserted, updated, duplicates: duplicateRows, errors: 1, finishedAt: new Date() }).where(eq(importRuns.id, runId)).catch(() => undefined);
-    await notifyImportRun(db, { runId, source: "Extensão LinkedIn", status: "failed", received: items.length, inserted, updated, duplicates: duplicateRows, error: detail.slice(0, 300) }).catch(() => undefined);
+    await notifyImportRun(db, { runId, source: "Extensão LinkedIn", status: "failed", received: normalizedItems.length, inserted, updated, duplicates: duplicateRows, error: detail.slice(0, 300) }).catch(() => undefined);
     return json({ error: "A importação foi interrompida. Reenvie o mesmo lote para concluir as vagas pendentes.", runId, inserted, updated }, { status: 500 });
   }
 }
