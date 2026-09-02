@@ -8,6 +8,7 @@ import { inferTechnologyStack } from "../../../lib/technology-stack";
 import { allowedWorkModes, listFromStored, normalizeCareerRules } from "../../../lib/profile-options";
 import { computeVerdict, type VerdictEmoji } from "../../../lib/verdict";
 import { JOB_AREAS } from "../../../lib/job-area";
+import { d1QuotaResponse } from "../../../lib/d1-quota";
 
 export const dynamic = "force-dynamic";
 
@@ -421,18 +422,23 @@ description: degradedMode
 sort === "imported" ? desc(jobs.firstSeenAt) : desc(jobs.publishedAt),
 desc(jobs.createdAt),
 );
-const [rows, eligibleTotals, emailMissingTotals, sourceTotals, ...metadataRows] = await Promise.all([
+const summaryCondition = and(baseCondition, applicationVisibilityCondition);
+// Uma única passagem substitui três COUNTs independentes sobre toda a tabela.
+// Com ~5,7 mil vagas e centenas de paginações, as três varreduras anteriores
+// eram suficientes para consumir sozinhas a cota diária de 5 milhões de rows.
+const summaryQuery = getDb().select({
+  eligible: sql<number>`sum(case when ${condition} then 1 else 0 end)`,
+  emailMissing: sql<number>`sum(case when ${emailMissingCondition} then 1 else 0 end)`,
+  total: sql<number>`sum(case when ${summaryCondition} then 1 else 0 end)`,
+  linkedIn: sql<number>`sum(case when ${summaryCondition} and ${jobs.url} like ${"%linkedin.com%"} then 1 else 0 end)`,
+  apinfo: sql<number>`sum(case when ${summaryCondition} and (${jobs.sourceId} = ${"apinfo-extension"} or ${jobs.url} like ${"%apinfo.com%"}) then 1 else 0 end)`,
+  sources: sql<number>`count(distinct case when ${summaryCondition} then ${jobs.sourceId} end)`,
+}).from(jobs);
+const [rows, summaryTotals, ...metadataRows] = await Promise.all([
 requiresPostFiltering
 ? rowsQuery.limit(MAX_AFFINITY_CANDIDATES)
 : rowsQuery.limit(limit).offset(offset),
-getDb().select({ total: sql<number>`count(*)` }).from(jobs).where(condition),
-getDb().select({ total: sql<number>`count(*)` }).from(jobs).where(emailMissingCondition),
-getDb().select({
-total: sql<number>`count(*)`,
-linkedIn: sql<number>`sum(case when ${jobs.url} like ${"%linkedin.com%"} then 1 else 0 end)`,
-apinfo: sql<number>`sum(case when ${jobs.sourceId} = ${"apinfo-extension"} or ${jobs.url} like ${"%apinfo.com%"} then 1 else 0 end)`,
-sources: sql<number>`count(distinct ${jobs.sourceId})`,
-}).from(jobs).where(and(baseCondition, applicationVisibilityCondition)),
+summaryQuery,
 ...(metadataMode === "full" ? filterOptionsQueries() : []),
 ]);
 
@@ -503,7 +509,7 @@ item.score >= minScore &&
 if (sort !== "imported") filtered.sort((a, b) => b.score - a.score);
 const totalCount = requiresPostFiltering
 ? filtered.length
-: Number(eligibleTotals[0]?.total ?? 0);
+: Number(summaryTotals[0]?.eligible ?? 0);
 const pageRows = requiresPostFiltering ? filtered.slice(offset, offset + limit) : filtered;
 const applicationStatusByJobId = new Map(pipeline.map((item) => [item.jobId, item.applicationStatus]));
 const priorityByJobId = new Map(pipeline.map((item) => [item.jobId, item.priority]));
@@ -521,9 +527,9 @@ applicationStatus: applicationStatusByJobId.get(job.id) ?? null,
 priority: priorityByJobId.get(job.id) ?? null,
 }));
 
-const totalLinkedIn = Number(sourceTotals[0]?.linkedIn ?? 0);
-const totalApinfo = Number(sourceTotals[0]?.apinfo ?? 0);
-const baseTotal = Number(sourceTotals[0]?.total ?? 0);
+const totalLinkedIn = Number(summaryTotals[0]?.linkedIn ?? 0);
+const totalApinfo = Number(summaryTotals[0]?.apinfo ?? 0);
+const baseTotal = Number(summaryTotals[0]?.total ?? 0);
 const headers = new Headers(degradedMode ? { "Cache-Control": "private, max-age=30, stale-while-revalidate=120" } : undefined);
 headers.set("Server-Timing", `radar-jobs;dur=${Math.round(performance.now() - startedAt)}`);
 headers.set("X-Radar-Jobs-Mode", degradedMode ? "degraded" : "full");
@@ -531,11 +537,11 @@ console.log(JSON.stringify({ event: "jobs_list", mode: degradedMode ? "degraded"
 return NextResponse.json({
 jobs: result,
 total: totalCount,
-emailMissingCount: Number(emailMissingTotals[0]?.total ?? 0),
+emailMissingCount: Number(summaryTotals[0]?.emailMissing ?? 0),
 totalLinkedIn,
 totalApinfo,
 totalOtherSources: Math.max(0, baseTotal - totalLinkedIn - totalApinfo),
-sourcesCount: Number(sourceTotals[0]?.sources ?? 0),
+sourcesCount: Number(summaryTotals[0]?.sources ?? 0),
 filterOptions,
 page,
 limit,
@@ -552,6 +558,8 @@ period: period === "all" ? "all" : hours,
 }, { headers });
 } catch (error) {
 console.error(JSON.stringify({ event: "jobs_list_failed", durationMs: Math.round(performance.now() - startedAt), error: error instanceof Error ? error.message : "Banco indisponível" }));
+const quota = d1QuotaResponse(error);
+if (quota) return quota;
 return NextResponse.json(
 { jobs: [], mode: "unavailable", error: error instanceof Error ? error.message : "Banco indisponível" },
 { status: 503, headers: { "Server-Timing": `radar-jobs;dur=${Math.round(performance.now() - startedAt)}`, "X-Radar-Jobs-Mode": "unavailable" } },

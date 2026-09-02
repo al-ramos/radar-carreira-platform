@@ -22,7 +22,9 @@ test("a listagem pagina no D1 antes de enriquecer o fluxo normal", async () => {
   // sem refletir a ordem/paginação reais.
   assert.match(route, /requiresPostFiltering = .*sort === "score"/);
   assert.match(route, /substr\(\$\{jobs\.description\}/);
-  assert.match(route, /const \[rows, eligibleTotals, emailMissingTotals, sourceTotals, \.\.\.metadataRows\]/);
+  assert.match(route, /const \[rows, summaryTotals, \.\.\.metadataRows\]/);
+  assert.match(route, /const summaryQuery = getDb\(\)\.select/);
+  assert.doesNotMatch(route, /emailMissingTotals|sourceTotals/);
   assert.match(route, /metadataMode === "only"/);
   assert.match(route, /searchParams\.get\("meta"\) === "none"/);
   assert.match(route, /Pontuação reaproveitada da triagem atual/);

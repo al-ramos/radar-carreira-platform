@@ -6,6 +6,7 @@ import { fingerprint, recordedJobDate, sourcePublishedJobDate, type ImportedJob 
 import { inferJobArea } from "../../../../../lib/job-area";
 import { recordImportRunJobs } from "../../../../../lib/import-tracking";
 import { notifyImportRun } from "../../../../../lib/notifications";
+import { d1QuotaResponse } from "../../../../../lib/d1-quota";
 import { shouldArchiveImportedJob } from "../../../../../lib/job-archive-policy";
 
 export const dynamic = "force-dynamic";
@@ -191,7 +192,7 @@ export async function OPTIONS() {
   return new Response(null, { status: 204, headers: CORS_HEADERS });
 }
 
-export async function POST(request: Request, { params }: { params: Promise<{ sourceId: string }> }) {
+async function handlePost(request: Request, { params }: { params: Promise<{ sourceId: string }> }) {
   const { sourceId } = await params;
   const sourceName = KNOWN_SOURCES[sourceId];
   if (!sourceName) return json({ error: "Fonte de coleta desconhecida" }, { status: 404 });
@@ -339,5 +340,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ sou
       { error: "A importação foi interrompida. Reenvie o mesmo lote para concluir as vagas pendentes.", runId, inserted, updated },
       { status: 500 },
     );
+  }
+}
+
+export async function POST(request: Request, context: { params: Promise<{ sourceId: string }> }) {
+  try {
+    return await handlePost(request, context);
+  } catch (error) {
+    const quota = d1QuotaResponse(error);
+    if (quota) return quota;
+    throw error;
   }
 }
