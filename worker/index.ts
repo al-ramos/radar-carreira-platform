@@ -131,7 +131,9 @@ type TriageQueueMessage = {
 };
 type ScheduledTriageQueueMessage = {
   kind: "scheduled-triage";
-  run: { sourceId: string; dateScope: "received"; homePeriod: "all"; aiMode: "ambiguous" | "off"; batchSize: number };
+  // `sourceId` ausente significa varredura global do backlog: toda vaga ativa
+  // que ainda não tem triagem na revisão atual de perfil, regras e instruções.
+  run: { sourceId?: string; dateScope: "received"; homePeriod: "all"; aiMode: "ambiguous" | "off"; batchSize: number };
   continuation: number;
 };
 type AiReviewQueueMessage = { kind: "ai-review"; reviewId: string; chunkId?: string; action: "chunk" | "consolidate" };
@@ -209,6 +211,40 @@ async function dispatchScheduledTriage(env: Env, messages: ScheduledTriageQueueM
     const detail = queueErrorDetail(error);
     await recordAutomationHeartbeat(env, "triage-dispatch", "failed", startedAt, detail);
     console.error(JSON.stringify({ event: "triage_dispatch", status: "failed", messages: messages.length, detail }));
+    throw error;
+  }
+}
+
+/**
+ * Varredura de recuperação do backlog de triagem.
+ *
+ * A triagem agendada por fonte só é disparada quando uma coleta ou importação
+ * daquela fonte responde com sucesso. Isso cobre vaga nova, mas não cobre a
+ * invalidação: quando o perfil canônico ou a revisão das regras muda, toda
+ * vaga ativa já coletada passa a precisar de triagem nova e nenhuma
+ * importação volta a acontecer para as fontes que pararam de produzir. Sem
+ * esta varredura o veredito oficial dessas vagas congela em uma revisão
+ * antiga — e a fila do Codex chega a receber recortes cujo veredito foi
+ * calculado com um perfil que não existe mais.
+ *
+ * A varredura não usa IA (`aiMode: "off"`): recompor o veredito determinístico
+ * é o que restaura a consistência, e o backlog pode ter milhares de vagas.
+ * O tamanho do lote é o mesmo parâmetro operacional da agenda, e a rota
+ * devolve `hasMore` para o consumidor encadear as continuações.
+ */
+async function dispatchTriageBacklogSweep(env: Env) {
+  const settings = await env.DB.prepare("SELECT scheduled_triage_enabled AS enabled, scheduled_triage_batch_size AS batchSize FROM platform_settings WHERE id = 'global' LIMIT 1").first<{ enabled: number | null; batchSize: number | null }>();
+  if (!settings?.enabled) return;
+  const startedAt = Date.now();
+  try {
+    await dispatchScheduledTriage(env, [{
+      kind: "scheduled-triage",
+      run: { dateScope: "received", homePeriod: "all", aiMode: "off", batchSize: Math.max(1, Math.min(1_000, Math.floor(settings.batchSize ?? 100))) },
+      continuation: 0,
+    }]);
+    await recordAutomationHeartbeat(env, "triage-backlog-sweep", "completed", startedAt);
+  } catch (error) {
+    await recordAutomationHeartbeat(env, "triage-backlog-sweep", "failed", startedAt, queueErrorDetail(error));
     throw error;
   }
 }
@@ -462,6 +498,15 @@ const worker = {
       }));
       ctx.waitUntil(observePendingDrafts(env).catch((error) => {
         console.error(JSON.stringify({ event: "draft_monitor_failed", detail: error instanceof Error ? error.message.slice(0, 500) : "Falha ao observar rascunhos" }));
+      }));
+    }
+    // Um tique por hora (o cron dispara a cada 15 minutos). A varredura só
+    // enfileira uma mensagem; as continuações vêm do consumidor, sob o mesmo
+    // orçamento diário de operações de fila.
+    const sweepMinute = scheduledDate.getUTCMinutes();
+    if (sweepMinute >= 30 && sweepMinute < 45) {
+      ctx.waitUntil(dispatchTriageBacklogSweep(env).catch((error) => {
+        console.error(JSON.stringify({ event: "triage_backlog_sweep_failed", detail: error instanceof Error ? error.message.slice(0, 500) : "Falha ao varrer o backlog de triagem" }));
       }));
     }
     if (scheduledDate.getUTCHours() === 3 && scheduledDate.getUTCMinutes() < 2) {
