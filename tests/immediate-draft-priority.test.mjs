@@ -4,7 +4,7 @@ import test from "node:test";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
-test("candidaturas elegíveis criam o rascunho e o enviam automaticamente com rastreabilidade", async () => {
+test("rascunhos automáticos só são enviados depois de autorização explícita", async () => {
   const [queue, cron, connector, workflow, priority, screen] = await Promise.all([
     read("../app/api/triage/drafts/queue/route.ts"),
     read("../app/api/cron/drafts/route.ts"),
@@ -53,7 +53,8 @@ test("candidaturas elegíveis criam o rascunho e o enviam automaticamente com ra
   assert.match(screen, /Envio automático indisponível/);
   assert.match(screen, /draftActionStatuses/);
   assert.match(screen, /Gmail acionado; atualize em instantes para confirmar o envio/);
-  assert.match(screen, /item\.draftStatus === "checking" \|\| item\.draftStatus === "drafted" \|\| item\.draftStatus === "sent"/);
+  assert.doesNotMatch(screen, /item\.draftStatus === "checking" \|\| item\.draftStatus === "drafted" \|\| item\.draftStatus === "sent"/);
+  assert.match(screen, /Aguardando sua confirmação/);
   assert.match(screen, /Tentar novamente/);
   assert.match(screen, /item\.draftError/);
   assert.match(priority, /markImmediateDraftFailure/);
@@ -74,4 +75,5 @@ test("a autorização automática não é aplicada retroativamente aos rascunhos
   assert.match(run, /autoSendAuthorized: false, autoSendAuthorizedAt: null/, "a recuperação de aprovações antigas não autoriza envio");
   assert.match(connector, /autoSend && item\.autoSendAuthorized === true/);
   assert.match(queue, /const authorizeAutomaticSend = body\.action === "queue"/);
+  assert.match(queue, /existing\.status === "drafted" && authorizeAutomaticSend/);
 });

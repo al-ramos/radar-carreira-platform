@@ -1,11 +1,13 @@
-import { and, desc, eq, gte, inArray, isNull } from "drizzle-orm";
+import { and, desc, eq, gte, inArray } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db/index";
-import { jobs, profiles, triageAiReviews, userJobAnalyses } from "../../../../db/schema";
+import { jobs, profiles, triageAiReviews } from "../../../../db/schema";
 import { isOwnerEmail } from "../../../../lib/access";
+import { getAnalysisVersions } from "../../../../lib/analysis-versions";
 import { canonicalizeProfile } from "../../../../lib/canonical-profile";
+import { needsCurrentTriage } from "../../../../lib/current-triage";
 import { applyAiVerdicts, type AiVerdictEntry } from "../../../../lib/apply-ai-verdict";
 
 const VERDICTS = new Set(["✅", "🟡", "🔴", "❌"]);
@@ -75,17 +77,19 @@ export async function POST(request: Request) {
   const db = getDb();
   const profile = await db.select().from(profiles).where(eq(profiles.userId, auth.user.userId)).limit(1).then((rows) => rows[0]);
   if (!profile) return NextResponse.json({ error: "Complete seu perfil antes de preparar uma análise." }, { status: 412 });
+  const canonical = canonicalizeProfile(profile);
+  const versions = getAnalysisVersions(canonical);
   const cutoff = homePeriod === "all" ? null : new Date(Date.now() - Number(homePeriod) * 36e5);
   const selected = await db.select({ id: jobs.id, title: jobs.title, company: jobs.company, location: jobs.location, url: jobs.url, description: jobs.description })
-    .from(jobs).leftJoin(userJobAnalyses, and(eq(userJobAnalyses.userId, auth.user.userId), eq(userJobAnalyses.jobId, jobs.id)))
-    .where(and(eq(jobs.status, "active"), requestedJobIds ? inArray(jobs.id, requestedJobIds) : sourceId === "all" ? undefined : eq(jobs.sourceId, sourceId), requestedJobIds ? undefined : cutoff ? gte(jobs.firstSeenAt, cutoff) : undefined, requestedJobIds ? undefined : roleArea && roleArea !== "all" ? eq(jobs.roleArea, roleArea) : undefined, requestedJobIds ? undefined : ingestionChannel ? eq(jobs.ingestionChannel, ingestionChannel as "extension" | "email" | "connector" | "file" | "api") : undefined, requestedJobIds ? undefined : includeTriaged ? undefined : isNull(userJobAnalyses.jobId)))
+    .from(jobs)
+    .where(and(eq(jobs.status, "active"), requestedJobIds ? inArray(jobs.id, requestedJobIds) : sourceId === "all" ? undefined : eq(jobs.sourceId, sourceId), requestedJobIds ? undefined : cutoff ? gte(jobs.firstSeenAt, cutoff) : undefined, requestedJobIds ? undefined : roleArea && roleArea !== "all" ? eq(jobs.roleArea, roleArea) : undefined, requestedJobIds ? undefined : ingestionChannel ? eq(jobs.ingestionChannel, ingestionChannel as "extension" | "email" | "connector" | "file" | "api") : undefined, requestedJobIds ? undefined : includeTriaged ? undefined : needsCurrentTriage(auth.user.userId, versions)))
     .orderBy(desc(jobs.firstSeenAt), desc(jobs.createdAt)).limit(MAX_CODEX_REVIEW_JOBS + 1);
   if (!selected.length) return NextResponse.json({ error: "Nenhuma vaga corresponde ao recorte atual." }, { status: 404 });
   if (selected.length > MAX_CODEX_REVIEW_JOBS) return NextResponse.json({ error: `A análise pelo Codex aceita até ${MAX_CODEX_REVIEW_JOBS} vagas por vez. Refine Área, Canal ou Período.` }, { status: 422 });
 
   const selection = {
     filters: requestedJobIds ? { jobIds: requestedJobIds } : { sourceId, homePeriod, roleArea: roleArea || "all", ingestionChannel: ingestionChannel || "all", includeTriaged },
-    profile: canonicalizeProfile(profile),
+    profile: canonical,
     jobs: selected.map((job) => ({ ...job, description: job.description.slice(0, 3200) })),
   };
   const id = randomUUID();

@@ -198,6 +198,11 @@ export async function POST(request: Request) {
       if (existing.status === "pending") {
         if (authorizeAutomaticSend) await db.update(draftOutbox).set({ autoSendAuthorized: true, autoSendAuthorizedAt: now, updatedAt: now }).where(eq(draftOutbox.id, existing.id));
         priorityOutboxIds.push(existing.id);
+      } else if (existing.status === "drafted" && authorizeAutomaticSend) {
+        // Um rascunho automático não autoriza envio. Esta ação explícita do
+        // portal devolve o item à fila com autorização individual.
+        await db.update(draftOutbox).set({ status: "pending", autoSendAuthorized: true, autoSendAuthorizedAt: now, error: null, updatedAt: now }).where(eq(draftOutbox.id, existing.id));
+        priorityOutboxIds.push(existing.id);
       }
       continue;
     }

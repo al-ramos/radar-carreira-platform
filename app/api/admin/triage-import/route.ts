@@ -86,7 +86,7 @@ export async function POST(request: Request) {
       if (row.verdict === "✅") {
         if (isSafeForDraft({ verdict: row.verdict, contactEmail: job.contactEmail, sourceId: job.sourceId })) {
           const outboxId = crypto.randomUUID();
-          const inserted = await db.insert(draftOutbox).values({ id: outboxId, userId: user.userId, jobId: job.id, historyId, status: "pending", autoSendAuthorized: true, autoSendAuthorizedAt: now, createdAt: now, updatedAt: now }).onConflictDoNothing().returning({ id: draftOutbox.id });
+          const inserted = await db.insert(draftOutbox).values({ id: outboxId, userId: user.userId, jobId: job.id, historyId, status: "pending", autoSendAuthorized: false, autoSendAuthorizedAt: null, createdAt: now, updatedAt: now }).onConflictDoNothing().returning({ id: draftOutbox.id });
           if (inserted.length) { draftsQueued += 1; pendingOutboxIds.push(outboxId); }
         }
       }

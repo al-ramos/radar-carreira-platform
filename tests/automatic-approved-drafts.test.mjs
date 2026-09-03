@@ -4,7 +4,7 @@ import test from "node:test";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
-test("toda aprovação com e-mail válido cria e envia a candidatura imediatamente", async () => {
+test("toda aprovação com e-mail válido cria rascunho sem autorizar envio", async () => {
   const [run, worker, aiVerdicts, csvImport, settings, migration, docs] = await Promise.all([
     read("../app/api/triage/run/route.ts"),
     read("../worker/index.ts"),
@@ -30,9 +30,11 @@ test("toda aprovação com e-mail válido cria e envia a candidatura imediatamen
   assert.match(monitor, /approvedRecovery: "explicit_only"/);
   assert.match(aiVerdicts, /if \(entry\.verdict === "✅"\)/);
   assert.match(aiVerdicts, /requestImmediateDraftCreation\(pendingOutboxIds\)/);
+  assert.match(aiVerdicts, /autoSendAuthorized: false, autoSendAuthorizedAt: null/);
   assert.match(csvImport, /requestImmediateDraftCreation\(pendingOutboxIds\)/);
+  assert.match(csvImport, /autoSendAuthorized: false, autoSendAuthorizedAt: null/);
   assert.match(settings, /scheduledTriageDraftQueueEnabled:true/);
   assert.match(settings, /scheduledTriageAutoCreateEnabled:true/);
   assert.match(migration, /scheduled_triage_auto_create_enabled` = true/);
-  assert.match(docs, /envia automaticamente/);
+  assert.match(docs, /envio exige confirmação explícita/);
 });

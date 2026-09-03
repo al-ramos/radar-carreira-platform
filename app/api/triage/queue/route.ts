@@ -3,8 +3,10 @@ import { env } from "cloudflare:workers";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db/index";
-import { jobs, platformSettings, profiles, triageBatches, triageBatchItems, userJobAnalyses } from "../../../../db/schema";
+import { jobs, platformSettings, profiles, triageBatches, triageBatchItems } from "../../../../db/schema";
+import { getAnalysisVersions } from "../../../../lib/analysis-versions";
 import { canonicalizeProfile } from "../../../../lib/canonical-profile";
+import { needsCurrentTriage } from "../../../../lib/current-triage";
 import { normalizeTriageRunRequest, saoPauloDayWindow, type TriageRunRequest } from "../../../../lib/triage-orchestrator";
 import { reserveQueueMessages } from "../../../../lib/queue-quota";
 
@@ -112,14 +114,13 @@ export async function POST(request: Request) {
 
   const profile = await db.select().from(profiles).where(eq(profiles.userId, user.userId)).limit(1).then((rows) => rows[0]);
   if (!profile) return NextResponse.json({ error: "Complete seu perfil antes de iniciar a triagem." }, { status: 412 });
-  canonicalizeProfile(profile);
+  const versions = getAnalysisVersions(canonicalizeProfile(profile));
 
   const usesHomePeriod = Boolean(run.homePeriod);
   const scopedToReferenceDay = !usesHomePeriod && (Boolean(run.sourceId) || run.dateScope === "received");
   const dateColumn = run.dateScope === "received" ? jobs.firstSeenAt : jobs.publishedAt;
   const homeCutoff = run.homePeriod && run.homePeriod !== "all" ? new Date(Date.now() - Number(run.homePeriod) * 36e5) : null;
   const candidates = await db.select({ jobId: jobs.id }).from(jobs)
-    .leftJoin(userJobAnalyses, and(eq(userJobAnalyses.userId, user.userId), eq(userJobAnalyses.jobId, jobs.id)))
     .where(and(
       eq(jobs.status, "active"),
       scopedToReferenceDay ? gte(dateColumn, saoPauloDayWindow(run.referenceDate).start) : undefined,
@@ -128,7 +129,7 @@ export async function POST(request: Request) {
       run.sourceId ? eq(jobs.sourceId, run.sourceId) : undefined,
       run.roleArea ? eq(jobs.roleArea, run.roleArea) : undefined,
       run.ingestionChannel ? eq(jobs.ingestionChannel, run.ingestionChannel) : undefined,
-      run.reprocess ? undefined : isNull(userJobAnalyses.jobId),
+      run.reprocess ? undefined : needsCurrentTriage(user.userId, versions),
     )).orderBy(desc(jobs.firstSeenAt), desc(jobs.createdAt)).limit(run.batchSize);
 
   if (!candidates.length) return NextResponse.json({ ok: true, batchId: null, queued: 0 });

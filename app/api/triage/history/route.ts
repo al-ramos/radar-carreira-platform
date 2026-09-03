@@ -8,6 +8,7 @@ import { hasValidContactEmail } from "../../../../lib/contact-email";
 import { saoPauloDayWindow } from "../../../../lib/triage-orchestrator";
 import { canonicalizeProfile } from "../../../../lib/canonical-profile";
 import { getAnalysisVersions } from "../../../../lib/analysis-versions";
+import { hasCurrentTriage, needsCurrentTriage } from "../../../../lib/current-triage";
 
 export const dynamic = "force-dynamic";
 
@@ -42,22 +43,8 @@ export async function GET(request: Request) {
   const codeScope = scope === "code" && Boolean(code);
   // user_job_analyses contém cálculos antigos de aderência que não representam
   // uma triagem. O histórico aditivo é a evidência de avaliação concluída.
-  const hasAuditableTriage = sql<number>`exists (
-    select 1 from ${triageHistory}
-    where ${triageHistory.userId} = ${user.userId}
-      and ${triageHistory.jobId} = ${jobs.id}
-      and ${triageHistory.profileRevision} = ${versions.profileRevision}
-      and ${triageHistory.rulesRevision} = ${versions.rulesRevision}
-      and ${triageHistory.instructionsRevision} = ${versions.instructionsRevision}
-  )`;
-  const pendingTriageCondition = sql`not exists (
-    select 1 from ${triageHistory}
-    where ${triageHistory.userId} = ${user.userId}
-      and ${triageHistory.jobId} = ${jobs.id}
-      and ${triageHistory.profileRevision} = ${versions.profileRevision}
-      and ${triageHistory.rulesRevision} = ${versions.rulesRevision}
-      and ${triageHistory.instructionsRevision} = ${versions.instructionsRevision}
-  )`;
+  const hasAuditableTriage = hasCurrentTriage(user.userId, versions);
+  const pendingTriageCondition = needsCurrentTriage(user.userId, versions);
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
   const todayWindow = saoPauloDayWindow(today);
   const items = await db

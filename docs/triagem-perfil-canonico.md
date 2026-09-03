@@ -29,5 +29,5 @@ Tecnologias prioritárias — C#, .NET, SQL/PLSQL, VB6/Visual Basic, VBA, Office
 - Vaga marcada com senioridade ou tipo de atuação bloqueado no perfil: **BLOQUEADA**.
 - Vaga VBA + Access + SQL Server ou QA .NET Sênior configurada como exceção: não é bloqueada somente pela stack; os demais critérios continuam valendo.
 - Vaga com requisitos técnicos parcialmente atendidos e sem veto: **PROVÁVEL** ou **NÃO BATE**, conforme os critérios desfavoráveis e ressalvas registrados nas linhas do veredito.
-- Vaga `✅` com contato válido: elegível ao envio automático; o rascunho com currículo e assinatura é confirmado na outbox antes do envio.
+- Vaga `✅` com contato válido: elegível à criação automática de rascunho; o envio exige confirmação explícita registrada na outbox.
 - Desclassificação manual: grava nova decisão `❌`, preserva a análise anterior e cancela somente rascunhos ainda pendentes.

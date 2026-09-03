@@ -1,9 +1,12 @@
-import { and, count, eq, gte } from "drizzle-orm";
+import { and, count, eq, gte, sql } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db/index";
-import { jobs, userJobAnalyses } from "../../../../db/schema";
+import { jobs, profiles } from "../../../../db/schema";
 import { isOwnerEmail } from "../../../../lib/access";
+import { getAnalysisVersions } from "../../../../lib/analysis-versions";
+import { canonicalizeProfile } from "../../../../lib/canonical-profile";
+import { hasCurrentTriage } from "../../../../lib/current-triage";
 
 export const dynamic = "force-dynamic";
 
@@ -24,11 +27,15 @@ export async function GET(request: NextRequest) {
   if (ingestionChannel && !channels.has(ingestionChannel)) return NextResponse.json({ error: "Canal inválido" }, { status: 400 });
   if (!["24", "72", "168", "all"].includes(homePeriod)) return NextResponse.json({ error: "Período inválido" }, { status: 400 });
 
+  const db = getDb();
+  const profile = await db.select().from(profiles).where(eq(profiles.userId, user.userId)).limit(1).then((rows) => rows[0]);
+  if (!profile) return NextResponse.json({ error: "Complete seu perfil antes de consultar a triagem." }, { status: 412 });
+  const versions = getAnalysisVersions(canonicalizeProfile(profile));
+  const currentTriage = hasCurrentTriage(user.userId, versions);
   const cutoff = homePeriod === "all" ? null : new Date(Date.now() - Number(homePeriod) * 36e5);
   const [result] = await getDb()
-    .select({ total: count(), triaged: count(userJobAnalyses.jobId) })
+    .select({ total: count(), triaged: sql<number>`sum(case when ${currentTriage} then 1 else 0 end)` })
     .from(jobs)
-    .leftJoin(userJobAnalyses, and(eq(userJobAnalyses.userId, user.userId), eq(userJobAnalyses.jobId, jobs.id)))
     .where(and(
       eq(jobs.status, "active"),
       sourceId === "all" ? undefined : eq(jobs.sourceId, sourceId),

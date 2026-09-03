@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, isNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNull, lt, sql } from "drizzle-orm";
 import { createHash, randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
@@ -6,6 +6,7 @@ import { getDb } from "../../../../db/index";
 import { aiUsageEvents, draftOutbox, jobAiFacts, jobSources, jobs, platformSettings, profiles, triageBatchItems, triageBatches, triageDeduplication, triageHistory, userJobAnalyses } from "../../../../db/schema";
 import { getAnalysisVersions } from "../../../../lib/analysis-versions";
 import { canonicalizeProfile } from "../../../../lib/canonical-profile";
+import { needsCurrentTriage } from "../../../../lib/current-triage";
 import { evaluateDeterministicTriage, needsAiRefinement } from "../../../../lib/deterministic-triage";
 import { normalizeTriageRunRequest, saoPauloDayWindow, type TriageRunRequest } from "../../../../lib/triage-orchestrator";
 import { triageIdempotencyKey } from "../../../../lib/triage-idempotency";
@@ -138,9 +139,7 @@ export async function POST(request: Request) {
       run.roleArea ? eq(jobs.roleArea, run.roleArea) : undefined,
       run.ingestionChannel ? eq(jobs.ingestionChannel, run.ingestionChannel) : undefined,
       queuedJobId ? eq(jobs.id, queuedJobId) : undefined,
-      run.reprocess ? undefined : run.aiMode === "ambiguous"
-        ? or(isNull(userJobAnalyses.jobId), and(eq(userJobAnalyses.source, "rules"), lt(userJobAnalyses.confidence, 100), isNull(userJobAnalyses.blocker)))
-        : isNull(userJobAnalyses.jobId),
+      run.reprocess ? undefined : needsCurrentTriage(userId, versions),
     ))
     .orderBy(desc(jobs.firstSeenAt), desc(jobs.createdAt))
     .limit(run.batchSize);
@@ -295,7 +294,7 @@ export async function POST(request: Request) {
         sourceId: job.sourceId,
       })) {
         const outboxId = crypto.randomUUID();
-        const inserted = await db.insert(draftOutbox).values({ id: outboxId, userId, jobId: job.id, historyId, status: "pending", autoSendAuthorized: true, autoSendAuthorizedAt: now, createdAt: now, updatedAt: now }).onConflictDoNothing().returning({ id: draftOutbox.id });
+        const inserted = await db.insert(draftOutbox).values({ id: outboxId, userId, jobId: job.id, historyId, status: "pending", autoSendAuthorized: false, autoSendAuthorizedAt: null, createdAt: now, updatedAt: now }).onConflictDoNothing().returning({ id: draftOutbox.id });
         // onConflictDoNothing + returning só devolve linha quando realmente
         // inseriu (vaga já enfileirada por outra rodada não conta de novo
         // nem entra na chamada ao conector Gmail desta execução).

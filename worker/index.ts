@@ -262,7 +262,6 @@ async function finalizeStalledTerminalTriageBatches(env: Env) {
           ELSE NULL
         END
     WHERE batch.id = ? AND batch.status IN ('queued', 'running')
-      AND EXISTS (SELECT 1 FROM triage_batch_items item WHERE item.batch_id = batch.id)
       AND NOT EXISTS (
         SELECT 1 FROM triage_batch_items item
         WHERE item.batch_id = batch.id AND item.status IN ('queued', 'processing')
@@ -411,12 +410,14 @@ const worker = {
     // estoque de vagas ativas ainda não triadas, em lotes continuáveis.
     // Assim, fontes pull, extensões e Gmail seguem o mesmo fluxo.
     const importMatch = /^\/api\/collector\/import\/([^/]+)$/.exec(url.pathname);
-    const importEndpoints = Boolean(importMatch) || url.pathname === "/api/cron/email-import" || url.pathname === "/api/cron/collect" || url.pathname === "/api/admin/collect";
+    const linkedinExtensionImport = url.pathname === "/api/collector/import";
+    const importEndpoints = linkedinExtensionImport || Boolean(importMatch) || url.pathname === "/api/cron/email-import" || url.pathname === "/api/cron/collect" || url.pathname === "/api/admin/collect";
     if (importEndpoints && request.method === "POST" && response.ok) {
       const result = await response.clone().json().catch(() => null) as {
         accepted?: unknown; jobs?: unknown; outcomes?: Array<{ id?: unknown; inserted?: unknown; updated?: unknown }>;
       } | null;
       const sourceIds = new Set<string>();
+      if (linkedinExtensionImport && typeof result?.accepted === "number" && result.accepted > 0) sourceIds.add("linkedin-extension");
       if (importMatch && typeof result?.accepted === "number" && result.accepted > 0) sourceIds.add(importMatch[1]);
       if (url.pathname === "/api/cron/email-import" && typeof result?.jobs === "number" && result.jobs > 0) sourceIds.add("gmail-radarvagas");
       // A coleta de uma fonte é também a oportunidade diária de escoar o

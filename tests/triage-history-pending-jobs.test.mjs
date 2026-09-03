@@ -3,9 +3,10 @@ import test from "node:test";
 import { readFile } from "node:fs/promises";
 
 test("histórico inclui todas as vagas ainda não analisadas quando solicitado", async () => {
-  const [route, report] = await Promise.all([
+  const [route, report, helper] = await Promise.all([
     readFile(new URL("../app/api/triage/history/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/TriageReport.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/current-triage.ts", import.meta.url), "utf8"),
   ]);
   assert.match(route, /\.from\(jobs\)/);
   assert.match(route, /leftJoin\(userJobAnalyses, and\(eq\(userJobAnalyses\.userId, user\.userId\)/);
@@ -13,9 +14,9 @@ test("histórico inclui todas as vagas ainda não analisadas quando solicitado",
   assert.match(route, /eq\(userJobAnalyses\.rulesRevision, versions\.rulesRevision\)/);
   assert.match(route, /eq\(userJobAnalyses\.instructionsRevision, versions\.instructionsRevision\)/);
   assert.match(route, /const pendingScope = scope === "pending"/);
-  assert.match(route, /const pendingTriageCondition = sql`not exists \(/);
-  assert.match(route, /select 1 from \$\{triageHistory\}/);
-  assert.match(route, /\$\{triageHistory\.rulesRevision\} = \$\{versions\.rulesRevision\}/);
+  assert.match(route, /const pendingTriageCondition = needsCurrentTriage\(user\.userId, versions\)/);
+  assert.match(helper, /select 1 from \$\{triageHistory\}/);
+  assert.match(helper, /\$\{triageHistory\.rulesRevision\} = \$\{versions\.rulesRevision\}/);
   assert.match(route, /triaged: Boolean\(item\.triaged\)/);
   assert.match(route, /label: item\.label \?\? "Aguardando triagem"/);
   assert.match(report, /useState<"pending" \| "analysed" \| "all">\("all"\)/);

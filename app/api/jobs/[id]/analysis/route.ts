@@ -35,7 +35,7 @@ async function queueApprovedDraft(input: {
   }
 
   const outboxId = crypto.randomUUID();
-  await db.insert(draftOutbox).values({ id: outboxId, userId: input.userId, jobId: input.job.id, historyId: history.id, status: "pending", autoSendAuthorized: true, autoSendAuthorizedAt: input.now, createdAt: input.now, updatedAt: input.now });
+  await db.insert(draftOutbox).values({ id: outboxId, userId: input.userId, jobId: input.job.id, historyId: history.id, status: "pending", autoSendAuthorized: false, autoSendAuthorizedAt: null, createdAt: input.now, updatedAt: input.now });
   const immediate = await requestImmediateDraftCreation([outboxId]);
   if (!immediate.requested) await markImmediateDraftFailure([outboxId], immediate.reason);
   return { queued: true, created: immediate.created ?? 0, sent: immediate.sent ?? 0, reason: immediate.reason };

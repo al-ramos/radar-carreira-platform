@@ -124,7 +124,11 @@ export const triageHistory = sqliteTable("triage_history", {
   verdict: text("verdict", { enum: ["✅", "🟡", "🔴", "❌"] }).notNull(), label: text("label").notNull(), blocker: text("blocker"),
   source: text("source", { enum: ["rules", "ai"] }).notNull(), confidence: integer("confidence").notNull(), rows: text("rows").notNull().default("[]"),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-}, t => [index("triage_history_user_job_created_idx").on(t.userId, t.jobId, t.createdAt), index("triage_history_batch_idx").on(t.batchId)]);
+}, t => [
+  index("triage_history_user_job_created_idx").on(t.userId, t.jobId, t.createdAt),
+  index("triage_history_current_version_idx").on(t.userId, t.jobId, t.profileRevision, t.rulesRevision, t.instructionsRevision),
+  index("triage_history_batch_idx").on(t.batchId),
+]);
 
 export const triageBatchItems = sqliteTable("triage_batch_items", {
   batchId: text("batch_id").notNull().references(() => triageBatches.id), jobId: text("job_id").notNull().references(() => jobs.id),

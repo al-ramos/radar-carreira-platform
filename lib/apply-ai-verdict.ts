@@ -15,8 +15,8 @@ export type AiVerdictEntry = { jobId: string; verdict: "✅" | "🟡" | "🔴" |
  * Aplica vereditos vindos de uma leitura de IA (nuvem ou Codex) como veredito
  * oficial da vaga — mesma trilha usada pela reimportação de CSV
  * (/api/admin/triage-import). Decisão explícita do proprietário: a partir de
- * uma análise por IA considerada válida, ✅ cria e envia a candidatura quando
- * houver e-mail válido; 🟡, 🔴 e ❌ ficam apenas no histórico.
+ * uma análise por IA considerada válida, ✅ cria o rascunho quando houver
+ * e-mail válido; o envio depende de confirmação explícita no portal.
  */
 export async function applyAiVerdicts(userId: string, batchScope: string, entries: AiVerdictEntry[]): Promise<{ applied: number; draftsQueued: number; draftsCreated: number; emailsSent: number }> {
   if (!entries.length) return { applied: 0, draftsQueued: 0, draftsCreated: 0, emailsSent: 0 };
@@ -49,7 +49,7 @@ export async function applyAiVerdicts(userId: string, batchScope: string, entrie
     if (entry.verdict === "✅") {
       if (isSafeForDraft({ verdict: entry.verdict, contactEmail: job.contactEmail, sourceId: job.sourceId })) {
         const outboxId = randomUUID();
-        const inserted = await db.insert(draftOutbox).values({ id: outboxId, userId, jobId: job.id, historyId, status: "pending", autoSendAuthorized: true, autoSendAuthorizedAt: now, createdAt: now, updatedAt: now }).onConflictDoNothing().returning({ id: draftOutbox.id });
+        const inserted = await db.insert(draftOutbox).values({ id: outboxId, userId, jobId: job.id, historyId, status: "pending", autoSendAuthorized: false, autoSendAuthorizedAt: null, createdAt: now, updatedAt: now }).onConflictDoNothing().returning({ id: draftOutbox.id });
         if (inserted.length) { draftsQueued += 1; pendingOutboxIds.push(outboxId); }
       }
     }

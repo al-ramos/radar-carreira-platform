@@ -2,9 +2,10 @@ import { and, count, desc, eq, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db/index";
-import { automationHeartbeats, draftOutbox, importRuns, jobs, platformSettings, profiles, triageBatchItems, triageBatches, triageHistory, userJobAnalyses } from "../../../../db/schema";
+import { automationHeartbeats, draftOutbox, importRuns, jobs, platformSettings, profiles, triageBatchItems, triageBatches, userJobAnalyses } from "../../../../db/schema";
 import { isOwnerEmail } from "../../../../lib/access";
 import { getAnalysisVersions } from "../../../../lib/analysis-versions";
+import { needsCurrentTriage } from "../../../../lib/current-triage";
 import { canonicalizeProfile } from "../../../../lib/canonical-profile";
 import { queueUsageForToday } from "../../../../lib/queue-quota";
 import { deriveTriageObservability } from "../../../../lib/triage-observability";
@@ -57,14 +58,7 @@ export async function GET(request: Request) {
 
   const versions = getAnalysisVersions(canonicalizeProfile(profile));
   const budget = Math.max(1_000, Math.min(10_000, settings?.queueDailyOperationBudget ?? 7_500));
-  const pendingCurrentVersion = sql<number>`not exists (
-    select 1 from ${triageHistory}
-    where ${triageHistory.userId} = ${user.userId}
-      and ${triageHistory.jobId} = ${jobs.id}
-      and ${triageHistory.profileRevision} = ${versions.profileRevision}
-      and ${triageHistory.rulesRevision} = ${versions.rulesRevision}
-      and ${triageHistory.instructionsRevision} = ${versions.instructionsRevision}
-  )`;
+  const pendingCurrentVersion = needsCurrentTriage(user.userId, versions);
 
   const [usage, latestImport, latestTriage, dispatchHeartbeat, recoveryHeartbeat, activeSummary, verdictRows, draftRows] = await Promise.all([
     queueUsageForToday(db, budget),
