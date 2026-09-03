@@ -67,7 +67,7 @@ test("os seis pontos de conclusão/falha de import_runs notificam o histórico",
   for (const route of routes) assert.match(route, /notifyImportRun/);
 });
 
-test("o sino abre o relatório detalhado de importação e o log da triagem para quem administra fontes", async () => {
+test("o sino abre o relatório detalhado de importação, o log da triagem e os detalhes da vaga para quem administra fontes", async () => {
   const [dashboard, bell, styles, report, route] = await Promise.all([
     read("../app/Dashboard.tsx"),
     read("../app/NotificationBell.tsx"),

@@ -83,6 +83,7 @@ export async function GET(request: Request) {
       gmailSentId: draftOutbox.gmailSentId,
       sentAt: draftOutbox.sentAt,
       applicationStatus: userJobStatus.applicationStatus,
+      applicationSentAt: userJobStatus.sentAt,
       pipelineStage: userJobStatus.stage,
       triaged: sql<boolean>`${hasTriageableDescription()} and ${hasAuditableTriage}`,
     })
@@ -183,6 +184,9 @@ export async function GET(request: Request) {
   return NextResponse.json({
     items: items.map((item) => ({
       ...item,
+      // A justificativa é parte do veredito oficial; devolva-a também no
+      // resumo da linha para que a tabela explique a decisão sem novo acesso.
+      label: item.explanation?.trim() ? `${item.label} · ${item.explanation.trim()}` : item.label,
       // Importações anteriores à coluna `source_published_at` ainda possuem a
       // data de publicação em `published_at`. Sem esse fallback, a consulta
       // APInfo do dia perde vagas que foram efetivamente publicadas hoje.

@@ -17,6 +17,15 @@
 
 - Para este repositório, crie novas branches com o padrão `codex/<nome-da-tarefa>`.
 
+## Trabalho concorrente e worktrees
+
+- Crie novas branches de trabalho em clones ou `git worktree` isolados sob `C:\GitHub\RadarCarreira` por padrão; use outro diretório somente quando a pessoa usuária solicitar explicitamente.
+- A existência de vários `git worktree` é esperada e não constitui bloqueio por si só: cada entrega deve permanecer isolada em sua própria branch/worktree.
+- Antes de editar, integrar ou publicar, verifique `git status --short`, `git worktree list --porcelain` e a presença de `.git/*.lock`. Considere a cópia principal insegura para publicação quando estiver suja.
+- Nunca faça commit, `push`, merge, rebase, limpeza (`git gc`/`git worktree prune`) ou alteração de arquivos compartilhados a partir de uma cópia com trabalho alheio pendente. Use um clone ou worktree limpo e leve somente os arquivos da entrega validada.
+- Não remova locks nem interrompa processos Git/Node de outras tarefas sem autorização explícita. Se houver concorrência, registre o bloqueio e aguarde ou crie um ambiente isolado.
+- Depois de confirmar commit, push e publicação em produção, remova o clone ou worktree temporário criado exclusivamente para aquela publicação, desde que esteja limpo. Nunca remova a cópia principal, worktrees de trabalho ativo ou qualquer diretório com alterações pendentes.
+
 ## Padrões operacionais permanentes
 
 - Registre no card correspondente do Notion toda correção, entrega funcional ou incidente: contexto, causa, evidências, correção aplicada, validação e próximo passo.

@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { jobSourceLabel } from "../lib/job-source";
 type PilotResult = { batchId: string; processed: Array<{ jobId: string; title: string; company: string; reference: string | null; contactEligible: boolean; aiEligible: boolean; aiStatus: string; verdict: string; label: string; blocker: string | null }>; skipped: number; aiCompleted?: number };
-type HistoryItem = { id: string; batchId: string; jobId: string; verdict: string | null; label: string; blocker: string | null; source: string; confidence: number; rows: string; processedAt: string | null; triaged: boolean; title: string; company: string; jobStatus?: "active" | "possibly_closed" | "closed" | "archived"; externalId: string | null; description: string; stack: string; jobSource: string | null; jobSourceName: string | null; workMode: string | null; location: string | null; sourcePublishedAt: string | null; receivedAt: string; url: string; applyUrl: string | null; contactEmail: string | null; hasValidContactEmail: boolean; draftStatus: "pending" | "checking" | "drafted" | "sent" | "failed" | "cancelled" | null; draftSubject: string; draftError: string | null; draftUpdatedAt: string | null; gmailDraftId: string | null; gmailSentId: string | null; sentAt: string | null; applicationStatus: "opened" | "generated" | "sent" | "responded" | null; pipelineStage: "viewed" | "saved" | "applied" | "interview" | "offer" | "rejected" | "archived" | null; trigger: string };
+type HistoryItem = { id: string; batchId: string; jobId: string; verdict: string | null; label: string; blocker: string | null; source: string; confidence: number; rows: string; explanation: string | null; processedAt: string | null; triaged: boolean; title: string; company: string; jobStatus?: "active" | "possibly_closed" | "closed" | "archived"; externalId: string | null; description: string; stack: string; jobSource: string | null; jobSourceName: string | null; workMode: string | null; location: string | null; sourcePublishedAt: string | null; receivedAt: string; url: string; applyUrl: string | null; contactEmail: string | null; hasValidContactEmail: boolean; draftStatus: "pending" | "checking" | "drafted" | "sent" | "failed" | "cancelled" | null; draftSubject: string; draftError: string | null; draftUpdatedAt: string | null; gmailDraftId: string | null; gmailSentId: string | null; sentAt: string | null; applicationStatus: "opened" | "generated" | "sent" | "responded" | null; applicationSentAt: string | null; pipelineStage: "viewed" | "saved" | "applied" | "interview" | "offer" | "rejected" | "archived" | null; trigger: string };
 const withAvailabilityLabel = (item: HistoryItem): HistoryItem => {
   const availability = item.jobStatus === "closed" ? "Vaga encerrada na fonte" : item.jobStatus === "possibly_closed" ? "Vaga possivelmente encerrada" : item.jobStatus === "archived" ? "Vaga arquivada" : null;
   return availability ? { ...item, label: `${availability} · ${item.label}` } : item;
@@ -39,6 +39,16 @@ const isExternalAiReassessment = (item: Pick<HistoryItem, "source" | "rows">) =>
   if (item.source !== "ai") return false;
   try { return JSON.parse(item.rows)?.source === "csv-import"; }
   catch { return false; }
+};
+/** Justificativa persistida da decisão, com compatibilidade para análises antigas. */
+const verdictDetail = (item: Pick<HistoryItem, "explanation" | "rows" | "blocker" | "label">) => {
+  if (item.explanation?.trim()) return item.explanation.trim();
+  try {
+    const rows = JSON.parse(item.rows) as { note?: unknown; ai?: { reason?: unknown } };
+    if (typeof rows.note === "string" && rows.note.trim()) return rows.note.trim();
+    if (typeof rows.ai?.reason === "string" && rows.ai.reason.trim()) return rows.ai.reason.trim();
+  } catch { /* Registros legados podem não ter um detalhe estruturado. */ }
+  return item.blocker?.trim() || item.label;
 };
 const homePeriodLabel = (period: string) => period === "24" ? "recebidas nas últimas 24h" : period === "72" ? "recebidas nos últimos 3 dias" : period === "168" ? "recebidas nos últimos 7 dias" : "todas as vagas";
 const profileList = (values: string[], fallback: string) => values.length ? values.join(" · ") : fallback;
@@ -134,7 +144,7 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
         const legacy = await legacyResponse.json() as { items?: LegacyItem[] };
         if (!isCurrentRequest()) return false;
         if (!legacyResponse.ok) throw new Error("Falha ao consultar as avaliações existentes.");
-        const items = (legacy.items ?? []).map((item): HistoryItem => ({ id: `legacy-${item.jobId}`, batchId: "legacy", jobId: item.jobId, verdict: item.veredito, label: item.motivo ?? "Avaliação registrada", blocker: null, source: "legacy", confidence: 0, rows: "", processedAt: item.processedAt, triaged: true, title: item.title, company: item.company, externalId: item.externalId, description: "", stack: "[]", jobSource: item.sourceId, jobSourceName: item.sourceName, workMode: item.workMode, location: item.location, sourcePublishedAt: item.sourcePublishedAt, receivedAt: item.receivedAt, url: item.url, applyUrl: null, contactEmail: item.contactEmail, hasValidContactEmail: Boolean(item.contactEmail?.includes("@")), draftStatus: null, draftSubject: "", draftError: null, draftUpdatedAt: null, gmailDraftId: null, gmailSentId: null, sentAt: null, applicationStatus: null, pipelineStage: null, trigger: "legacy" }));
+        const items = (legacy.items ?? []).map((item): HistoryItem => ({ id: `legacy-${item.jobId}`, batchId: "legacy", jobId: item.jobId, verdict: item.veredito, label: item.motivo ?? "Avaliação registrada", blocker: null, source: "legacy", confidence: 0, rows: "", explanation: item.motivo, processedAt: item.processedAt, triaged: true, title: item.title, company: item.company, externalId: item.externalId, description: "", stack: "[]", jobSource: item.sourceId, jobSourceName: item.sourceName, workMode: item.workMode, location: item.location, sourcePublishedAt: item.sourcePublishedAt, receivedAt: item.receivedAt, url: item.url, applyUrl: null, contactEmail: item.contactEmail, hasValidContactEmail: Boolean(item.contactEmail?.includes("@")), draftStatus: null, draftSubject: "", draftError: null, draftUpdatedAt: null, gmailDraftId: null, gmailSentId: null, sentAt: null, applicationStatus: null, applicationSentAt: null, pipelineStage: null, trigger: "legacy" }));
         // Uma falha transitória em /api/triage/history não pode apagar o lote
         // manual em andamento: mantém batches/batchItems/operational como
         // estavam e só complementa o histórico com o acervo legado. Sem isso,
@@ -601,17 +611,57 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
   const downloadSelectedHistoryCsv = () => {
     if (!selectedHistory.length) return;
     const csvCell = (value: string | null | undefined) => `"${(value ?? "").replace(/"/g, '""')}"`;
-    const jobDescription = (item: HistoryItem) => {
+    const jobDetails = (item: HistoryItem) => {
       let stack: string[] = [];
       try {
         const parsed = JSON.parse(item.stack);
         stack = Array.isArray(parsed) ? parsed.filter((skill): skill is string => typeof skill === "string") : [];
       } catch { /* detalhes legados sem stack */ }
-      return [item.description.trim(), stack.length ? `Stack: ${stack.join(", ")}` : ""].filter(Boolean).join(" · ") || "Detalhes não informados";
+      const text = `${item.title} ${item.description} ${stack.join(" ")}`.toLocaleLowerCase("pt-BR");
+      const evidence = [
+        ["c#", "C#"], [".net", ".NET"], ["dotnet", ".NET"], ["vb.net", "VB.NET"], ["vb6", "VB6"], ["visual basic", "Visual Basic"],
+        ["sql server", "SQL Server"], ["postgresql", "PostgreSQL"], ["mysql", "MySQL"], ["oracle", "Oracle"], ["sqlite", "SQLite"],
+      ].flatMap(([term, label]) => text.includes(term) ? [label] : []);
+      const uniqueEvidence = [...new Set(evidence)];
+      const dotnetInTitle = /(?:c#|\.net|dot\.net|vb\.?net|vb6|visual basic)/i.test(item.title);
+      const technicalRole = /desenvolv|programador|engenheir|backend|fullstack|tech lead|arquiteto/i.test(item.title);
+      const stackValidation = !uniqueEvidence.length
+        ? "Não identificada"
+        : dotnetInTitle || technicalRole
+          ? "Confirmada"
+          : "Secundária";
+      const contract = /\bclt\b/i.test(text) && /\bpj\b/i.test(text) ? "PJ ou CLT" : /\bclt\b/i.test(text) ? "CLT" : /\bpj\b/i.test(text) ? "PJ" : "Não informado";
+      const hybridFrequency = item.description.match(/(?:\d+\s*(?:x|dias?)\s*(?:por\s*)?(?:semana|m[eê]s)|\d+\s*vez(?:es)?\s*(?:por\s*)?m[eê]s)[^.;\n]{0,45}(?:presencial|remoto)|(?:presencial|remoto)[^.;\n]{0,45}(?:\d+\s*(?:x|dias?|vez(?:es)?))/i)?.[0];
+      const modality = /h[ií]brid/i.test(`${item.workMode ?? ""} ${item.description}`)
+        ? `Híbrido${hybridFrequency ? ` — ${hybridFrequency.trim()}` : ""}`
+        : /remot|home office/i.test(`${item.workMode ?? ""} ${item.description}`)
+          ? "Remoto"
+          : /presencial/i.test(`${item.workMode ?? ""} ${item.description}`)
+            ? "Presencial"
+            : item.workMode || "Não informada";
+      const caveats = [
+        stackValidation === "Secundária" ? ".NET/C# aparece como tecnologia de contexto, não como foco explícito da função." : "",
+        !uniqueEvidence.length ? "Sem evidência da sua stack dominada no texto capturado." : "",
+        /ingl[eê]s|espanhol/i.test(text) ? "A descrição menciona idioma em termo evitado do perfil." : "",
+        contract === "Não informado" ? "Contrato não informado." : "",
+      ].filter(Boolean).join(" ") || "Nenhuma ressalva estrutural identificada no texto capturado.";
+      return {
+        company: item.company || "Não informada",
+        location: item.location || "Não informado",
+        modality,
+        contract,
+        stackValidation,
+        evidence: uniqueEvidence.length ? `Evidências: ${uniqueEvidence.join(", ")}.` : "Sem evidência técnica identificada.",
+        caveats,
+        confirmation: item.description.trim() ? "Dados capturados no Radar" : "Descrição ainda não capturada; confirmar na fonte.",
+      };
     };
     const csv = [
-      "codigo;titulo;status;descricao",
-      ...selectedHistory.map((item) => [item.externalId ?? item.jobId, item.title, item.label || "Não analisada", jobDescription(item)].map(csvCell).join(";")),
+      "código;título;empresa;local exato;modalidade;contrato;stack .NET validada;evidências;ressalvas;confirmação;status;detalhe do veredito",
+      ...selectedHistory.map((item) => {
+        const details = jobDetails(item);
+        return [item.externalId ?? item.jobId, item.title, details.company, details.location, details.modality, details.contract, details.stackValidation, details.evidence, details.caveats, details.confirmation, item.verdict, verdictDetail(item)].map(csvCell).join(";");
+      }),
     ].join("\r\n");
     const link = document.createElement("a");
     link.href = URL.createObjectURL(new Blob([`\ufeff${csv}`], { type: "text/csv;charset=utf-8" }));
@@ -1132,7 +1182,7 @@ export default function TriageReport({ open = true, close, openJobInRadar, sourc
                 <span><b>{selectedHistory.length}</b> vaga(s) selecionada(s)</span>
                 <button type="button" className="triage-queue-button" disabled={aiReviewLoading} onClick={() => void openAiPrompt(selectedHistory.map((item) => item.jobId))}>Consultar IA</button>
                 <button type="button" className="triage-queue-button" disabled={openingApplications || selectedAvailableHistory.length === 0 || selectedAvailableHistory.length > 20} onClick={() => void openSelectedApplications(selectedAvailableHistory)} title={selectedAvailableHistory.length === 0 ? "As vagas selecionadas estão encerradas ou arquivadas na fonte." : selectedAvailableHistory.length > 20 ? "Abra até 20 vagas por vez para evitar bloqueio de pop-ups." : "Abre os portais e registra candidatura iniciada; nunca envia formulários."}>{openingApplications ? "Abrindo candidaturas…" : `Abrir candidaturas (${Math.min(selectedAvailableHistory.length, 20)})`}</button>
-                <button type="button" className="triage-queue-button" onClick={downloadSelectedHistoryCsv} title="Baixa código, título, status atual e descrição do status das vagas selecionadas.">Baixar CSV</button>
+                <button type="button" className="triage-queue-button" onClick={downloadSelectedHistoryCsv} title="Baixa o detalhamento de modalidade, contrato, stack .NET, evidências e ressalvas das vagas selecionadas.">Baixar CSV detalhado</button>
                 {selectedHistory.length === 1 && selectedHistory[0].jobSource === "apinfo-extension" && selectedHistory[0].hasValidContactEmail && selectedHistory[0].draftStatus !== "sent" && <><button type="button" className="triage-queue-button" disabled={reconcilingSentJobId === selectedHistory[0].jobId} onClick={() => void reconcileSentDraft(selectedHistory[0].jobId)}>{reconcilingSentJobId === selectedHistory[0].jobId ? "Consultando Gmail…" : "Verificar envio no Gmail"}</button>{selectedHistory[0].draftStatus && <button type="button" className="triage-queue-button" disabled={reconcilingSentJobId === selectedHistory[0].jobId} onClick={() => void confirmSentDraft(selectedHistory[0].jobId)}>Confirmar envio</button>}</>}
                 <button type="button" className="triage-queue-button" disabled={queueingDrafts || selectedHistory.length > 100} onClick={() => void reuseSelectedCompanyContacts()} title={selectedHistory.length > 100 ? "Consulte até 100 vagas por vez." : "Procura somente e-mails de empresas já cadastrados no Radar e preenche vagas sem contato."}>Consultar contatos já cadastrados</button>
                 <button type="button" className="triage-queue-button" disabled={queueingDrafts || selectedAvailableHistory.length === 0 || selectedAvailableHistory.length > 100} onClick={() => void queueDrafts(selectedAvailableHistory.map((item) => item.jobId))} title={selectedAvailableHistory.length === 0 ? "As vagas selecionadas estão encerradas ou arquivadas na fonte." : selectedAvailableHistory.length > 100 ? "Envie até 100 vagas por vez." : "Cria e envia pelo Gmail somente candidaturas ✅ com e-mail válido."}>Enviar candidaturas selecionadas ({selectedAvailableHistory.length})</button>
