@@ -68,6 +68,7 @@ export function parseCsvTriageImport(input: string): TriageImportResult {
     headerMap.forEach((key, colIndex) => { if (key) record[key] = columns[colIndex]?.trim() ?? ""; });
     const externalId = record.externalId?.trim();
     if (!externalId) { rejected.push({ line, reason: "código ausente" }); return; }
+    // A conclusão final de uma reanálise prevalece sobre o status intermediário.
     const verdictValue = record.finalVerdict?.trim() || record.verdict;
     const verdict = verdictValue ? normalizeStatus(verdictValue) : null;
     if (!verdict) { rejected.push({ line, reason: `status "${verdictValue ?? ""}" não reconhecido` }); return; }

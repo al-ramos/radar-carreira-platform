@@ -35,6 +35,7 @@ const rowClass: Record<string, string> = { "✅": "approved", "🟡": "partial",
 const observabilityLabels = { healthy: "Saudável", warning: "Atenção", blocked: "Bloqueada" } as const;
 const CODEX_BATCH_SIZE = 50;
 const sourceName = (source: string) => source === "all" ? "todas as fontes" : jobSourceLabel(source);
+/** A reavaliação trazida em CSV é distinta das consultas de IA feitas dentro do Radar. */
 const isExternalAiReassessment = (item: Pick<HistoryItem, "source" | "rows">) => {
   if (item.source !== "ai") return false;
   try { return JSON.parse(item.rows)?.source === "csv-import"; }
