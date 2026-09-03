@@ -99,7 +99,14 @@ test("falha da API não exibe as quatro vagas demonstrativas", async () => {
   assert.match(dashboard, /if \(!profileReady \|\| profileLoadFailed\) return;/);
   assert.match(dashboard, /if \(!controller\.signal\.aborted\) setProfileReady\(true\)/);
   assert.match(dashboard, /const profileLoading = !profileReady \|\| mode === "loading"/);
-  assert.match(dashboard, /Não foi possível carregar as vagas dentro do tempo esperado/);
+  // O aviso de falha nao pode prometer recuperacao que ninguem agendou: ele
+  // nomeia a operacao, o motivo, a ultima tentativa e a proxima (ou a ausencia
+  // dela). Ver JobsFailureDetail em app/Dashboard.tsx.
+  assert.match(dashboard, /JOBS_UNAVAILABLE_MESSAGE_PREFIX = "Não foi possível carregar a lista de vagas\."/);
+  assert.match(dashboard, /describeNextJobsAttempt\(failure\)/);
+  assert.match(dashboard, /nenhuma agendada/);
+  assert.doesNotMatch(dashboard, /recuperação automática continua em segundo plano/);
+  assert.doesNotMatch(dashboard, /O Radar está temporariamente indisponível/);
   assert.match(dashboard, /Tentar novamente/);
   assert.match(dashboard, /Seu perfil está salvo\. A lista está temporariamente sem aderência/);
   assert.match(dashboard, /Pontuação/);
