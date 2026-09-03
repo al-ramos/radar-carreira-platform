@@ -1,9 +1,24 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import { AUTH_NETWORK_ERROR, authFailureMessage } from "../../lib/auth-response";
 
 function safeReturnTo(value: string | null): string {
   return value && value.startsWith("/") && !value.startsWith("//") ? value : "/";
+}
+
+/**
+ * Lê o motivo enviado pela rota. Quando a resposta vem vazia ou não é JSON
+ * (rota derrubada antes de responder), usa a mensagem do status em vez de
+ * deixar o erro de parse do fetch chegar à tela.
+ */
+async function readAuthError(response: Response) {
+  const body = await response.text().catch(() => "");
+  try {
+    const parsed = JSON.parse(body) as { error?: string };
+    if (typeof parsed.error === "string" && parsed.error.trim()) return parsed.error.trim();
+  } catch { /* corpo vazio ou página de erro do servidor */ }
+  return authFailureMessage(response.status);
 }
 
 export default function LoginPage() {
@@ -30,11 +45,14 @@ export default function LoginPage() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify(creatingAccount ? { name, email, password } : { email, password }),
       });
-      const data = await response.json() as { error?: string };
-      if (!response.ok) throw new Error(data.error || "Não foi possível entrar.");
+      if (!response.ok) {
+        setError(await readAuthError(response));
+        setSubmitting(false);
+        return;
+      }
       window.location.assign(safeReturnTo(new URLSearchParams(window.location.search).get("return_to")));
-    } catch (loginError) {
-      setError(loginError instanceof Error ? loginError.message : "Não foi possível entrar.");
+    } catch {
+      setError(AUTH_NETWORK_ERROR);
       setSubmitting(false);
     }
   }

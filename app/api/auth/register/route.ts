@@ -9,10 +9,19 @@ import {
 } from "../../../chatgpt-auth";
 import { getDb } from "../../../../db";
 import { localAccounts, platformSettings, profiles } from "../../../../db/schema";
+import { authFailureResponse } from "../../../../lib/auth-response";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
+  try {
+    return await handleRegister(request);
+  } catch (error) {
+    return authFailureResponse("auth_register_failed", error);
+  }
+}
+
+async function handleRegister(request: Request) {
   const body = await request.json().catch(() => null) as { name?: unknown; email?: unknown; password?: unknown } | null;
   const name = typeof body?.name === "string" ? body.name.trim() : "";
   const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";

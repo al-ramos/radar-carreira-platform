@@ -3,10 +3,21 @@ import { createLocalUserSession, LOCAL_SESSION_COOKIE, localSessionCookieOptions
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../db";
 import { localAccounts } from "../../../../db/schema";
+import { authFailureResponse } from "../../../../lib/auth-response";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
+  try {
+    return await handleLogin(request);
+  } catch (error) {
+    // Sem isto, uma falha do binding do D1 sobe como exceção e o navegador
+    // recebe corpo vazio — a tela exibia o erro de parse do fetch.
+    return authFailureResponse("auth_login_failed", error);
+  }
+}
+
+async function handleLogin(request: Request) {
   const body = await request.json().catch(() => null) as { email?: unknown; password?: unknown } | null;
   if (typeof body?.password !== "string" || !body.password) {
     return NextResponse.json({ error: "Informe sua senha." }, { status: 400 });
