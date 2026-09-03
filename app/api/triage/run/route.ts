@@ -157,7 +157,7 @@ export async function POST(request: Request) {
   } else {
     await db.insert(triageBatches).values({
       id: batchId, userId, trigger,
-      scope: run.sourceId ? (run.homePeriod ? `source-home-period:${run.sourceId}:${run.homePeriod}` : `source-${run.dateScope}-day:${run.sourceId}`) : run.trigger === "schedule" ? "schedule-day" : run.reprocess ? "reprocess" : "unreviewed",
+      scope: run.sourceId ? (run.homePeriod ? `source-home-period:${run.sourceId}:${run.homePeriod}` : `source-${run.dateScope}-day:${run.sourceId}`) : run.trigger === "schedule" ? (run.homePeriod === "all" ? "schedule-backlog" : "schedule-day") : run.reprocess ? "reprocess" : "unreviewed",
       status: "running", startedAt: now, createdAt: now,
     });
   }
