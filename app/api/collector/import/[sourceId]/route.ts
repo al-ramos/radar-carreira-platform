@@ -1,4 +1,4 @@
-import { eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, lt, sql } from "drizzle-orm";
 import { getDb } from "../../../../../db/index";
 import { importRuns, jobSources, jobs } from "../../../../../db/schema";
 import { normalizeImportedJobsWithDiagnostics } from "../../../../../lib/import-jobs";
@@ -192,6 +192,28 @@ export async function OPTIONS() {
   return new Response(null, { status: 204, headers: CORS_HEADERS });
 }
 
+/**
+ * Uma importação que falha depois de `action: "status"` deixava a execução em
+ * `running` para sempre: nada fecha esse estado, e o coletor passa a recusar a
+ * próxima coleta por já haver uma "em andamento". Antes de começar, qualquer
+ * execução da mesma fonte parada além da janela vira falha declarada.
+ */
+const STALE_IMPORT_RUN_MS = 30 * 60_000;
+
+async function closeStaleImportRuns(db: ReturnType<typeof getDb>, sourceId: string) {
+  const cutoff = new Date(Date.now() - STALE_IMPORT_RUN_MS);
+  await db.update(importRuns)
+    .set({ status: "failed", errors: 1, finishedAt: new Date(), details: JSON.stringify({ reason: "Execução iniciada e sem conclusão registrada; encerrada ao iniciar a coleta seguinte." }) })
+    .where(and(eq(importRuns.sourceId, sourceId), eq(importRuns.status, "running"), lt(importRuns.startedAt, cutoff)))
+    .catch(() => undefined);
+}
+
+/** Só chama o banco de indisponível quando o erro veio mesmo do banco. */
+function looksLikeDatabaseFailure(error: unknown) {
+  const detail = `${error instanceof Error ? `${error.message} ${error.stack ?? ""}` : String(error ?? "")}`.toLowerCase();
+  return /d1_|sqlite|database|no such table|no such column|storage|prepared statement/.test(detail);
+}
+
 async function handlePost(request: Request, { params }: { params: Promise<{ sourceId: string }> }) {
   const { sourceId } = await params;
   const sourceName = KNOWN_SOURCES[sourceId];
@@ -216,6 +238,7 @@ async function handlePost(request: Request, { params }: { params: Promise<{ sour
   if (payload?.action === "status") {
     return json({ ok: true, ...(await recordCollectorStatus(db, source, sourceId, sourceName, config.userId ?? "collector", payload.run ?? {})) });
   }
+  await closeStaleImportRuns(db, sourceId);
   const rawItems = Array.isArray(payload?.jobs) ? payload.jobs : [];
   const input = normalizeImportedJobsWithDiagnostics(rawItems);
   const items = input.items;
@@ -349,15 +372,23 @@ export async function POST(request: Request, context: { params: Promise<{ source
   } catch (error) {
     const quota = d1QuotaResponse(error);
     if (quota) return quota;
+    const detail = error instanceof Error ? error.message : String(error ?? "");
     console.error(JSON.stringify({
       event: "collector_import_bootstrap_failed",
       sourceId: (await context.params).sourceId,
-      error: error instanceof Error ? error.message : "Banco indisponível",
+      error: detail || "sem motivo informado",
     }));
+    // Este catch cobria qualquer exceção e culpava o banco por todas elas. O
+    // painel do coletor exibia "o banco está indisponível" mesmo quando o D1
+    // estava respondendo normalmente, o que mandava a investigação para o
+    // lugar errado. O lote continua reenviável nos dois casos.
+    const database = looksLikeDatabaseFailure(error);
     return json({
-      error: "O banco do Radar está temporariamente indisponível. O lote não foi importado e pode ser reenviado com segurança.",
-      code: "RADAR_DATABASE_UNAVAILABLE",
+      error: database
+        ? "O banco do Radar está temporariamente indisponível. O lote não foi importado e pode ser reenviado com segurança."
+        : `A importação falhou antes de gravar qualquer vaga e o lote pode ser reenviado com segurança. Motivo: ${(detail || "não informado pela rota").slice(0, 200)}`,
+      code: database ? "RADAR_DATABASE_UNAVAILABLE" : "RADAR_IMPORT_FAILED",
       retryable: true,
-    }, { status: 503, headers: { "Retry-After": "900" } });
+    }, { status: 503, headers: { "Retry-After": database ? "900" : "60" } });
   }
 }
