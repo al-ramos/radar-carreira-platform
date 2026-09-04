@@ -107,6 +107,13 @@ test("falha da API não exibe as quatro vagas demonstrativas", async () => {
   assert.match(dashboard, /nenhuma agendada/);
   assert.doesNotMatch(dashboard, /recuperação automática continua em segundo plano/);
   assert.doesNotMatch(dashboard, /O Radar está temporariamente indisponível/);
+  // O motivo do 429 vem do corpo da resposta: a cota diária do D1 tem nome e
+  // horário de reinício, e nao pode ser exibida como "muitas solicitações".
+  assert.match(dashboard, /code === "D1_DAILY_READ_LIMIT"/);
+  assert.match(dashboard, /A cota diária de leituras do banco foi atingida/);
+  assert.match(dashboard, /const sentence = \(text: string\)/);
+  // Duas frases concatenadas nao podem produzir "em pouco tempo.. Isso".
+  assert.doesNotMatch(dashboard, /\$\{jobsError\.message\}\. /);
   assert.match(dashboard, /Tentar novamente/);
   assert.match(dashboard, /Seu perfil está salvo\. A lista está temporariamente sem aderência/);
   assert.match(dashboard, /Pontuação/);

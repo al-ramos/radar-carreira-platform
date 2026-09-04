@@ -136,7 +136,7 @@ type CollectionOutcome = {
 type FilterOption = { id: string; label: string; count: number };
 type ImportRunOption = { id: string; source: string; sourceId?: string | null; channel: string; startedAt: string; received: number; inserted: number; updated: number; jobs: number };
 type JobFilterOptions = { sources: FilterOption[]; areas: FilterOption[]; channels: FilterOption[]; importRuns: ImportRunOption[] };
-type JobsFailureKind = "offline" | "authentication" | "forbidden" | "rate_limited" | "transient";
+type JobsFailureKind = "offline" | "authentication" | "forbidden" | "rate_limited" | "quota" | "transient";
 class JobsFetchError extends Error {
   constructor(public kind: JobsFailureKind, message: string, public retryAfterMs?: number) {
     super(message);
@@ -165,6 +165,7 @@ const jobsFailureKindLabel: Record<JobsFailureKind, string> = {
   authentication: "Sessão expirada",
   forbidden: "Sem permissão para esta lista",
   rate_limited: "Limite temporário de solicitações",
+  quota: "Cota diária de leituras do banco esgotada",
   transient: "Falha de comunicação com a API do Radar",
 };
 const JOBS_LIST_OPERATION = "Atualização da lista de vagas (GET /api/jobs)";
@@ -227,11 +228,22 @@ function retryAfterMilliseconds(value: string | null) {
   return Number.isFinite(date) ? Math.max(0, date - Date.now()) : undefined;
 }
 
-function jobsErrorFromResponse(response: Response) {
+async function jobsErrorFromResponse(response: Response) {
   if (response.status === 401) return new JobsFetchError("authentication", "Sua sessão expirou. Entre novamente para atualizar o Radar.");
   if (response.status === 403) return new JobsFetchError("forbidden", "Sua conta não tem permissão para atualizar esta lista.");
-  if (response.status === 429) return new JobsFetchError("rate_limited", "O Radar recebeu muitas solicitações em pouco tempo.", retryAfterMilliseconds(response.headers.get("Retry-After")));
-  return new JobsFetchError("transient", `Falha ao carregar vagas (HTTP ${response.status})`);
+  // O servidor já sabe por que recusou; ler o corpo evita repetir um palpite
+  // genérico ("muitas solicitações") quando a causa real é a cota diária de
+  // leituras do D1, que só reinicia em horário definido.
+  const body = await response.clone().json().catch(() => null) as { error?: string; code?: string; resetAt?: string } | null;
+  if (response.status === 429) {
+    const resetAt = body?.resetAt ? new Date(body.resetAt) : null;
+    const quota = body?.code === "D1_DAILY_READ_LIMIT";
+    const reason = quota
+      ? `A cota diária de leituras do banco foi atingida${resetAt && !Number.isNaN(resetAt.getTime()) ? `; ela reinicia às ${formatRefreshTime(resetAt)}` : ""}`
+      : "O Radar recebeu muitas solicitações em pouco tempo";
+    return new JobsFetchError(quota ? "quota" : "rate_limited", reason, retryAfterMilliseconds(response.headers.get("Retry-After")));
+  }
+  return new JobsFetchError("transient", body?.error?.trim() || `A API respondeu HTTP ${response.status}`);
 }
 
 function normalizeJobsFetchError(error: unknown) {
@@ -241,7 +253,7 @@ function normalizeJobsFetchError(error: unknown) {
 }
 
 function canRetryJobsError(error: JobsFetchError) {
-  return error.kind === "transient" || error.kind === "rate_limited";
+  return error.kind === "transient" || error.kind === "rate_limited" || error.kind === "quota";
 }
 
 // Códigos de fonte (APInfo, LinkedIn e similares) identificam uma única vaga
@@ -255,7 +267,7 @@ async function fetchJobsWithRetry(url: string, signal: AbortSignal) {
       if (typeof navigator !== "undefined" && !navigator.onLine) throw new JobsFetchError("offline", "Você está sem conexão com a internet.");
       const response = await fetchWithTimeout(url, { cache: "no-store", signal });
       if (response.ok) return response.json();
-      throw jobsErrorFromResponse(response);
+      throw await jobsErrorFromResponse(response);
     } catch (error) {
       if (signal.aborted) throw error;
       const jobsError = normalizeJobsFetchError(error);
@@ -272,7 +284,7 @@ async function fetchJobsWithRetry(url: string, signal: AbortSignal) {
   try {
     const fallbackResponse = await fetchWithTimeout(fallbackUrl, { cache: "force-cache", signal });
     if (fallbackResponse.ok) return fallbackResponse.json();
-    throw jobsErrorFromResponse(fallbackResponse);
+    throw await jobsErrorFromResponse(fallbackResponse);
   } catch (error) {
     if (signal.aborted) throw error;
     const jobsError = normalizeJobsFetchError(error);
@@ -555,9 +567,23 @@ const formatJobDateTime = (value?: string) =>
 const formatRefreshTime = (value: Date) =>
   new Intl.DateTimeFormat("pt-BR", { timeStyle: "short" }).format(value);
 
+/** Evita "em pouco tempo.. Isso" quando o motivo já vem pontuado. */
+const sentence = (text: string) => {
+  const trimmed = text.trim();
+  return !trimmed || /[.!?…]$/.test(trimmed) ? trimmed : `${trimmed}.`;
+};
+
 /** Só afirma retentativa quando ela existe: timer agendado ou evento "online". */
 function describeNextJobsAttempt(failure: JobsFailureDetail) {
-  if (failure.nextRetryAt) return `automática às ${formatRefreshTime(failure.nextRetryAt)}`;
+  if (failure.nextRetryAt) {
+    const espera = failure.nextRetryAt.getTime() - failure.attemptedAt.getTime();
+    // Uma espera longa merece a duração ao lado do horário: "às 12:14" sozinho
+    // não deixa claro que são mais de quatro horas de distância.
+    const horas = Math.round(espera / 36e5);
+    return horas >= 2
+      ? `automática às ${formatRefreshTime(failure.nextRetryAt)}, daqui a cerca de ${horas} horas`
+      : `automática às ${formatRefreshTime(failure.nextRetryAt)}`;
+  }
   if (failure.waitingForConnection) return "automática assim que a conexão voltar";
   return "nenhuma agendada — use “Atualizar agora”";
 }
@@ -566,7 +592,7 @@ function JobsFailureDetails({ failure }: { failure: JobsFailureDetail }) {
   return (
     <dl className="notice-diagnostics">
       <div><dt>Operação</dt><dd>{failure.operation}</dd></div>
-      <div><dt>Motivo</dt><dd>{jobsFailureKindLabel[failure.kind]} — {failure.reason}</dd></div>
+      <div><dt>Motivo</dt><dd>{sentence(failure.reason)}</dd></div>
       <div><dt>Última tentativa</dt><dd>{formatRefreshTime(failure.attemptedAt)}</dd></div>
       <div><dt>Próxima tentativa</dt><dd>{describeNextJobsAttempt(failure)}</dd></div>
       <div><dt>Última atualização bem-sucedida</dt><dd>{failure.lastSuccessAt ? formatRefreshTime(failure.lastSuccessAt) : "nenhuma nesta sessão"}</dd></div>
@@ -575,6 +601,7 @@ function JobsFailureDetails({ failure }: { failure: JobsFailureDetail }) {
 }
 
 function jobsFailureHeadline(failure: JobsFailureDetail) {
+  if (failure.kind === "quota") return "Cota diária de leituras do banco esgotada. Mantendo a última lista válida.";
   if (failure.kind === "authentication") return "Sua sessão expirou. Entre novamente para atualizar a lista.";
   if (failure.kind === "forbidden") return "Sua conta não tem permissão para atualizar esta lista.";
   if (failure.kind === "offline") return "Você está sem conexão. Mantendo a última lista válida.";
@@ -1016,11 +1043,14 @@ export default function Dashboard() {
         setJobsFailure(failure);
         if (loadedJobsRef.current.length) {
           setMode("database");
-          setMessage(`${JOBS_STALE_MESSAGE_PREFIX} ${failure.operation} falhou às ${formatRefreshTime(attemptedAt)} — ${jobsError.message}. A lista anterior permanece disponível${lastSuccessAt ? `, com dados de ${formatRefreshTime(lastSuccessAt)}` : ""}. Próxima tentativa: ${describeNextJobsAttempt(failure)}.`);
+          setMessage(`${JOBS_STALE_MESSAGE_PREFIX} ${sentence(`${failure.operation} falhou às ${formatRefreshTime(attemptedAt)} — ${jobsError.message}`)} A lista anterior permanece disponível${lastSuccessAt ? `, com dados de ${formatRefreshTime(lastSuccessAt)}` : ""}. Próxima tentativa: ${describeNextJobsAttempt(failure)}.`);
           return;
         }
         setMode("unavailable");
-        setLoadError(`${JOBS_UNAVAILABLE_MESSAGE_PREFIX} ${jobsFailureKindLabel[jobsError.kind]} — ${jobsError.message}. Isso indica falha nesta operação; não confirma queda geral do Radar.`);
+        // O título nomeia a classe da falha; o detalhamento abaixo dele traz
+        // o motivo técnico. Repetir a mesma frase nos dois lugares só ocupava
+        // espaço.
+        setLoadError(`${JOBS_UNAVAILABLE_MESSAGE_PREFIX} ${sentence(jobsFailureKindLabel[jobsError.kind])} A falha é desta operação e não confirma queda geral do Radar.`);
         setMessage(`${JOBS_UNAVAILABLE_MESSAGE_PREFIX} Próxima tentativa: ${describeNextJobsAttempt(failure)}.`);
       });
     return () => {
