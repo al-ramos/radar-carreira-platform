@@ -36,7 +36,11 @@ test("a exclusão administrativa exige confirmação para todas as vagas",async(
  assert.match(migration,/DELETE FROM `jobs` WHERE `published_at` < 1785542400000/);
  assert.match(secondMigration,/UPDATE `jobs` SET `status` = 'archived'/);
  assert.match(secondMigration,/WHERE `published_at` < 1786752000000/);
- assert.match(lifecycle,/if\(job\.status==="archived"\)continue/);
+ // A garantia e a mesma — vaga arquivada nao muda de estado na reconciliacao —
+ // mas agora e o SQL que a exclui, em vez de um continue no laco: carregar
+ // metade do acervo para descarta-lo estourava a memoria do isolate.
+ assert.match(lifecycle,/ne\(jobs\.status,"archived"\)/);
+ assert.doesNotMatch(lifecycle,/db\.select\(\)\.from\(jobs\)/);
  assert.match(settings,/EXCLUIR TODAS AS VAGAS/);
  assert.match(settings,/\/api\/admin\/backup/);
  assert.match(settings,/Limpar base de vagas/);

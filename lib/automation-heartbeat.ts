@@ -18,7 +18,24 @@ export function describeFailure(error: unknown, fallback = "Falha sem motivo inf
 
 const safe = (error: unknown) => describeFailure(error).replace(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/g, "[e-mail redigido]").replace(/https?:\/\/\S+/g, "[URL redigida]").slice(0, 300);
 
+/**
+ * Registrar a falha nao pode falhar em silencio: era assim que o batimento de
+ * "collect" ficava preso em "running" — a rota quebrava, o catch tentava
+ * gravar "failed" no mesmo banco que acabara de recusar a consulta, e essa
+ * segunda falha substituia o erro original sem deixar rastro.
+ */
 export async function heartbeat(id: string, status: Status, error?: unknown) {
+  try {
+    await writeHeartbeat(id, status, error);
+  } catch (writeError) {
+    console.error(JSON.stringify({
+      event: "heartbeat_write_failed", id, status,
+      detail: describeFailure(writeError, "sem motivo informado"),
+    }));
+  }
+}
+
+async function writeHeartbeat(id: string, status: Status, error?: unknown) {
   const now = new Date();
   const values = { id, status, startedAt: now, completedAt: status === "running" ? null : now, error: error ? safe(error) : null, updatedAt: now };
   await getDb().insert(automationHeartbeats).values(values).onConflictDoUpdate({ target: automationHeartbeats.id, set: { status: values.status, completedAt: values.completedAt, error: values.error, updatedAt: values.updatedAt } });
