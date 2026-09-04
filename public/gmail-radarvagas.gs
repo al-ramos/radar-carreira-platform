@@ -105,6 +105,10 @@ function criarRascunhosRadar(options) {
     if (response.getResponseCode() >= 300) throw new Error(response.getContentText());
     const payload = JSON.parse(response.getContentText());
     (payload.drafts || []).forEach(item => {
+      // A etapa acompanha o item para que a falha diga onde parou. Sem isso
+      // o Radar recebia String(error), que para um Error sem mensagem vira a
+      // palavra "Error" — motivo que não permite decidir se vale reprocessar.
+      let etapa = 'conciliação com a pasta Enviados';
       try {
         // A pasta Enviados é consultada antes de criar ou enviar qualquer
         // mensagem. Uma correspondência exata vira registro no Radar e
@@ -116,6 +120,7 @@ function criarRascunhosRadar(options) {
           reconciled += 1;
           return;
         }
+        etapa = 'montagem do rascunho com currículo e assinatura';
         const content = optionsComCurriculoEAssinaturaRadar(item.body);
         const existing = GmailApp.getDrafts().find(draft => {
           const message = draft.getMessage();
@@ -123,14 +128,17 @@ function criarRascunhosRadar(options) {
         });
         // update substitui um rascunho já existente pela versão com currículo
         // e assinatura, evitando duplicidade e corrigindo rascunhos antigos.
+        etapa = existing ? 'atualização do rascunho no Gmail' : 'criação do rascunho no Gmail';
         const draft = existing
           ? existing.update(item.to, item.subject, content.text, content.options)
           : GmailApp.createDraft(item.to, item.subject, content.text, content.options);
         const gmailThreadId = draft.getMessage().getThread().getId();
+        etapa = 'confirmação do rascunho no Radar';
         const confirm = confirmarRascunhoRadar(secret, item.outboxId, draft.getId(), item.subject, gmailThreadId);
         if (confirm.getResponseCode() >= 300) throw new Error(confirm.getContentText());
         processed += 1;
         if (autoSend && item.autoSendAuthorized === true) {
+          etapa = 'envio automático autorizado';
           const sentMessage = draft.send();
           const sentConfirmation = confirmarEnvioAutomaticoRadar(secret, item, sentMessage);
           if (sentConfirmation.getResponseCode() >= 300) {
@@ -139,7 +147,7 @@ function criarRascunhosRadar(options) {
           sent += 1;
         }
       } catch (error) {
-        registrarFalhaRascunhoRadar(secret, item.outboxId, String(error));
+        registrarFalhaRascunhoRadar(secret, item.outboxId, descreverErroRadar_(error, etapa));
       }
     });
     scanned += payload.scanned || 0;
@@ -299,6 +307,18 @@ function registrarEnvioNaoLocalizadoRadar(secret, outboxId) {
     method:'post',contentType:'application/json',headers:{Authorization:`Bearer ${secret}`},
     payload:JSON.stringify({action:'reconcileMissing',outboxId:outboxId,connectorVersion:RADAR_DRAFT_CONNECTOR_VERSION}),muteHttpExceptions:true
   });
+}
+
+/**
+ * Um motivo precisa dizer o que aconteceu e onde. String(error) devolvia
+ * "Error" para um Error sem mensagem, e era isso que ficava gravado na outbox.
+ */
+function descreverErroRadar_(error, etapa) {
+  const bruto = error && error.message ? String(error.message) : String(error || '');
+  const texto = bruto.trim();
+  const vazio = !texto || /^(error|exception|erro|\[object object\]|undefined|null)$/i.test(texto);
+  const motivo = vazio ? 'a origem não informou o motivo' : texto;
+  return `Falha em ${etapa}: ${motivo}`.slice(0, 900);
 }
 
 function registrarFalhaRascunhoRadar(secret, outboxId, error) {

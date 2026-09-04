@@ -8,6 +8,7 @@ import { inferJobArea } from "../../../../lib/job-area";
 import { recordImportRunJobs } from "../../../../lib/import-tracking";
 import { notifyImportRun } from "../../../../lib/notifications";
 import { shouldArchiveImportedJob } from "../../../../lib/job-archive-policy";
+import { heartbeat } from "../../../../lib/automation-heartbeat";
 
 export const dynamic = "force-dynamic";
 
@@ -25,8 +26,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   }
 
+  // A coleta é a única das três automações do workflow diário que não
+  // registrava batimento: o painel mostrava apenas o de enriquecimento e
+  // ciclo de vida, gravados sob o mesmo id "collect" e sobrescrevendo um ao
+  // outro. Cada uma agora responde pelo próprio estado.
+  await heartbeat("collect", "running");
   const config = (await getDb().select().from(platformSettings).where(eq(platformSettings.id, "global")).limit(1))[0];
   if (config && !config.collectionEnabled) {
+    await heartbeat("collect", "skipped");
     return NextResponse.json({ ok: true, skipped: true, message: "Coleta pausada pelo administrador" });
   }
 
@@ -121,6 +128,7 @@ export async function POST(request: Request) {
     }
   }
 
+  await heartbeat("collect", errors ? "failed" : "completed", errors ? `${errors} fonte(s) falharam nesta rodada.` : undefined);
   return NextResponse.json({
     ok: errors === 0,
     sources: batch.length,

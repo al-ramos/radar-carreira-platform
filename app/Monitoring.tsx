@@ -11,7 +11,7 @@ type Data = {
   summary: { sources: number; enabled: number; active: number; failures: number; lastSuccess: string | null };
   performance: { sampled: boolean; sampleRate: number; retentionDays: number; lastSample: string | null; windows: PerformanceWindow[] };
   alerts: Array<{ level: "warning" | "error"; message: string; action: string }>;
-  schedules: Array<{ id: string; label: string; cron: string | null; reason: string | null; heartbeat: { status: string; updatedAt: string; error: string | null } | null }>;
+  schedules: Array<{ id: string; label: string; cron: string | null; reason: string | null; stale: boolean; silent: boolean; heartbeat: { status: string; updatedAt: string; error: string | null } | null }>;
   sources: Array<{ id: string; name: string; provider: string; collectionMode: "pull" | "push"; enabled: boolean; lastRunAt: string | null; lastSuccessAt: string | null; lastError: string | null; consecutiveFailures: number; stale: boolean }>;
   operations: Operation[];
 };
@@ -82,7 +82,16 @@ export default function Monitoring({ close }: { close: () => void }) {
         </section>
 
         {data.alerts.length > 0 && <section className="monitor-alerts"><h3>Precisa de atenção</h3>{data.alerts.map((alert) => <article key={alert.message} className={alert.level}><span><b>{alert.message}</b><small>{alert.action}</small></span></article>)}</section>}
-        <section className="monitor-alerts"><h3>Agenda das automações</h3>{data.schedules.map((schedule) => <article key={schedule.id}><span><b>{schedule.label}</b><small>{schedule.cron ?? schedule.reason} · última execução: {schedule.heartbeat ? `${schedule.heartbeat.status} às ${formatDate(schedule.heartbeat.updatedAt)}` : "ainda não registrada"}{schedule.heartbeat?.error && ` · ${schedule.heartbeat.error}`}</small></span></article>)}</section>
+        {/* "running" antigo não é execução em andamento: é execução que nunca
+            reportou fim. A tela precisa dizer isso, em vez de repetir o status
+            gravado como se fosse verdade corrente. */}
+        <section className="monitor-alerts"><h3>Agenda das automações</h3>{data.schedules.map((schedule) => <article key={schedule.id} className={schedule.stale ? "schedule-stale" : schedule.silent ? "schedule-silent" : undefined}><span><b>{schedule.label}</b><small>{schedule.cron ?? "sem agenda declarada no Radar"} · {schedule.heartbeat
+          ? schedule.stale
+            ? `iniciada às ${formatDate(schedule.heartbeat.updatedAt)} e sem conclusão registrada`
+            : schedule.silent
+              ? `sem se reportar desde ${formatDate(schedule.heartbeat.updatedAt)}`
+              : `última execução: ${schedule.heartbeat.status} às ${formatDate(schedule.heartbeat.updatedAt)}`
+          : schedule.reason ?? "ainda não registrada"}{schedule.heartbeat?.error && ` · ${schedule.heartbeat.error}`}</small></span></article>)}</section>
         <div className="monitor-grid">
           <section><h3>Fontes cadastradas</h3>{data.sources.map((source) => <div className="source-health" key={source.id}><i className={!source.enabled ? "off" : source.lastError || source.stale ? "warn" : "ok"}/><span><b>{source.name}</b><small>{source.collectionMode === "pull" ? `${source.provider} · último sucesso: ${formatDate(source.lastSuccessAt)}` : `Integração de entrada · última execução: ${formatDate(source.lastRunAt)}`}</small></span><em>{!source.enabled ? "Pausada" : source.lastError ? "Falhou" : source.stale ? "Atrasada" : "Saudável"}</em></div>)}</section>
           <section><div className="monitor-section-heading"><h3>Execuções recentes</h3><select value={flow} onChange={(event) => setFlow(event.target.value as typeof flow)}><option value="all">Todos</option><option value="importação">Importações</option><option value="triagem">Triagem</option></select></div>{operations.map((operation) => <div className="run-row" key={operation.id}><span><b>{operation.label}</b><small>{operation.flow} · {formatDate(operation.startedAt)}{operation.error && ` · ${operation.error}`}</small></span><em className={operation.status}>{operation.status}</em><strong>{operation.completed}/{operation.total} · {operation.failed} falhas</strong></div>)}</section>

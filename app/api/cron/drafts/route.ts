@@ -9,9 +9,17 @@ import { normalizeContactEmail } from "../../../../lib/contact-email";
 import { hasTriageableDescription } from "../../../../lib/current-triage";
 import { isSafeForDraft } from "../../../../lib/draft-eligibility";
 import { notifyDraftSent } from "../../../../lib/notifications";
+import { describeFailure, heartbeat } from "../../../../lib/automation-heartbeat";
 import { resolveAutomaticStage } from "../../../../lib/pipeline-stage";
 
 export const dynamic = "force-dynamic";
+
+// R1: a criação de rascunhos é acionada por um gatilho do Apps Script na conta
+// Google da pessoa — fora do repositório e fora do Cloudflare. Sem batimento,
+// um gatilho desativado ou sem autorização passaria despercebido: a tela
+// seguiria dizendo que há pendências aguardando ação, sem dizer que ninguém
+// mais as processa.
+const GMAIL_CONNECTOR = "gmail-drafts";
 
 const digest = async (value: string) => Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)))).map((byte) => byte.toString(16).padStart(2, "0")).join("");
 const list = (value: string) => { try { const parsed: unknown = JSON.parse(value); return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : []; } catch { return []; } };
@@ -70,6 +78,9 @@ export async function POST(request: Request) {
     error?: string; limit?: number; retryFailed?: boolean; connectorVersion?: string; outboxIds?: string[];
   };
   const db = getDb();
+  // Uma chamada autenticada prova que o gatilho do Apps Script está vivo,
+  // qualquer que seja a ação pedida. O silêncio é que precisa aparecer.
+  await heartbeat(GMAIL_CONNECTOR, "completed");
 
   if (body.connectorVersion && body.connectorVersion !== CONNECTOR_VERSION) {
     return NextResponse.json({ error: "Conector Gmail desatualizado. Atualize o arquivo gmail-radarvagas.gs antes de criar rascunhos." }, { status: 409 });
@@ -234,10 +245,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, changed: true, status: "drafted" });
     }
     if (item.status === "drafted") {
-      await db.update(draftOutbox).set({ error: (body.error ?? "Falha ao enviar automaticamente o rascunho").slice(0, 1000), updatedAt: new Date() }).where(eq(draftOutbox.id, item.id));
+      await db.update(draftOutbox).set({ error: describeFailure(body.error, "O conector Gmail não informou por que o envio automático falhou.").slice(0, 1000), updatedAt: new Date() }).where(eq(draftOutbox.id, item.id));
       return NextResponse.json({ ok: true, changed: true, status: "drafted" });
     }
-    await db.update(draftOutbox).set({ status: "failed", error: (body.error ?? "Falha ao criar rascunho").slice(0, 1000), updatedAt: new Date() }).where(eq(draftOutbox.id, item.id));
+    // R5: o conector mandava String(error), que para um Error sem mensagem
+    // vira a palavra "Error" — um motivo que não permite decidir se vale
+    // reprocessar. describeFailure troca essas formas vazias por um texto que
+    // ao menos declara que o motivo não veio.
+    await db.update(draftOutbox).set({ status: "failed", error: describeFailure(body.error, "O conector Gmail não informou por que a criação do rascunho falhou.").slice(0, 1000), updatedAt: new Date() }).where(eq(draftOutbox.id, item.id));
     return NextResponse.json({ ok: true, changed: true, status: "failed" });
   }
 

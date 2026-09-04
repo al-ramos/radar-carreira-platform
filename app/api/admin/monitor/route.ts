@@ -100,21 +100,52 @@ export async function GET() {
     performanceWindow(performanceRows, sevenDaysAgo.getTime(), "7d", "Últimos 7 dias"),
   ];
   const degradedMetrics = windows[0].metrics.filter((metric) => metric.rating === "poor");
+  // Um batimento preso em "running" além da janela da própria automação não é
+  // execução em andamento: é execução que nunca reportou fim. Sem esse limite,
+  // "collect" ficou 9 horas com aparência saudável. O estado é derivado na
+  // leitura — nada é reescrito, para não gastar cota do D1.
+  const staleRunning = (schedule: { id: string; staleAfterMs: number }, beat: { status: string; updatedAt: Date } | null) =>
+    Boolean(beat && beat.status === "running" && beat.updatedAt.getTime() < now - schedule.staleAfterMs);
+  const HOUR = 36e5;
+  const schedules = [
+    { id: "collect", label: "Coleta de fontes ATS", cron: "Dias úteis, 08:15 (Brasília)", staleAfterMs: 6 * HOUR },
+    { id: "enrich", label: "Enriquecimento de vagas", cron: "Dias úteis, após a coleta", staleAfterMs: 6 * HOUR },
+    { id: "lifecycle", label: "Ciclo de vida das vagas", cron: "Dias úteis, após o enriquecimento", staleAfterMs: 6 * HOUR },
+    { id: "revalidate", label: "Revalidação de fontes", cron: "Segundas, 03:00 (Brasília)", staleAfterMs: 24 * HOUR },
+    { id: "triage-recovery", label: "Recuperação da fila manual", cron: "A cada 15 minutos", staleAfterMs: HOUR },
+    { id: "triage-dispatch", label: "Despacho da triagem", cron: "A cada 15 minutos", staleAfterMs: HOUR },
+    { id: "triage-backlog-sweep", label: "Varredura do backlog de triagem", cron: "Uma vez por hora", staleAfterMs: 3 * HOUR },
+    { id: "draft-monitor", label: "Observação da fila de rascunhos", cron: "Uma vez por hora", staleAfterMs: 3 * HOUR },
+    { id: "email-import", label: "Importação Gmail", cron: null, staleAfterMs: 48 * HOUR },
+    { id: "gmail-drafts", label: "Conector Gmail de rascunhos", cron: null, staleAfterMs: 48 * HOUR },
+  ].map((schedule) => {
+    const beat = heartbeats.find((heartbeat) => heartbeat.id === schedule.id) ?? null;
+    const silentSinceMs = beat ? now - beat.updatedAt.getTime() : null;
+    return {
+      ...schedule,
+      heartbeat: beat,
+      stale: staleRunning(schedule, beat),
+      silent: Boolean(beat && silentSinceMs !== null && silentSinceMs > schedule.staleAfterMs && beat.status !== "running"),
+      reason: beat
+        ? null
+        : schedule.cron
+          ? "Sem execução registrada até agora."
+          : "Executada pelo conector Gmail; sem execução registrada até agora.",
+    };
+  });
+  const stuckSchedules = schedules.filter((schedule) => schedule.stale);
+  const silentSchedules = schedules.filter((schedule) => schedule.silent);
   const alerts = [
     ...staleSources.map((source) => ({ level: "warning" as const, message: `${source.name}: coleta atrasada há mais de 48 horas.`, action: "Verificar fonte e agenda." })),
     ...sources.filter((source) => source.enabled && source.lastError).map((source) => ({ level: "error" as const, message: `${source.name}: ${safeError(source.lastError)}`, action: "Reexecutar ou corrigir a fonte." })),
     ...failedOperations.slice(0, 5).map((operation) => ({ level: "error" as const, message: `${operation.label}: execução com falha.`, action: operation.flow === "triagem" ? "Abrir Triagem e retomar itens pendentes." : "Consultar detalhe da importação." })),
     ...(stalledManualItems.length ? [{ level: "warning" as const, message: `${stalledManualItems.length} vaga(s) manuais sem progresso há mais de 2 minutos.`, action: "A recuperação automática reenfileira os itens; acompanhe o próximo ciclo." }] : []),
     ...degradedMetrics.map((metric) => ({ level: "warning" as const, message: `${metric.label}: p75 acima da faixa operacional.`, action: "Comparar com p95 e investigar regressão recente." })),
+    ...stuckSchedules.map((schedule) => ({ level: "error" as const, message: `${schedule.label}: iniciada em ${schedule.heartbeat?.updatedAt.toISOString()} e sem conclusão registrada.`, action: "A execução não reportou fim; verifique o log do Worker e reexecute." })),
+    ...silentSchedules.map((schedule) => ({ level: "warning" as const, message: `${schedule.label}: sem se reportar desde ${schedule.heartbeat?.updatedAt.toISOString()}.`, action: schedule.cron ? "Confirmar se a agenda continua ativa." : "Confirmar o gatilho do Apps Script na conta Google." })),
   ];
   const status = alerts.some((alert) => alert.level === "error") ? "attention" : alerts.length ? "warning" : "healthy";
   const totalForStatus = (statusName: string) => Number(jobCountRows.find((row) => row.status === statusName)?.total ?? 0);
-  const schedules = [
-    { id: "collect", label: "Coleta, enriquecimento e ciclo de vida", cron: "Dias úteis, 08:15 (Brasília)" },
-    { id: "revalidate", label: "Revalidação de fontes", cron: "Segundas, 03:00 (Brasília)" },
-    { id: "triage-recovery", label: "Recuperação da fila manual", cron: "A cada 2 minutos" },
-    { id: "email-import", label: "Importação Gmail", cron: null },
-  ].map((schedule) => ({ ...schedule, heartbeat: heartbeats.find((heartbeat) => heartbeat.id === schedule.id) ?? null, reason: schedule.cron ? null : "Executada pelo conector Gmail; não há agenda declarada no Radar." }));
 
   return NextResponse.json({
     status,
