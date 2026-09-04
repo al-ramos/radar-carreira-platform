@@ -22,7 +22,11 @@ test("a listagem pagina no D1 antes de enriquecer o fluxo normal", async () => {
   // sem refletir a ordem/paginação reais.
   assert.match(route, /requiresPostFiltering = .*sort === "score"/);
   assert.match(route, /substr\(\$\{jobs\.description\}/);
-  assert.match(route, /const \[rows, summaryTotals, \.\.\.metadataRows\]/);
+  // A intencao continua a mesma: lista, resumo e filtros numa unica ida ao D1.
+  // O rest anterior espalhava a promessa de filterOptionsQueries() e derrubava
+  // a rota com "(intermediate value) is not iterable" — ver
+  // tests/jobs-metadata-full.test.mjs.
+  assert.match(route, /const \[rows, summaryTotals, metadataRows\] = await Promise\.all\(\[/);
   assert.match(route, /const summaryQuery = getDb\(\)\.select/);
   assert.doesNotMatch(route, /emailMissingTotals|sourceTotals/);
   assert.match(route, /metadataMode === "only"/);

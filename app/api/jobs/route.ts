@@ -434,17 +434,19 @@ const summaryQuery = getDb().select({
   apinfo: sql<number>`sum(case when ${summaryCondition} and (${jobs.sourceId} = ${"apinfo-extension"} or ${jobs.url} like ${"%apinfo.com%"}) then 1 else 0 end)`,
   sources: sql<number>`count(distinct case when ${summaryCondition} then ${jobs.sourceId} end)`,
 }).from(jobs);
-const [rows, summaryTotals, ...metadataRows] = await Promise.all([
+// filterOptionsQueries() devolve UMA promessa de array, nao um array de
+// promessas: espalha-la aqui tentava iterar a promessa e derrubava a rota com
+// "(intermediate value) is not iterable" — HTTP 503 em toda chamada sem o
+// parametro `meta`, que e o caso de abrir uma vaga especifica pelo link.
+const [rows, summaryTotals, metadataRows] = await Promise.all([
 requiresPostFiltering
 ? rowsQuery.limit(MAX_AFFINITY_CANDIDATES)
 : rowsQuery.limit(limit).offset(offset),
 summaryQuery,
-...(metadataMode === "full" ? filterOptionsQueries() : []),
+metadataMode === "full" ? filterOptionsQueries() : Promise.resolve(null),
 ]);
 
-const filterOptions = metadataMode === "full"
-  ? serializeFilterOptions(...metadataRows as Awaited<ReturnType<typeof filterOptionsQueries>>)
-  : undefined;
+const filterOptions = metadataRows ? serializeFilterOptions(...metadataRows) : undefined;
 
 const enriched = rows.map((job) => {
 const hasCurrentPersistedScore = Boolean(
