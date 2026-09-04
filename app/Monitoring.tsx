@@ -12,7 +12,7 @@ type Data = {
   summary: { sources: number; enabled: number; active: number; failures: number; lastSuccess: string | null };
   performance: { sampled: boolean; sampleRate: number; retentionDays: number; lastSample: string | null; windows: PerformanceWindow[] };
   alerts: Array<{ level: "warning" | "error"; message: string; action: string }>;
-  schedules: Array<{ id: string; label: string; cron: string | null; reason: string | null; stale: boolean; silent: boolean; heartbeat: { status: string; updatedAt: string; error: string | null } | null }>;
+  schedules: Array<{ id: string; label: string; cron: string | null; reason: string | null; stale: boolean; silent: boolean; declared: boolean; heartbeat: { status: string; updatedAt: string; error: string | null } | null }>;
   sources: Array<{ id: string; name: string; provider: string; collectionMode: "pull" | "push"; enabled: boolean; lastRunAt: string | null; lastSuccessAt: string | null; lastError: string | null; consecutiveFailures: number; stale: boolean }>;
   operations: Operation[];
 };

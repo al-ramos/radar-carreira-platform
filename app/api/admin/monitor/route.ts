@@ -107,6 +107,10 @@ export async function GET() {
   const staleRunning = (schedule: { id: string; staleAfterMs: number }, beat: { status: string; updatedAt: Date } | null) =>
     Boolean(beat && beat.status === "running" && beat.updatedAt.getTime() < now - schedule.staleAfterMs);
   const HOUR = 36e5;
+  const DECLARED_SCHEDULE_IDS = new Set([
+    "collect", "enrich", "lifecycle", "revalidate", "triage-recovery",
+    "triage-dispatch", "triage-backlog-sweep", "draft-monitor", "email-import", "gmail-drafts",
+  ]);
   const schedules = [
     { id: "collect", label: "Coleta de fontes ATS", cron: "Dias úteis, 08:15 (Brasília)", staleAfterMs: 6 * HOUR },
     { id: "enrich", label: "Enriquecimento de vagas", cron: "Dias úteis, após a coleta", staleAfterMs: 6 * HOUR },
@@ -118,6 +122,12 @@ export async function GET() {
     { id: "draft-monitor", label: "Observação da fila de rascunhos", cron: "Uma vez por hora", staleAfterMs: 3 * HOUR },
     { id: "email-import", label: "Importação Gmail", cron: null, staleAfterMs: 48 * HOUR },
     { id: "gmail-drafts", label: "Conector Gmail de rascunhos", cron: null, staleAfterMs: 48 * HOUR },
+    // T2 — uma automação que grava batimento e não está declarada acima ainda
+    // precisa aparecer. A lista fixa já escondeu três delas; derivar o resto
+    // dos próprios batimentos impede que isso volte a acontecer em silêncio.
+    ...heartbeats
+      .filter((beat) => !DECLARED_SCHEDULE_IDS.has(beat.id))
+      .map((beat) => ({ id: beat.id, label: beat.id, cron: null, staleAfterMs: 24 * HOUR })),
   ].map((schedule) => {
     const beat = heartbeats.find((heartbeat) => heartbeat.id === schedule.id) ?? null;
     const silentSinceMs = beat ? now - beat.updatedAt.getTime() : null;
@@ -126,8 +136,9 @@ export async function GET() {
       heartbeat: beat,
       stale: staleRunning(schedule, beat),
       silent: Boolean(beat && silentSinceMs !== null && silentSinceMs > schedule.staleAfterMs && beat.status !== "running"),
+      declared: DECLARED_SCHEDULE_IDS.has(schedule.id),
       reason: beat
-        ? null
+        ? DECLARED_SCHEDULE_IDS.has(schedule.id) ? null : "Automação não declarada no painel; identificada pelo batimento que ela grava."
         : schedule.cron
           ? "Sem execução registrada até agora."
           : "Executada pelo conector Gmail; sem execução registrada até agora.",

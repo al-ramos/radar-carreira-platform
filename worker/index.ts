@@ -397,11 +397,22 @@ async function observePendingDrafts(env: Env) {
   // sem outbox varria jobs + análises + outbox a cada dois minutos (4,1 M de
   // rows_read/dia) sem mudar o estado. O painel detalhado continua oferecendo
   // essa visão quando a pessoa o abre; o heartbeat periódico usa só a outbox.
-  const pending = await env.DB.prepare(`SELECT COUNT(*) AS total FROM draft_outbox WHERE status = 'pending'`).first<{ total: number }>();
+  // R2 — a contagem sozinha não distingue "3 pendentes ha dez minutos", que e
+  // operação normal, de "3 pendentes há seis dias", que são três candidaturas
+  // perdidas. O MIN(created_at) vem na mesma consulta, sem custo adicional de
+  // leitura.
+  const pending = await env.DB.prepare(
+    `SELECT COUNT(*) AS total, MIN(created_at) AS oldest FROM draft_outbox WHERE status = 'pending'`,
+  ).first<{ total: number; oldest: number | null }>();
   const total = Number(pending?.total ?? 0);
+  const oldest = pending?.oldest ? Number(pending.oldest) : null;
+  const ageHours = oldest ? Math.floor((Date.now() - oldest) / 36e5) : null;
+  const age = ageHours === null ? "" : ageHours >= 24
+    ? ` A mais antiga espera há ${Math.floor(ageHours / 24)} dia(s).`
+    : ageHours >= 1 ? ` A mais antiga espera há ${ageHours} hora(s).` : " A mais antiga chegou há menos de uma hora.";
   await recordAutomationHeartbeat(env, "draft-monitor", total ? "skipped" : "completed", startedAt,
-    total ? `${total} item(ns) aguardam ação explícita no painel; recuperação automática desativada.` : null);
-  console.log(JSON.stringify({ event: "draft_monitor", pending: total, approvedRecovery: "explicit_only" }));
+    total ? `${total} item(ns) aguardam ação explícita no painel; recuperação automática desativada.${age}` : null);
+  console.log(JSON.stringify({ event: "draft_monitor", pending: total, oldestPendingAgeHours: ageHours, approvedRecovery: "explicit_only" }));
 }
 
 /**
