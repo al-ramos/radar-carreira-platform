@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+type DeadLetter = { id: string; queue: string; kind: string | null; jobId: string | null; batchId: string | null; attempts: number; createdAt: string; reason: string; requeueable: boolean };
 type Operation = { id: string; flow: "importação" | "triagem"; label: string; status: string; startedAt: string; total: number; completed: number; failed: number; error: string | null };
 type PerformanceMetric = { name: string; label: string; unit: "ms" | "score" | "bytes"; p75: number; p95: number; count: number; rating: "good" | "warning" | "poor" };
 type PerformanceWindow = { id: "24h" | "7d"; label: string; sampleCount: number; metrics: PerformanceMetric[] };
@@ -31,6 +32,38 @@ export default function Monitoring({ close }: { close: () => void }) {
   const [message, setMessage] = useState("Executando diagnóstico…");
   const [flow, setFlow] = useState<"all" | Operation["flow"]>("all");
   const [performancePeriod, setPerformancePeriod] = useState<PerformanceWindow["id"]>("24h");
+  const [deadLetters, setDeadLetters] = useState<DeadLetter[] | null>(null);
+  const [deadLetterMessage, setDeadLetterMessage] = useState("");
+  const [treatingDeadLetters, setTreatingDeadLetters] = useState(false);
+
+  async function loadDeadLetters() {
+    const response = await fetch("/api/admin/dead-letters", { cache: "no-store" });
+    if (!response.ok) return;
+    const payload = await response.json() as { items?: DeadLetter[] };
+    setDeadLetters(payload.items ?? []);
+  }
+
+  // Reenfileirar é sempre explícito: nada aqui reprocessa sozinho.
+  async function treatDeadLetters(action: "requeue" | "dismiss", ids: string[]) {
+    setTreatingDeadLetters(true);
+    setDeadLetterMessage("");
+    try {
+      const response = await fetch("/api/admin/dead-letters", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action, ids }),
+      });
+      const result = await response.json().catch(() => null) as { requeued?: number; dismissed?: number; error?: string; failed?: Array<{ reason: string }> } | null;
+      if (!response.ok) throw new Error(result?.error ?? `A operação respondeu HTTP ${response.status}.`);
+      setDeadLetterMessage(action === "requeue"
+        ? `${result?.requeued ?? 0} item(ns) devolvidos à fila de origem.${result?.failed?.length ? ` ${result.failed.length} não puderam voltar: ${result.failed[0].reason}` : ""}`
+        : `${result?.dismissed ?? 0} item(ns) arquivados sem reprocessar.`);
+      await loadDeadLetters();
+    } catch (error) {
+      setDeadLetterMessage(error instanceof Error ? error.message : "Não foi possível tratar os itens.");
+    } finally {
+      setTreatingDeadLetters(false);
+    }
+  }
 
   useEffect(() => {
     fetch("/api/admin/monitor")
@@ -39,7 +72,10 @@ export default function Monitoring({ close }: { close: () => void }) {
         if (ok) { setData(responseData); setMessage(""); }
         else setMessage("Acesso exclusivo para administradores.");
       })
-      .catch(() => setMessage("Não foi possível carregar o diagnóstico."));
+      .catch(() => setMessage("Não foi possível carregar o diagnóstico."))
+      // Depois do diagnóstico principal: a lista de mensagens mortas é
+      // complementar e não deve atrasar a primeira pintura do painel.
+      .finally(() => { void loadDeadLetters(); });
   }, []);
 
   const operations = data?.operations.filter((item) => flow === "all" || item.flow === flow) ?? [];
@@ -85,6 +121,25 @@ export default function Monitoring({ close }: { close: () => void }) {
         {/* "running" antigo não é execução em andamento: é execução que nunca
             reportou fim. A tela precisa dizer isso, em vez de repetir o status
             gravado como se fosse verdade corrente. */}
+        {/* T1 — mensagens que esgotaram as tentativas da fila. Sem esta lista
+            elas saíam da fila principal e sumiam: nem pendentes, nem falhas. */}
+        {deadLetters && <section className="monitor-alerts"><h3>Mensagens mortas {deadLetters.length > 0 && <span className="dead-letter-count">{deadLetters.length}</span>}</h3>
+          {deadLetterMessage && <p className="dead-letter-message">{deadLetterMessage}</p>}
+          {deadLetters.length === 0
+            ? <article><span><b>Nenhuma mensagem morta pendente.</b><small>Itens que esgotarem as tentativas da fila aparecem aqui com o payload preservado.</small></span></article>
+            : <>
+              {deadLetters.map((item) => <article key={item.id} className="error"><span>
+                <b>{item.kind ?? "triagem"} · fila {item.queue}</b>
+                <small>{item.jobId ? `vaga ${item.jobId} · ` : ""}{item.attempts} tentativa(s) · morta em {formatDate(item.createdAt)} · {item.reason}</small>
+              </span>
+                <span className="dead-letter-actions">
+                  <button type="button" disabled={treatingDeadLetters || !item.requeueable} onClick={() => void treatDeadLetters("requeue", [item.id])}>Reenfileirar</button>
+                  <button type="button" disabled={treatingDeadLetters} onClick={() => void treatDeadLetters("dismiss", [item.id])}>Arquivar</button>
+                </span>
+              </article>)}
+              <p className="dead-letter-message">Reenfileirar devolve a mensagem à fila de origem com o payload original. Arquivar apenas tira o item da lista, sem reprocessar.</p>
+            </>}
+        </section>}
         <section className="monitor-alerts"><h3>Agenda das automações</h3>{data.schedules.map((schedule) => <article key={schedule.id} className={schedule.stale ? "schedule-stale" : schedule.silent ? "schedule-silent" : undefined}><span><b>{schedule.label}</b><small>{schedule.cron ?? "sem agenda declarada no Radar"} · {schedule.heartbeat
           ? schedule.stale
             ? `iniciada às ${formatDate(schedule.heartbeat.updatedAt)} e sem conclusão registrada`

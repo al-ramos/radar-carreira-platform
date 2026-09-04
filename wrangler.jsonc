@@ -68,6 +68,27 @@
         "max_retries": 3,
         "max_concurrency": 1,
         "dead_letter_queue": "radar-carreira-ai-review-dlq"
+      },
+      {
+        "queue": "radar-carreira-triage-manual-dlq",
+        "max_batch_size": 10,
+        "max_batch_timeout": 30,
+        "max_retries": 3,
+        "max_concurrency": 1
+      },
+      {
+        "queue": "radar-carreira-triage-dlq",
+        "max_batch_size": 10,
+        "max_batch_timeout": 30,
+        "max_retries": 3,
+        "max_concurrency": 1
+      },
+      {
+        "queue": "radar-carreira-ai-review-dlq",
+        "max_batch_size": 10,
+        "max_batch_timeout": 30,
+        "max_retries": 3,
+        "max_concurrency": 1
       }
     ]
   }

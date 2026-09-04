@@ -140,9 +140,23 @@ type AiReviewQueueMessage = { kind: "ai-review"; reviewId: string; chunkId?: str
 type ManualTriageBatchMessage = { kind: "manual-triage-batch"; items: TriageQueueMessage[] };
 
 type QueueMessage = {
+  id?: string;
+  attempts?: number;
   body: TriageQueueMessage | ScheduledTriageQueueMessage | AiReviewQueueMessage | ManualTriageBatchMessage;
   ack(): void;
   retry(options?: { delaySeconds?: number }): void;
+};
+
+/**
+ * T1 — cada fila declara uma dead letter queue, mas nenhuma delas era
+ * consumida: depois de max_retries a mensagem saía da fila principal e
+ * desaparecia. Consumir a DLQ e persistir a mensagem é o que devolve a vaga à
+ * visão de quem opera, com payload íntegro para reenfileirar depois.
+ */
+const DEAD_LETTER_QUEUES: Record<string, string> = {
+  "radar-carreira-triage-manual-dlq": "radar-carreira-triage-manual",
+  "radar-carreira-triage-dlq": "radar-carreira-triage",
+  "radar-carreira-ai-review-dlq": "radar-carreira-ai-review",
 };
 
 const isRetryableQueueResponse = (response: Response) => response.status === 408 || response.status === 429 || response.status >= 500;
@@ -390,6 +404,39 @@ async function observePendingDrafts(env: Env) {
   console.log(JSON.stringify({ event: "draft_monitor", pending: total, approvedRecovery: "explicit_only" }));
 }
 
+/**
+ * A DLQ não transporta o erro da tentativa que falhou — só a mensagem. O que
+ * dá para registrar com honestidade é a origem, o alvo, quantas tentativas
+ * houve e o payload; o motivo fica no log do Worker, encontrável pelo id.
+ */
+async function recordDeadLetters(env: Env, queue: string, origin: string, messages: QueueMessage[]) {
+  const now = Date.now();
+  for (const message of messages) {
+    try {
+      const payload = message.body as {
+        kind?: string; jobId?: string; batchId?: string; userId?: string; reviewId?: string;
+        items?: Array<{ userId?: string; batchId?: string }>;
+      };
+      const kind = typeof payload?.kind === "string" ? payload.kind : "triage";
+      const id = message.id ?? crypto.randomUUID();
+      const jobId = payload?.jobId ?? (kind === "ai-review" ? payload?.reviewId ?? null : null);
+      const userId = payload?.userId ?? payload?.items?.[0]?.userId ?? null;
+      const batchId = payload?.batchId ?? payload?.items?.[0]?.batchId ?? null;
+      await env.DB.prepare(
+        `INSERT INTO queue_dead_letters (id, queue, kind, job_id, batch_id, user_id, attempts, last_error, payload, status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, 'pending', ?, ?)
+         ON CONFLICT(id) DO UPDATE SET attempts = excluded.attempts, updated_at = excluded.updated_at`,
+      ).bind(id, origin, kind, jobId, batchId, userId, message.attempts ?? 0, JSON.stringify(message.body).slice(0, 20_000), now, now).run();
+      console.error(JSON.stringify({ event: "queue_dead_letter", queue, origin, id, kind, jobId, attempts: message.attempts ?? 0 }));
+      message.ack();
+    } catch (error) {
+      // Persistir falhou: devolver à DLQ é melhor que perder o registro.
+      console.error(JSON.stringify({ event: "queue_dead_letter_record_failed", queue, detail: error instanceof Error ? error.message.slice(0, 300) : "erro desconhecido" }));
+      message.retry({ delaySeconds: 300 });
+    }
+  }
+}
+
 // Image security config. SVG sources with .svg extension auto-skip the
 // optimization endpoint on the client side (served directly, no proxy).
 // To route SVGs through the optimizer (with security headers), set
@@ -515,7 +562,12 @@ const worker = {
       }));
     }
   },
-  async queue(batch: { messages: QueueMessage[] }, env: Env, ctx: ExecutionContext): Promise<void> {
+  async queue(batch: { queue?: string; messages: QueueMessage[] }, env: Env, ctx: ExecutionContext): Promise<void> {
+    const deadLetterOrigin = batch.queue ? DEAD_LETTER_QUEUES[batch.queue] : undefined;
+    if (deadLetterOrigin) {
+      await recordDeadLetters(env, batch.queue as string, deadLetterOrigin, batch.messages);
+      return;
+    }
     for (const message of batch.messages) {
       try {
         const payload = message.body;

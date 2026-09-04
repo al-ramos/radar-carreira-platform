@@ -237,6 +237,28 @@ export const importRuns = sqliteTable("import_runs", {
 });
 
 /** Estado atual de cada automação, independente dos registros de negócio. */
+/**
+ * T1 — as filas declaram dead_letter_queue, mas nada consumia essas filas: uma
+ * vaga que falhava três vezes saía da fila principal e desaparecia da visão de
+ * quem opera. Aqui a mensagem morta vira registro consultável e reenfileirável.
+ * Guardar o payload é o que permite devolvê-la à fila de origem sem
+ * reconstruir a intenção original.
+ */
+export const queueDeadLetters = sqliteTable("queue_dead_letters", {
+  id: text("id").primaryKey(),
+  queue: text("queue").notNull(),
+  kind: text("kind"),
+  jobId: text("job_id"),
+  batchId: text("batch_id"),
+  userId: text("user_id"),
+  attempts: integer("attempts").notNull().default(0),
+  lastError: text("last_error"),
+  payload: text("payload").notNull(),
+  status: text("status", { enum: ["pending", "requeued", "dismissed"] }).notNull().default("pending"),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+}, (table) => [index("queue_dead_letters_status_idx").on(table.status, table.createdAt)]);
+
 export const automationHeartbeats = sqliteTable("automation_heartbeats", {
   id: text("id").primaryKey(),
   status: text("status", { enum: ["running", "completed", "failed", "skipped"] }).notNull(),
