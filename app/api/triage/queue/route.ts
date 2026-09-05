@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, isNull, lt, or } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, lt, or } from "drizzle-orm";
 import { env } from "cloudflare:workers";
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
@@ -14,7 +14,9 @@ export const dynamic = "force-dynamic";
 
 type QueuePayload = { userId: string; batchId: string; jobId: string; run: Record<string, unknown> };
 type QueueMessage = { body: { kind: "manual-triage-batch"; items: QueuePayload[] } };
-type QueueRequest = Partial<TriageRunRequest> & { action?: "resume"; batchId?: string };
+type QueueRequest = Partial<TriageRunRequest> & { action?: "resume"; batchId?: string; jobIds?: string[] };
+
+const MAX_SELECTION_TRIAGE_JOBS = 200;
 
 const STALE_QUEUE_ITEM_MS = 5 * 60_000;
 const DEFAULT_SCHEDULED_TRIAGE_BATCH_SIZE = 100;
@@ -99,12 +101,25 @@ export async function POST(request: Request) {
   const settings = await db.select({ batchSize: platformSettings.scheduledTriageBatchSize, queueBudget: platformSettings.queueDailyOperationBudget, manualMessageSize: platformSettings.manualQueueMessageSize })
     .from(platformSettings).where(eq(platformSettings.id, "global")).limit(1).then((rows) => rows[0]);
   const batchSize = Math.max(1, Math.min(MAX_SCHEDULED_TRIAGE_BATCH_SIZE, Math.floor(settings?.batchSize ?? DEFAULT_SCHEDULED_TRIAGE_BATCH_SIZE)));
+  // Seleção explícita: vagas escolhidas por id em algum recorte (ex.: o
+  // relatório de uma importação), em vez de um filtro por fonte/período. A
+  // pessoa já decidiu quais vagas; a rota só valida que existem e enfileira.
+  const explicitJobIds = Array.isArray(body.jobIds)
+    ? [...new Set(body.jobIds.filter((id): id is string => typeof id === "string" && id.trim().length > 0).map((id) => id.trim()))]
+    : null;
+  if (explicitJobIds && explicitJobIds.length > MAX_SELECTION_TRIAGE_JOBS) {
+    return NextResponse.json({ error: `Envie no máximo ${MAX_SELECTION_TRIAGE_JOBS} vagas por vez.` }, { status: 400 });
+  }
+
   let run;
   try {
     run = normalizeTriageRunRequest({
       trigger: "portal", referenceDate: body.referenceDate, sourceId: body.sourceId,
       dateScope: body.dateScope, roleArea: body.roleArea, ingestionChannel: body.ingestionChannel,
-      homePeriod: body.homePeriod, batchSize, reprocess: body.reprocess,
+      homePeriod: body.homePeriod, batchSize: explicitJobIds ? explicitJobIds.length : batchSize,
+      // Uma seleção explícita é sempre reavaliada: a pessoa está pedindo a
+      // triagem agora, mesmo que a vaga já tenha uma avaliação atual.
+      reprocess: explicitJobIds ? true : body.reprocess,
       aiMode: body.aiMode ?? "off", createDrafts: false,
     });
   } catch (error) {
@@ -116,22 +131,30 @@ export async function POST(request: Request) {
   if (!profile) return NextResponse.json({ error: "Complete seu perfil antes de iniciar a triagem." }, { status: 412 });
   const versions = getAnalysisVersions(canonicalizeProfile(profile));
 
-  const usesHomePeriod = Boolean(run.homePeriod);
-  const scopedToReferenceDay = !usesHomePeriod && (Boolean(run.sourceId) || run.dateScope === "received");
-  const dateColumn = run.dateScope === "received" ? jobs.firstSeenAt : jobs.publishedAt;
-  const homeCutoff = run.homePeriod && run.homePeriod !== "all" ? new Date(Date.now() - Number(run.homePeriod) * 36e5) : null;
-  const candidates = await db.select({ jobId: jobs.id }).from(jobs)
-    .where(and(
-      eq(jobs.status, "active"),
-      scopedToReferenceDay ? gte(dateColumn, saoPauloDayWindow(run.referenceDate).start) : undefined,
-      scopedToReferenceDay ? lt(dateColumn, saoPauloDayWindow(run.referenceDate).end) : undefined,
-      homeCutoff ? gte(jobs.firstSeenAt, homeCutoff) : undefined,
-      run.sourceId ? eq(jobs.sourceId, run.sourceId) : undefined,
-      run.roleArea ? eq(jobs.roleArea, run.roleArea) : undefined,
-      run.ingestionChannel ? eq(jobs.ingestionChannel, run.ingestionChannel) : undefined,
-      hasTriageableDescription(),
-      run.reprocess ? undefined : needsCurrentTriage(user.userId, versions),
-    )).orderBy(desc(jobs.firstSeenAt), desc(jobs.createdAt)).limit(run.batchSize);
+  let candidates: Array<{ jobId: string }>;
+  if (explicitJobIds) {
+    if (!explicitJobIds.length) return NextResponse.json({ error: "Informe ao menos uma vaga." }, { status: 400 });
+    const found = await db.select({ jobId: jobs.id }).from(jobs).where(inArray(jobs.id, explicitJobIds));
+    if (found.length !== explicitJobIds.length) return NextResponse.json({ error: "Uma ou mais vagas não foram encontradas." }, { status: 404 });
+    candidates = found;
+  } else {
+    const usesHomePeriod = Boolean(run.homePeriod);
+    const scopedToReferenceDay = !usesHomePeriod && (Boolean(run.sourceId) || run.dateScope === "received");
+    const dateColumn = run.dateScope === "received" ? jobs.firstSeenAt : jobs.publishedAt;
+    const homeCutoff = run.homePeriod && run.homePeriod !== "all" ? new Date(Date.now() - Number(run.homePeriod) * 36e5) : null;
+    candidates = await db.select({ jobId: jobs.id }).from(jobs)
+      .where(and(
+        eq(jobs.status, "active"),
+        scopedToReferenceDay ? gte(dateColumn, saoPauloDayWindow(run.referenceDate).start) : undefined,
+        scopedToReferenceDay ? lt(dateColumn, saoPauloDayWindow(run.referenceDate).end) : undefined,
+        homeCutoff ? gte(jobs.firstSeenAt, homeCutoff) : undefined,
+        run.sourceId ? eq(jobs.sourceId, run.sourceId) : undefined,
+        run.roleArea ? eq(jobs.roleArea, run.roleArea) : undefined,
+        run.ingestionChannel ? eq(jobs.ingestionChannel, run.ingestionChannel) : undefined,
+        hasTriageableDescription(),
+        run.reprocess ? undefined : needsCurrentTriage(user.userId, versions),
+      )).orderBy(desc(jobs.firstSeenAt), desc(jobs.createdAt)).limit(run.batchSize);
+  }
 
   if (!candidates.length) return NextResponse.json({ ok: true, batchId: null, queued: 0 });
   const now = new Date();

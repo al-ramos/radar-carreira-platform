@@ -1453,7 +1453,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .import-run-research input, .import-run-research select { background: #fff; border: 1px solid #d9dce8; border-radius: 7px; color: #18264d; font-size: 11px; min-width: 0; padding: 8px 9px; }
 .import-run-jobs { overflow: hidden; border: 1px solid #e5e6ef; border-radius: 10px; }
 .import-run-jobs > p { margin: 0; padding: 24px; color: #69718b; text-align: center; font-size: 12px; }
-.import-run-jobs article { display: grid; grid-template-columns: 82px 1fr auto; align-items: center; gap: 12px; padding: 11px 12px; border-bottom: 1px solid #edf0f5; }
+.import-run-jobs article { display: grid; grid-template-columns: 18px 82px 1fr auto; align-items: center; gap: 12px; padding: 11px 12px; border-bottom: 1px solid #edf0f5; }
 .import-run-jobs article:last-child { border-bottom: 0; }
 .import-run-jobs strong { display: block; color: #18264d; font-size: 12px; }
 .import-run-jobs p { margin: 3px 0 0; color: #69718b; font-size: 10px; }
@@ -1462,7 +1462,22 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .import-run-outcome.inserted { background: #e7f7eb; color: #277643; }
 .import-run-outcome.updated { background: #f0edff; color: #6557bd; }
 .import-run-outcome.duplicate { background: #f2f3f8; color: #69718b; }
-@media (max-width: 720px) { .import-run-metrics { grid-template-columns: repeat(2, 1fr); } .import-run-source-context, .import-run-research { align-items: stretch; display: grid; grid-template-columns: 1fr; } .import-run-jobs article { grid-template-columns: 72px 1fr; } .import-run-jobs time { grid-column: 2; } }
+/* Seleção em lote: escolher uma ou todas as vagas afetadas e agir sobre
+   elas sem sair do relatório da importação. */
+.import-run-selection-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 10px 0; padding: 8px 12px; border: 1px solid #e5e6ef; border-radius: 10px; background: #f8f9fd; }
+.import-run-select-all { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #454e6b; font-weight: 600; }
+.import-run-selection-actions { display: flex; gap: 8px; }
+.import-run-selection-actions button { border: 1px solid #d7dae8; background: #fff; color: #18264d; border-radius: 8px; padding: 7px 12px; font-size: 11px; font-weight: 700; cursor: pointer; }
+.import-run-selection-actions button:hover:not(:disabled) { border-color: #6557bd; color: #6557bd; }
+.import-run-selection-actions button:disabled { opacity: .5; cursor: not-allowed; }
+.import-run-selection-actions button.danger:hover:not(:disabled) { border-color: #c0392b; color: #c0392b; }
+.import-run-action-status { margin: 0 0 10px; padding: 8px 12px; border-radius: 8px; font-size: 11px; }
+.import-run-action-status.running { background: #f0edff; color: #6557bd; }
+.import-run-action-status.done { background: #e7f7eb; color: #277643; }
+.import-run-action-status.failed { background: #fdecea; color: #c0392b; }
+.import-run-jobs article.import-run-job-handled { opacity: .55; }
+.import-run-job-handled-label { grid-column: 1 / -1; color: #277643; font-size: 9px; font-weight: 700; }
+@media (max-width: 720px) { .import-run-metrics { grid-template-columns: repeat(2, 1fr); } .import-run-source-context, .import-run-research { align-items: stretch; display: grid; grid-template-columns: 1fr; } .import-run-jobs article { grid-template-columns: 16px 72px 1fr; } .import-run-jobs time { grid-column: 3; } .import-run-selection-bar { flex-direction: column; align-items: stretch; } }
 
 /* Tabela ampliada: filtros por coluna e detalhe em drawer. */
 .view-mode-toggle { padding: 2px; gap: 2px; }

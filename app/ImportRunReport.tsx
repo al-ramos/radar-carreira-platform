@@ -20,6 +20,9 @@ export default function ImportRunReport({ runId, close }: { runId: string; close
   const [message, setMessage] = useState("Carregando relatório…");
   const [search, setSearch] = useState("");
   const [outcome, setOutcome] = useState<"all" | Job["outcome"]>("all");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [actionState, setActionState] = useState<{ kind: "disqualify" | "triage"; status: "running" | "done" | "failed"; text: string } | null>(null);
+  const [handledJobIds, setHandledJobIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const controller = new AbortController();
@@ -40,6 +43,71 @@ export default function ImportRunReport({ runId, close }: { runId: string; close
     return matchesSearch && (outcome === "all" || job.outcome === outcome);
   }) ?? [];
   const sourceNeedsAttention = Boolean(report && (report.run.status === "failed" || report.run.errors > 0));
+
+  const selectableJobs = filteredJobs.filter(job => !handledJobIds.has(job.id));
+  const allVisibleSelected = selectableJobs.length > 0 && selectableJobs.every(job => selected.has(job.id));
+
+  function toggleJob(jobId: string) {
+    setSelected(current => {
+      const next = new Set(current);
+      if (next.has(jobId)) next.delete(jobId); else next.add(jobId);
+      return next;
+    });
+  }
+
+  function toggleAllVisible() {
+    setSelected(current => {
+      if (allVisibleSelected) {
+        const next = new Set(current);
+        for (const job of selectableJobs) next.delete(job.id);
+        return next;
+      }
+      return new Set([...current, ...selectableJobs.map(job => job.id)]);
+    });
+  }
+
+  // As duas ações abaixo compartilham a mesma seleção: desclassificar registra
+  // uma decisão manual (nunca envia e-mail nem candidatura); enviar para
+  // triagem apenas coloca a vaga na fila de avaliação por regras — nenhuma
+  // das duas dispara e-mail, candidatura ou qualquer ação irreversível.
+  async function disqualifySelected() {
+    const jobIds = [...selected];
+    if (!jobIds.length) return;
+    setActionState({ kind: "disqualify", status: "running", text: `Desclassificando ${jobIds.length} vaga${jobIds.length === 1 ? "" : "s"}…` });
+    try {
+      const response = await fetch("/api/triage/disqualify", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ jobIds }),
+      });
+      const result = await response.json().catch(() => null) as { count?: number; error?: string } | null;
+      if (!response.ok) throw new Error(result?.error ?? `A desclassificação falhou (HTTP ${response.status}).`);
+      setActionState({ kind: "disqualify", status: "done", text: `${result?.count ?? jobIds.length} vaga${(result?.count ?? jobIds.length) === 1 ? "" : "s"} desclassificada${(result?.count ?? jobIds.length) === 1 ? "" : "s"}.` });
+      setHandledJobIds(current => new Set([...current, ...jobIds]));
+      setSelected(new Set());
+    } catch (error) {
+      setActionState({ kind: "disqualify", status: "failed", text: error instanceof Error ? error.message : "Não foi possível desclassificar as vagas selecionadas." });
+    }
+  }
+
+  async function triageSelected() {
+    const jobIds = [...selected];
+    if (!jobIds.length) return;
+    setActionState({ kind: "triage", status: "running", text: `Enviando ${jobIds.length} vaga${jobIds.length === 1 ? "" : "s"} para a triagem…` });
+    try {
+      const response = await fetch("/api/triage/queue", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ jobIds }),
+      });
+      const result = await response.json().catch(() => null) as { queued?: number; error?: string } | null;
+      if (!response.ok) throw new Error(result?.error ?? `O envio para a triagem falhou (HTTP ${response.status}).`);
+      const queued = result?.queued ?? jobIds.length;
+      setActionState({ kind: "triage", status: "done", text: queued ? `${queued} vaga${queued === 1 ? "" : "s"} na fila de triagem. Acompanhe o progresso na Triagem.` : "Nenhuma vaga nova precisa ser triada nesse recorte." });
+      setHandledJobIds(current => new Set([...current, ...jobIds]));
+      setSelected(new Set());
+    } catch (error) {
+      setActionState({ kind: "triage", status: "failed", text: error instanceof Error ? error.message : "Não foi possível enviar as vagas selecionadas para a triagem." });
+    }
+  }
 
   return <div className="modal-backdrop" onClick={close}>
     <section className="modal import-run-report" onClick={event => event.stopPropagation()} aria-labelledby="import-run-report-title">
@@ -69,8 +137,32 @@ export default function ImportRunReport({ runId, close }: { runId: string; close
           <label>Pesquisar no log<input value={search} onChange={event => setSearch(event.target.value)} placeholder="Vaga, empresa, local ou modalidade" /></label>
           <label>Resultado<select value={outcome} onChange={event => setOutcome(event.target.value as "all" | Job["outcome"])}><option value="all">Todos</option><option value="inserted">Novas</option><option value="updated">Atualizadas</option><option value="duplicate">Duplicadas</option></select></label>
         </div>
+        {selectableJobs.length > 0 && <div className="import-run-selection-bar" aria-live="polite">
+          <label className="import-run-select-all">
+            <input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisible} aria-label="Selecionar todas as vagas visíveis" />
+            {selected.size > 0 ? `${selected.size} selecionada${selected.size === 1 ? "" : "s"}` : "Selecionar todas visíveis"}
+          </label>
+          <div className="import-run-selection-actions">
+            <button type="button" onClick={() => void triageSelected()} disabled={!selected.size || actionState?.status === "running"} title="Coloca as vagas selecionadas na fila de triagem por regras agora, sem esperar o próximo ciclo agendado.">
+              Enviar para triagem agora
+            </button>
+            <button type="button" className="danger" onClick={() => void disqualifySelected()} disabled={!selected.size || actionState?.status === "running"} title="Registra uma decisão manual (❌) para as vagas selecionadas; não envia e-mail nem candidatura.">
+              Desclassificar
+            </button>
+          </div>
+        </div>}
+        {actionState && <div className={`import-run-action-status ${actionState.status}`} role="status">{actionState.text}</div>}
         <div className="import-run-jobs">
-          {report.jobs.length === 0 ? <p>Nenhuma vaga foi gravada nesta execução.</p> : filteredJobs.length === 0 ? <p>Nenhuma vaga corresponde à pesquisa.</p> : filteredJobs.map(job => <article key={job.id}><span className={`import-run-outcome ${job.outcome}`}>{outcomeLabel[job.outcome]}</span><div><strong>{job.title}</strong><p>{job.company}{job.location ? ` · ${job.location}` : ""}{job.workMode ? ` · ${job.workMode}` : ""}</p></div><time>{formatDate(job.receivedAt)}</time></article>)}
+          {report.jobs.length === 0 ? <p>Nenhuma vaga foi gravada nesta execução.</p> : filteredJobs.length === 0 ? <p>Nenhuma vaga corresponde à pesquisa.</p> : filteredJobs.map(job => {
+            const handled = handledJobIds.has(job.id);
+            return <article key={job.id} className={handled ? "import-run-job-handled" : undefined}>
+              <input type="checkbox" checked={selected.has(job.id)} disabled={handled} onChange={() => toggleJob(job.id)} aria-label={`Selecionar ${job.title}`} />
+              <span className={`import-run-outcome ${job.outcome}`}>{outcomeLabel[job.outcome]}</span>
+              <div><strong>{job.title}</strong><p>{job.company}{job.location ? ` · ${job.location}` : ""}{job.workMode ? ` · ${job.workMode}` : ""}</p></div>
+              <time>{formatDate(job.receivedAt)}</time>
+              {handled && <small className="import-run-job-handled-label">Tratada nesta sessão</small>}
+            </article>;
+          })}
         </div>
       </>}
     </section>
